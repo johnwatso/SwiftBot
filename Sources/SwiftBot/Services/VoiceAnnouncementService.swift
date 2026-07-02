@@ -20,9 +20,19 @@ actor VoiceAnnouncementService {
         }
     }
 
-    private let playback: VoicePlaybackService
+    /// Test seam: renders `(text, voiceIdentifier)` to a buffer in place of
+    /// the real `VoiceTTSSource` pipeline.
+    typealias RenderOverride = @Sendable (String, String?) async throws -> SendableAudioBuffer
+
+    private let playback: any AnnouncementPlayback
     private let ttsSource: VoiceTTSSource
+    private let renderOverride: RenderOverride?
+    private let daveNotReadyRetryDelay: Duration
     private var voice: AVSpeechSynthesisVoice?
+    /// In-flight engine warm-up render; the drain loop awaits it before the
+    /// first real render so the two never run concurrently.
+    private var prewarmTask: Task<Void, Never>?
+    private var prewarmedVoiceID: String??
     private var queue: [Announcement] = []
     private var draining: Bool = false
     private var paused: Bool = false
@@ -41,10 +51,30 @@ actor VoiceAnnouncementService {
     private var onHealthChange: (@Sendable (VoiceAnnouncerHealth) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
 
-    init(playback: VoicePlaybackService) throws {
+    init(
+        playback: any AnnouncementPlayback,
+        daveNotReadyRetryDelay: Duration = .seconds(1),
+        renderOverride: RenderOverride? = nil
+    ) throws {
         self.playback = playback
         self.ttsSource = try VoiceTTSSource()
+        self.daveNotReadyRetryDelay = daveNotReadyRetryDelay
+        self.renderOverride = renderOverride
         self.voice = VoiceTTSSource.preferredEnglishVoice()
+    }
+
+    /// Load the speech engine and the selected voice's assets ahead of the
+    /// first real announcement. The first AVSpeech render after launch can pay
+    /// 1s+ of voice-asset loading; a token render at connect time moves that
+    /// cost off the first spoken message. Re-runs only when the voice changes.
+    func prewarm() {
+        let voiceID = voice?.identifier
+        guard prewarmedVoiceID != .some(voiceID) else { return }
+        prewarmedVoiceID = .some(voiceID)
+        guard renderOverride == nil else { return }
+        prewarmTask = Task { [weak self] in
+            _ = try? await self?.renderWithTimeout(text: "ok", seconds: 10.0, voiceIdentifier: voiceID)
+        }
     }
 
     func setVoice(_ voice: AVSpeechSynthesisVoice?) {
@@ -78,6 +108,15 @@ actor VoiceAnnouncementService {
         if !paused, !queue.isEmpty, !draining {
             scheduleDrain()
         }
+    }
+
+    /// Called by the owner when the voice pipeline reports that secure media
+    /// became ready again mid-connection (a DAVE re-key or downgrade
+    /// finished), so reads paused on `daveNotReady` resume without waiting
+    /// for a full reconnect.
+    func resumeAfterMediaReady() async {
+        guard paused else { return }
+        await setPaused(false)
     }
 
     func clearPending() async {
@@ -144,16 +183,47 @@ actor VoiceAnnouncementService {
         await drain()
     }
 
+    private struct RenderedBatch {
+        let batch: [Announcement]
+        let speechText: String
+        let audio: SendableAudioBuffer
+    }
+
+    private enum PrefetchOutcome {
+        case rendered(RenderedBatch)
+        case failed([Announcement])
+    }
+
     private func drain() async {
         draining = true
         await publishHealth(phase: paused ? .paused : .queued)
-        while !queue.isEmpty {
-            if paused { break }
-            let batch = nextBatch()
-            guard let first = batch.first else { break }
-            let speechText = coalescedSpeech(for: batch)
-            await onQueueChange?(queue)
-            do {
+        // Let an in-flight engine warm-up finish so two renders never overlap.
+        if let prewarm = prewarmTask {
+            await prewarm.value
+            prewarmTask = nil
+        }
+        var prefetched: RenderedBatch?
+        while !queue.isEmpty || prefetched != nil {
+            if paused {
+                if let pending = prefetched {
+                    requeue(pending.batch)
+                    prefetched = nil
+                    await onQueueChange?(queue)
+                }
+                break
+            }
+
+            // Take the batch rendered during the previous playback if there is
+            // one, otherwise render the next batch in the foreground.
+            let current: RenderedBatch
+            if let pending = prefetched {
+                prefetched = nil
+                current = pending
+            } else {
+                let batch = nextBatch()
+                guard !batch.isEmpty else { break }
+                let speechText = coalescedSpeech(for: batch)
+                await onQueueChange?(queue)
                 await publishHealth(
                     phase: .rendering,
                     activeStartedAt: Date(),
@@ -165,74 +235,147 @@ actor VoiceAnnouncementService {
                 // 20 ms frames. (Per-chunk resampling distorts the audio because
                 // AVAudioConverter's resampler state can't be reset mid-stream,
                 // so we render-then-play rather than convert-as-we-go.)
-                let rendered = try await renderSpeechAudio(text: speechText)
+                do {
+                    let rendered = try await renderSpeechAudio(text: speechText)
+                    current = RenderedBatch(batch: batch, speechText: speechText, audio: rendered)
+                } catch {
+                    await handleDrainFailure(error, batch: batch)
+                    continue
+                }
+            }
+
+            // Render the following batch while this one streams out, so
+            // back-to-back announcements don't serialize TTS synthesis behind
+            // playback. Only one render is ever in flight at a time.
+            var prefetchTask: Task<PrefetchOutcome, Never>?
+            if !queue.isEmpty {
+                let nextItems = nextBatch()
+                if !nextItems.isEmpty {
+                    let nextText = coalescedSpeech(for: nextItems)
+                    await onQueueChange?(queue)
+                    prefetchTask = Task {
+                        do {
+                            let rendered = try await self.renderSpeechAudio(text: nextText)
+                            return .rendered(RenderedBatch(batch: nextItems, speechText: nextText, audio: rendered))
+                        } catch {
+                            return .failed(nextItems)
+                        }
+                    }
+                }
+            }
+
+            do {
                 await publishHealth(
                     phase: .sending,
                     activeStartedAt: Date(),
-                    activeCharacterCount: speechText.count,
-                    lastBatchSize: batch.count
+                    activeCharacterCount: current.speechText.count,
+                    lastBatchSize: current.batch.count
                 )
                 await onDebug?("Sending speech audio to Discord.")
-                try await playback.speak(pcm: rendered)
-                await onDebug?("Finished Discord speech (\(speechText.count) chars, \(batch.count) message\(batch.count == 1 ? "" : "s")).")
-                for item in batch {
+                try await playback.speak(pcm: current.audio)
+                await onDebug?("Finished Discord speech (\(current.speechText.count) chars, \(current.batch.count) message\(current.batch.count == 1 ? "" : "s")).")
+                for item in current.batch {
                     retryCounts[item.id] = nil
                     recordRecent(item)
                 }
                 await publishHealth(
-                    phase: queue.isEmpty ? .idle : .queued,
+                    phase: (queue.isEmpty && prefetchTask == nil) ? .idle : .queued,
                     retryStreak: 0,
                     lastSpokenAt: Date(),
                     activeStartedAt: nil,
                     activeCharacterCount: nil,
-                    lastBatchSize: batch.count
+                    lastBatchSize: current.batch.count
                 )
             } catch {
-                if case VoicePipelineError.daveNotReady = error {
-                    let retries = retryCounts[first.id, default: 0]
-                    if retries < 5 {
-                        retryCounts[first.id] = retries + 1
-                        requeue(batch)
-                        await onQueueChange?(queue)
-                        await publishHealth(
-                            phase: .recovering,
-                            retryStreak: retries + 1,
-                            lastFailureAt: Date(),
-                            lastFailureReason: error.localizedDescription
-                        )
-                        await onDebug?("Discord speech paused while DAVE media encryption refreshes; retrying.")
-                        try? await Task.sleep(for: .seconds(1))
-                        continue
+                // Reclaim the prefetched items first so nothing is lost, then
+                // requeue the failed batch ahead of them (requeue inserts at
+                // the front, so the original order is preserved).
+                if let task = prefetchTask {
+                    switch await task.value {
+                    case .rendered(let next): requeue(next.batch)
+                    case .failed(let items): requeue(items)
                     }
-                    retryCounts[first.id] = nil
-                }
-                if isReconnectablePlaybackError(error) {
-                    requeue(batch)
                     await onQueueChange?(queue)
-                    await onDebug?("Discord speech paused while the voice connection recovers.")
-                    paused = true
-                    await publishHealth(
-                        phase: .recovering,
-                        retryStreak: health.retryStreak + 1,
-                        lastFailureAt: Date(),
-                        lastFailureReason: error.localizedDescription
-                    )
-                    continue
                 }
-                Self.logger.error("announcement failed: \(error.localizedDescription)")
-                await onDebug?("Discord speech failed: \(error.localizedDescription)")
-                await publishHealth(
-                    phase: .failed,
-                    retryStreak: health.retryStreak + 1,
-                    lastFailureAt: Date(),
-                    lastFailureReason: error.localizedDescription,
-                    activeStartedAt: nil,
-                    activeCharacterCount: nil
-                )
+                await handleDrainFailure(error, batch: current.batch)
+                continue
+            }
+
+            if let task = prefetchTask {
+                switch await task.value {
+                case .rendered(let next):
+                    prefetched = next
+                case .failed(let items):
+                    // Requeue and let the foreground path retry the render;
+                    // if it fails again the normal failure handling applies.
+                    requeue(items)
+                    await onQueueChange?(queue)
+                }
             }
         }
         draining = false
         await publishHealth(phase: paused ? .paused : (queue.isEmpty ? .idle : .queued))
+    }
+
+    private func handleDrainFailure(_ error: Error, batch: [Announcement]) async {
+        guard let first = batch.first else { return }
+        if case VoicePipelineError.daveNotReady = error {
+            let retries = retryCounts[first.id, default: 0]
+            if retries < 5 {
+                retryCounts[first.id] = retries + 1
+                requeue(batch)
+                await onQueueChange?(queue)
+                await publishHealth(
+                    phase: .recovering,
+                    retryStreak: retries + 1,
+                    lastFailureAt: Date(),
+                    lastFailureReason: error.localizedDescription
+                )
+                await onDebug?("Discord speech paused while secure media refreshes; retrying.")
+                try? await Task.sleep(for: daveNotReadyRetryDelay)
+                return
+            }
+            // A secure-media refresh is outlasting the quick retry loop (e.g.
+            // a mid-call MLS re-key). Keep the batch queued and pause; the
+            // media-ready signal from the voice pipeline resumes the drain,
+            // and the pipeline's own watchdog fails the connection if the
+            // refresh never completes.
+            retryCounts[first.id] = nil
+            requeue(batch)
+            await onQueueChange?(queue)
+            paused = true
+            await onDebug?("Discord speech is waiting for secure media to finish refreshing; queued reads resume automatically.")
+            await publishHealth(
+                phase: .recovering,
+                retryStreak: health.retryStreak + 1,
+                lastFailureAt: Date(),
+                lastFailureReason: error.localizedDescription
+            )
+            return
+        }
+        if isReconnectablePlaybackError(error) {
+            requeue(batch)
+            await onQueueChange?(queue)
+            await onDebug?("Discord speech paused while the voice connection recovers.")
+            paused = true
+            await publishHealth(
+                phase: .recovering,
+                retryStreak: health.retryStreak + 1,
+                lastFailureAt: Date(),
+                lastFailureReason: error.localizedDescription
+            )
+            return
+        }
+        Self.logger.error("announcement failed: \(error.localizedDescription)")
+        await onDebug?("Discord speech failed: \(error.localizedDescription)")
+        await publishHealth(
+            phase: .failed,
+            retryStreak: health.retryStreak + 1,
+            lastFailureAt: Date(),
+            lastFailureReason: error.localizedDescription,
+            activeStartedAt: nil,
+            activeCharacterCount: nil
+        )
     }
 
     private func isReconnectablePlaybackError(_ error: Error) -> Bool {
@@ -275,21 +418,39 @@ actor VoiceAnnouncementService {
         let selectedVoiceID = voice?.identifier
         let fallbackVoiceID = VoiceTTSSource.preferredEnglishVoice()?.identifier
         do {
-            let rendered = try await renderWithTimeout(text: text, seconds: 30.0, voiceIdentifier: selectedVoiceID)
+            let rendered = try await renderWithTimeout(
+                text: text,
+                seconds: 30.0,
+                voiceIdentifier: selectedVoiceID
+            )
             return try AnnouncerAudioGuardrails.validateAndRepair(rendered.buffer)
         } catch {
             guard let fallbackVoiceID, fallbackVoiceID != selectedVoiceID else { throw error }
             await onDebug?("Selected speech voice produced unusable audio; retrying with fallback voice.")
-            let rendered = try await renderWithTimeout(text: text, seconds: 30.0, voiceIdentifier: fallbackVoiceID)
+            let rendered = try await renderWithTimeout(
+                text: text,
+                seconds: 30.0,
+                voiceIdentifier: fallbackVoiceID
+            )
             return try AnnouncerAudioGuardrails.validateAndRepair(rendered.buffer)
         }
     }
 
-    private func renderWithTimeout(text: String, seconds: Double, voiceIdentifier: String?) async throws -> SendableAudioBuffer {
+    private func renderWithTimeout(
+        text: String,
+        seconds: Double,
+        voiceIdentifier: String?
+    ) async throws -> SendableAudioBuffer {
+        if let renderOverride {
+            return try await renderOverride(text, voiceIdentifier)
+        }
         return try await withThrowingTaskGroup(of: SendableAudioBuffer.self) { group in
             group.addTask { [ttsSource] in
                 let resolved = voiceIdentifier.flatMap { AVSpeechSynthesisVoice(identifier: $0) }
-                let buffer = try await ttsSource.render(text: text, voice: resolved)
+                let buffer = try await ttsSource.render(
+                    text: text,
+                    voice: resolved
+                )
                 return SendableAudioBuffer(buffer: buffer)
             }
             group.addTask {

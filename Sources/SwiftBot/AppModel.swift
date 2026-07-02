@@ -291,10 +291,14 @@ final class AppModel: ObservableObject {
     /// (the classic close-code-4006 cause) before opening the voice pipeline.
     var voiceCredentialsSessionID: String?
     var voiceRecoveryTask: Task<Void, Never>?
+    var voiceAutoConnectTask: Task<Void, Never>?
     var announcerHealthWatchdogTask: Task<Void, Never>?
     var voiceSettingsFinalSaveTask: Task<Void, Never>?
-    var voiceRecoveryInProgress: Bool = false
-    var voiceRecoveryAttemptUsed: Bool = false
+    var voiceRecovery = VoiceRecoveryBackoff()
+    var voiceDisconnectPreservesAnnouncerSession: Bool = false
+    /// Identifies the most recent connectVoice attempt so a stale handshake
+    /// timeout can't fail a newer attempt that superseded it.
+    var voiceConnectAttemptToken: UUID = UUID()
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
     /// Retained AVSpeechSynthesizer for in-app preview playback (used while
     /// the Discord voice path is blocked by DAVE).

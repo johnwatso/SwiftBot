@@ -19,10 +19,16 @@ actor VoicePlaybackService {
         case failed(String)
     }
 
+    typealias GatewayFactory = @Sendable (URLSession, VoiceServerInfo) -> any VoicePlaybackGateway
+    typealias TransportFactory = @Sendable (String, UInt16) -> any VoiceMediaTransport
+
     private let session: URLSession
+    private let gatewayFactory: GatewayFactory
+    private let transportFactory: TransportFactory
+    private let resumeConfirmationTimeout: Duration
     private var status: Status = .idle
-    private var gateway: VoiceGatewayConnection?
-    private var transport: VoiceUDPTransport?
+    private var gateway: (any VoicePlaybackGateway)?
+    private var transport: (any VoiceMediaTransport)?
     private var encryption: VoiceEncryption?
     private var rtp: RTPPacketBuilder?
     private var opus: OpusFrameEncoder?
@@ -32,6 +38,12 @@ actor VoicePlaybackService {
     private var daveMediaRequired: Bool = false
     private var daveMediaReady: Bool = false
     private var daveExternalSender: Data?
+    /// Transition id of an announced downgrade to protocol version 0. Audio
+    /// keeps flowing MLS-encrypted until the matching execute-transition lands;
+    /// then the session drops to transport-only encryption. Without honouring
+    /// this, we keep sending frames no other client can decrypt — the bot looks
+    /// connected and "speaking" while everyone hears silence.
+    private var pendingDaveDowngradeTransitionId: UInt64?
     private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var connectionTimeoutTask: Task<Void, Never>?
@@ -43,6 +55,11 @@ actor VoicePlaybackService {
     private var keepaliveTask: Task<Void, Never>?
     private var keepaliveCounter: UInt32 = 0
     private var keepaliveFailureCount: Int = 0
+    /// Keepalive ticks since connect, used to pace the UDP liveness probe
+    /// (every 6th tick ≈ 30 s, or every tick while a probe failure is open).
+    private var keepaliveTickCount: Int = 0
+    /// Consecutive liveness-probe failures; two in a row fails the pipeline.
+    private var udpProbeFailureCount: Int = 0
     /// When the current connect attempt began, used to time each handshake phase
     /// in the diagnostics log (so a slow connect can be pinpointed).
     private var connectStartedAt: ContinuousClock.Instant?
@@ -60,12 +77,30 @@ actor VoicePlaybackService {
     /// Watchdog used only after an established voice session receives a DAVE
     /// re-key. Initial connection has its own media-readiness timeout.
     private var daveMediaReadinessWatchdogTask: Task<Void, Never>?
+    /// One in-place websocket RESUME is attempted per established session
+    /// before falling back to a full rejoin; reset when a session connects or
+    /// a resume is confirmed.
+    private var voiceResumeAttemptsRemaining: Int = 1
+    private var awaitingVoiceResume: Bool = false
+    private var voiceResumeConfirmationTask: Task<Void, Never>?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
+    /// Fired when DAVE media becomes ready again mid-connection (a re-key or
+    /// downgrade finished) so the owner can resume paused announcement reads
+    /// without waiting for a full reconnect.
+    private var onDaveMediaReady: (@Sendable () async -> Void)?
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = .shared,
+        gatewayFactory: @escaping GatewayFactory = { VoiceGatewayConnection(session: $0, server: $1) },
+        transportFactory: @escaping TransportFactory = { VoiceUDPTransport(host: $0, port: $1) },
+        resumeConfirmationTimeout: Duration = .seconds(5)
+    ) {
         self.session = session
+        self.gatewayFactory = gatewayFactory
+        self.transportFactory = transportFactory
+        self.resumeConfirmationTimeout = resumeConfirmationTimeout
     }
 
     func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
@@ -76,19 +111,34 @@ actor VoicePlaybackService {
         onDebug = handler
     }
 
+    func setOnDaveMediaReady(_ handler: @escaping @Sendable () async -> Void) {
+        onDaveMediaReady = handler
+    }
+
     var currentStatus: Status { status }
 
     /// Run the full voice handshake: WS connect → READY → IP discovery →
     /// SELECT_PROTOCOL → SESSION_DESCRIPTION. Returns once the encrypted
     /// audio pipeline is ready to accept frames.
     func connect(server: VoiceServerInfo) async throws {
-        guard status == .idle || status == .failed("") || isFailed(status) else {
-            return
+        switch status {
+        case .idle, .failed:
+            break
+        case .connecting, .connected, .disconnecting:
+            // Returning "success" here without a pipeline is how a phantom
+            // Connected state happens when two connect paths race — surface
+            // the conflict to the caller instead.
+            throw VoicePipelineError.unexpectedPayload("voice connect requested while the pipeline is \(label(for: status)); disconnect first")
         }
         await setStatus(.connecting)
         connectStartedAt = ContinuousClock().now
         lastDaveStepAt = nil
         daveInitialKeyPackageSent = false
+        pendingDaveDowngradeTransitionId = nil
+        voiceResumeAttemptsRemaining = 1
+        awaitingVoiceResume = false
+        voiceResumeConfirmationTask?.cancel()
+        voiceResumeConfirmationTask = nil
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
         daveMediaReadinessWatchdogTask?.cancel()
@@ -103,7 +153,7 @@ actor VoicePlaybackService {
         let opus = try OpusFrameEncoder()
         self.opus = opus
 
-        let gateway = VoiceGatewayConnection(session: session, server: server)
+        let gateway = gatewayFactory(session, server)
         self.gateway = gateway
 
         await gateway.setOnReady { [weak self] info in
@@ -127,6 +177,9 @@ actor VoicePlaybackService {
         await gateway.setOnDavePrepareEpoch { [weak self] protocolVersion, epoch in
             await self?.handleDavePrepareEpoch(protocolVersion: protocolVersion, epoch: epoch)
         }
+        await gateway.setOnDavePrepareTransition { [weak self] protocolVersion, transitionId in
+            await self?.handleDavePrepareTransition(protocolVersion: protocolVersion, transitionId: transitionId)
+        }
         await gateway.setOnDaveExecuteTransition { [weak self] transitionId in
             await self?.handleDaveExecuteTransition(transitionId)
         }
@@ -141,6 +194,9 @@ actor VoicePlaybackService {
         }
         await gateway.setOnDaveMlsWelcome { [weak self] data, transitionId in
             await self?.handleDaveWelcome(data, transitionId: transitionId)
+        }
+        await gateway.setOnResumed { [weak self] in
+            await self?.handleGatewayResumed()
         }
 
         do {
@@ -160,6 +216,9 @@ actor VoicePlaybackService {
         keepaliveTask?.cancel()
         keepaliveTask = nil
         keepaliveFailureCount = 0
+        awaitingVoiceResume = false
+        voiceResumeConfirmationTask?.cancel()
+        voiceResumeConfirmationTask = nil
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
         daveMediaReadinessWatchdogTask?.cancel()
@@ -183,6 +242,7 @@ actor VoicePlaybackService {
         daveMediaRequired = false
         daveMediaReady = false
         daveExternalSender = nil
+        pendingDaveDowngradeTransitionId = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         await setStatus(.idle)
@@ -297,7 +357,7 @@ actor VoicePlaybackService {
     /// send silence while idle — that would keep packets flowing on our SSRC and
     /// light the "speaking" ring continuously (Discord can't see the encrypted
     /// payload is silence, so any packet counts as activity).
-    private func sendTrailingSilence(_ count: Int, transport: VoiceUDPTransport) async {
+    private func sendTrailingSilence(_ count: Int, transport: any VoiceMediaTransport) async {
         guard var rtp = self.rtp, var encryption = self.encryption, let ssrc = ssrc else { return }
         for _ in 0..<count {
             let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
@@ -318,7 +378,7 @@ actor VoicePlaybackService {
 
     // MARK: - Private
 
-    private func sendFrame(_ buffer: AVAudioPCMBuffer, transport: VoiceUDPTransport) async throws {
+    private func sendFrame(_ buffer: AVAudioPCMBuffer, transport: any VoiceMediaTransport) async throws {
         guard let opus = opus,
               var rtp = self.rtp,
               var encryption = self.encryption,
@@ -358,12 +418,13 @@ actor VoicePlaybackService {
         if let existing = transport {
             await existing.stop()
         }
-        let udp = VoiceUDPTransport(host: info.ip, port: info.port)
+        let udp = transportFactory(info.ip, info.port)
         transport = udp
         do {
             try await udp.start()
             let address = try await udp.discoverAddress(ssrc: info.ssrc)
             await debug("[+\(elapsedSinceConnect())] Voice UDP discovery returned \(address.ip):\(address.port); selecting protocol.")
+            await udp.startInboundMonitor()
             try await gateway?.sendSelectProtocol(address: address, mode: mode)
         } catch {
             await fail("ip discovery failed: \(error.localizedDescription)")
@@ -374,49 +435,126 @@ actor VoicePlaybackService {
         encryption = VoiceEncryption(secretKey: key.secretKey)
 
         if let daveVersion = key.daveProtocolVersion, daveVersion > 0, ssrc != nil, let gateway = gateway {
-            daveMediaRequired = true
-            daveMediaReady = false
             await daveLog("DAVE negotiated version \(daveVersion); preparing MLS session for guild \(gateway.server.guildID).")
-            let coordinator = DaveSessionCoordinator(authSessionId: nil)
-            do {
-                recognizedUserIds.insert(gateway.server.userID)
-                let result = try await coordinator.configureDiscordVoiceSession(
-                    groupId: UInt64(gateway.server.guildID) ?? 0,
-                    selfUserId: gateway.server.userID,
-                    protocolVersion: daveVersion
-                )
-                self.daveCoordinator = coordinator
-                await daveLog("DAVE MLS coordinator configured (self user \(gateway.server.userID)).")
-                try await sendDaveOutboundActions(result.outboundActions, reason: "session description")
-
-                // Publish the key package only AFTER the external sender arrives
-                // (the MLS-correct order). If the external sender was already
-                // cached (reconnect), send now; otherwise wait for it, with a
-                // fallback so a missing external sender can't stall us.
-                if let externalSender = daveExternalSender {
-                    let registration = try await coordinator.registerDiscordExternalSender(
-                        externalSender,
-                        publishInitialKeyPackage: true
-                    )
-                    await daveLog("DAVE external sender reapplied after session description.")
-                    try await sendDaveOutboundActions(
-                        registration.outboundActions,
-                        reason: "session description (external sender cached)"
-                    )
-                } else {
-                    await daveLog("Waiting for DAVE external sender before publishing key package.")
-                    await verbose("awaiting Discord → MLS external-sender package (a large next Δ means Discord is the slow side here)")
-                    startDaveKeyPackageFallback()
-                }
-            } catch {
-                await daveLogError("DAVE coordinator initialization failed: \(error.localizedDescription)")
-                await fail("DAVE coordinator initialization failed: \(error.localizedDescription)")
-            }
+            await establishDaveSession(protocolVersion: daveVersion, reason: "session description")
         } else {
             daveMediaRequired = false
             daveMediaReady = true
             await daveLog("DAVE not negotiated for this voice session; media is transport-encrypted only.")
             await completeConnection(reason: "transport encryption ready")
+        }
+    }
+
+    /// Create a fresh MLS coordinator for `protocolVersion` and run the
+    /// key-package publication flow. Shared by the initial session description,
+    /// a mid-call upgrade from transport-only media (prepare epoch 1 with no
+    /// session — e.g. the last non-DAVE client left the channel), and a
+    /// protocol version change announced via prepare-transition.
+    private func establishDaveSession(protocolVersion: UInt16, reason: String) async {
+        guard let gateway = gateway else { return }
+        daveMediaRequired = true
+        daveMediaReady = false
+        daveInitialKeyPackageSent = false
+        pendingDaveDowngradeTransitionId = nil
+        await daveCoordinator?.reset()
+        daveCoordinator = nil
+        // Mid-call re-keys aren't covered by the initial connect timeout, so a
+        // stalled handshake must fail the session (and trigger recovery)
+        // rather than leaving reads paused forever.
+        if status == .connected {
+            startDaveMediaReadinessWatchdog(reason: reason)
+        }
+        // A stable auth session id gives libdave persistent MLS identity keys
+        // across sessions (matching official clients) instead of a fresh
+        // ephemeral identity on every connect.
+        let coordinator = DaveSessionCoordinator(authSessionId: gateway.server.userID)
+        do {
+            recognizedUserIds.insert(gateway.server.userID)
+            let result = try await coordinator.configureDiscordVoiceSession(
+                groupId: UInt64(gateway.server.guildID) ?? 0,
+                selfUserId: gateway.server.userID,
+                protocolVersion: protocolVersion
+            )
+            self.daveCoordinator = coordinator
+            await daveLog("DAVE MLS coordinator configured after \(reason) (self user \(gateway.server.userID)).")
+            try await sendDaveOutboundActions(result.outboundActions, reason: reason)
+
+            // Publish the key package only AFTER the external sender arrives
+            // (the MLS-correct order). If the external sender was already
+            // cached (reconnect), send now; otherwise wait for it, with a
+            // fallback so a missing external sender can't stall us.
+            if let externalSender = daveExternalSender {
+                let registration = try await coordinator.registerDiscordExternalSender(
+                    externalSender,
+                    publishInitialKeyPackage: true
+                )
+                await daveLog("DAVE external sender reapplied after \(reason).")
+                try await sendDaveOutboundActions(
+                    registration.outboundActions,
+                    reason: "\(reason) (external sender cached)"
+                )
+            } else {
+                await daveLog("Waiting for DAVE external sender before publishing key package.")
+                await verbose("awaiting Discord → MLS external-sender package (a large next Δ means Discord is the slow side here)")
+                startDaveKeyPackageFallback()
+            }
+        } catch {
+            await daveLogError("DAVE coordinator initialization failed (\(reason)): \(error.localizedDescription)")
+            await fail("DAVE coordinator initialization failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Discord announces call-wide protocol transitions with op 21. A version-0
+    /// transition downgrades the call to transport-only encryption (a client
+    /// that doesn't support DAVE joined); a non-zero version re-keys the call
+    /// onto a new protocol version. Audio must keep the CURRENT mode until the
+    /// matching execute-transition arrives.
+    private func handleDavePrepareTransition(protocolVersion: UInt16, transitionId: UInt64) async {
+        if protocolVersion == 0 {
+            guard daveMediaRequired || daveCoordinator != nil else {
+                // Already transport-only; just acknowledge so the server can
+                // proceed with the transition for everyone else.
+                try? await gateway?.sendTransitionReady(transitionId: transitionId)
+                return
+            }
+            await daveLog("DAVE prepare transition (id \(transitionId)): call downgrading to transport-only encryption.")
+            if transitionId == 0 {
+                // Transition id 0 applies immediately; no execute follows.
+                await applyDaveDowngrade(transitionId: transitionId)
+                return
+            }
+            pendingDaveDowngradeTransitionId = transitionId
+            try? await gateway?.sendTransitionReady(transitionId: transitionId)
+            await daveLog("DAVE downgrade prepared (id \(transitionId)); transition-ready sent, awaiting execute-transition.")
+        } else {
+            await daveLog("DAVE prepare transition (id \(transitionId)) to protocol version \(protocolVersion); re-initialising MLS session.")
+            await establishDaveSession(protocolVersion: protocolVersion, reason: "prepare transition \(transitionId)")
+            try? await gateway?.sendTransitionReady(transitionId: transitionId)
+        }
+    }
+
+    /// Drop the MLS session and return to transport-only media. From here on
+    /// frames go out Opus-in-transport-encryption only, which is what every
+    /// other client in a downgraded call expects to receive.
+    private func applyDaveDowngrade(transitionId: UInt64) async {
+        pendingDaveDowngradeTransitionId = nil
+        daveKeyPackageFallbackTask?.cancel()
+        daveKeyPackageFallbackTask = nil
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = nil
+        daveInitialKeyPackageSent = false
+        await daveCoordinator?.reset()
+        daveCoordinator = nil
+        // The external sender belongs to the torn-down MLS group; Discord sends
+        // a fresh one if the call later upgrades again.
+        daveExternalSender = nil
+        daveMediaRequired = false
+        daveMediaReady = true
+        await daveLog("DAVE downgrade executed (id \(transitionId)); media is transport-encrypted only until Discord re-upgrades the call.")
+        if status != .connected {
+            await completeConnection(reason: "DAVE downgrade transition \(transitionId)")
+        } else {
+            await onDaveMediaReady?()
         }
     }
 
@@ -458,6 +596,13 @@ actor VoicePlaybackService {
                     }
                     await daveLog("DAVE MLS session re-initialised for epoch \(epoch).")
                 }
+            } else if epoch == 1 {
+                // The call is upgrading from transport-only media to DAVE
+                // mid-session (e.g. the last non-DAVE client left). Without
+                // joining the new MLS group we would keep sending plaintext
+                // frames nobody can decode.
+                await daveLog("DAVE upgrade requested mid-call; establishing a new MLS session (version \(protocolVersion)).")
+                await establishDaveSession(protocolVersion: protocolVersion, reason: "prepare epoch \(epoch)")
             } else {
                 await daveLog("DAVE prepare epoch ignored; no active MLS session.")
             }
@@ -468,6 +613,10 @@ actor VoicePlaybackService {
 
     private func handleDaveExecuteTransition(_ transitionId: UInt64) async {
         await daveLog("DAVE execute transition received (id \(transitionId)).")
+        if pendingDaveDowngradeTransitionId == transitionId {
+            await applyDaveDowngrade(transitionId: transitionId)
+            return
+        }
         guard let coordinator = daveCoordinator else {
             await daveLog("DAVE execute transition ignored; no active MLS session.")
             return
@@ -695,15 +844,67 @@ actor VoicePlaybackService {
     }
 
     private func handleGatewayClose(_ code: Int) async {
+        if status == .connected, isResumableVoiceClose(code), voiceResumeAttemptsRemaining > 0, let gateway = gateway {
+            voiceResumeAttemptsRemaining -= 1
+            awaitingVoiceResume = true
+            await debug("Voice gateway closed (\(code)); attempting an in-place session resume before a full rejoin.")
+            do {
+                try await gateway.resume()
+                startVoiceResumeConfirmationTimeout()
+            } catch {
+                awaitingVoiceResume = false
+                await fail("voice session resume failed: \(error.localizedDescription)")
+            }
+            return
+        }
         if status == .connecting || status == .connected {
             await fail("gateway closed (\(code))")
         }
+    }
+
+    /// Abnormal transport drops leave the voice session resumable, as does
+    /// 4015 (voice server crashed). Codes like 4006/4009 invalidate the
+    /// session and need the full rejoin path.
+    private func isResumableVoiceClose(_ code: Int) -> Bool {
+        switch code {
+        case 0, 1001, 1006, 4015:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func handleGatewayResumed() async {
+        guard awaitingVoiceResume else { return }
+        awaitingVoiceResume = false
+        voiceResumeConfirmationTask?.cancel()
+        voiceResumeConfirmationTask = nil
+        voiceResumeAttemptsRemaining = 1
+        await debug("Voice session resumed in place; media continues on the existing transport.")
+    }
+
+    private func startVoiceResumeConfirmationTimeout() {
+        voiceResumeConfirmationTask?.cancel()
+        voiceResumeConfirmationTask = Task { [weak self, resumeConfirmationTimeout] in
+            try? await Task.sleep(for: resumeConfirmationTimeout)
+            guard !Task.isCancelled else { return }
+            await self?.failIfResumeUnconfirmed()
+        }
+    }
+
+    private func failIfResumeUnconfirmed() async {
+        guard awaitingVoiceResume else { return }
+        awaitingVoiceResume = false
+        await fail("voice session resume was not confirmed in time")
     }
 
     private func fail(_ reason: String) async {
         Self.logger.error("voice pipeline failed: \(reason)")
         keepaliveTask?.cancel()
         keepaliveTask = nil
+        awaitingVoiceResume = false
+        voiceResumeConfirmationTask?.cancel()
+        voiceResumeConfirmationTask = nil
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
         daveMediaReadinessWatchdogTask?.cancel()
@@ -743,6 +944,8 @@ actor VoicePlaybackService {
         keepaliveTask?.cancel()
         keepaliveCounter = 0
         keepaliveFailureCount = 0
+        keepaliveTickCount = 0
+        udpProbeFailureCount = 0
         keepaliveTask = Task { [weak self] in
             let clock = ContinuousClock()
             let interval = Duration.seconds(5)
@@ -757,6 +960,32 @@ actor VoicePlaybackService {
                 } catch {
                     await self.handleKeepaliveFailure(error)
                 }
+                await self.verifyUdpLivenessIfDue()
+            }
+        }
+    }
+
+    /// A dead NAT mapping is invisible to outbound sends — they "succeed"
+    /// locally while nothing reaches Discord, leaving the announcer speaking
+    /// into the void. Every ~30 s (or every tick while a failure is open),
+    /// verify the path with a round-trip IP-discovery probe unless inbound
+    /// traffic recently proved it alive.
+    private func verifyUdpLivenessIfDue() async {
+        guard status == .connected, let transport = transport, let ssrc = ssrc else { return }
+        keepaliveTickCount += 1
+        guard keepaliveTickCount % 6 == 0 || udpProbeFailureCount > 0 else { return }
+        if let since = await transport.secondsSinceLastInbound(), since < 10 {
+            udpProbeFailureCount = 0
+            return
+        }
+        do {
+            try await transport.probeLiveness(ssrc: ssrc, timeout: .seconds(4))
+            udpProbeFailureCount = 0
+        } catch {
+            udpProbeFailureCount += 1
+            await debug("Voice UDP liveness probe failed (\(udpProbeFailureCount)/2): \(error.localizedDescription)")
+            if udpProbeFailureCount >= 2 {
+                await fail("voice UDP path stopped responding (NAT mapping likely expired)")
             }
         }
     }
@@ -778,6 +1007,7 @@ actor VoicePlaybackService {
         daveMediaReadinessWatchdogTask = nil
         if wasPaused {
             await logDaveState(reason)
+            await onDaveMediaReady?()
         }
     }
 
@@ -888,8 +1118,13 @@ actor VoicePlaybackService {
         await daveLog("DAVE \(context): epoch \(d.currentEpoch), handshake \(d.handshakeState.rawValue).")
     }
 
-    private func isFailed(_ status: Status) -> Bool {
-        if case .failed = status { return true }
-        return false
+    private func label(for status: Status) -> String {
+        switch status {
+        case .idle: return "idle"
+        case .connecting: return "connecting"
+        case .connected: return "connected"
+        case .disconnecting: return "disconnecting"
+        case .failed: return "failed"
+        }
     }
 }

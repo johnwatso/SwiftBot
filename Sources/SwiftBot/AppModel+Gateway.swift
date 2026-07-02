@@ -1917,6 +1917,7 @@ extension AppModel {
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
         // GUILD_MEMBER_ADD is now handled via handleMemberJoin (P0.5).
+        autoConnectVoiceIfConfigured()
     }
 
 }

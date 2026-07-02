@@ -19,6 +19,11 @@ actor VoiceGatewayConnection {
     private var heartbeatIntervalMs: Int = 13_750
     private var heartbeatNonce: UInt64 = 0
     private var lastSequenceNumber: Int = -1
+    /// Heartbeats sent since the last ack. A half-open socket (sleep/wake,
+    /// Wi-Fi handoff, NAT rebind) can leave `receive()` hanging for minutes
+    /// with no close frame; missing two acks in a row is treated as a dead
+    /// connection so recovery starts in seconds instead.
+    private var missedHeartbeatAcks: Int = 0
 
     private var onReady: ((VoiceReadyInfo) async -> Void)?
     private var onSessionDescription: ((VoiceSessionKey) async -> Void)?
@@ -27,11 +32,13 @@ actor VoiceGatewayConnection {
     private var onClientsConnect: (([String]) async -> Void)?
     private var onClientDisconnect: ((String) async -> Void)?
     private var onDavePrepareEpoch: ((UInt16, UInt64) async -> Void)?
+    private var onDavePrepareTransition: ((UInt16, UInt64) async -> Void)?
     private var onDaveExecuteTransition: ((UInt64) async -> Void)?
     private var onDaveMlsExternalSender: ((Data) async -> Void)?
     private var onDaveMlsProposals: ((Data) async -> Void)?
     private var onDaveMlsAnnounceCommit: ((Data, UInt64) async -> Void)?
     private var onDaveMlsWelcome: ((Data, UInt64) async -> Void)?
+    private var onResumed: (() async -> Void)?
 
     init(session: URLSession, server: VoiceServerInfo) {
         self.session = session
@@ -45,11 +52,13 @@ actor VoiceGatewayConnection {
     func setOnClientsConnect(_ handler: @escaping ([String]) async -> Void) { onClientsConnect = handler }
     func setOnClientDisconnect(_ handler: @escaping (String) async -> Void) { onClientDisconnect = handler }
     func setOnDavePrepareEpoch(_ handler: @escaping (UInt16, UInt64) async -> Void) { onDavePrepareEpoch = handler }
+    func setOnDavePrepareTransition(_ handler: @escaping (UInt16, UInt64) async -> Void) { onDavePrepareTransition = handler }
     func setOnDaveExecuteTransition(_ handler: @escaping (UInt64) async -> Void) { onDaveExecuteTransition = handler }
     func setOnDaveMlsExternalSender(_ handler: @escaping (Data) async -> Void) { onDaveMlsExternalSender = handler }
     func setOnDaveMlsProposals(_ handler: @escaping (Data) async -> Void) { onDaveMlsProposals = handler }
     func setOnDaveMlsAnnounceCommit(_ handler: @escaping (Data, UInt64) async -> Void) { onDaveMlsAnnounceCommit = handler }
     func setOnDaveMlsWelcome(_ handler: @escaping (Data, UInt64) async -> Void) { onDaveMlsWelcome = handler }
+    func setOnResumed(_ handler: @escaping () async -> Void) { onResumed = handler }
 
     func connect() async throws {
         let url = try buildGatewayURL()
@@ -70,6 +79,25 @@ actor VoiceGatewayConnection {
         receiveTask = nil
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
+    }
+
+    /// Reopen the websocket for the same voice session and send RESUME (op 7)
+    /// instead of IDENTIFY. On success Discord replies with RESUMED and the
+    /// negotiated SSRC / UDP transport / encryption state all remain valid, so
+    /// a brief WS drop doesn't need the full state-update + DAVE re-handshake.
+    func resume() async throws {
+        receiveTask?.cancel()
+        receiveTask = nil
+        socket?.cancel(with: .normalClosure, reason: nil)
+        let url = try buildGatewayURL()
+        let task = session.webSocketTask(with: url)
+        socket = task
+        task.resume()
+        await debug("Voice websocket reopened; resuming session (seq_ack \(lastSequenceNumber)).")
+        try await sendResume()
+        receiveTask = Task { [weak self] in
+            await self?.receiveLoop()
+        }
     }
 
     /// Once `discoverAddress` has run, send the Select Protocol payload that
@@ -149,6 +177,19 @@ actor VoiceGatewayConnection {
                 "session_id": server.sessionID,
                 "token": server.token,
                 "max_dave_protocol_version": Int(DaveSession.maxSupportedProtocolVersion)
+            ]
+        ]
+        try await sendJSON(payload)
+    }
+
+    private func sendResume() async throws {
+        let payload: [String: Any] = [
+            "op": VoiceOpcode.resume.rawValue,
+            "d": [
+                "server_id": server.guildID,
+                "session_id": server.sessionID,
+                "token": server.token,
+                "seq_ack": lastSequenceNumber
             ]
         ]
         try await sendJSON(payload)
@@ -248,18 +289,18 @@ actor VoiceGatewayConnection {
         case .davePrepareTransition:
             let transitionId = transitionId(from: payload)
             let version = protocolVersion(from: payload)
-            if version == 0 {
-                await debug("DAVE prepare transition (id \(transitionId)): downgrade to unencrypted (protocol version 0); acknowledging.")
-                try? await sendTransitionReady(transitionId: transitionId)
-            } else {
-                await debug("DAVE prepare transition received (id \(transitionId), protocol version \(version)).")
-            }
+            await debug("DAVE prepare transition received (id \(transitionId), protocol version \(version)).")
+            await onDavePrepareTransition?(version, transitionId)
         case .daveExecuteTransition:
             await onDaveExecuteTransition?(transitionId(from: payload))
         case .davePrepareEpoch:
             await onDavePrepareEpoch?(protocolVersion(from: payload), epoch(from: payload))
         case .heartbeatAck:
-            break
+            missedHeartbeatAcks = 0
+        case .resumed:
+            await debug("Voice gateway session resumed.")
+            missedHeartbeatAcks = 0
+            await onResumed?()
         default:
             await debug("Voice gateway ignored opcode \(op).")
             break
@@ -311,6 +352,7 @@ actor VoiceGatewayConnection {
 
     private func startHeartbeat() {
         heartbeatTask?.cancel()
+        missedHeartbeatAcks = 0
         let intervalNs = UInt64(heartbeatIntervalMs) * 1_000_000
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -322,6 +364,16 @@ actor VoiceGatewayConnection {
     }
 
     private func sendHeartbeat() async {
+        if missedHeartbeatAcks >= 2 {
+            await debug("Voice gateway missed \(missedHeartbeatAcks) heartbeat acks; treating the socket as dead.")
+            heartbeatTask?.cancel()
+            heartbeatTask = nil
+            // Force the pending receive() to fail so the close is reported
+            // through the normal onClose path (as an abnormal closure).
+            socket?.cancel(with: .abnormalClosure, reason: nil)
+            return
+        }
+        missedHeartbeatAcks += 1
         heartbeatNonce &+= 1
         let heartbeatData: [String: Any] = [
             "t": Int(heartbeatNonce & 0x7fff_ffff_ffff_ffff),

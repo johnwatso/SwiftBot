@@ -208,4 +208,27 @@ struct VoiceSettings: Codable, Hashable {
 
     /// Per-voice-channel announcer configurations created in the Announcer tab.
     var announcerConfigs: [AnnouncerVoiceChannelConfig] = []
+
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case guildID
+        case voiceChannelID
+        case watchedTextChannelID
+        case preferredVoiceIdentifier
+        case textChannelSourceEnabled
+        case autoConnect
+        case announcerConfigs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guildID = try container.decodeIfPresent(String.self, forKey: .guildID) ?? ""
+        voiceChannelID = try container.decodeIfPresent(String.self, forKey: .voiceChannelID) ?? ""
+        watchedTextChannelID = try container.decodeIfPresent(String.self, forKey: .watchedTextChannelID) ?? ""
+        preferredVoiceIdentifier = try container.decodeIfPresent(String.self, forKey: .preferredVoiceIdentifier) ?? ""
+        textChannelSourceEnabled = try container.decodeIfPresent(Bool.self, forKey: .textChannelSourceEnabled) ?? false
+        autoConnect = try container.decodeIfPresent(Bool.self, forKey: .autoConnect) ?? false
+        announcerConfigs = try container.decodeIfPresent([AnnouncerVoiceChannelConfig].self, forKey: .announcerConfigs) ?? []
+    }
 }
