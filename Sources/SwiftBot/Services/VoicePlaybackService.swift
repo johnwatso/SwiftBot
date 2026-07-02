@@ -464,9 +464,10 @@ actor VoicePlaybackService {
         if status == .connected {
             startDaveMediaReadinessWatchdog(reason: reason)
         }
-        // A stable auth session id gives libdave persistent MLS identity keys
-        // across sessions (matching official clients) instead of a fresh
-        // ephemeral identity on every connect.
+        // A stable auth session id keyed on the bot user gives libdave a
+        // persisted MLS signature identity across sessions (libdave-swift
+        // 1.3.1+; earlier framework builds shipped a null key store and abort
+        // leaf-node init when an id is set).
         let coordinator = DaveSessionCoordinator(authSessionId: gateway.server.userID)
         do {
             recognizedUserIds.insert(gateway.server.userID)
@@ -623,7 +624,7 @@ actor VoicePlaybackService {
         }
         let result = await coordinator.executeDiscordTransition(transitionId)
         guard result.recoveryHint != .retryLater else {
-            await daveLog("DAVE execute transition deferred; MLS handshake is \(result.diagnostics.handshakeState.rawValue) (epoch \(result.diagnostics.currentEpoch)).")
+            await daveLog("DAVE execute transition deferred; MLS handshake is \(result.diagnostics.handshakeState.rawValue) (\(result.diagnostics.appliedTransitionCount) transitions applied).")
             return
         }
         if status == .connected {
@@ -1115,7 +1116,7 @@ actor VoicePlaybackService {
     private func logDaveState(_ context: String) async {
         guard let coordinator = daveCoordinator else { return }
         let d = await coordinator.getDiagnostics()
-        await daveLog("DAVE \(context): epoch \(d.currentEpoch), handshake \(d.handshakeState.rawValue).")
+        await daveLog("DAVE \(context): \(d.appliedTransitionCount) transitions applied, handshake \(d.handshakeState.rawValue).")
     }
 
     private func label(for status: Status) -> String {

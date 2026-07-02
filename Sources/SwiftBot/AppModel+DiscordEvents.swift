@@ -325,6 +325,9 @@ extension AppModel {
         let roleNames = flattenedRoleNames()
         await service.setNameCaches(channels: channelNames, roles: roleNames)
         maybeStartFirstSweepScan()
+        // Channel lists just refreshed: a startup auto-connect waiting on the
+        // configured channel can fire now instead of on a polling timer.
+        attemptVoiceAutoConnect()
     }
 
     /// Flatten cached channels (text + voice) into an id → name map.

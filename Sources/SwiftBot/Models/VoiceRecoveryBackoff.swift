@@ -1,5 +1,13 @@
 import Foundation
 
+/// Tracks the wait for Discord's acknowledgement of a voice-channel leave
+/// (our own VOICE_STATE_UPDATE with a null channel) during a rejoin.
+enum VoiceLeaveAckState: Sendable, Equatable {
+    case none
+    case pending
+    case received
+}
+
 /// State for the voice auto-recovery backoff: how many rejoin attempts have
 /// been made since the last successful connection, whether one is in flight,
 /// and what delay the next one gets. Pure state — the owner performs the
@@ -11,7 +19,9 @@ struct VoiceRecoveryBackoff: Sendable, Equatable {
     private(set) var attemptsMade: Int = 0
     private(set) var inProgress: Bool = false
 
-    init(schedule: [Duration] = [.seconds(1.5), .seconds(5), .seconds(15)]) {
+    /// The first attempt is fast — it's the one users feel — and the later
+    /// ones escalate to avoid hammering a flapping connection.
+    init(schedule: [Duration] = [.milliseconds(750), .seconds(5), .seconds(15)]) {
         self.schedule = schedule
     }
 

@@ -49,9 +49,17 @@ actor TextChannelAnnouncer {
 
     private let announcer: VoiceAnnouncementService
     private var watchedChannelIDs: Set<String> = []
+    /// Surfaces why a watched-channel message was NOT read (length cap,
+    /// emoji spam, link-only, …). Without this, a filtered message and a
+    /// broken announcer look identical from the outside.
+    private var onDebug: (@Sendable (String) async -> Void)?
 
     init(announcer: VoiceAnnouncementService) {
         self.announcer = announcer
+    }
+
+    func setOnDebug(_ handler: @escaping @Sendable (String) async -> Void) {
+        onDebug = handler
     }
 
     func setWatchedChannel(_ channelID: String?) {
@@ -78,25 +86,41 @@ actor TextChannelAnnouncer {
         options: AnnouncerReadOptions = AnnouncerReadOptions()
     ) async {
         guard watchedChannelIDs.contains(event.channelID) else { return }
-        guard let spoken = await formattedSpeech(
+        switch await speechDecision(
             for: event, displayNameOverride: displayNameOverride,
             channelNames: channelNames, roleNames: roleNames, options: options
-        ) else { return }
-        await announcer.enqueue(spoken)
+        ) {
+        case .speak(let spoken):
+            await announcer.enqueue(spoken)
+        case .skip(let reason):
+            let author = event.displayName.isEmpty ? "someone" : event.displayName
+            await onDebug?("Announcer skipped a message from \(author): \(reason)")
+        }
     }
 
     // MARK: - Formatting
 
-    private func formattedSpeech(
+    private enum SpeechDecision {
+        case speak(String)
+        case skip(reason: String)
+    }
+
+    private func speechDecision(
         for event: GatewayMessageCreateEvent,
         displayNameOverride: String?,
         channelNames: [String: String],
         roleNames: [String: String],
         options: AnnouncerReadOptions
-    ) async -> String? {
-        guard var body = readableBody(
+    ) async -> SpeechDecision {
+        var body: String
+        switch readableBody(
             for: event, channelNames: channelNames, roleNames: roleNames, options: options
-        ) else { return nil }
+        ) {
+        case .body(let value):
+            body = value
+        case .skip(let reason):
+            return .skip(reason: reason)
+        }
 
         // Length policy: messages over `maxLength` are skipped unless the config
         // opts to shorten them; `keepShort` tightens the cap for everything. When
@@ -109,7 +133,9 @@ actor TextChannelAnnouncer {
             body = shortened
         }
         if body.count > Self.maxLength {
-            guard options.summariseLong else { return nil }
+            guard options.summariseLong else {
+                return .skip(reason: "it is \(body.count) characters — over the \(Self.maxLength)-character reading cap. Enable \"Shorten long messages\" in the announcer configuration to read a shortened version.")
+            }
             body = Self.truncate(body, to: Self.summaryCap)
         }
         if options.keepShort, body.count > Self.shortCap {
@@ -124,7 +150,7 @@ actor TextChannelAnnouncer {
         } else {
             "Someone"
         }
-        return "\(author): \(body)"
+        return .speak("\(author): \(body)")
     }
 
     private func shouldSmartShorten(_ body: String, options: AnnouncerReadOptions) -> Bool {
@@ -133,12 +159,17 @@ actor TextChannelAnnouncer {
         return body.count > Self.maxLength
     }
 
+    private enum BodyOutcome {
+        case body(String)
+        case skip(reason: String)
+    }
+
     private func readableBody(
         for event: GatewayMessageCreateEvent,
         channelNames: [String: String],
         roleNames: [String: String],
         options: AnnouncerReadOptions
-    ) -> String? {
+    ) -> BodyOutcome {
         // Convert raw Discord markup (mentions, custom emoji, timestamps) into
         // human-readable text so it's both spoken and logged cleanly.
         let humanized = DiscordService.humanizeContent(
@@ -151,7 +182,7 @@ actor TextChannelAnnouncer {
 
         // Skip emoji-dominated spam when the config asks for it.
         if options.ignoreEmojiSpam, Self.isEmojiSpam(content) {
-            return nil
+            return .skip(reason: "it is mostly emoji and the configuration skips emoji spam.")
         }
 
         // If the message has visible text, prefer that. URLs are stripped unless
@@ -161,7 +192,7 @@ actor TextChannelAnnouncer {
                 ? stripURLs(content).trimmingCharacters(in: .whitespacesAndNewlines)
                 : content
             if !text.isEmpty {
-                return text
+                return .body(text)
             }
         }
 
@@ -172,11 +203,11 @@ actor TextChannelAnnouncer {
            case let .string(title)? = embedMap["title"] {
             let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedTitle.isEmpty {
-                return trimmedTitle
+                return .body(trimmedTitle)
             }
         }
 
-        return nil
+        return .skip(reason: "it has no readable text (links or attachments only).")
     }
 
     private func stripURLs(_ text: String) -> String {

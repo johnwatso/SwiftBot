@@ -73,8 +73,13 @@ extension AppModel {
         if !settings.voice.voiceChannelID.isEmpty {
             channelIDs.append(settings.voice.voiceChannelID)
         }
-        if !channelIDs.isEmpty {
-            Task {
+        Task { [weak self] in
+            await watcher.setOnDebug { [weak self] message in
+                await MainActor.run {
+                    self?.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
+                }
+            }
+            if !channelIDs.isEmpty {
                 await watcher.setWatchedChannels(channelIDs)
             }
         }
@@ -158,6 +163,7 @@ extension AppModel {
         voiceCredentialsSessionID = nil
         let attemptToken = UUID()
         voiceConnectAttemptToken = attemptToken
+        voiceJoinRequestedAt = ContinuousClock().now
         voiceConnectionStatus = recovering
             ? .recovering("Rejoining voice channel…")
             : .connecting
@@ -169,15 +175,19 @@ extension AppModel {
         let action = recovering ? "Voice rejoin requested" : "Voice join requested"
         addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "\(action) for channel \(channelID)."))
 
-        // Recovery rejoins skip the REST preflight: the channel was validated
-        // when the session was first established, and the extra round trip
-        // just delays getting the announcer back.
-        if !recovering, let preflightFailure = await voiceChannelPreflightFailure(channelID: channelID) {
-            voiceConnectionStatus = .failed(preflightFailure)
-            finishVoiceRecoveryIfNeeded(success: false)
-            deactivateAnnouncerSession()
-            addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: preflightFailure))
-            return
+        // The REST preflight runs once per channel per app run: recovery
+        // rejoins and repeat joins of an already-validated channel skip the
+        // round trip. A failed connect drops the channel from the cache so a
+        // permissions change is re-checked on the next attempt.
+        if !recovering, !validatedVoiceChannelIDs.contains(channelID) {
+            if let preflightFailure = await voiceChannelPreflightFailure(channelID: channelID) {
+                voiceConnectionStatus = .failed(preflightFailure)
+                finishVoiceRecoveryIfNeeded(success: false)
+                deactivateAnnouncerSession()
+                addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: preflightFailure))
+                return
+            }
+            validatedVoiceChannelIDs.insert(channelID)
         }
 
         let didSendJoin = await service.sendVoiceStateUpdate(guildID: guildID, channelID: channelID)
@@ -209,6 +219,9 @@ extension AppModel {
                    isMissingVoiceHandshakeData {
                     let message = "Timed out waiting for Discord voice state and voice server updates."
                     self.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
+                    if let channelID = self.voicePendingChannelID {
+                        self.validatedVoiceChannelIDs.remove(channelID)
+                    }
                     if !self.finishVoiceRecoveryIfNeeded(success: false) {
                         self.voiceConnectionStatus = .failed(message)
                         self.deactivateAnnouncerSession()
@@ -232,6 +245,9 @@ extension AppModel {
 
         if !preserveAnnouncerSession {
             cancelVoiceRecovery()
+            // A deliberate disconnect must not be undone by a later
+            // channel-cache sync re-firing the startup auto-connect.
+            voiceAutoConnectArmed = false
             if let announcer = voiceAnnouncementServiceStorage {
                 await announcer.setPaused(true)
                 await announcer.clearPending()
@@ -254,6 +270,45 @@ extension AppModel {
             voiceConnectionStatus = .idle
             deactivateAnnouncerSession()
         }
+    }
+
+    // MARK: - Leave acknowledgement
+
+    /// Arm the leave-ack wait. Call BEFORE `disconnectVoice` so an ack that
+    /// arrives while the disconnect is still unwinding isn't missed.
+    func beginWaitingForVoiceLeaveAck() {
+        voiceLeaveAckState = .pending
+    }
+
+    func noteVoiceLeaveAck() {
+        guard voiceLeaveAckState == .pending else { return }
+        voiceLeaveAckState = .received
+        voiceLeaveAckContinuation?.resume()
+        voiceLeaveAckContinuation = nil
+    }
+
+    /// Wait until Discord acknowledges the leave, or `timeout` as a fallback —
+    /// typically ~100–200 ms instead of sleeping the full window.
+    func waitForVoiceLeaveAck(timeout: Duration = .milliseconds(750)) async {
+        switch voiceLeaveAckState {
+        case .received, .none:
+            voiceLeaveAckState = .none
+            return
+        case .pending:
+            break
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            voiceLeaveAckContinuation = continuation
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: timeout)
+                guard let self else { return }
+                // Fallback: resume if the ack never arrived (no-op after a
+                // normal resume — the continuation is cleared on use).
+                self.voiceLeaveAckContinuation?.resume()
+                self.voiceLeaveAckContinuation = nil
+            }
+        }
+        voiceLeaveAckState = .none
     }
 
     /// Manually trigger an announcement (e.g. `/say` or the Test button in the
@@ -386,8 +441,9 @@ extension AppModel {
             time: Date(),
             description: "Manual Announcer voice reconnect requested."
         ))
+        beginWaitingForVoiceLeaveAck()
         await disconnectVoice(preserveAnnouncerSession: true)
-        try? await Task.sleep(for: .milliseconds(750))
+        await waitForVoiceLeaveAck()
         await connectVoice(guildID: target.guildID, channelID: target.channelID, recovering: true)
     }
 
@@ -415,34 +471,35 @@ extension AppModel {
         return (target.guildID, target.config.voiceChannelID)
     }
 
-    /// Auto-join the configured Announcer voice channel once the bot is
-    /// online (`settings.voice.autoConnect`). Channel lists arrive via
-    /// GUILD_CREATE shortly after READY, so activation is retried briefly
-    /// until they're loaded. Called from the READY handler; safe to call on
-    /// gateway reconnects — it exits when voice is already connected.
-    func autoConnectVoiceIfConfigured() {
+    /// Arm the startup auto-connect (`settings.voice.autoConnect`) and try it
+    /// once. Called from the READY handler; safe on gateway reconnects — a
+    /// live voice connection or a disarm makes it a no-op.
+    func armVoiceAutoConnect() {
         guard settings.voice.autoConnect else { return }
+        voiceAutoConnectArmed = true
+        attemptVoiceAutoConnect()
+    }
+
+    /// Try the armed auto-connect. Fired from every channel-cache sync (each
+    /// GUILD_CREATE), so the join starts the moment the configured channel
+    /// becomes resolvable instead of on a polling cadence. Disarms once a
+    /// connect is initiated.
+    func attemptVoiceAutoConnect() {
+        guard voiceAutoConnectArmed, settings.voice.autoConnect else { return }
+        guard status == .running, !voiceConnectionStatus.isConnected else { return }
         guard voiceAutoConnectTask == nil else { return }
         voiceAutoConnectTask = Task { @MainActor [weak self] in
             defer { self?.voiceAutoConnectTask = nil }
-            for attempt in 0..<12 {
-                guard let self, !Task.isCancelled, self.status == .running else { return }
-                guard !self.voiceConnectionStatus.isConnected else { return }
-                if let target = await self.prepareAnnouncerConfigForUIReconnect(logFailures: false) {
-                    self.addVoiceLogEntry(VoiceEventLogEntry(
-                        time: Date(),
-                        description: "Auto-connect joining the configured Announcer voice channel after startup."
-                    ))
-                    await self.connectVoice(guildID: target.guildID, channelID: target.channelID)
-                    return
-                }
-                // Channel lists may not have arrived yet; retry shortly.
-                try? await Task.sleep(for: .seconds(attempt < 4 ? 2.5 : 5))
-            }
-            self?.addVoiceLogEntry(VoiceEventLogEntry(
+            guard let self, self.voiceAutoConnectArmed else { return }
+            // Channel lists may not include the configured channel yet; the
+            // next cache sync retries.
+            guard let target = await self.prepareAnnouncerConfigForUIReconnect(logFailures: false) else { return }
+            self.voiceAutoConnectArmed = false
+            self.addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
-                description: "Auto-connect gave up: no enabled Announcer configuration became usable after startup."
+                description: "Auto-connect joining the configured Announcer voice channel."
             ))
+            await self.connectVoice(guildID: target.guildID, channelID: target.channelID)
         }
     }
 
@@ -485,11 +542,12 @@ extension AppModel {
 
         // For rejoin, tear down any existing session first so the connect below
         // isn't skipped by connectVoice's "already connected/connecting" guard.
-        // The short pause lets Discord register the leave before the new join,
-        // avoiding a re-join being ignored as a duplicate voice state.
+        // Waiting for Discord's leave ack avoids the re-join being ignored as
+        // a duplicate voice state.
         if rejoin {
+            beginWaitingForVoiceLeaveAck()
             await disconnectVoice()
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            await waitForVoiceLeaveAck(timeout: .milliseconds(500))
         }
 
         guard await activateAnnouncerConfig(config, guildID: guildID) else {
@@ -590,6 +648,22 @@ extension AppModel {
             let cached = settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
             return cached.isEmpty ? nil : cached
         }()
+        // Leave acknowledgement: our own state update with no channel means
+        // Discord registered the disconnect — a waiting rejoin can proceed
+        // immediately instead of sleeping out its fallback timer.
+        if voiceLeaveAckState == .pending,
+           let expectedBotUserId, event.userID == expectedBotUserId {
+            let channelIsNull: Bool
+            switch event.rawMap["channel_id"] {
+            case .null, .none:
+                channelIsNull = true
+            default:
+                channelIsNull = false
+            }
+            if channelIsNull {
+                noteVoiceLeaveAck()
+            }
+        }
         guard event.guildID == voicePendingGuildID else {
             if voicePendingGuildID != nil {
                 addVoiceLogEntry(VoiceEventLogEntry(
@@ -665,6 +739,8 @@ extension AppModel {
                 time: Date(),
                 description: "Voice pipeline connected to channel \(voicePendingChannelID ?? "?")"
             ))
+            logVoiceConnectedTiming()
+            deliverPendingVoiceJoinIntroIfReady()
         } catch {
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
@@ -707,6 +783,8 @@ extension AppModel {
                 await announcer.setPaused(false)
             }
             startAnnouncerHealthWatchdog()
+            logVoiceConnectedTiming()
+            deliverPendingVoiceJoinIntroIfReady()
         case .disconnecting:
             if voiceRecovery.inProgress {
                 voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
@@ -720,6 +798,11 @@ extension AppModel {
             // `isConnected` guard in forwardMessageToVoiceAnnouncer with no
             // trace — while the bot may still appear present in Discord.
             let wasConnected = voiceConnectionStatus.isConnected
+            // Re-check permissions on the next join of this channel.
+            if let channelID = voicePendingChannelID {
+                validatedVoiceChannelIDs.remove(channelID)
+            }
+            pendingVoiceJoinIntro = nil
             if wasConnected, scheduleVoiceAutoRecovery(reason: reason) {
                 return
             }
@@ -788,9 +871,10 @@ extension AppModel {
             time: Date(),
             description: "Voice auto-rejoin starting after \(reason)."
         ))
+        beginWaitingForVoiceLeaveAck()
         await disconnectVoice(preserveAnnouncerSession: true)
         guard voiceRecovery.inProgress else { return }
-        try? await Task.sleep(for: .milliseconds(750))
+        await waitForVoiceLeaveAck()
         guard voiceRecovery.inProgress else { return }
         await connectVoice(guildID: guildID, channelID: channelID, recovering: true)
     }
@@ -1133,6 +1217,7 @@ extension AppModel {
 
     private func deactivateAnnouncerSession() {
         stopAnnouncerHealthWatchdog()
+        pendingVoiceJoinIntro = nil
         if let announcer = voiceAnnouncementServiceStorage {
             Task {
                 await announcer.setPaused(true)
@@ -1158,15 +1243,33 @@ extension AppModel {
 
     private func scheduleVoiceJoinIntro(channelID: String, text: String? = nil) {
         let text = text ?? randomAutoJoinIntro()
-        Task { [weak self] in
-            for _ in 0..<24 {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard !Task.isCancelled else { return }
-                guard self?.isVoiceConnected(to: channelID) == true else { continue }
-                await self?.speakAnnouncement(text)
-                return
-            }
+        if isVoiceConnected(to: channelID) {
+            Task { await speakAnnouncement(text) }
+            return
         }
+        // Delivered by the .connected transition the moment the pipeline is
+        // live (no polling delay); dropped if the session fails first.
+        pendingVoiceJoinIntro = (channelID, text)
+    }
+
+    private func deliverPendingVoiceJoinIntroIfReady() {
+        guard let pending = pendingVoiceJoinIntro, isVoiceConnected(to: pending.channelID) else { return }
+        pendingVoiceJoinIntro = nil
+        Task { await speakAnnouncement(pending.text) }
+    }
+
+    /// One-line summary of how long the join took, from request to live
+    /// pipeline — the number the user actually feels.
+    private func logVoiceConnectedTiming() {
+        guard let startedAt = voiceJoinRequestedAt else { return }
+        voiceJoinRequestedAt = nil
+        let elapsed = ContinuousClock().now - startedAt
+        let seconds = Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: String(format: "Announcer voice connected %.1fs after the join request.", seconds)
+        ))
     }
 
     private func randomAutoJoinIntro() -> String {

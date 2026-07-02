@@ -299,6 +299,21 @@ final class AppModel: ObservableObject {
     /// Identifies the most recent connectVoice attempt so a stale handshake
     /// timeout can't fail a newer attempt that superseded it.
     var voiceConnectAttemptToken: UUID = UUID()
+    /// Voice channels whose REST preflight passed this app run, so repeat
+    /// joins skip the round trip. Entries drop on a failed connect.
+    var validatedVoiceChannelIDs: Set<String> = []
+    /// Rejoin flows wait for Discord's ack of the leave (our own
+    /// VOICE_STATE_UPDATE with a null channel) instead of a fixed sleep.
+    var voiceLeaveAckState: VoiceLeaveAckState = .none
+    var voiceLeaveAckContinuation: CheckedContinuation<Void, Never>?
+    /// Intro queued to speak the moment the voice pipeline connects.
+    var pendingVoiceJoinIntro: (channelID: String, text: String)?
+    /// When the current join attempt started, for the "announcer live in Xs"
+    /// summary log.
+    var voiceJoinRequestedAt: ContinuousClock.Instant?
+    /// autoConnect fires once per gateway READY; cleared when used or when
+    /// the user manually disconnects, so cache syncs can't re-trigger it.
+    var voiceAutoConnectArmed: Bool = false
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
     /// Retained AVSpeechSynthesizer for in-app preview playback (used while
     /// the Discord voice path is blocked by DAVE).
