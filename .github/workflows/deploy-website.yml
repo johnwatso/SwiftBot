@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "Website/public/**"
+      - "docs/**"
       - ".github/workflows/deploy-website.yml"
   workflow_dispatch:
 
@@ -24,6 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Overlay docs release metadata
+        run: |
+          if [ -d docs ]; then
+            rsync -a docs/ Website/public/
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: Website/public

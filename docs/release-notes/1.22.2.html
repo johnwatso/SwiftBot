@@ -3,52 +3,153 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Add SwiftBot 1.22.2 release notes - Release Notes</title>
+  <title>SwiftBot 1.22.2 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f6f8;
-      color: #0f1720;
+      background: #f5f7fb;
+      color: #111827;
     }
     main {
-      max-width: 760px;
+      max-width: 780px;
       margin: 0 auto;
-      padding: 28px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.86);
-      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+      padding: 30px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.14);
     }
-    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
-    p { margin: 0 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-left: 5px solid var(--accent, #0a67a3);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+    section.security { --accent: #a21caf; }
+    section.mesh { --accent: #4f46a5; }
+    section.automation { --accent: #0f766e; }
+    section.ui { --accent: #b45309; }
+    section.core { --accent: #0a67a3; }
+    section.docs { --accent: #52606d; }
+    section.voice { --accent: #0e7490; }
+    section.dave { --accent: #7c3aed; }
+    section.reliability { --accent: #15803d; }
+    section.release { --accent: #52606d; }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      margin-right: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+      vertical-align: middle;
+    }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: rgba(82, 96, 109, 0.12);
+      font-size: 0.92em;
+    }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1015; color: #edf2f7; }
+      body { background: #0b1017; color: #edf2f7; }
       main {
-        background: rgba(15, 23, 32, 0.88);
+        background: rgba(15, 23, 32, 0.92);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
       }
-      .meta { color: #9fb0c2; }
+      .meta, .summary, .commit-link { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      code { background: rgba(159, 176, 194, 0.16); }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Add SwiftBot 1.22.2 release notes</h1>
-    <p class="meta">Version 1.22.2</p>
-    <p>Add SwiftBot 1.22.2 release notes</p>
-<p>Document the full 1.22.2 release scope in the published release notes page.</p>
-<p>Covers Announcer reconnect and recovery changes, including leave-ack based rejoins, faster first retry timing, startup auto-connect behavior, deliberate disconnect handling, and join timing logs.</p>
-<p>Covers Announcer read diagnostics, including skipped-message reasons for long, emoji-heavy, link-only, or attachment-only messages, plus shortened long-message behavior.</p>
-<p>Covers Voice tab polish, including the tighter voice-channel configuration card, equal-height Current State and Recent Activity cards, and updated status SF Symbols.</p>
-<p>Covers DAVE/libdave updates, including libdave-swift 1.3.1, stable auth-session identity, improved transition diagnostics, and new regression coverage.</p>
-<p>Covers release metadata and validation notes for version 1.22.2 / build 2026070311.</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/d1f3c009de111861242f2abeb187c0b4e1810cc3">d1f3c00</a></p>
+    <h1>SwiftBot 1.22.2</h1>
+    <p class="meta">Version 1.22.2 · Build 2026070311</p>
+    <p class="intro">A focused Announcer update: quicker rejoins, clearer diagnostics when messages are skipped, a tighter voice setup card, and DAVE identity fixes for encrypted voice sessions.</p>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">⚡</span>Faster Voice Recovery</h2>
+      <p class="summary">Reconnects now wait for Discord's real leave acknowledgement instead of burning a fixed delay.</p>
+      <ul>
+        <li><strong>Quicker manual reconnects:</strong> The Announcer proceeds as soon as Discord confirms the bot left the old voice session, with a short timeout only as a fallback.</li>
+        <li><strong>More responsive <code>/announce rejoin</code>:</strong> Slash-command rejoins use the same acknowledgement path so Discord is less likely to ignore the new join as a duplicate voice state.</li>
+        <li><strong>Faster first recovery attempt:</strong> Automatic recovery now retries after 750 ms for the first attempt, then backs off to 5 seconds and 15 seconds if the connection is still unstable.</li>
+        <li><strong>Cleaner startup auto-connect:</strong> Auto-connect arms once after gateway READY and fires when the channel cache actually contains the configured voice channel, instead of polling on a timer.</li>
+        <li><strong>Safer manual disconnects:</strong> A deliberate disconnect disarms startup auto-connect, so a later channel-cache sync cannot quietly rejoin the Announcer.</li>
+      </ul>
+    </section>
+
+    <section class="voice">
+      <h2><span class="badge" aria-hidden="true">🔊</span>Announcer Reads</h2>
+      <p class="summary">It is easier to tell why a message did or did not get spoken.</p>
+      <ul>
+        <li><strong>Skipped-message explanations:</strong> The voice log now reports when a watched message is skipped because it is too long, mostly emoji, or has no readable text after links and attachments are ignored.</li>
+        <li><strong>Long-message behavior is clearer:</strong> Over-cap messages are skipped with a concrete reason unless "Shorten long messages" is enabled, in which case a shortened version is queued.</li>
+        <li><strong>First intro plays sooner:</strong> Manual join introductions are delivered as soon as the voice pipeline is live instead of waiting on a repeated polling loop.</li>
+        <li><strong>Live timing is logged:</strong> SwiftBot now records how long it took for Announcer voice to become live after a join request.</li>
+        <li><strong>Permission checks are smarter:</strong> Voice-channel REST preflight is cached for channels that already passed during this app run, then refreshed after failed connects so permission changes can still be caught.</li>
+      </ul>
+    </section>
+
+    <section class="ui">
+      <h2><span class="badge" aria-hidden="true">🎛️</span>Announcer Interface</h2>
+      <p class="summary">The Voice tab is denser, easier to scan, and less jumpy.</p>
+      <ul>
+        <li><strong>Tidier voice-channel cards:</strong> Status, enable, preview, edit, and overflow actions now sit in a compact header row, with Feeds and Behaviour grouped underneath.</li>
+        <li><strong>Matched dashboard cards:</strong> Current State and Recent Activity now share an equal-height row so one card does not tower over the other.</li>
+        <li><strong>Better status symbols:</strong> Connection and queue states use clearer SF Symbols such as <code>checkmark.circle.dotted</code> and <code>clock.badge</code>.</li>
+        <li><strong>Static Current State title icon:</strong> The Current State card title now uses <code>bolt.badge.checkmark.fill</code> while the live state inside the card remains dynamic.</li>
+        <li><strong>Cleaner Announcer identity:</strong> The sidebar and page header now use <code>person.wave.2.fill</code>, better matching the spoken-announcement feature.</li>
+      </ul>
+    </section>
+
+    <section class="dave">
+      <h2><span class="badge" aria-hidden="true">🔐</span>DAVE Voice Encryption</h2>
+      <p class="summary">Encrypted voice sessions keep a stable MLS identity and report transitions more accurately.</p>
+      <ul>
+        <li><strong>libdave-swift 1.3.1:</strong> SwiftBot now uses the newer DAVE framework build that supports a persisted key store for authenticated sessions.</li>
+        <li><strong>Stable bot identity:</strong> DAVE sessions are configured with an auth session id based on the bot user, so MLS signature identity can persist across voice sessions instead of starting from scratch each time.</li>
+        <li><strong>Safer transition diagnostics:</strong> Deferred DAVE execute-transition logs now report applied transition counts instead of stale epoch wording.</li>
+        <li><strong>Regression coverage:</strong> The test suite now verifies that an authenticated DAVE coordinator can produce a non-empty MLS key package.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">🚢</span>Release Polish</h2>
+      <p class="summary">Project metadata and tests were refreshed for the 1.22.2 build.</p>
+      <ul>
+        <li>Updated <code>MARKETING_VERSION</code> to 1.22.2 and <code>CURRENT_PROJECT_VERSION</code> to 2026070311.</li>
+        <li>Regenerated the Xcode project from <code>project.yml</code> so the generated project and source settings stay aligned.</li>
+        <li>Added tests for skipped long-message logging, shortened long-message reads, voice recovery backoff, and authenticated DAVE key-package generation.</li>
+      </ul>
+    </section>
+
+    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/7594c9b9658ac7b7df8332dc9c5cd1a490d36186">7594c9b</a></p>
   </main>
 </body>
 </html>
