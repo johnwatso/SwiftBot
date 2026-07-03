@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>SwiftBot</title>
+        <item>
+            <title>1.22.2</title>
+            <pubDate>Fri, 03 Jul 2026 12:14:00 +1200</pubDate>
+            <sparkle:version>2026070311</sparkle:version>
+            <sparkle:shortVersionString>1.22.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.22.2/SwiftBot-1.22.2.zip" length="35665874" type="application/octet-stream" sparkle:edSignature="jzXQdZv4GgnmnSLNXMmQnrKsm6ARLssJAafHz5XpcKcfkcpPaScKuWP6HGJGUmGAeNTDpKYCcDDF0fYhmKGrAw=="/>
+        </item>
+    </channel>
+</rss>
