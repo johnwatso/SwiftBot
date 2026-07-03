@@ -5,10 +5,13 @@ This folder contains the production website published at
 
 ## Structure
 
-- `public/` is the exact static site deployed to GitHub Pages.
+- `public/` is the static site deployed to GitHub Pages.
 - `public/appcast.xml` and `public/beta/appcast.xml` are release-critical
   Sparkle feeds managed by ShipHook.
 - `public/release-notes/` contains the stable release-note archive.
+- `../docs/appcast.xml` and `../docs/release-notes/` may contain
+  ShipHook-generated release metadata. Deployment overlays `docs/` onto
+  `public/`, so the docs copy wins when both exist.
 - `public/help/` contains the help and knowledge-base pages.
 - `styles/` is reserved for stylesheet source files that are not published
   directly (e.g. `tailwind.src.css`).
@@ -35,7 +38,8 @@ post-release EdDSA signature step.
 
 ## Deployment
 
-`.github/workflows/deploy-website.yml` uploads `Website/public/` as the GitHub
-Pages artifact whenever website files change on `main`. The contents of
-`public/` become the domain root, so public URLs remain `/appcast.xml`,
-`/help/`, and `/release-notes/`.
+`.github/workflows/deploy-website.yml` overlays `docs/` release metadata onto
+`Website/public/`, then uploads that merged folder as the GitHub Pages artifact
+whenever website or docs files change on `main`. The published folder becomes
+the domain root, so public URLs remain `/appcast.xml`, `/help/`, and
+`/release-notes/`.
