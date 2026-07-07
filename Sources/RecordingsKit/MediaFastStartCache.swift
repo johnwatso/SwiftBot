@@ -7,12 +7,31 @@ import os
 /// rewrites the container for browser-friendly startup/seeking without
 /// re-encoding audio or video.
 public actor MediaFastStartCache {
-    private let cacheRoot: URL
+    private var cacheRoot: URL
     private let logger = Logger(subsystem: "com.swiftbot.media", category: "faststart")
     private var inFlight: [String: Task<URL?, Never>] = [:]
 
     public init(cacheRoot: URL) {
         self.cacheRoot = cacheRoot
+        try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+    }
+
+    public func updateCacheRoot(_ cacheRoot: URL) {
+        guard self.cacheRoot.standardizedFileURL != cacheRoot.standardizedFileURL else { return }
+        for task in inFlight.values {
+            task.cancel()
+        }
+        inFlight.removeAll()
+        self.cacheRoot = cacheRoot
+        try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+    }
+
+    public func removeAllCachedFiles() {
+        for task in inFlight.values {
+            task.cancel()
+        }
+        inFlight.removeAll()
+        try? FileManager.default.removeItem(at: cacheRoot)
         try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
     }
 
@@ -35,6 +54,7 @@ public actor MediaFastStartCache {
         let task = Task<URL?, Never> { [cachedURL, sourceURL, logger] in
             let started = Date()
             do {
+                try Task.checkCancellation()
                 let asset = AVURLAsset(url: sourceURL)
                 guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
                     logger.error("fast-start remux failed: no passthrough session for \(sourceURL.lastPathComponent, privacy: .public)")
@@ -43,6 +63,7 @@ public actor MediaFastStartCache {
                 session.shouldOptimizeForNetworkUse = true
                 try? FileManager.default.removeItem(at: cachedURL)
                 try await session.export(to: cachedURL, as: .mp4)
+                try Task.checkCancellation()
                 let elapsed = Date().timeIntervalSince(started)
                 logger.debug("fast-start remuxed \(sourceURL.lastPathComponent, privacy: .public) in \(String(format: "%.1fs", elapsed), privacy: .public)")
                 return cachedURL

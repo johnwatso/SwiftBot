@@ -345,6 +345,8 @@ struct AppPreferencesSnapshot: Equatable {
 
     // Media Library
     var mediaSourcesJSON = ""
+    var mediaFastStartOptimizationEnabled = false
+    var mediaFastStartOutputPath = ""
 
     // Admin Web UI
     var adminWebEnabled = false

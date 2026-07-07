@@ -350,6 +350,18 @@ struct LocalRecordingsPreferencesSection: View {
                     .foregroundStyle(.secondary)
             }
 
+            LabeledContent("Fast Start Copies") {
+                Toggle("", isOn: $app.mediaLibrarySettings.fastStartOptimizationEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .help("Create optimized MP4 copies in a folder you choose.")
+            }
+
+            if app.mediaLibrarySettings.fastStartOptimizationEnabled {
+                RecordingFastStartFolderRow(path: $app.mediaLibrarySettings.fastStartOutputPath)
+            }
+
             ForEach($app.mediaLibrarySettings.sources) { $source in
                 RecordingSourceRow(source: $source) {
                     app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
@@ -369,6 +381,36 @@ struct LocalRecordingsPreferencesSection: View {
             Text("Folders are local to this Mac and surfaced inside the shared Web UI media browser.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct RecordingFastStartFolderRow: View {
+    @Binding var path: String
+
+    var body: some View {
+        LabeledContent("Fast Start Folder") {
+            HStack(spacing: 8) {
+                TextField("~/Movies/SwiftBot Fast Start", text: $path)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+
+                Button {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.canCreateDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.prompt = "Choose"
+                    if panel.runModal() == .OK, let url = panel.url {
+                        path = url.path
+                    }
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .help("Choose folder")
+            }
         }
     }
 }

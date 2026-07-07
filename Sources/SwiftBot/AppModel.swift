@@ -14,6 +14,12 @@ final class AppModel: ObservableObject {
             || NSClassFromString("XCTestCase") != nil
     }
 
+    static let defaultMediaFastStartCacheRoot: URL = {
+        let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return baseCaches.appendingPathComponent("SwiftBot/MediaFastStart", isDirectory: true)
+    }()
+
     @Published var settings = BotSettings()
     @Published var status: BotStatus = .stopped {
         didSet {
@@ -218,10 +224,7 @@ final class AppModel: ObservableObject {
         return MediaTranscodeCache(cacheRoot: root)
     }()
     let mediaFastStartCache: MediaFastStartCache = {
-        let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        let root = baseCaches.appendingPathComponent("SwiftBot/MediaFastStart", isDirectory: true)
-        return MediaFastStartCache(cacheRoot: root)
+        MediaFastStartCache(cacheRoot: AppModel.defaultMediaFastStartCacheRoot)
     }()
     let hlsPackager: HLSPackager = {
         let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
@@ -598,6 +601,7 @@ final class AppModel: ObservableObject {
                 try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
             }
             mediaLibrarySettings = loadedMediaSettings
+            await reconcileMediaFastStartCachePolicy(for: loadedMediaSettings)
             var migrated = false
 
             if migrateLegacyPatchySettingsIfNeeded(&loadedSettings) {
@@ -982,6 +986,8 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
         settings.remoteMode.normalize()
         settings.patchy.syncMonitoringEnabledWithTargets()
+        mediaLibrarySettings.fastStartOutputPath = mediaLibrarySettings.fastStartOutputPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         isOnboardingComplete = onboardingCompleted(for: settings)
 
         let settingsSnapshot = settings
@@ -997,6 +1003,7 @@ final class AppModel: ObservableObject {
                 try await swiftMeshConfigStore.save(settingsSnapshot.swiftMeshSettings)
                 try await mediaLibraryConfigStore.save(mediaLibrarySettingsSnapshot)
                 await mediaLibraryIndexer.invalidate()
+                await reconcileMediaFastStartCachePolicy(for: mediaLibrarySettingsSnapshot)
                 lastPersistedSettingsSnapshot = settingsSnapshot
                 lastPersistedMediaLibrarySettingsSnapshot = mediaLibrarySettingsSnapshot
                 logs.append("[OK] Settings saved")
