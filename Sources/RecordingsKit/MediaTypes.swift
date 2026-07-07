@@ -26,17 +26,42 @@ public struct MediaLibrarySettings: Codable, Hashable, Sendable {
     public var exportRootPath: String
     public var exportIncludeInLibrary: Bool
     public var exportSourceID: UUID?
+    public var fastStartOptimizationEnabled: Bool
+    public var fastStartOutputPath: String
 
     public init(
         sources: [MediaLibrarySource] = [],
         exportRootPath: String = "",
         exportIncludeInLibrary: Bool = true,
-        exportSourceID: UUID? = nil
+        exportSourceID: UUID? = nil,
+        fastStartOptimizationEnabled: Bool = false,
+        fastStartOutputPath: String = ""
     ) {
         self.sources = sources
         self.exportRootPath = exportRootPath
         self.exportIncludeInLibrary = exportIncludeInLibrary
         self.exportSourceID = exportSourceID
+        self.fastStartOptimizationEnabled = fastStartOptimizationEnabled
+        self.fastStartOutputPath = fastStartOutputPath
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sources
+        case exportRootPath
+        case exportIncludeInLibrary
+        case exportSourceID
+        case fastStartOptimizationEnabled
+        case fastStartOutputPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sources = try container.decodeIfPresent([MediaLibrarySource].self, forKey: .sources) ?? []
+        self.exportRootPath = try container.decodeIfPresent(String.self, forKey: .exportRootPath) ?? ""
+        self.exportIncludeInLibrary = try container.decodeIfPresent(Bool.self, forKey: .exportIncludeInLibrary) ?? true
+        self.exportSourceID = try container.decodeIfPresent(UUID.self, forKey: .exportSourceID)
+        self.fastStartOptimizationEnabled = try container.decodeIfPresent(Bool.self, forKey: .fastStartOptimizationEnabled) ?? false
+        self.fastStartOutputPath = try container.decodeIfPresent(String.self, forKey: .fastStartOutputPath) ?? ""
     }
 }
 

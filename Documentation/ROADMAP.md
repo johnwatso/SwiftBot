@@ -265,6 +265,12 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 
 ## Session log
 
+### 2026-07-08 — Recordings Fast Start Storage
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Disabled recordings fast-start remuxing by default, made it opt-in with a user-selected output folder, skipped background prewarming unless that folder is configured, and purges the old app-owned `MediaFastStart` cache whenever the disabled/no-folder policy is loaded or saved. |
+
 ### 2026-06-29 — Recordings HLS Playback Continuation
 
 | Commit | Summary |

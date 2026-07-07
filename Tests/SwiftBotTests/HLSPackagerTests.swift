@@ -70,6 +70,47 @@ final class HLSPackagerTests: XCTestCase {
         }
     }
 
+    func testMediaLibrarySettingsDefaultsFastStartOffForLegacyJSON() throws {
+        let json = """
+        {
+          "sources": [],
+          "exportRootPath": "",
+          "exportIncludeInLibrary": true
+        }
+        """
+
+        let settings = try JSONDecoder().decode(MediaLibrarySettings.self, from: Data(json.utf8))
+        XCTAssertFalse(settings.fastStartOptimizationEnabled)
+        XCTAssertEqual(settings.fastStartOutputPath, "")
+    }
+
+    func testMediaLibrarySettingsRoundTripsFastStartPreference() throws {
+        let settings = MediaLibrarySettings(
+            fastStartOptimizationEnabled: true,
+            fastStartOutputPath: "/Volumes/CaptureScratch/SwiftBotFastStart"
+        )
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(MediaLibrarySettings.self, from: data)
+        XCTAssertTrue(decoded.fastStartOptimizationEnabled)
+        XCTAssertEqual(decoded.fastStartOutputPath, "/Volumes/CaptureScratch/SwiftBotFastStart")
+    }
+
+    func testFastStartCacheCanBeCleared() async throws {
+        let cacheRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MediaFastStartCacheClearTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+
+        let staleURL = cacheRoot.appendingPathComponent("stale.mp4")
+        try Data("stale".utf8).write(to: staleURL)
+
+        let cache = MediaFastStartCache(cacheRoot: cacheRoot)
+        await cache.removeAllCachedFiles()
+
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: cacheRoot.path)
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
     func testFastStartRemuxMovesMetadataBeforeMediaData() async throws {
         let workDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("MediaFastStartCacheTests-\(UUID().uuidString)", isDirectory: true)

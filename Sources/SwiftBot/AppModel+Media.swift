@@ -85,6 +85,29 @@ extension AppModel {
         return URL(fileURLWithPath: expanded, isDirectory: true)
     }
 
+    private func mediaFastStartOutputURL(for settings: MediaLibrarySettings? = nil) -> URL? {
+        let activeSettings = settings ?? mediaLibrarySettings
+        guard activeSettings.fastStartOptimizationEnabled else { return nil }
+        let trimmed = activeSettings.fastStartOutputPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded, isDirectory: true)
+    }
+
+    private func prepareMediaFastStartCacheIfEnabled() async -> Bool {
+        guard let outputURL = mediaFastStartOutputURL() else { return false }
+        await mediaFastStartCache.updateCacheRoot(outputURL)
+        return true
+    }
+
+    private func removeLegacyMediaFastStartCache(excluding outputURL: URL?) {
+        let legacyURL = Self.defaultMediaFastStartCacheRoot.standardizedFileURL
+        if outputURL?.standardizedFileURL == legacyURL {
+            return
+        }
+        try? FileManager.default.removeItem(at: legacyURL)
+    }
+
     private func encodedMediaStreamToken(itemID: String, ownerNodeName: String, ownerBaseURL: String?) -> String {
         let descriptor = MediaStreamDescriptor(itemID: itemID, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL)
         guard let data = try? JSONEncoder().encode(descriptor) else { return "" }
@@ -165,7 +188,8 @@ extension AppModel {
            let variantURL = await mediaTranscodeCache.variantURL(itemID: itemID, sourceURL: originalURL, quality: .low) {
             resolvedURL = variantURL
             resolvedSource = "low"
-        } else if let optimizedURL = await mediaFastStartCache.optimizedURL(itemID: itemID, sourceURL: originalURL) {
+        } else if await prepareMediaFastStartCacheIfEnabled(),
+                  let optimizedURL = await mediaFastStartCache.optimizedURL(itemID: itemID, sourceURL: originalURL) {
             resolvedURL = optimizedURL
             resolvedSource = "faststart"
         } else {
@@ -887,7 +911,11 @@ extension AppModel {
     }
 
     private func prewarmLocalMediaFastStartCache() async {
-        guard runtimeClusterMode != .standby else { return }
+        guard runtimeClusterMode != .standby,
+              await prepareMediaFastStartCacheIfEnabled() else {
+            attemptedFastStartPrewarmKeys.removeAll()
+            return
+        }
 
         let payload = await localMediaLibrarySnapshot()
         let settleCutoff = Date().addingTimeInterval(-2 * 60)
@@ -913,6 +941,18 @@ extension AppModel {
                 sourceURL: URL(fileURLWithPath: item.absolutePath)
             )
         }
+    }
+
+    func reconcileMediaFastStartCachePolicy(for settings: MediaLibrarySettings? = nil) async {
+        let activeSettings = settings ?? mediaLibrarySettings
+        attemptedFastStartPrewarmKeys.removeAll()
+        guard let outputURL = mediaFastStartOutputURL(for: activeSettings) else {
+            await mediaFastStartCache.updateCacheRoot(Self.defaultMediaFastStartCacheRoot)
+            await mediaFastStartCache.removeAllCachedFiles()
+            return
+        }
+        await mediaFastStartCache.updateCacheRoot(outputURL)
+        removeLegacyMediaFastStartCache(excluding: outputURL)
     }
 
     private func mediaPayloadsForTriggers() async -> [MediaLibraryPayload] {

@@ -74,6 +74,8 @@ extension AppModel {
             clusterOffloadAIReplies: settings.clusterOffloadAIReplies,
             clusterOffloadWikiLookups: settings.clusterOffloadWikiLookups,
             mediaSourcesJSON: mediaSourcesSnapshotJSON(),
+            mediaFastStartOptimizationEnabled: mediaLibrarySettings.fastStartOptimizationEnabled,
+            mediaFastStartOutputPath: mediaLibrarySettings.fastStartOutputPath,
             adminWebEnabled: settings.adminWebUI.enabled,
             adminWebHost: settings.adminWebUI.bindHost,
             adminWebPort: settings.adminWebUI.port,
