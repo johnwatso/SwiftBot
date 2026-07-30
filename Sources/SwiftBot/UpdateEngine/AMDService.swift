@@ -302,7 +302,12 @@ public struct AMDService: Sendable {
     }
 
     private func parseSitemapEntries(from xml: String) -> [SitemapEntry] {
-        let pattern = #"(?is)<url>\s*<loc>(https://www\.amd\.com/en(?:/resources/support-articles/release-notes/RN-RAD-WIN-[^<]+\.html|/support/kb/release-notes/rn-rad-win-[^<]+))</loc>\s*<lastmod>([^<]+)</lastmod>\s*</url>"#
+        // AMD's sitemap also lists special-case driver pages such as preview,
+        // hotfix, hardware-specific, and Vulkan packages. Some of those have
+        // longer version-looking suffixes (for example, 26-10-02-01) and can
+        // sort above the current public Adrenalin release. Only accept the
+        // canonical three-part release-note URLs that represent that channel.
+        let pattern = #"(?is)<url>\s*<loc>(https://www\.amd\.com/en(?:/resources/support-articles/release-notes/RN-RAD-WIN-([0-9]{2}-[0-9]{1,2}-[0-9]{1,2})\.html|/support/kb/release-notes/rn-rad-win-([0-9]{2}-[0-9]{1,2}-[0-9]{1,2})(?:\.html)?))</loc>\s*<lastmod>([^<]+)</lastmod>\s*</url>"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return []
         }
@@ -313,19 +318,22 @@ public struct AMDService: Sendable {
         return matches.compactMap { match in
             guard
                 let urlRange = Range(match.range(at: 1), in: xml),
-                let dateRange = Range(match.range(at: 2), in: xml)
+                let dateRange = Range(match.range(at: 4), in: xml)
             else {
                 return nil
             }
 
             let urlString = String(xml[urlRange])
             guard
-                let version = extractReleaseVersionToken(from: urlString),
+                let versionRange = Range(match.range(at: 2), in: xml)
+                    ?? Range(match.range(at: 3), in: xml),
                 let url = URL(string: urlString),
                 let lastModified = parseISODate(String(xml[dateRange]))
             else {
                 return nil
             }
+
+            let version = String(xml[versionRange])
 
             return SitemapEntry(
                 url: url,
@@ -532,13 +540,6 @@ public struct AMDService: Sendable {
     private func parseSitemapVersion(_ value: String) -> [Int]? {
         let parts = value.split(separator: "-").compactMap { Int($0) }
         return parts.count == 3 ? parts : nil
-    }
-
-    private func extractReleaseVersionToken(from value: String) -> String? {
-        firstCapture(
-            pattern: #"(?i)RN-RAD-WIN-([0-9]{2}-[0-9]{1,2}-[0-9]{1,2})"#,
-            in: value
-        )
     }
 
     private func extractReleaseDate(from html: String, fallback: Date) -> String {

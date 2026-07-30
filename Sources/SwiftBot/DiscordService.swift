@@ -963,6 +963,23 @@ actor DiscordService {
         return messageId
     }
 
+    /// Sweep entry point for scheduled, non-pinned announcements. User
+    /// mentions are allowed so the weekly MVP can congratulate its winner;
+    /// all other mention types remain disabled.
+    func sweepPostMessage(channelId: String, content: String) async throws {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep message failed: no bot token."])
+        }
+        let payloadData = try Self.encodeDiscordPayload([
+            "content": String(content.prefix(1_900)),
+            "allowed_mentions": ["parse": ["users"]]
+        ])
+        _ = try await messageRESTClient.sendMessage(channelId: channelId, payloadData: payloadData, token: token)
+    }
+
     /// Sweep entry point — edit the existing pinned notice embed in-place.
     /// Gated by `outputAllowed` via the same Primary-only guard as other
     /// Discord output paths.

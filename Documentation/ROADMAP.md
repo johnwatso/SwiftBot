@@ -265,6 +265,15 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 
 ## Session log
 
+### 2026-07-31 — Patchy AMD and Music Lookup Reliability
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Restricted Patchy AMD discovery to the standard three-part Adrenalin release-note URLs so special-purpose/hardware pages cannot outrank the public driver. Removed the failed song.link enrichment hop from music lookup; Apple catalogue results now return immediately and the existing Apple Music, Spotify, YouTube Music, and YouTube search-link fallbacks stay available. |
+| `_working-tree_` | Added an opt-in Weekly Voice MVP announcement to Sweep policies. It uses the existing rolling seven-day voice leaderboard, posts to the policy’s channel at an operator-selected local weekday/time, mentions the winner safely, is Primary-only, and records each posted week to avoid duplicates. |
+| `_working-tree_` | Reduced Sweep suggestion overload: surface up to three high-confidence recommendations, one per channel, and keep lower-priority or alternate strategies behind an expandable list. Applying a suggestion now clears its same-channel alternatives. |
+| `_working-tree_` | Added a clearly labelled Send Test MVP action in the Sweep rule editor. It posts the current template and real rolling-seven-day winner immediately, reports success or failure inline, remains Primary-gated, and never consumes the scheduled weekly announcement. |
+
 ### 2026-07-08 — Recordings Fast Start Storage
 
 | Commit | Summary |
