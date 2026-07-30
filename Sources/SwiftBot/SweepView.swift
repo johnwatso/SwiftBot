@@ -361,6 +361,82 @@ struct SweepNotice: Codable, Hashable {
     }
 }
 
+/// An optional weekly announcement for the member with the most voice time in
+/// the rolling seven-day window. It belongs to a Sweep policy so the policy's
+/// existing channel, guild scope, persistence, and SwiftMesh replication are
+/// used without introducing a separate notification destination.
+struct SweepWeeklyMVPAnnouncement: Codable, Hashable {
+    var isEnabled: Bool = false
+    /// Calendar weekday, where 1 is Sunday and 7 is Saturday.
+    var weekday: Int = 2
+    /// Local 24-hour clock used by the Sweep scheduler.
+    var hour: Int = 20
+    var template: String = "🏆 This week's MVP is {winner} with {duration} this week!"
+    /// Week identifier written only after Discord accepts the message.
+    var lastPostedWeekKey: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled, weekday, hour, template, lastPostedWeekKey
+    }
+
+    init(
+        isEnabled: Bool = false,
+        weekday: Int = 2,
+        hour: Int = 20,
+        template: String = "🏆 This week's MVP is {winner} with {duration} this week!",
+        lastPostedWeekKey: String? = nil
+    ) {
+        self.isEnabled = isEnabled
+        self.weekday = min(max(weekday, 1), 7)
+        self.hour = min(max(hour, 0), 23)
+        self.template = template
+        self.lastPostedWeekKey = lastPostedWeekKey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        weekday = min(max(try container.decodeIfPresent(Int.self, forKey: .weekday) ?? 2, 1), 7)
+        hour = min(max(try container.decodeIfPresent(Int.self, forKey: .hour) ?? 20, 0), 23)
+        template = try container.decodeIfPresent(String.self, forKey: .template)
+            ?? "🏆 This week's MVP is {winner} with {duration} this week!"
+        lastPostedWeekKey = try container.decodeIfPresent(String.self, forKey: .lastPostedWeekKey)
+    }
+
+    func isDue(at date: Date, calendar: Calendar = .current) -> Bool {
+        guard isEnabled,
+              calendar.component(.weekday, from: date) == weekday,
+              calendar.component(.hour, from: date) == hour else {
+            return false
+        }
+        return lastPostedWeekKey != weekKey(for: date, calendar: calendar)
+    }
+
+    func weekKey(for date: Date, calendar: Calendar = .current) -> String {
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return "\(components.yearForWeekOfYear ?? 0)-\(components.weekOfYear ?? 0)"
+    }
+
+    func rendered(winner: VoiceUserRollingAverage) -> String {
+        let userID = winner.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let winnerText = userID.isEmpty
+            ? winner.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            : "<@\(userID)>"
+        return template
+            .replacingOccurrences(of: "{winner}", with: winnerText)
+            .replacingOccurrences(of: "{duration}", with: Self.formatDuration(winner.totalSeconds))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func formatDuration(_ seconds: Int) -> String {
+        let minutes = max(0, seconds) / 60
+        if minutes < 60 { return "\(max(1, minutes)) minutes" }
+        let hours = Double(minutes) / 60.0
+        if hours.rounded() == hours { return "\(Int(hours)) hours" }
+        return String(format: "%.1f hours", hours)
+    }
+}
+
 struct SweepSafetyRails: Codable, Hashable, Validatable {
     var maxMessagesPerRun: Int = 200
     /// Legacy flag retained for back-compat with persisted snapshots. New
@@ -394,6 +470,8 @@ struct SweepPolicy: Codable, Identifiable, Hashable, Validatable {
     /// Optional pinned management notice. Optional (not a defaulted value) so
     /// snapshots written before this field existed still decode cleanly.
     var notice: SweepNotice?
+    /// Optional weekly voice MVP message sent to this policy's channel.
+    var weeklyMVP: SweepWeeklyMVPAnnouncement?
     var isEnabled: Bool = true
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
@@ -652,6 +730,7 @@ protocol SweepDispatcher: Sendable {
     /// Whether a previously-posted notice still exists in the channel, so the
     /// caller can post once and only re-post if it was deleted.
     func noticeExists(channelID: String, messageID: String) async -> Bool
+    func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws
 }
 
 extension SweepDispatcher {
@@ -674,6 +753,8 @@ extension SweepDispatcher {
     ) async throws {}
 
     func noticeExists(channelID: String, messageID: String) async -> Bool { true }
+
+    func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws {}
 
     // Default sequential delete — preserves prior behaviour for dispatchers
     // (e.g. the preview shim) that don't implement bulk deletion.
@@ -756,6 +837,11 @@ struct LiveSweepDispatcher: SweepDispatcher {
 
     func noticeExists(channelID: String, messageID: String) async -> Bool {
         await discord.sweepMessageExists(channelId: channelID, messageId: messageID)
+    }
+
+    func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws {
+        let resolved = await discord.sweepResolveCustomEmoji(guildId: guildID, in: content)
+        try await discord.sweepPostMessage(channelId: channelID, content: resolved)
     }
 
     /// Discord embed payload. Colour is SwiftBot's blurple accent (decimal int).
@@ -958,6 +1044,26 @@ enum SweepSuggestionEngine {
 }
 
 // MARK: - Service
+
+private enum SweepWeeklyMVPTestError: LocalizedError {
+    case missingChannel
+    case outputUnavailable
+    case noVoiceActivity
+    case emptyMessage
+
+    var errorDescription: String? {
+        switch self {
+        case .missingChannel:
+            return "Choose a server and channel before sending a test MVP."
+        case .outputUnavailable:
+            return "Test announcements can only be sent by the active Primary bot."
+        case .noVoiceActivity:
+            return "No voice activity was found for this server in the rolling seven-day window."
+        case .emptyMessage:
+            return "Enter an MVP message before sending a test."
+        }
+    }
+}
 
 @MainActor
 final class SweepService: ObservableObject {
@@ -1177,6 +1283,66 @@ final class SweepService: ObservableObject {
         for policy in due {
             await run(policyID: policy.id, manual: false)
         }
+        await announceWeeklyMVPs(now: now)
+    }
+
+    private func announceWeeklyMVPs(now: Date) async {
+        for index in policies.indices {
+            let policy = policies[index]
+            guard policy.isEnabled,
+                  let announcement = policy.weeklyMVP,
+                  announcement.isDue(at: now),
+                  await dispatcher.canExecute() else {
+                continue
+            }
+
+            guard let winner = (await noticeAnalyticsProvider?(policy.guildID))?.first else {
+                continue
+            }
+
+            let content = announcement.rendered(winner: winner)
+            guard !content.isEmpty else { continue }
+            do {
+                try await dispatcher.postWeeklyMVP(
+                    channelID: policy.channelID,
+                    guildID: policy.guildID,
+                    content: String(content.prefix(1_900))
+                )
+                policies[index].weeklyMVP?.lastPostedWeekKey = announcement.weekKey(for: now)
+                await persist()
+            } catch {
+                lastError = "Weekly MVP for #\(policy.channelName): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Sends the configured MVP wording immediately without changing the
+    /// weekly delivery marker. This is deliberately separate from the
+    /// scheduler so operators can verify the channel, mention and template
+    /// before the real scheduled announcement.
+    func sendTestWeeklyMVP(for policy: SweepPolicy) async throws {
+        guard !policy.channelID.isEmpty, !policy.guildID.isEmpty else {
+            throw SweepWeeklyMVPTestError.missingChannel
+        }
+        guard await dispatcher.canExecute() else {
+            throw SweepWeeklyMVPTestError.outputUnavailable
+        }
+        guard let announcement = policy.weeklyMVP else {
+            throw SweepWeeklyMVPTestError.emptyMessage
+        }
+        guard let winner = (await noticeAnalyticsProvider?(policy.guildID))?.first else {
+            throw SweepWeeklyMVPTestError.noVoiceActivity
+        }
+
+        let content = announcement.rendered(winner: winner)
+        guard !content.isEmpty else {
+            throw SweepWeeklyMVPTestError.emptyMessage
+        }
+        try await dispatcher.postWeeklyMVP(
+            channelID: policy.channelID,
+            guildID: policy.guildID,
+            content: String(content.prefix(1_900))
+        )
     }
 
     // MARK: Run
@@ -1595,7 +1761,10 @@ final class SweepService: ObservableObject {
             safety: SweepSafetyRails()
         )
         upsert(policy)
-        suggestions.removeAll { $0.id == suggestion.id }
+        // A channel only needs one rule. Applying its best match should also
+        // clear the alternate proposals from this scan, rather than leaving
+        // a confusing set of competing actions behind.
+        suggestions.removeAll { $0.channelID == suggestion.channelID }
         Task { await persist() }
     }
 
@@ -1846,6 +2015,7 @@ private struct SweepContentView: View {
     @State private var showingNewPolicySheet = false
     @State private var previewReport: SweepRunReport?
     @State private var previewingPolicyName: String = ""
+    @State private var showingAllSuggestions = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1905,7 +2075,8 @@ private struct SweepContentView: View {
                 connectedServers: app.connectedServers,
                 channelsByServer: app.availableTextChannelsByServer,
                 onSave: { app.sweepUpsertPolicy($0) },
-                onTryRun: { await service.previewDraft($0) }
+                onTryRun: { await service.previewDraft($0) },
+                onSendTestMVP: { try await service.sendTestWeeklyMVP(for: $0) }
             )
         }
         .sheet(item: $editingPolicy) { policy in
@@ -1915,7 +2086,8 @@ private struct SweepContentView: View {
                 connectedServers: app.connectedServers,
                 channelsByServer: app.availableTextChannelsByServer,
                 onSave: { app.sweepUpsertPolicy($0) },
-                onTryRun: { await service.previewDraft($0) }
+                onTryRun: { await service.previewDraft($0) },
+                onSendTestMVP: { try await service.sendTestWeeklyMVP(for: $0) }
             )
         }
         .sheet(item: $previewReport) { report in
@@ -2044,8 +2216,19 @@ private struct SweepContentView: View {
                         : "No suggestions right now — your channels look tidy."
                 )
             } else {
-                VStack(spacing: 6) {
-                    ForEach(service.suggestions) { suggestion in
+                let recommended = recommendedSuggestions
+                let remaining = remainingSuggestions
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Recommended")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Best match for each channel")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(recommended) { suggestion in
                         SweepSuggestionRow(
                             suggestion: suggestion,
                             onApply: { service.applySuggestion(suggestion) },
@@ -2058,9 +2241,50 @@ private struct SweepContentView: View {
                             }
                         )
                     }
+
+                    if !remaining.isEmpty {
+                        DisclosureGroup("Show \(remaining.count) more suggestion\(remaining.count == 1 ? "" : "s")", isExpanded: $showingAllSuggestions) {
+                            VStack(spacing: 6) {
+                                ForEach(remaining) { suggestion in
+                                    SweepSuggestionRow(
+                                        suggestion: suggestion,
+                                        onApply: { service.applySuggestion(suggestion) },
+                                        onDismiss: { service.dismissSuggestion(suggestion) },
+                                        onPreview: {
+                                            if let projection = suggestion.projection {
+                                                previewingPolicyName = suggestion.title
+                                                previewReport = projection
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.top, 6)
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    }
                 }
             }
         }
+    }
+
+    /// Keep the first three highest-confidence proposals, but never show two
+    /// recommendations for one channel. The complete scan remains available
+    /// below for people who want to compare alternatives.
+    private var recommendedSuggestions: [SweepSuggestion] {
+        var coveredChannels = Set<String>()
+        return Array(
+            service.suggestions
+                .filter { coveredChannels.insert($0.channelID).inserted }
+                .prefix(3)
+        )
+    }
+
+    private var remainingSuggestions: [SweepSuggestion] {
+        let recommendedIDs = Set(recommendedSuggestions.map(\.id))
+        return service.suggestions.filter { !recommendedIDs.contains($0.id) }
     }
 
     private var scanFooter: String {
@@ -2871,11 +3095,15 @@ struct SweepPolicyEditor: View {
     @State private var isTryRunInFlight: Bool = false
     @State private var tryRunReport: SweepRunReport?
     @State private var tryRunError: String?
+    @State private var isSendingMVPTest: Bool = false
+    @State private var mvpTestStatus: String?
+    @State private var mvpTestFailed: Bool = false
     let isNew: Bool
     let connectedServers: [String: String]
     let channelsByServer: [String: [GuildTextChannel]]
     let onSave: (SweepPolicy) -> Void
     let onTryRun: ((SweepPolicy) async -> SweepRunReport?)?
+    let onSendTestMVP: ((SweepPolicy) async throws -> Void)?
 
     init(
         policy: SweepPolicy,
@@ -2883,7 +3111,8 @@ struct SweepPolicyEditor: View {
         connectedServers: [String: String] = [:],
         channelsByServer: [String: [GuildTextChannel]] = [:],
         onSave: @escaping (SweepPolicy) -> Void,
-        onTryRun: ((SweepPolicy) async -> SweepRunReport?)? = nil
+        onTryRun: ((SweepPolicy) async -> SweepRunReport?)? = nil,
+        onSendTestMVP: ((SweepPolicy) async throws -> Void)? = nil
     ) {
         self._policy = State(initialValue: policy)
         self.isNew = isNew
@@ -2891,6 +3120,7 @@ struct SweepPolicyEditor: View {
         self.channelsByServer = channelsByServer
         self.onSave = onSave
         self.onTryRun = onTryRun
+        self.onSendTestMVP = onSendTestMVP
     }
 
     private var isPolicyReady: Bool {
@@ -2974,6 +3204,10 @@ struct SweepPolicyEditor: View {
 
                     SweepFormSection(title: "Pinned Notice", symbol: "pin.fill") {
                         pinnedNotice
+                    }
+
+                    SweepFormSection(title: "Weekly Voice MVP", symbol: "trophy.fill") {
+                        weeklyMVPAnnouncement
                     }
 
                     if let tryRunReport {
@@ -3097,6 +3331,21 @@ struct SweepPolicyEditor: View {
         } else {
             tryRunReport = nil
             tryRunError = "Couldn’t reach Discord for this channel. Check the channel is still accessible and that the bot is connected."
+        }
+    }
+
+    private func sendTestMVP() async {
+        guard let onSendTestMVP else { return }
+        isSendingMVPTest = true
+        mvpTestStatus = nil
+        defer { isSendingMVPTest = false }
+        do {
+            try await onSendTestMVP(policy)
+            mvpTestFailed = false
+            mvpTestStatus = "Test MVP sent. This does not count as this week’s scheduled announcement."
+        } catch {
+            mvpTestFailed = true
+            mvpTestStatus = error.localizedDescription
         }
     }
 
@@ -3553,6 +3802,106 @@ struct SweepPolicyEditor: View {
             get: { policy.notice ?? SweepNotice() },
             set: { policy.notice = $0 }
         )
+    }
+
+    private var weeklyMVPBinding: Binding<SweepWeeklyMVPAnnouncement> {
+        Binding(
+            get: { policy.weeklyMVP ?? SweepWeeklyMVPAnnouncement() },
+            set: { policy.weeklyMVP = $0 }
+        )
+    }
+
+    private var weeklyMVPAnnouncement: some View {
+        let announcement = weeklyMVPBinding
+        return VStack(alignment: .leading, spacing: 10) {
+            Toggle("Announce the 7-day voice MVP", isOn: announcement.isEnabled)
+                .toggleStyle(.switch)
+                .font(.caption)
+
+            if announcement.wrappedValue.isEnabled {
+                Text("Posts once per week to this rule’s channel using the rolling seven-day voice total. Times use this Mac’s local time.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 12) {
+                    Picker("Day", selection: announcement.weekday) {
+                        ForEach(1...7, id: \.self) { weekday in
+                            Text(Calendar.current.weekdaySymbols[weekday - 1]).tag(weekday)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+
+                    Text("at")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    numericInput(value: announcement.hour, range: 0...23, suffix: ":00")
+                    Spacer()
+                }
+
+                TextEditor(text: announcement.template)
+                    .font(.callout)
+                    .frame(minHeight: 44, maxHeight: 72)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+
+                Text("Placeholders: {winner} · {duration}")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+
+                Text(announcement.wrappedValue.rendered(winner: .init(
+                    userId: "max-id",
+                    username: "Max",
+                    averageSecondsPerDay: 3 * 60 * 60,
+                    totalSeconds: 21 * 60 * 60,
+                    sessionCount: 4
+                )))
+                    .font(.caption.weight(.medium))
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.08))
+                    )
+
+                if onSendTestMVP != nil {
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await sendTestMVP() }
+                        } label: {
+                            if isSendingMVPTest {
+                                Label("Sending…", systemImage: "paperplane.fill")
+                            } else {
+                                Label("Send Test MVP", systemImage: "paperplane")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(policy.guildID.isEmpty || policy.channelID.isEmpty || isSendingMVPTest)
+                        .help("Posts one real test announcement to this rule’s channel without marking this week as announced.")
+
+                        Text("Posts a real message now; it won’t affect the weekly schedule.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let mvpTestStatus {
+                        Text(mvpTestStatus)
+                            .font(.caption2)
+                            .foregroundStyle(mvpTestFailed ? .red : .green)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder

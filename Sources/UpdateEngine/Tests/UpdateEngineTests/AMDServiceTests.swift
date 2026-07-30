@@ -126,6 +126,64 @@ final class AMDServiceTests: XCTestCase {
         )
     }
 
+    func testFetchLatestDriverIgnoresSpecialPurposeDriverPages() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AMDMockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+
+        let sitemapURL = URL(string: "https://example.com/special-purpose-sitemap.xml")!
+        let stableHTML = """
+        <html>
+          <body>
+            <h1>AMD Software: Adrenalin Edition 26.7.1 Release Notes</h1>
+            <p>Last Updated: July 30th, 2026.</p>
+            <h2>Highlights</h2>
+            <ul><li>Current public Adrenalin release.</li></ul>
+          </body>
+        </html>
+        """
+
+        AMDMockURLProtocol.requestHandler = { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+
+            if url == sitemapURL {
+                let xml = """
+                <urlset>
+                  <url>
+                    <loc>https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html</loc>
+                    <lastmod>2026-07-30T08:00:00Z</lastmod>
+                  </url>
+                  <url>
+                    <loc>https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-10-02-01-DXCGC.html</loc>
+                    <lastmod>2026-07-30T09:00:00Z</lastmod>
+                  </url>
+                </urlset>
+                """
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data(xml.utf8)
+                )
+            }
+
+            guard url.absoluteString.contains("RN-RAD-WIN-26-7-1") else {
+                return (
+                    HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!,
+                    Data()
+                )
+            }
+            return (
+                HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data(stableHTML.utf8)
+            )
+        }
+
+        let service = AMDService(session: session, sitemapURL: sitemapURL)
+        let driver = try await service.fetchLatestDriver()
+
+        XCTAssertEqual(driver.releaseNotes.version, "26.7.1")
+        XCTAssertEqual(driver.releaseIdentifier, "amd:26.7.1")
+    }
+
     func testFetchLatestDriverRetriesWithBrowserLikeHeadersAfter403() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AMDMockURLProtocol.self]

@@ -132,9 +132,9 @@ extension AppModel {
         let match = selection.results[index]
         let combinedSearch = "\(match.title) \(match.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
         let appleLink = match.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: combinedSearch)
-        let spotifyLink = buildSpotifySearchURL(query: combinedSearch)
-        let youtubeMusicLink = buildYouTubeMusicSearchURL(query: combinedSearch)
-        let youtubeLink = buildYouTubeSearchURL(query: combinedSearch)
+        let spotifyLink = match.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: combinedSearch)
+        let youtubeMusicLink = match.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: combinedSearch)
+        let youtubeLink = match.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: combinedSearch)
 
         let message = """
         🎧 \(match.title) — \(match.artist)
