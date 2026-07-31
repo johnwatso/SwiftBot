@@ -821,6 +821,20 @@ extension AppModel {
         if let value = patch.clusterOffloadAIReplies { settings.clusterOffloadAIReplies = value }
         if let value = patch.clusterOffloadWikiLookups { settings.clusterOffloadWikiLookups = value }
         if let value = patch.autoStart { settings.autoStart = value }
+        let includesMusicLinkWatchEdit = patch.musicLinkWatchEnabled != nil || patch.musicLinkWatchChannelIDs != nil
+        if let value = patch.musicLinkWatchEnabled { settings.musicLinkWatch.isEnabled = value }
+        if let values = patch.musicLinkWatchChannelIDs {
+            settings.musicLinkWatch.channelIDs = Array(
+                Set(values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+            ).sorted()
+        }
+        if includesMusicLinkWatchEdit, forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(
+                .replaceMusicLinkWatch(settings.musicLinkWatch),
+                revertOnFailure: true
+            )
+            return true
+        }
         saveSettings()
         return true
     }
@@ -886,7 +900,27 @@ extension AppModel {
             commandsEnabled: settings.commandsEnabled,
             prefixCommandsEnabled: false,
             slashCommandsEnabled: settings.slashCommandsEnabled,
-            items: items
+            items: items,
+            musicLinkWatch: adminWebMusicLinkWatchSnapshot()
+        )
+    }
+
+    private func adminWebMusicLinkWatchSnapshot() -> AdminWebMusicLinkWatchPayload {
+        let serverIDs = connectedServers.keys.sorted {
+            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+        }
+        let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) }
+        let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let channels = (availableTextChannelsByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, channels)
+        })
+        return AdminWebMusicLinkWatchPayload(
+            isEnabled: settings.musicLinkWatch.isEnabled,
+            channelIDs: settings.musicLinkWatch.channelIDs,
+            servers: servers,
+            textChannelsByServer: textChannelsByServer
         )
     }
 
@@ -1364,7 +1398,13 @@ extension AppModel {
                         commandsEnabled: true,
                         prefixCommandsEnabled: false,
                         slashCommandsEnabled: true,
-                        items: []
+                        items: [],
+                        musicLinkWatch: AdminWebMusicLinkWatchPayload(
+                            isEnabled: false,
+                            channelIDs: [],
+                            servers: [],
+                            textChannelsByServer: [:]
+                        )
                     )
                 }
                 return await MainActor.run { model.adminWebCommandCatalogSnapshot() }

@@ -372,11 +372,16 @@ struct SweepWeeklyMVPAnnouncement: Codable, Hashable {
     /// Local 24-hour clock used by the Sweep scheduler.
     var hour: Int = 20
     var template: String = "🏆 This week's MVP is {winner} with {duration} this week!"
-    /// Week identifier written only after Discord accepts the message.
+    /// Week identifier written only after the pinned card is updated and the
+    /// winner notification is accepted by Discord.
     var lastPostedWeekKey: String?
+    /// The durable, pinned MVP card. It is edited in place each week so the
+    /// channel does not accumulate leaderboard posts and normal Sweep runs can
+    /// protect it from cleanup.
+    var pinnedMessageID: String?
 
     enum CodingKeys: String, CodingKey {
-        case isEnabled, weekday, hour, template, lastPostedWeekKey
+        case isEnabled, weekday, hour, template, lastPostedWeekKey, pinnedMessageID
     }
 
     init(
@@ -384,13 +389,15 @@ struct SweepWeeklyMVPAnnouncement: Codable, Hashable {
         weekday: Int = 2,
         hour: Int = 20,
         template: String = "🏆 This week's MVP is {winner} with {duration} this week!",
-        lastPostedWeekKey: String? = nil
+        lastPostedWeekKey: String? = nil,
+        pinnedMessageID: String? = nil
     ) {
         self.isEnabled = isEnabled
         self.weekday = min(max(weekday, 1), 7)
         self.hour = min(max(hour, 0), 23)
         self.template = template
         self.lastPostedWeekKey = lastPostedWeekKey
+        self.pinnedMessageID = pinnedMessageID
     }
 
     init(from decoder: Decoder) throws {
@@ -401,6 +408,7 @@ struct SweepWeeklyMVPAnnouncement: Codable, Hashable {
         template = try container.decodeIfPresent(String.self, forKey: .template)
             ?? "🏆 This week's MVP is {winner} with {duration} this week!"
         lastPostedWeekKey = try container.decodeIfPresent(String.self, forKey: .lastPostedWeekKey)
+        pinnedMessageID = try container.decodeIfPresent(String.self, forKey: .pinnedMessageID)
     }
 
     func isDue(at date: Date, calendar: Calendar = .current) -> Bool {
@@ -418,14 +426,25 @@ struct SweepWeeklyMVPAnnouncement: Codable, Hashable {
     }
 
     func rendered(winner: VoiceUserRollingAverage) -> String {
-        let userID = winner.userId.trimmingCharacters(in: .whitespacesAndNewlines)
-        let winnerText = userID.isEmpty
-            ? winner.username.trimmingCharacters(in: .whitespacesAndNewlines)
-            : "<@\(userID)>"
         return template
-            .replacingOccurrences(of: "{winner}", with: winnerText)
+            .replacingOccurrences(of: "{winner}", with: winnerMention(winner))
             .replacingOccurrences(of: "{duration}", with: Self.formatDuration(winner.totalSeconds))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Discord does not reliably issue a fresh push notification for a
+    /// message edit. This one-line companion announcement ensures every
+    /// weekly winner receives a real mention while the pinned card is updated
+    /// in place.
+    func notification(winner: VoiceUserRollingAverage) -> String {
+        "🏆 Congratulations \(winnerMention(winner)) — you’re this week’s Voice MVP!"
+    }
+
+    private func winnerMention(_ winner: VoiceUserRollingAverage) -> String {
+        let userID = winner.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return userID.isEmpty
+            ? winner.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            : "<@\(userID)>"
     }
 
     private static func formatDuration(_ seconds: Int) -> String {
@@ -730,6 +749,11 @@ protocol SweepDispatcher: Sendable {
     /// Whether a previously-posted notice still exists in the channel, so the
     /// caller can post once and only re-post if it was deleted.
     func noticeExists(channelID: String, messageID: String) async -> Bool
+    /// Post and pin the durable MVP card. The companion notification is sent
+    /// separately so an edited card does not have to rely on edit-notification
+    /// behaviour in Discord clients.
+    func postPinnedWeeklyMVP(channelID: String, guildID: String, content: String) async throws -> String
+    func editPinnedWeeklyMVP(channelID: String, guildID: String, messageID: String, content: String) async throws
     func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws
 }
 
@@ -753,6 +777,10 @@ extension SweepDispatcher {
     ) async throws {}
 
     func noticeExists(channelID: String, messageID: String) async -> Bool { true }
+
+    func postPinnedWeeklyMVP(channelID: String, guildID: String, content: String) async throws -> String { "" }
+
+    func editPinnedWeeklyMVP(channelID: String, guildID: String, messageID: String, content: String) async throws {}
 
     func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws {}
 
@@ -837,6 +865,16 @@ struct LiveSweepDispatcher: SweepDispatcher {
 
     func noticeExists(channelID: String, messageID: String) async -> Bool {
         await discord.sweepMessageExists(channelId: channelID, messageId: messageID)
+    }
+
+    func postPinnedWeeklyMVP(channelID: String, guildID: String, content: String) async throws -> String {
+        let resolved = await discord.sweepResolveCustomEmoji(guildId: guildID, in: content)
+        return try await discord.sweepPostPinnedMessage(channelId: channelID, content: resolved)
+    }
+
+    func editPinnedWeeklyMVP(channelID: String, guildID: String, messageID: String, content: String) async throws {
+        let resolved = await discord.sweepResolveCustomEmoji(guildId: guildID, in: content)
+        try await discord.sweepEditPinnedMessage(channelId: channelID, messageId: messageID, content: resolved)
     }
 
     func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws {
@@ -1303,10 +1341,17 @@ final class SweepService: ObservableObject {
             let content = announcement.rendered(winner: winner)
             guard !content.isEmpty else { continue }
             do {
+                guard try await ensureWeeklyMVPCard(
+                    announcement,
+                    for: policy,
+                    content: String(content.prefix(1_900))
+                ) != nil else {
+                    continue
+                }
                 try await dispatcher.postWeeklyMVP(
                     channelID: policy.channelID,
                     guildID: policy.guildID,
-                    content: String(content.prefix(1_900))
+                    content: String(announcement.notification(winner: winner).prefix(1_900))
                 )
                 policies[index].weeklyMVP?.lastPostedWeekKey = announcement.weekKey(for: now)
                 await persist()
@@ -1314,6 +1359,37 @@ final class SweepService: ObservableObject {
                 lastError = "Weekly MVP for #\(policy.channelName): \(error.localizedDescription)"
             }
         }
+    }
+
+    /// Keep one pinned MVP card per policy. If a moderator deletes it, Sweep
+    /// recreates and pins a replacement at the next scheduled announcement.
+    private func ensureWeeklyMVPCard(
+        _ announcement: SweepWeeklyMVPAnnouncement,
+        for policy: SweepPolicy,
+        content: String
+    ) async throws -> String? {
+        if let existing = announcement.pinnedMessageID,
+           await dispatcher.noticeExists(channelID: policy.channelID, messageID: existing) {
+            try await dispatcher.editPinnedWeeklyMVP(
+                channelID: policy.channelID,
+                guildID: policy.guildID,
+                messageID: existing,
+                content: content
+            )
+            return existing
+        }
+
+        let newID = try await dispatcher.postPinnedWeeklyMVP(
+            channelID: policy.channelID,
+            guildID: policy.guildID,
+            content: content
+        )
+        guard !newID.isEmpty else { return nil }
+        if let index = policies.firstIndex(where: { $0.id == policy.id }) {
+            policies[index].weeklyMVP?.pinnedMessageID = newID
+            await persist()
+        }
+        return newID
     }
 
     /// Sends the configured MVP wording immediately without changing the
@@ -1818,11 +1894,14 @@ final class SweepService: ObservableObject {
         let minAge = TimeInterval(policy.safety.minMessageAgeMinutes * 60)
 
         // Safety pass — produce `.skip` entries for protected messages.
-        let noticeID = policy.notice?.pinnedMessageID
+        let protectedAnnouncementIDs = Set([
+            policy.notice?.pinnedMessageID,
+            policy.weeklyMVP?.pinnedMessageID
+        ].compactMap { $0 })
         var candidates: [SweepFetchedMessage] = []
         for message in messages {
-            if let noticeID, message.id == noticeID {
-                actions.append(.from(message, kind: .skip, reason: "Swiftbot notice — protected"))
+            if protectedAnnouncementIDs.contains(message.id) {
+                actions.append(.from(message, kind: .skip, reason: "SwiftBot pinned announcement — protected"))
                 continue
             }
             if policy.safety.protectPinned && message.isPinned {
@@ -3819,7 +3898,7 @@ struct SweepPolicyEditor: View {
                 .font(.caption)
 
             if announcement.wrappedValue.isEnabled {
-                Text("Posts once per week to this rule’s channel using the rolling seven-day voice total. Times use this Mac’s local time.")
+                Text("Keeps one pinned MVP card up to date each week using the rolling seven-day voice total, then posts a fresh winner mention. Times use this Mac’s local time.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

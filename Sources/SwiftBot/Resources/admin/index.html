@@ -5374,9 +5374,15 @@
           <span class="value">/ slash</span>
           <label class="switch"><input id="cmdSlash" type="checkbox" ${commandsCatalog.slashCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
+        <div class="commands-toggle-card">
+          <span class="label">Music Links</span>
+          <span class="value">${commandsCatalog.musicLinkWatch?.isEnabled ? `${commandsCatalog.musicLinkWatch.channelIDs.length} channel${commandsCatalog.musicLinkWatch.channelIDs.length === 1 ? '' : 's'}` : 'Off'}</span>
+          <button id="musicWatchConfigure" class="secondary-action" type="button">Configure</button>
+        </div>
       `;
       top.querySelector('#cmdMaster')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
       top.querySelector('#cmdSlash')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+      top.querySelector('#musicWatchConfigure')?.addEventListener('click', openMusicLinkWatchEditor);
 
       const rows = (commandsCatalog.items || []).map(item => {
         const badges = [
@@ -5407,6 +5413,35 @@
         });
       });
       refreshIcons();
+    }
+
+    function openMusicLinkWatchEditor() {
+      const watcher = commandsCatalog?.musicLinkWatch;
+      if (!watcher) return;
+      const selected = new Set(watcher.channelIDs || []);
+      const options = (watcher.servers || []).flatMap(server =>
+        (watcher.textChannelsByServer?.[server.id] || []).map(channel =>
+          `<option value="${escapeHTML(channel.id)}" ${selected.has(channel.id) ? 'selected' : ''}>${escapeHTML(server.name)} · #${escapeHTML(channel.name)}</option>`
+        )
+      ).join('');
+
+      showModal('Music Link Watcher', `
+        <div style="display:grid;gap:14px;">
+          <label class="settings-row"><span>Watch for music links</span><label class="switch"><input id="musicWatchEnabled" type="checkbox" ${watcher.isEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></label>
+          <p class="muted">SwiftBot only replies in selected channels. It ignores bot messages and playlists, then posts Apple Music, Spotify, YouTube Music, and YouTube links for supported track URLs.</p>
+          <label style="display:grid;gap:6px;"><span class="label">Watched channels</span><select id="musicWatchChannels" class="field-input" multiple size="9">${options}</select></label>
+        </div>
+      `, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="musicWatchSave" class="primary-action" type="button">Save</button>
+      `);
+
+      document.getElementById('musicWatchSave').onclick = async () => {
+        const enabled = document.getElementById('musicWatchEnabled').checked;
+        const channelIDs = Array.from(document.getElementById('musicWatchChannels').selectedOptions).map(option => option.value);
+        await saveConfigPatch({ musicLinkWatchEnabled: enabled, musicLinkWatchChannelIDs: channelIDs });
+        hideModal();
+      };
     }
 
     function analyticsToneClass(tone) {

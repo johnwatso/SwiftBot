@@ -268,6 +268,11 @@ extension AppModel {
             return
         }
 
+        if isGuildTextChannel,
+           await handleWatchedMusicLink(content: content, channelID: channelId) {
+            return
+        }
+
         if isDMChannel, !settings.behavior.allowDMs {
             _ = await send(channelId, "DM support is disabled. If you need help, use `/help` in a server channel.")
             return

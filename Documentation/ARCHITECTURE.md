@@ -268,23 +268,21 @@ SwiftMesh is undergoing stabilization to improve reliability and comply with new
 
 ### 2. Memory & Performance
 
-See [`notes/music.md`](notes/music.md) for full design details. Inspired by [tunes.ninja](https://tunes.ninja).
-
 ### Purpose
-When a user posts a Spotify/YouTube/Apple Music/etc. link, SwiftBot automatically replies with a cross-platform embed (via the [Odesli API](https://odesli.co)) so everyone can open the track in their preferred app.
+The optional Music Link Watcher listens only in administrator-selected text channels. When someone shares a supported Spotify, Apple Music, YouTube, YouTube Music, or SoundCloud track link, SwiftBot replies with Apple Music, Spotify, YouTube Music, and YouTube listening links.
 
-No voice channel, no audio download, no playback.
+It never watches a whole server by default, never responds to bot messages or playlists, and does not download or play audio.
 
-### New Component: `MusicLinkConverter`
-- `extractMusicURL(from:)` — `NSDataDetector` + domain filter for known music services
-- `resolve(url:apiKey:)` — `GET api.song.link/v1-alpha.1/links` via existing `URLSession` pattern
-- `buildEmbed(from:originalURL:)` — formats `linksByPlatform` into a Discord embed payload
+### Components
+- `MusicLinkDetector` — recognises only trusted, track-shaped public URLs and ignores playlists.
+- `MusicLookupService.searchTrack(forMusicURL:)` — uses a trusted platform OEmbed endpoint where available, then the existing iTunes catalogue search for a dependable track match.
+- `MusicLinkWatchSettings` — opt-in enabled state plus selected channel IDs, configured from the native `/music` gear or the Web UI Commands page.
 
 ### Framework Fit
 - No new SPM dependencies
-- `AppModel.handleMessageCreate()` — call converter before command check
-- `AppModel.sendEmbed()` — already exists, reused directly
-- `BotSettings` — add `musicLinkConversionEnabled` toggle
+- `AppModel.handleMessageCreate()` — checks selected guild text channels before other message handling.
+- `AppModel.send()` — sends a concise cross-platform link card after a match.
+- `BotSettings.musicLinkWatch` — persists the explicit channel selection.
 
 ### Data Flow
 ```
@@ -292,11 +290,11 @@ User posts message with music URL
     ↓
 AppModel.handleMessageCreate()
     ↓
-MusicLinkConverter.extractMusicURL(from: content)
+MusicLinkDetector.firstTrackURL(in: content)
     ↓
-MusicLinkConverter.resolve(url:)  [Odesli API]
+MusicLookupService.searchTrack(forMusicURL:)
     ↓
-AppModel.sendEmbed(channelId, embed:)
+AppModel.send(channelId, cross-platform links)
 ```
 
 ## Plugin System

@@ -104,6 +104,45 @@ extension AppModel {
         return (true, lines.joined(separator: "\n"))
     }
 
+    /// Respond to a shared track only in explicitly configured music channels.
+    /// This is deliberately independent from `/music`: ordinary channels stay
+    /// quiet, while a dedicated music channel gets automatic platform links.
+    func handleWatchedMusicLink(content: String, channelID: String) async -> Bool {
+        guard settings.musicLinkWatch.watches(channelID: channelID),
+              let sourceURL = MusicLinkDetector.firstTrackURL(in: content),
+              let match = await musicLookupService.searchTrack(forMusicURL: sourceURL) else {
+            return false
+        }
+
+        let query = "\(match.title) \(match.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+        let appleLink = match.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: query)
+        let spotifyLink = match.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: query)
+        let youtubeMusicLink = match.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: query)
+        let youtubeLink = match.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: query)
+        let albumPart = match.album.map { " · \($0)" } ?? ""
+        let reply = """
+        🎧 \(match.title) — \(match.artist)\(albumPart)
+        Apple Music: <\(appleLink)>
+        Spotify: <\(spotifyLink)>
+        YouTube Music: <\(youtubeMusicLink)>
+        YouTube: <\(youtubeLink)>
+        """
+        return await send(channelID, reply)
+    }
+
+    /// Persist an edit from the `/music` settings sheet. A Failover forwards
+    /// the compact section to the Primary, which then replicates it.
+    func persistMusicLinkWatchEdit() {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(
+                .replaceMusicLinkWatch(settings.musicLinkWatch),
+                revertOnFailure: true
+            )
+        } else {
+            persistSettingsQuietly()
+        }
+    }
+
     func pickMusicLookup(
         selectionIndex: Int,
         userID: String,

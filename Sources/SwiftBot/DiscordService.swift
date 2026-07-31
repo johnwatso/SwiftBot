@@ -963,6 +963,25 @@ actor DiscordService {
         return messageId
     }
 
+    /// Post the durable Sweep MVP card and pin it. User mentions are enabled
+    /// for the initial winner so the first scheduled MVP is a real Discord
+    /// notification, while role/everyone mentions remain disabled.
+    func sweepPostPinnedMessage(channelId: String, content: String) async throws -> String {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep MVP failed: no bot token."])
+        }
+        let payloadData = try Self.encodeDiscordPayload([
+            "content": String(content.prefix(1_900)),
+            "allowed_mentions": ["parse": ["users"]]
+        ])
+        let messageId = try await messageRESTClient.sendMessageReturningID(channelId: channelId, payloadData: payloadData, token: token)
+        try await messageRESTClient.pinMessage(channelId: channelId, messageId: messageId, token: token)
+        return messageId
+    }
+
     /// Sweep entry point for scheduled, non-pinned announcements. User
     /// mentions are allowed so the weekly MVP can congratulate its winner;
     /// all other mention types remain disabled.
@@ -992,6 +1011,28 @@ actor DiscordService {
         }
         let payloadData = try Self.encodeDiscordPayload([
             "embeds": [embed],
+            "allowed_mentions": ["parse": []]
+        ])
+        try await messageRESTClient.editMessage(
+            channelId: channelId,
+            messageId: messageId,
+            payloadData: payloadData,
+            token: token
+        )
+    }
+
+    /// Update the pinned MVP card without triggering accidental role or
+    /// everyone mentions. The fresh companion notification carries the winner
+    /// mention each week.
+    func sweepEditPinnedMessage(channelId: String, messageId: String, content: String) async throws {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep MVP failed: no bot token."])
+        }
+        let payloadData = try Self.encodeDiscordPayload([
+            "content": String(content.prefix(1_900)),
             "allowed_mentions": ["parse": []]
         ])
         try await messageRESTClient.editMessage(

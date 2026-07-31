@@ -168,6 +168,10 @@ extension AppModel {
             settings.wikiBot.normalizeSources()
             await flushSettingsToFollowersNow()
             return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .replaceMusicLinkWatch(let section):
+            settings.musicLinkWatch = section
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
         case .sweepUpsertPolicy(let policy):
             sweepService.upsert(policy)
             await sweepService.flushPersist()

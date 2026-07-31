@@ -299,6 +299,8 @@ struct AdminWebConfigPatch: Codable {
     var clusterOffloadAIReplies: Bool?
     var clusterOffloadWikiLookups: Bool?
     var autoStart: Bool?
+    var musicLinkWatchEnabled: Bool?
+    var musicLinkWatchChannelIDs: [String]?
 }
 
 struct AdminWebCommandCatalogItem: Codable {
@@ -313,11 +315,19 @@ struct AdminWebCommandCatalogItem: Codable {
     let enabled: Bool
 }
 
+struct AdminWebMusicLinkWatchPayload: Codable {
+    let isEnabled: Bool
+    let channelIDs: [String]
+    let servers: [AdminWebSimpleOption]
+    let textChannelsByServer: [String: [AdminWebSimpleOption]]
+}
+
 struct AdminWebCommandCatalogPayload: Codable {
     let commandsEnabled: Bool
     let prefixCommandsEnabled: Bool
     let slashCommandsEnabled: Bool
     let items: [AdminWebCommandCatalogItem]
+    let musicLinkWatch: AdminWebMusicLinkWatchPayload
 }
 
 struct AdminWebCommandTogglePatch: Codable {
