@@ -377,6 +377,7 @@ struct BotSettings: Codable, Hashable {
     var welcomeFlow = WelcomeFlowSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
+    var musicLinkWatch = MusicLinkWatchSettings()
     var swiftMiner = SwiftMinerSettings()
     var cachedBotIdentity = CachedBotIdentity()
     var help = HelpSettings()
@@ -441,6 +442,7 @@ struct BotSettings: Codable, Hashable {
         case welcomeFlow
         case wikiBot
         case patchy
+        case musicLinkWatch
         case swiftMiner
         case cachedBotIdentity
         case help
@@ -492,6 +494,7 @@ struct BotSettings: Codable, Hashable {
             ?? WelcomeFlowSettings(legacyBehavior: behavior)
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
+        musicLinkWatch = try container.decodeIfPresent(MusicLinkWatchSettings.self, forKey: .musicLinkWatch) ?? MusicLinkWatchSettings()
         swiftMiner = try container.decodeIfPresent(SwiftMinerSettings.self, forKey: .swiftMiner) ?? SwiftMinerSettings()
         cachedBotIdentity = try container.decodeIfPresent(CachedBotIdentity.self, forKey: .cachedBotIdentity) ?? CachedBotIdentity()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
@@ -534,11 +537,34 @@ struct BotSettings: Codable, Hashable {
         try container.encode(welcomeFlow, forKey: .welcomeFlow)
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
+        try container.encode(musicLinkWatch, forKey: .musicLinkWatch)
         try container.encode(swiftMiner, forKey: .swiftMiner)
         try container.encode(cachedBotIdentity, forKey: .cachedBotIdentity)
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)
         try container.encode(voice, forKey: .voice)
+    }
+}
+
+/// Channel-scoped opt-in for automatic music-link cards. Keeping this list
+/// explicit prevents a music helper from replying in every server channel.
+struct MusicLinkWatchSettings: Codable, Hashable {
+    var isEnabled: Bool = false
+    var channelIDs: [String] = []
+
+    func watches(channelID: String) -> Bool {
+        isEnabled && channelIDs.contains(channelID)
+    }
+
+    mutating func setWatching(_ isWatching: Bool, channelID: String) {
+        let trimmed = channelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if isWatching {
+            if !channelIDs.contains(trimmed) { channelIDs.append(trimmed) }
+        } else {
+            channelIDs.removeAll { $0 == trimmed }
+        }
+        channelIDs = Array(Set(channelIDs)).sorted()
     }
 }
 

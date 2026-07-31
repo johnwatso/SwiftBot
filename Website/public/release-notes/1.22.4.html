@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.22.4 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
+    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
+    section.music { --accent: #7c3aed; }
+    section.sweep { --accent: #0e7490; }
+    section.release { --accent: #52606d; }
+    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+      .meta, .summary { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
+      code { background: rgba(159, 176, 194, 0.16); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.22.4</h1>
+    <p class="meta">Version 1.22.4 · Build 2026073115</p>
+    <p class="intro">A focused quality update for music sharing and the weekly Sweep Voice MVP.</p>
+
+    <section class="music">
+      <h2><span class="badge" aria-hidden="true">🎧</span>Channel-Scoped Music Links</h2>
+      <p class="summary">Make a dedicated music channel helpful without making the rest of the server noisy.</p>
+      <ul>
+        <li><strong>Choose where it runs:</strong> Use the gear beside <code>/music</code> in the Mac app, or Commands in the Web UI, to enable the watcher and select one or more text channels.</li>
+        <li><strong>Useful cross-platform replies:</strong> Supported Spotify, Apple Music, YouTube, YouTube Music, and SoundCloud track links produce Apple Music, Spotify, YouTube Music, and YouTube listening links.</li>
+        <li><strong>Quiet by design:</strong> The watcher is off by default, ignores playlists and bot messages, and only replies in selected channels.</li>
+      </ul>
+    </section>
+
+    <section class="sweep">
+      <h2><span class="badge" aria-hidden="true">🏆</span>One Weekly Voice MVP Card</h2>
+      <p class="summary">The weekly voice recognition stays visible without filling the channel with repeats.</p>
+      <ul>
+        <li><strong>Always current:</strong> Sweep now updates one pinned MVP card in place for each policy instead of adding a new leaderboard card each week.</li>
+        <li><strong>Winner notification:</strong> The new MVP still receives a fresh Discord mention, while the pinned card remains tidy and protected from normal Sweep cleanup.</li>
+        <li><strong>Resilient recovery:</strong> If the pinned card is deleted, SwiftBot creates and pins a replacement at the next scheduled announcement.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">🚢</span>Release Details</h2>
+      <p class="summary">Version metadata and regression coverage were refreshed for this release.</p>
+      <ul>
+        <li>Updated <code>MARKETING_VERSION</code> to 1.22.4 and <code>CURRENT_PROJECT_VERSION</code> to 2026073115.</li>
+        <li>Added music-link detection coverage and kept the full SwiftBot test suite green.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

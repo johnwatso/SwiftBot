@@ -26,6 +26,7 @@ struct CommandSettingsSheet: View {
     private var headerTitle: String {
         switch commandName.lowercased() {
         case "timestamp": return "Configure /timestamp"
+        case "music": return "Configure /music"
         default: return "Configure /\(commandName)"
         }
     }
@@ -34,6 +35,8 @@ struct CommandSettingsSheet: View {
         switch commandName.lowercased() {
         case "timestamp":
             return "Map each Discord user to their IANA time zone so /timestamp interprets times like \"6pm friday\" in the right zone."
+        case "music":
+            return "Choose the channels where SwiftBot should automatically turn supported shared music links into cross-platform listening links."
         default:
             return ""
         }
@@ -42,6 +45,7 @@ struct CommandSettingsSheet: View {
     private var headerIcon: String {
         switch commandName.lowercased() {
         case "timestamp": return "clock.badge.checkmark"
+        case "music": return "music.note.list"
         default: return "gearshape.fill"
         }
     }
@@ -83,6 +87,8 @@ struct CommandSettingsSheet: View {
         switch commandName.lowercased() {
         case "timestamp":
             UserTimezonesEditor()
+        case "music":
+            MusicLinkWatchEditor()
         default:
             Text("No configuration available for /\(commandName).")
                 .foregroundStyle(.secondary)
@@ -100,6 +106,87 @@ struct CommandSettingsSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+}
+
+// MARK: - Music link watcher editor
+
+struct MusicLinkWatchEditor: View {
+    @EnvironmentObject var app: AppModel
+    @State private var selectedServerID: String = ""
+
+    private var sortedServers: [(id: String, name: String)] {
+        app.connectedServers
+            .map { (id: $0.key, name: $0.value) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var selectedChannels: [GuildTextChannel] {
+        (app.availableTextChannelsByServer[selectedServerID] ?? [])
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle("Watch for music links", isOn: Binding(
+                get: { app.settings.musicLinkWatch.isEnabled },
+                set: { value in
+                    app.settings.musicLinkWatch.isEnabled = value
+                    app.persistMusicLinkWatchEdit()
+                }
+            ))
+
+            Text("""
+            SwiftBot only replies in the channels selected below. It ignores playlists and bot messages, then uses the track match to provide Apple Music, Spotify, YouTube Music, and YouTube links.
+            """)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if sortedServers.isEmpty {
+                ContentUnavailableView(
+                    "No servers available",
+                    systemImage: "music.note.slash",
+                    description: Text("Connect SwiftBot to a server before choosing a music channel.")
+                )
+            } else {
+                Picker("Server", selection: $selectedServerID) {
+                    ForEach(sortedServers, id: \.id) { server in
+                        Text(server.name).tag(server.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onAppear {
+                    if selectedServerID.isEmpty { selectedServerID = sortedServers.first?.id ?? "" }
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Watched channels")
+                        .font(.headline)
+                    if selectedChannels.isEmpty {
+                        Text("No text channels are available for this server yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(selectedChannels, id: \.id) { channel in
+                            Toggle("#\(channel.name)", isOn: watchingBinding(for: channel.id))
+                                .toggleStyle(.checkbox)
+                        }
+                    }
+                }
+                .disabled(!app.settings.musicLinkWatch.isEnabled)
+            }
+        }
+    }
+
+    private func watchingBinding(for channelID: String) -> Binding<Bool> {
+        Binding(
+            get: { app.settings.musicLinkWatch.channelIDs.contains(channelID) },
+            set: { enabled in
+                app.settings.musicLinkWatch.setWatching(enabled, channelID: channelID)
+                app.persistMusicLinkWatchEdit()
+            }
+        )
     }
 }
 

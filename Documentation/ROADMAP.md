@@ -273,6 +273,8 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 | `_working-tree_` | Added an opt-in Weekly Voice MVP announcement to Sweep policies. It uses the existing rolling seven-day voice leaderboard, posts to the policy’s channel at an operator-selected local weekday/time, mentions the winner safely, is Primary-only, and records each posted week to avoid duplicates. |
 | `_working-tree_` | Reduced Sweep suggestion overload: surface up to three high-confidence recommendations, one per channel, and keep lower-priority or alternate strategies behind an expandable list. Applying a suggestion now clears its same-channel alternatives. |
 | `_working-tree_` | Added a clearly labelled Send Test MVP action in the Sweep rule editor. It posts the current template and real rolling-seven-day winner immediately, reports success or failure inline, remains Primary-gated, and never consumes the scheduled weekly announcement. |
+| `_working-tree_` | Weekly Voice MVP now maintains one protected pinned card per Sweep rule and edits it in place each week. A separate concise winner mention is posted after the edit so the weekly MVP receives a real Discord notification; deleted cards are recreated and pinned at the next announcement. |
+| `_working-tree_` | Added opt-in, channel-scoped music-link watching. The Music command now has a native channel picker; selected channels recognise supported track links, ignore playlists/bot messages, and reply with stable cross-platform search links without relying on song.link. |
 
 ### 2026-07-08 — Recordings Fast Start Storage
 

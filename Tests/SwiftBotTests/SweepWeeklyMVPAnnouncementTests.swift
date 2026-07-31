@@ -31,5 +31,23 @@ final class SweepWeeklyMVPAnnouncementTests: XCTestCase {
             announcement.rendered(winner: winner),
             "This week's MVP is <@max-id> with 21 hours this week!"
         )
+        XCTAssertEqual(
+            announcement.notification(winner: winner),
+            "🏆 Congratulations <@max-id> — you’re this week’s Voice MVP!"
+        )
+    }
+
+    func testMVPKeepsPinnedCardIDWhenPersisted() throws {
+        let announcement = SweepWeeklyMVPAnnouncement(
+            isEnabled: true,
+            pinnedMessageID: "pinned-mvp-card"
+        )
+
+        let restored = try JSONDecoder().decode(
+            SweepWeeklyMVPAnnouncement.self,
+            from: JSONEncoder().encode(announcement)
+        )
+
+        XCTAssertEqual(restored.pinnedMessageID, "pinned-mvp-card")
     }
 }

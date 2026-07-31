@@ -680,6 +680,7 @@ enum MeshConfigMutation: Codable, Sendable, Hashable {
     case replaceWelcomeFlow(WelcomeFlowSettings)
     case replaceVoice(VoiceSettings)
     case replaceWikiBot(WikiBotSettings)
+    case replaceMusicLinkWatch(MusicLinkWatchSettings)
     // Sweep policies — discrete actions (the SweepService exposes CRUD). Sweep
     // has its own store outside BotSettings, so the Failover reconciles via the
     // dedicated `/v1/mesh/sync/sweep-policies` pull rather than config-files.
@@ -701,6 +702,7 @@ enum MeshConfigMutation: Codable, Sendable, Hashable {
         case .replaceWelcomeFlow:             return "Welcome Flow settings update"
         case .replaceVoice:                   return "Announcer settings update"
         case .replaceWikiBot:                 return "Lookup settings update"
+        case .replaceMusicLinkWatch:          return "Music Link Watcher settings update"
         case .sweepUpsertPolicy(let p):       return "Sweep policy upsert (\(p.name))"
         case .sweepDeletePolicy:              return "Sweep policy delete"
         case .sweepSetPolicyEnabled(_, let on): return "Sweep policy \(on ? "enable" : "disable")"

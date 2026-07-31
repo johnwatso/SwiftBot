@@ -223,6 +223,8 @@ struct CommandsView: View {
         switch command.name.lowercased() {
         case "timestamp":
             return { configuringCommand = ConfiguringCommand(name: "timestamp") }
+        case "music":
+            return { configuringCommand = ConfiguringCommand(name: "music") }
         default:
             return nil
         }

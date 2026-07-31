@@ -377,6 +377,10 @@ struct HelpRenderer {
         `/music pick:<number>`
         Use this after the bot returns a list of candidate matches.
 
+        **Automatic Link Watcher**
+        An administrator can open the gear beside `/music` in Commands (or Commands in the Web UI), enable the watcher, and select its music channel.
+        SwiftBot stays quiet everywhere else, ignores playlists and bot messages, and replies to supported shared track links with cross-platform listening links.
+
         **Playlist Import**
         `/playlist url:<playlist-url> [name:<thread-name>] [limit:<n>]`
 
