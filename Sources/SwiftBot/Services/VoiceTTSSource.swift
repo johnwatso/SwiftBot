@@ -59,30 +59,78 @@ final class VoiceTTSSource: @unchecked Sendable {
         // AXCoreUtilities, so set the synthesizer up on the MainActor.
         let format = targetFormat
         let resolvedVoice = voice ?? Self.preferredEnglishVoice()
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAudioPCMBuffer, Error>) in
-            Task { @MainActor in
-                let utterance = AVSpeechUtterance(string: text)
-                utterance.voice = resolvedVoice
-                utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-                utterance.pitchMultiplier = 1.0
-                utterance.volume = 1.0
+        let completion = SynthesisRenderCompletion()
+        let rendered: SendableAudioBuffer = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SendableAudioBuffer, Error>) in
+                completion.install(continuation)
+                Task { @MainActor in
+                    // A render timeout can fire before this MainActor task is
+                    // scheduled. Do not start a synthesizer for work that is
+                    // already cancelled.
+                    guard !completion.isResolved else { return }
+                    let utterance = AVSpeechUtterance(string: text)
+                    utterance.voice = resolvedVoice
+                    utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+                    utterance.pitchMultiplier = 1.0
+                    utterance.volume = 1.0
 
-                let synthesizer = AVSpeechSynthesizer()
-                let collector = SynthesisCollector(targetFormat: format) { result in
-                    switch result {
-                    case .success(let buffer):
-                        continuation.resume(returning: buffer)
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
+                    let synthesizer = AVSpeechSynthesizer()
+                    let collector = SynthesisCollector(targetFormat: format) { result in
+                        completion.resolve(result.map(SendableAudioBuffer.init))
+                        _ = synthesizer // keep alive until completion
                     }
-                    _ = synthesizer // keep alive until completion
+                    synthesizer.write(utterance) { buffer in
+                        collector.append(buffer)
+                    }
+                    // The completion of `write` is signalled by an empty buffer.
                 }
-                synthesizer.write(utterance) { buffer in
-                    collector.append(buffer)
-                }
-                // The completion of `write` is signalled by an empty buffer.
             }
+        } onCancel: {
+            // `AVSpeechSynthesizer.write` can occasionally fail to deliver its
+            // terminal empty buffer. Resuming here makes an upstream timeout
+            // release the serial announcement queue instead of waiting forever.
+            completion.resolve(.failure(CancellationError()))
         }
+        return rendered.buffer
+    }
+}
+
+/// Thread-safe, one-shot bridge between an `AVSpeechSynthesizer.write` callback
+/// and Swift concurrency. It also lets cancellation finish a render whose
+/// synthesizer callback never arrives.
+private final class SynthesisRenderCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<SendableAudioBuffer, Error>?
+    private var result: Result<SendableAudioBuffer, Error>?
+
+    var isResolved: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return result != nil
+    }
+
+    func install(_ continuation: CheckedContinuation<SendableAudioBuffer, Error>) {
+        lock.lock()
+        if let result {
+            lock.unlock()
+            continuation.resume(with: result)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func resolve(_ result: Result<SendableAudioBuffer, Error>) {
+        lock.lock()
+        guard self.result == nil else {
+            lock.unlock()
+            return
+        }
+        self.result = result
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
     }
 }
 

@@ -28,6 +28,7 @@ actor VoiceAnnouncementService {
     private let ttsSource: VoiceTTSSource
     private let renderOverride: RenderOverride?
     private let daveNotReadyRetryDelay: Duration
+    private let speechRenderTimeout: Duration
     private var voice: AVSpeechSynthesisVoice?
     /// In-flight engine warm-up render; the drain loop awaits it before the
     /// first real render so the two never run concurrently.
@@ -54,11 +55,13 @@ actor VoiceAnnouncementService {
     init(
         playback: any AnnouncementPlayback,
         daveNotReadyRetryDelay: Duration = .seconds(1),
+        speechRenderTimeout: Duration = .seconds(30),
         renderOverride: RenderOverride? = nil
     ) throws {
         self.playback = playback
         self.ttsSource = try VoiceTTSSource()
         self.daveNotReadyRetryDelay = daveNotReadyRetryDelay
+        self.speechRenderTimeout = speechRenderTimeout
         self.renderOverride = renderOverride
         self.voice = VoiceTTSSource.preferredEnglishVoice()
     }
@@ -73,7 +76,7 @@ actor VoiceAnnouncementService {
         prewarmedVoiceID = .some(voiceID)
         guard renderOverride == nil else { return }
         prewarmTask = Task { [weak self] in
-            _ = try? await self?.renderWithTimeout(text: "ok", seconds: 10.0, voiceIdentifier: voiceID)
+            _ = try? await self?.renderWithTimeout(text: "ok", timeout: .seconds(10), voiceIdentifier: voiceID)
         }
     }
 
@@ -420,7 +423,7 @@ actor VoiceAnnouncementService {
         do {
             let rendered = try await renderWithTimeout(
                 text: text,
-                seconds: 30.0,
+                timeout: speechRenderTimeout,
                 voiceIdentifier: selectedVoiceID
             )
             return try AnnouncerAudioGuardrails.validateAndRepair(rendered.buffer)
@@ -429,7 +432,7 @@ actor VoiceAnnouncementService {
             await onDebug?("Selected speech voice produced unusable audio; retrying with fallback voice.")
             let rendered = try await renderWithTimeout(
                 text: text,
-                seconds: 30.0,
+                timeout: speechRenderTimeout,
                 voiceIdentifier: fallbackVoiceID
             )
             return try AnnouncerAudioGuardrails.validateAndRepair(rendered.buffer)
@@ -438,14 +441,15 @@ actor VoiceAnnouncementService {
 
     private func renderWithTimeout(
         text: String,
-        seconds: Double,
+        timeout: Duration,
         voiceIdentifier: String?
     ) async throws -> SendableAudioBuffer {
-        if let renderOverride {
-            return try await renderOverride(text, voiceIdentifier)
-        }
+        let renderOverride = self.renderOverride
         return try await withThrowingTaskGroup(of: SendableAudioBuffer.self) { group in
-            group.addTask { [ttsSource] in
+            group.addTask { [ttsSource, renderOverride] in
+                if let renderOverride {
+                    return try await renderOverride(text, voiceIdentifier)
+                }
                 let resolved = voiceIdentifier.flatMap { AVSpeechSynthesisVoice(identifier: $0) }
                 let buffer = try await ttsSource.render(
                     text: text,
@@ -454,7 +458,7 @@ actor VoiceAnnouncementService {
                 return SendableAudioBuffer(buffer: buffer)
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(seconds))
+                try await Task.sleep(for: timeout)
                 throw VoicePipelineError.timeout
             }
             defer { group.cancelAll() }

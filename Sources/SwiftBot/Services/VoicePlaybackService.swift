@@ -55,11 +55,6 @@ actor VoicePlaybackService {
     private var keepaliveTask: Task<Void, Never>?
     private var keepaliveCounter: UInt32 = 0
     private var keepaliveFailureCount: Int = 0
-    /// Keepalive ticks since connect, used to pace the UDP liveness probe
-    /// (every 6th tick ≈ 30 s, or every tick while a probe failure is open).
-    private var keepaliveTickCount: Int = 0
-    /// Consecutive liveness-probe failures; two in a row fails the pipeline.
-    private var udpProbeFailureCount: Int = 0
     /// When the current connect attempt began, used to time each handshake phase
     /// in the diagnostics log (so a slow connect can be pinpointed).
     private var connectStartedAt: ContinuousClock.Instant?
@@ -424,7 +419,6 @@ actor VoicePlaybackService {
             try await udp.start()
             let address = try await udp.discoverAddress(ssrc: info.ssrc)
             await debug("[+\(elapsedSinceConnect())] Voice UDP discovery returned \(address.ip):\(address.port); selecting protocol.")
-            await udp.startInboundMonitor()
             try await gateway?.sendSelectProtocol(address: address, mode: mode)
         } catch {
             await fail("ip discovery failed: \(error.localizedDescription)")
@@ -945,8 +939,6 @@ actor VoicePlaybackService {
         keepaliveTask?.cancel()
         keepaliveCounter = 0
         keepaliveFailureCount = 0
-        keepaliveTickCount = 0
-        udpProbeFailureCount = 0
         keepaliveTask = Task { [weak self] in
             let clock = ContinuousClock()
             let interval = Duration.seconds(5)
@@ -961,32 +953,6 @@ actor VoicePlaybackService {
                 } catch {
                     await self.handleKeepaliveFailure(error)
                 }
-                await self.verifyUdpLivenessIfDue()
-            }
-        }
-    }
-
-    /// A dead NAT mapping is invisible to outbound sends — they "succeed"
-    /// locally while nothing reaches Discord, leaving the announcer speaking
-    /// into the void. Every ~30 s (or every tick while a failure is open),
-    /// verify the path with a round-trip IP-discovery probe unless inbound
-    /// traffic recently proved it alive.
-    private func verifyUdpLivenessIfDue() async {
-        guard status == .connected, let transport = transport, let ssrc = ssrc else { return }
-        keepaliveTickCount += 1
-        guard keepaliveTickCount % 6 == 0 || udpProbeFailureCount > 0 else { return }
-        if let since = await transport.secondsSinceLastInbound(), since < 10 {
-            udpProbeFailureCount = 0
-            return
-        }
-        do {
-            try await transport.probeLiveness(ssrc: ssrc, timeout: .seconds(4))
-            udpProbeFailureCount = 0
-        } catch {
-            udpProbeFailureCount += 1
-            await debug("Voice UDP liveness probe failed (\(udpProbeFailureCount)/2): \(error.localizedDescription)")
-            if udpProbeFailureCount >= 2 {
-                await fail("voice UDP path stopped responding (NAT mapping likely expired)")
             }
         }
     }
