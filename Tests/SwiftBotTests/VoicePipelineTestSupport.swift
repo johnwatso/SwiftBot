@@ -152,12 +152,6 @@ actor FakeVoiceTransport: VoiceMediaTransport {
     private(set) var started = false
     private(set) var stopped = false
     private(set) var sentPackets: [Data] = []
-    private(set) var probeCount = 0
-    private var probeError: Error?
-    private var inboundAgeSeconds: Double?
-
-    func setProbeError(_ error: Error?) { probeError = error }
-    func setInboundAgeSeconds(_ seconds: Double?) { inboundAgeSeconds = seconds }
 
     func start() async throws { started = true }
     func stop() { stopped = true }
@@ -167,13 +161,6 @@ actor FakeVoiceTransport: VoiceMediaTransport {
     }
 
     func send(_ data: Data) async throws { sentPackets.append(data) }
-    func startInboundMonitor() {}
-    func secondsSinceLastInbound() -> Double? { inboundAgeSeconds }
-
-    func probeLiveness(ssrc: UInt32, timeout: Duration) async throws {
-        probeCount += 1
-        if let probeError { throw probeError }
-    }
 }
 
 /// Records `speak` calls for announcer drain tests and can be switched to
