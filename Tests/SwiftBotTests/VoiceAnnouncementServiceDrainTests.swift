@@ -97,4 +97,31 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         await announcer.setPaused(false)
         await waitUntil { await announcer.recentHistory.count == 1 }
     }
+
+    func testTimedOutRenderDoesNotStrandFollowingAnnouncements() async throws {
+        let playback = FakeAnnouncementPlayback()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            speechRenderTimeout: .milliseconds(10),
+            renderOverride: { text, _ in
+                if text.hasPrefix("stuck") {
+                    // Deliberately cancellable work: the production TTS source
+                    // now uses the same cancellation path when its terminal
+                    // AVSpeech callback goes missing.
+                    try await Task.sleep(for: .seconds(60))
+                }
+                return makeRenderedBuffer()
+            }
+        )
+
+        await announcer.enqueue(longMessage("stuck"))
+        await announcer.enqueue(longMessage("next"))
+
+        await waitUntil { await announcer.recentHistory.count == 1 }
+        let recent = await announcer.recentHistory
+        XCTAssertEqual(recent.first?.text.prefix(4), "next")
+        let health = await announcer.healthSnapshot
+        XCTAssertNotNil(health.lastFailureAt, "the timed-out batch should be recorded")
+    }
 }

@@ -36,9 +36,6 @@ protocol VoiceMediaTransport: Actor {
     func stop()
     func discoverAddress(ssrc: UInt32) async throws -> VoiceUDPTransport.DiscoveredAddress
     func send(_ data: Data) async throws
-    func startInboundMonitor()
-    func secondsSinceLastInbound() -> Double?
-    func probeLiveness(ssrc: UInt32, timeout: Duration) async throws
 }
 
 /// The one thing `VoiceAnnouncementService` needs from the playback pipeline:

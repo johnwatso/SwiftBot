@@ -297,6 +297,8 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 | `_working-tree_` | Refined voice picker options in VoiceView to display Apple Premium/Enhanced voices and downloaded Piper voices (identifiable by "piper"), filtering out low-quality legacy system voices. Added setup documentation to the settings help popover. |
 | `_working-tree_` | Resolved announcer queue freeze issue by wrapping `ttsSource.render` and `playback.speak` in timeouts (15s/20s) with a Sendable wrapper, ensuring the service logs hangs and recovers. |
 | `_working-tree_` | Optimized VoicePlaybackService keepalive pacing to 5 seconds (was 20 ms), resolving the persistent green speaking indicator in Discord when silent and preventing UDP socket congestion/disconnects. |
+| `_working-tree_` | Removed recurring UDP IP-discovery probes from Announcer recovery. Discord documents discovery as setup-time negotiation; treating a later missing reply as a dropped call caused false failures and repeated voice-channel rejoins. Voice WebSocket heartbeats and outbound UDP keepalives remain in place. |
+| `_working-tree_` | Made Announcer TTS render timeouts real: cancellation now resolves a missing `AVSpeechSynthesizer.write` completion, allowing the serial queue to skip the failed batch and continue with later announcements. |
 | `_working-tree_` | Resolved UI thread priority inversion warning in `speakLocallyPreview` by offloading `AVSpeechSynthesizer` calls to an asynchronous background task. |
 
 ### 2026-06-09 — Patchy monitoring target sync
