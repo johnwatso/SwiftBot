@@ -168,11 +168,16 @@ actor FakeVoiceTransport: VoiceMediaTransport {
 actor FakeAnnouncementPlayback: AnnouncementPlayback {
     private(set) var speakCount = 0
     private var error: Error?
+    private var delay: Duration?
 
     func setError(_ error: Error?) { self.error = error }
+    func setDelay(_ delay: Duration?) { self.delay = delay }
 
     func speak(pcm wrapped: SendableAudioBuffer) async throws {
         speakCount += 1
+        if let delay {
+            try await Task.sleep(for: delay)
+        }
         if let error { throw error }
     }
 }

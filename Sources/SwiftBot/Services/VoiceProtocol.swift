@@ -89,6 +89,7 @@ enum VoicePipelineError: LocalizedError {
     case notConnected
     case daveNotReady
     case timeout
+    case playbackTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -103,6 +104,7 @@ enum VoicePipelineError: LocalizedError {
         case .notConnected: return "Voice pipeline not connected"
         case .daveNotReady: return "DAVE media encryption is not ready yet"
         case .timeout: return "Voice operation timed out"
+        case .playbackTimedOut: return "Voice playback timed out"
         }
     }
 }

@@ -29,6 +29,7 @@ actor VoiceAnnouncementService {
     private let renderOverride: RenderOverride?
     private let daveNotReadyRetryDelay: Duration
     private let speechRenderTimeout: Duration
+    private let speechPlaybackTimeout: Duration
     private var voice: AVSpeechSynthesisVoice?
     /// In-flight engine warm-up render; the drain loop awaits it before the
     /// first real render so the two never run concurrently.
@@ -56,12 +57,14 @@ actor VoiceAnnouncementService {
         playback: any AnnouncementPlayback,
         daveNotReadyRetryDelay: Duration = .seconds(1),
         speechRenderTimeout: Duration = .seconds(30),
+        speechPlaybackTimeout: Duration = .seconds(45),
         renderOverride: RenderOverride? = nil
     ) throws {
         self.playback = playback
         self.ttsSource = try VoiceTTSSource()
         self.daveNotReadyRetryDelay = daveNotReadyRetryDelay
         self.speechRenderTimeout = speechRenderTimeout
+        self.speechPlaybackTimeout = speechPlaybackTimeout
         self.renderOverride = renderOverride
         self.voice = VoiceTTSSource.preferredEnglishVoice()
     }
@@ -275,7 +278,7 @@ actor VoiceAnnouncementService {
                     lastBatchSize: current.batch.count
                 )
                 await onDebug?("Sending speech audio to Discord.")
-                try await playback.speak(pcm: current.audio)
+                try await speakWithTimeout(current.audio)
                 await onDebug?("Finished Discord speech (\(current.speechText.count) chars, \(current.batch.count) message\(current.batch.count == 1 ? "" : "s")).")
                 for item in current.batch {
                     retryCounts[item.id] = nil
@@ -359,7 +362,11 @@ actor VoiceAnnouncementService {
         if isReconnectablePlaybackError(error) {
             requeue(batch)
             await onQueueChange?(queue)
-            await onDebug?("Discord speech paused while the voice connection recovers.")
+            if case VoicePipelineError.playbackTimedOut = error {
+                await onDebug?("Discord speech playback exceeded its deadline; reconnecting the voice session before retrying the queued read.")
+            } else {
+                await onDebug?("Discord speech paused while the voice connection recovers.")
+            }
             paused = true
             await publishHealth(
                 phase: .recovering,
@@ -383,7 +390,7 @@ actor VoiceAnnouncementService {
 
     private func isReconnectablePlaybackError(_ error: Error) -> Bool {
         switch error {
-        case VoicePipelineError.notConnected, VoicePipelineError.socketClosed:
+        case VoicePipelineError.notConnected, VoicePipelineError.socketClosed, VoicePipelineError.playbackTimedOut:
             return true
         default:
             return false
@@ -463,6 +470,28 @@ actor VoiceAnnouncementService {
             }
             defer { group.cancelAll() }
             guard let first = try await group.next() else { throw VoicePipelineError.timeout }
+            return first
+        }
+    }
+
+    /// A stalled UDP write must not hold the serial announcement drain forever.
+    /// `VoicePlaybackService` cooperates with cancellation by failing the stale
+    /// session, which lets normal auto-rejoin recovery rebuild the transport.
+    private func speakWithTimeout(_ audio: SendableAudioBuffer) async throws {
+        let playback = self.playback
+        let timeout = speechPlaybackTimeout
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await playback.speak(pcm: audio)
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw VoicePipelineError.playbackTimedOut
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else {
+                throw VoicePipelineError.playbackTimedOut
+            }
             return first
         }
     }

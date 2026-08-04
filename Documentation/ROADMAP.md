@@ -299,6 +299,8 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 | `_working-tree_` | Optimized VoicePlaybackService keepalive pacing to 5 seconds (was 20 ms), resolving the persistent green speaking indicator in Discord when silent and preventing UDP socket congestion/disconnects. |
 | `_working-tree_` | Removed recurring UDP IP-discovery probes from Announcer recovery. Discord documents discovery as setup-time negotiation; treating a later missing reply as a dropped call caused false failures and repeated voice-channel rejoins. Voice WebSocket heartbeats and outbound UDP keepalives remain in place. |
 | `_working-tree_` | Made Announcer TTS render timeouts real: cancellation now resolves a missing `AVSpeechSynthesizer.write` completion, allowing the serial queue to skip the failed batch and continue with later announcements. |
+| `_working-tree_` | Announcer render timeouts now also stop the stalled `AVSpeechSynthesizer`, preventing an abandoned render from overlapping or interfering with later announcements. |
+| `_working-tree_` | Bound Announcer audio playback to 45 seconds. A stalled UDP write now cancels the old voice session, preserves the queued read, and uses the existing bounded auto-rejoin path instead of silently wedging the drain. |
 | `_working-tree_` | Resolved UI thread priority inversion warning in `speakLocallyPreview` by offloading `AVSpeechSynthesizer` calls to an asynchronous background task. |
 
 ### 2026-06-09 — Patchy monitoring target sync
