@@ -74,12 +74,18 @@ final class VoiceTTSSource: @unchecked Sendable {
                     utterance.pitchMultiplier = 1.0
                     utterance.volume = 1.0
 
-                    let synthesizer = AVSpeechSynthesizer()
+                    let session = SpeechRenderSession()
+                    guard completion.installCancellationAction({
+                        Task { @MainActor in
+                            session.cancel()
+                        }
+                    }) else { return }
+
                     let collector = SynthesisCollector(targetFormat: format) { result in
                         completion.resolve(result.map(SendableAudioBuffer.init))
-                        _ = synthesizer // keep alive until completion
+                        _ = session // keep alive until completion
                     }
-                    synthesizer.write(utterance) { buffer in
+                    session.synthesizer.write(utterance) { buffer in
                         collector.append(buffer)
                     }
                     // The completion of `write` is signalled by an empty buffer.
@@ -89,7 +95,7 @@ final class VoiceTTSSource: @unchecked Sendable {
             // `AVSpeechSynthesizer.write` can occasionally fail to deliver its
             // terminal empty buffer. Resuming here makes an upstream timeout
             // release the serial announcement queue instead of waiting forever.
-            completion.resolve(.failure(CancellationError()))
+            completion.cancel()
         }
         return rendered.buffer
     }
@@ -102,6 +108,7 @@ private final class SynthesisRenderCompletion: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<SendableAudioBuffer, Error>?
     private var result: Result<SendableAudioBuffer, Error>?
+    private var cancellationAction: (() -> Void)?
 
     var isResolved: Bool {
         lock.lock()
@@ -120,7 +127,32 @@ private final class SynthesisRenderCompletion: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Returns false if the render was already cancelled or completed before
+    /// the synthesizer could be created.
+    func installCancellationAction(_ action: @escaping () -> Void) -> Bool {
+        lock.lock()
+        guard result == nil else {
+            lock.unlock()
+            action()
+            return false
+        }
+        cancellationAction = action
+        lock.unlock()
+        return true
+    }
+
     func resolve(_ result: Result<SendableAudioBuffer, Error>) {
+        finish(with: result, runCancellationAction: false)
+    }
+
+    func cancel() {
+        finish(with: .failure(CancellationError()), runCancellationAction: true)
+    }
+
+    private func finish(
+        with result: Result<SendableAudioBuffer, Error>,
+        runCancellationAction: Bool
+    ) {
         lock.lock()
         guard self.result == nil else {
             lock.unlock()
@@ -129,8 +161,21 @@ private final class SynthesisRenderCompletion: @unchecked Sendable {
         self.result = result
         let continuation = self.continuation
         self.continuation = nil
+        let cancellationAction = runCancellationAction ? self.cancellationAction : nil
+        self.cancellationAction = nil
         lock.unlock()
+
+        cancellationAction?()
         continuation?.resume(with: result)
+    }
+}
+
+@MainActor
+private final class SpeechRenderSession {
+    let synthesizer = AVSpeechSynthesizer()
+
+    func cancel() {
+        synthesizer.stopSpeaking(at: .immediate)
     }
 }
 

@@ -260,6 +260,17 @@ actor VoicePlaybackService {
     /// is sliced into 20 ms frames (960 samples per channel) and paced out at
     /// 20 ms intervals.
     func speak(pcm buffer: AVAudioPCMBuffer) async throws {
+        try await withTaskCancellationHandler {
+            try await streamSpeech(pcm: buffer)
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancelSpeechForRecovery()
+            }
+        }
+    }
+
+    private func streamSpeech(pcm buffer: AVAudioPCMBuffer) async throws {
+        try Task.checkCancellation()
         guard status == .connected,
               let gateway = gateway,
               let transport = transport,
@@ -294,6 +305,7 @@ actor VoicePlaybackService {
 
         var processed = 0
         while processed < totalFrames {
+            try Task.checkCancellation()
             let chunkFrames = min(samplesPerFrame, totalFrames - processed)
             guard let chunkBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) else {
                 break
@@ -338,12 +350,21 @@ actor VoicePlaybackService {
             processed += chunkFrames
 
             nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
-            try? await clock.sleep(until: nextDeadline)
+            try await clock.sleep(until: nextDeadline)
         }
 
         // Standard Discord end-of-speech marker: a short burst of Opus silence
         // flushes the receiving decoder so the next utterance isn't clipped.
         await sendTrailingSilence(5, transport: transport)
+    }
+
+    /// Cancellation is a reliability boundary, not merely an early return:
+    /// stop using the potentially wedged voice session so AppModel's existing
+    /// bounded auto-rejoin can establish a fresh WebSocket and UDP transport.
+    private func cancelSpeechForRecovery() async {
+        guard isSpeaking, status == .connected else { return }
+        await debug("Voice playback was cancelled by its deadline; recovering the session.")
+        await fail("voice playback timed out")
     }
 
     /// Send `count` Opus silence frames at the end of an utterance. This is the

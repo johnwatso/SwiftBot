@@ -55,6 +55,24 @@ final class VoicePlaybackServiceTests: XCTestCase {
         XCTAssertEqual(speaking.first, true)
     }
 
+    func testCancellingActiveSpeechFailsSessionForCleanRecovery() async throws {
+        let (playback, gateway, transport) = makePipeline()
+        try await connect(playback, gateway)
+
+        // Keep the task in the pacing loop long enough to cancel mid-utterance.
+        let speaking = Task {
+            try await playback.speak(pcm: makeRenderedBuffer(frames: 48_000))
+        }
+        await waitUntil { !(await transport.sentPackets).isEmpty }
+
+        speaking.cancel()
+        _ = try? await speaking.value
+        await waitUntil {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+    }
+
     func testConnectWhileConnectingThrows() async throws {
         let (playback, gateway, _) = makePipeline()
         let firstConnect = Task { try await playback.connect(server: gateway.server) }

@@ -124,4 +124,28 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         let health = await announcer.healthSnapshot
         XCTAssertNotNil(health.lastFailureAt, "the timed-out batch should be recorded")
     }
+
+    func testTimedOutPlaybackPausesAndPreservesQueuedAnnouncement() async throws {
+        let playback = FakeAnnouncementPlayback()
+        await playback.setDelay(.seconds(60))
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            speechPlaybackTimeout: .milliseconds(10),
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+
+        await announcer.enqueue("keep this after a stalled UDP write")
+
+        await waitUntil {
+            let health = await announcer.healthSnapshot
+            return health.isPaused && health.queueDepth == 1 &&
+                health.lastFailureReason == VoicePipelineError.playbackTimedOut.localizedDescription
+        }
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["keep this after a stalled UDP write"])
+        let recent = await announcer.recentHistory
+        XCTAssertTrue(recent.isEmpty)
+    }
 }
