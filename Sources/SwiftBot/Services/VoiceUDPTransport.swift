@@ -5,11 +5,22 @@ import OSLog
 /// A one-shot bridge around an `NWConnection.send` completion. Network's
 /// callback can arrive after task cancellation (or not arrive at all when a
 /// UDP connection wedges), so the bridge owns the continuation and guarantees
-/// exactly one resume.
+/// exactly one resume. It also owns the send deadline rather than relying on
+/// cancellation of Network.framework's completion callback, which is not
+/// guaranteed to wake a wedged UDP connection.
 private final class VoiceUDPSendCompletion: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Error>?
     private var result: Result<Void, Error>?
+    private var operationTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+    /// The operation is created before it can be retained/cancelled. Keep it
+    /// behind this permission gate so cancellation winning setup cannot still
+    /// register a stale UDP datagram afterwards.
+    private var operationStartContinuation: CheckedContinuation<Bool, Never>?
+    private var operationStartGranted = false
+    private var didTimeOut = false
+    private var wasCancelled = false
 
     /// Returns false when cancellation or a connection completion won the
     /// race before the caller finished installing its continuation.
@@ -29,24 +40,196 @@ private final class VoiceUDPSendCompletion: @unchecked Sendable {
         return true
     }
 
-    func resolve(_ result: Result<Void, Error>) {
+    /// Wait for a single Network completion without allowing a lost
+    /// `.contentProcessed` callback to hold the caller indefinitely.
+    ///
+    /// `start` is invoked only if neither cancellation nor the deadline won
+    /// setup. A short permission gate closes the setup race where cancellation
+    /// can otherwise occur after the operation task is created but before its
+    /// `NWConnection.send` registration reaches Network.framework.
+    func awaitResult(
+        timeout: Duration,
+        start: @escaping @Sendable (_ complete: @escaping @Sendable (Error?) -> Void) -> Void,
+        onTimeout: @escaping @Sendable () -> Void
+    ) async throws {
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                guard install(continuation) else { return }
+                let operation = Task { [weak self] in
+                    guard let self,
+                          await self.waitForSendStart(),
+                          !Task.isCancelled else {
+                        return
+                    }
+                    start { [weak self] error in
+                        if let error {
+                            self?.resolve(.failure(error))
+                        } else {
+                            self?.resolve(.success(()))
+                        }
+                    }
+                }
+                installOperation(operation)
+                allowSendStart()
+                let deadline = Task { [weak self] in
+                    do {
+                        try await Task.sleep(for: timeout)
+                    } catch {
+                        return
+                    }
+                    self?.timeOut(onTimeout: onTimeout)
+                }
+                installTimeout(deadline)
+            }
+        } onCancel: {
+            self.cancel()
+        }
+    }
+
+    private func installOperation(_ task: Task<Void, Never>) {
+        lock.lock()
+        let shouldCancel = result != nil
+        if !shouldCancel {
+            operationTask = task
+        }
+        lock.unlock()
+        if shouldCancel {
+            task.cancel()
+        }
+    }
+
+    private func installTimeout(_ task: Task<Void, Never>) {
+        lock.lock()
+        let shouldCancel = result != nil
+        if !shouldCancel {
+            timeoutTask = task
+        }
+        lock.unlock()
+        if shouldCancel {
+            task.cancel()
+        }
+    }
+
+    /// Atomically permits the registered operation to begin only while this
+    /// one-shot result is still pending.
+    private func allowSendStart() {
+        let startContinuation: CheckedContinuation<Bool, Never>?
+        let mayStart: Bool
+        lock.lock()
+        if result == nil {
+            mayStart = true
+            operationStartGranted = true
+            startContinuation = operationStartContinuation
+            operationStartContinuation = nil
+        } else {
+            mayStart = false
+            startContinuation = operationStartContinuation
+            operationStartContinuation = nil
+        }
+        lock.unlock()
+        startContinuation?.resume(returning: mayStart)
+    }
+
+    private func waitForSendStart() async -> Bool {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            let mayStart: Bool?
+            if result != nil {
+                mayStart = false
+            } else if operationStartGranted {
+                mayStart = true
+            } else {
+                operationStartContinuation = continuation
+                mayStart = nil
+            }
+            lock.unlock()
+            if let mayStart {
+                continuation.resume(returning: mayStart)
+            }
+        }
+    }
+
+    /// Returns true only for the timeout task that won the one-shot race.
+    @discardableResult
+    private func timeOut(onTimeout: @escaping @Sendable () -> Void) -> Bool {
+        resolve(
+            .failure(VoicePipelineError.timeout),
+            didTimeOut: true,
+            cancellingOperation: true,
+            onResolved: onTimeout
+        )
+    }
+
+    /// Cancellation is treated as an unhealthy one-shot transport too. The
+    /// owner tears the socket down after the caller is released so a
+    /// cancellation cannot leave sibling Network sends hung forever.
+    private func cancel() {
+        _ = resolve(
+            .failure(CancellationError()),
+            wasCancelled: true,
+            cancellingOperation: true
+        )
+    }
+
+    @discardableResult
+    func resolve(_ result: Result<Void, Error>) -> Bool {
+        resolve(
+            result,
+            didTimeOut: false,
+            wasCancelled: false,
+            cancellingOperation: false
+        )
+    }
+
+    @discardableResult
+    private func resolve(
+        _ result: Result<Void, Error>,
+        didTimeOut: Bool = false,
+        wasCancelled: Bool = false,
+        cancellingOperation: Bool,
+        onResolved: (@Sendable () -> Void)? = nil
+    ) -> Bool {
         lock.lock()
         guard self.result == nil else {
             lock.unlock()
-            return
+            return false
         }
         self.result = result
+        self.didTimeOut = didTimeOut
+        self.wasCancelled = wasCancelled
         let continuation = continuation
         self.continuation = nil
+        let operationTask = cancellingOperation ? operationTask : nil
+        self.operationTask = nil
+        let timeoutTask = timeoutTask
+        self.timeoutTask = nil
+        let operationStartContinuation = operationStartContinuation
+        self.operationStartContinuation = nil
+        operationStartGranted = false
         lock.unlock()
 
+        operationTask?.cancel()
+        timeoutTask?.cancel()
+        // Give the owner its timeout signal before resuming the waiting actor.
+        // This makes the deadline observable even when the resumed send races
+        // the timeout task on a busy executor.
+        onResolved?()
+        operationStartContinuation?.resume(returning: false)
         continuation?.resume(with: result)
+        return true
     }
 
-    var isResolved: Bool {
+    var requiresTransportAbort: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return result != nil
+        return didTimeOut || wasCancelled
+    }
+
+    var timedOut: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return didTimeOut
     }
 }
 
@@ -63,6 +246,17 @@ actor VoiceUDPTransport {
     private let connection: NWConnection
     private let queue: DispatchQueue
     private let pathMonitorQueue: DispatchQueue
+    /// Network.framework normally completes UDP sends immediately. If it
+    /// does not (for example after sleep/wake or a route handoff), consider
+    /// the one-shot transport unhealthy instead of letting idle keepalives
+    /// wait forever and leave voice visibly connected but silent.
+    private let sendCompletionTimeout: Duration
+    /// Internal test seam for a Network completion that never arrives. The
+    /// normal initializer always uses `NWConnection.send`; keeping this
+    /// optional and test-labelled prevents the production transport path from
+    /// becoming configurable while still allowing the deadline to be proved
+    /// without relying on a flaky real-network wedge.
+    private let testingSendImplementation: (@Sendable (Data, @escaping @Sendable (Error?) -> Void) -> Void)?
     private var ready: Bool = false
     private var isStopped = false
     private var readyWaiters: [CheckedContinuation<Void, Error>] = []
@@ -75,8 +269,41 @@ actor VoiceUDPTransport {
     private var onNetworkPathChange: (@Sendable (VoiceNetworkPathSnapshot, VoiceNetworkPathSnapshot) async -> Void)?
 
     init(host: String, port: UInt16) {
+        self.init(
+            host: host,
+            port: port,
+            sendCompletionTimeout: .seconds(5),
+            testingSendImplementation: nil
+        )
+    }
+
+    /// Test-only initializer for deterministic coverage of a lost
+    /// `.contentProcessed` completion. It is internal to the app module; all
+    /// production callers use `init(host:port:)` above.
+    init(
+        host: String,
+        port: UInt16,
+        testingSendCompletionTimeout: Duration,
+        testingSendImplementation: @escaping @Sendable (Data, @escaping @Sendable (Error?) -> Void) -> Void
+    ) {
+        self.init(
+            host: host,
+            port: port,
+            sendCompletionTimeout: testingSendCompletionTimeout,
+            testingSendImplementation: testingSendImplementation
+        )
+    }
+
+    private init(
+        host: String,
+        port: UInt16,
+        sendCompletionTimeout: Duration,
+        testingSendImplementation: (@Sendable (Data, @escaping @Sendable (Error?) -> Void) -> Void)?
+    ) {
         self.queue = DispatchQueue(label: "com.swiftbot.voice.udp")
         self.pathMonitorQueue = DispatchQueue(label: "com.swiftbot.voice.udp.path")
+        self.sendCompletionTimeout = sendCompletionTimeout
+        self.testingSendImplementation = testingSendImplementation
         let nwHost = NWEndpoint.Host(host)
         let nwPort = NWEndpoint.Port(rawValue: port) ?? .any
         self.connection = NWConnection(host: nwHost, port: nwPort, using: .udp)
@@ -154,29 +381,39 @@ actor VoiceUDPTransport {
         let completion = VoiceUDPSendCompletion()
         pendingSends[id] = completion
         defer { pendingSends[id] = nil }
+        let testingSendImplementation = self.testingSendImplementation
 
-        try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                // Cancellation may have already run before the continuation
-                // was installed. In that case, do not issue a stale datagram.
-                guard completion.install(continuation), !completion.isResolved else { return }
-                connection.send(content: data, completion: .contentProcessed { error in
-                    if let error {
-                        completion.resolve(.failure(error))
+        do {
+            try await completion.awaitResult(
+                timeout: sendCompletionTimeout,
+                start: { [connection, testingSendImplementation] complete in
+                    if let testingSendImplementation {
+                        testingSendImplementation(data, complete)
                     } else {
-                        completion.resolve(.success(()))
+                        connection.send(content: data, completion: .contentProcessed { error in
+                            complete(error)
+                        })
                     }
-                })
+                },
+                onTimeout: { [weak self] in
+                    // The resumed `send` below also stops synchronously before
+                    // surfacing its timeout. This immediate path additionally
+                    // wakes sibling sends when the caller itself is not
+                    // scheduled promptly on a busy executor.
+                    Task { [weak self] in
+                        await self?.abortAfterTimedOutSend()
+                    }
+                }
+            )
+        } catch {
+            if completion.requiresTransportAbort {
+                if completion.timedOut {
+                    abortAfterTimedOutSend()
+                } else {
+                    abortAfterCancelledSend()
+                }
             }
-        } onCancel: {
-            // Resuming first makes caller cancellation a real escape hatch;
-            // the actor task below tears down the underlying socket and wakes
-            // any sibling UDP sends that Network has also left pending.
-            completion.resolve(.failure(CancellationError()))
-            Task { [weak self] in
-                await self?.abortAfterCancelledSend()
-            }
+            throw error
         }
     }
 
@@ -219,6 +456,16 @@ actor VoiceUDPTransport {
     private func abortAfterCancelledSend() {
         guard !isStopped else { return }
         Self.logger.warning("Cancelling UDP transport after a cancelled datagram send.")
+        stop()
+    }
+
+    /// A missing Network completion is indistinguishable from a wedged UDP
+    /// path. Stop this one-shot socket so the caller receives a real failure
+    /// and VoicePlaybackService's normal keepalive/speech recovery can rebuild
+    /// a fresh transport instead of remaining silently connected.
+    private func abortAfterTimedOutSend() {
+        guard !isStopped else { return }
+        Self.logger.error("Cancelling UDP transport after a datagram send exceeded its completion deadline.")
         stop()
     }
 

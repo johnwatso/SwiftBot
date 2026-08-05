@@ -233,7 +233,10 @@ extension AppModel {
 
     /// Tear down the voice connection (sends VOICE_STATE_UPDATE with null
     /// channel, then closes the playback pipeline).
-    func disconnectVoice(preserveAnnouncerSession: Bool = false) async {
+    func disconnectVoice(
+        preserveAnnouncerSession: Bool = false,
+        preservingNetworkPathRecoveryCooldown: Bool = false
+    ) async {
         if preserveAnnouncerSession {
             voiceDisconnectPreservesAnnouncerSession = true
         }
@@ -257,7 +260,9 @@ extension AppModel {
         if !guildID.isEmpty {
             _ = await service.sendVoiceStateUpdate(guildID: guildID, channelID: nil)
         }
-        await voicePlaybackService.disconnect()
+        await voicePlaybackService.disconnect(
+            preservingNetworkPathRecoveryCooldown: preservingNetworkPathRecoveryCooldown
+        )
         voicePendingGuildID = nil
         voicePendingChannelID = nil
         voicePendingSessionID = nil
@@ -887,7 +892,10 @@ extension AppModel {
             description: "Voice auto-rejoin starting after \(reason)."
         ))
         beginWaitingForVoiceLeaveAck()
-        await disconnectVoice(preserveAnnouncerSession: true)
+        await disconnectVoice(
+            preserveAnnouncerSession: true,
+            preservingNetworkPathRecoveryCooldown: true
+        )
         guard voiceRecovery.inProgress else { return }
         await waitForVoiceLeaveAck()
         guard voiceRecovery.inProgress else { return }

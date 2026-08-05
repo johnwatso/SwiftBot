@@ -2,6 +2,133 @@ import Foundation
 import OSLog
 import libdave_swift
 
+/// A one-shot race that lets a WebSocket write time out even when
+/// `URLSessionWebSocketTask.send` ignores task cancellation. Structured task
+/// groups are deliberately avoided because they wait for the hung child.
+private final class VoiceGatewayWriteDeadlineRace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var result: Result<Void, Error>?
+    private var operationTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+    /// The operation task is created before it can be registered for
+    /// cancellation. Keep it behind this permission gate so a cancellation
+    /// that wins setup cannot still put an obsolete WebSocket message on the
+    /// wire.
+    private var operationStartContinuation: CheckedContinuation<Bool, Never>?
+    private var operationStartGranted = false
+
+    /// Returns false when cancellation or another completion already won, so
+    /// callers do not create either unstructured child task afterward.
+    func installContinuation(_ continuation: CheckedContinuation<Void, Error>) -> Bool {
+        lock.lock()
+        let completed = result
+        if completed == nil {
+            self.continuation = continuation
+        }
+        lock.unlock()
+        if let completed {
+            continuation.resume(with: completed)
+            return false
+        }
+        return true
+    }
+
+    func installOperation(_ task: Task<Void, Never>) {
+        lock.lock()
+        let shouldCancel = result != nil
+        if !shouldCancel {
+            operationTask = task
+        }
+        lock.unlock()
+        if shouldCancel { task.cancel() }
+    }
+
+    func installTimeout(_ task: Task<Void, Never>) {
+        lock.lock()
+        let shouldCancel = result != nil
+        if !shouldCancel {
+            timeoutTask = task
+        }
+        lock.unlock()
+        if shouldCancel { task.cancel() }
+    }
+
+    /// Atomically permits the registered operation to begin its WebSocket
+    /// write only while the one-shot race is still pending.
+    func allowOperationStart() {
+        let startContinuation: CheckedContinuation<Bool, Never>?
+        let mayStart: Bool
+        lock.lock()
+        if result == nil {
+            mayStart = true
+            operationStartGranted = true
+            startContinuation = operationStartContinuation
+            operationStartContinuation = nil
+        } else {
+            mayStart = false
+            startContinuation = operationStartContinuation
+            operationStartContinuation = nil
+        }
+        lock.unlock()
+        startContinuation?.resume(returning: mayStart)
+    }
+
+    func waitForOperationStart() async -> Bool {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            let mayStart: Bool?
+            if result != nil {
+                mayStart = false
+            } else if operationStartGranted {
+                mayStart = true
+            } else {
+                operationStartContinuation = continuation
+                mayStart = nil
+            }
+            lock.unlock()
+            if let mayStart {
+                continuation.resume(returning: mayStart)
+            }
+        }
+    }
+
+    func succeed() { _ = resolve(.success(()), cancellingOperation: false) }
+    func fail(_ error: Error) { _ = resolve(.failure(error), cancellingOperation: false) }
+    func timeOut() -> Bool { resolve(.failure(VoicePipelineError.timeout), cancellingOperation: true) }
+    func cancel() { _ = resolve(.failure(CancellationError()), cancellingOperation: true) }
+
+    @discardableResult
+    private func resolve(_ outcome: Result<Void, Error>, cancellingOperation: Bool) -> Bool {
+        let continuation: CheckedContinuation<Void, Error>?
+        let operation: Task<Void, Never>?
+        let timeout: Task<Void, Never>?
+        let operationStart: CheckedContinuation<Bool, Never>?
+        lock.lock()
+        guard result == nil else {
+            lock.unlock()
+            return false
+        }
+        result = outcome
+        continuation = self.continuation
+        self.continuation = nil
+        operation = cancellingOperation ? operationTask : nil
+        operationTask = nil
+        timeout = timeoutTask
+        timeoutTask = nil
+        operationStart = operationStartContinuation
+        operationStartContinuation = nil
+        operationStartGranted = false
+        lock.unlock()
+
+        timeout?.cancel()
+        operation?.cancel()
+        operationStart?.resume(returning: false)
+        continuation?.resume(with: outcome)
+        return true
+    }
+}
+
 /// WebSocket connection to a Discord voice server. Handles the op 0/2/1/4
 /// handshake plus heartbeats. Exposes callbacks at each state transition so a
 /// higher-level service (`VoicePlaybackService`) can drive the UDP transport
@@ -21,6 +148,14 @@ actor VoiceGatewayConnection {
     /// resumed connection.
     private var socketGeneration: UInt64 = 0
     private var heartbeatIntervalMs: Int = 13_750
+    /// A half-open WebSocket can leave `send` suspended forever, which would
+    /// otherwise stall the sole heartbeat loop before it can observe missed
+    /// ACKs. This is intentionally shorter than Discord's normal interval.
+    private let heartbeatWriteTimeout: Duration = .seconds(5)
+    /// Handshake, speaking, and DAVE gateway writes must also be bounded: an
+    /// indefinitely suspended outbox write can otherwise pin the serialized
+    /// DAVE event tail and leave the bot visibly connected but silent.
+    private let gatewayWriteTimeout: Duration = .seconds(8)
     private var heartbeatNonce: UInt64 = 0
     private var lastSequenceNumber: Int = -1
     private var advertisedEncryptionModes: Set<VoiceEncryptionMode> = []
@@ -216,38 +351,26 @@ actor VoiceGatewayConnection {
     }
 
     private func sendJSON(_ dictionary: [String: Any]) async throws {
-        let generation = socketGeneration
-        guard let socket else { throw VoicePipelineError.socketClosed }
         let data = try JSONSerialization.data(withJSONObject: dictionary)
         guard let text = String(data: data, encoding: .utf8) else {
             throw VoicePipelineError.unexpectedPayload("non-utf8 outgoing payload")
         }
-        try await socket.send(.string(text))
-        guard generation == socketGeneration, socket === self.socket else {
-            throw VoicePipelineError.socketClosed
-        }
+        try await sendWebSocketMessage(.string(text), timeout: gatewayWriteTimeout)
     }
 
     private func sendJSON<Payload: Encodable>(_ payload: Payload) async throws {
-        let generation = socketGeneration
-        guard let socket else { throw VoicePipelineError.socketClosed }
         let data = try JSONEncoder().encode(payload)
         guard let text = String(data: data, encoding: .utf8) else {
             throw VoicePipelineError.unexpectedPayload("non-utf8 outgoing payload")
         }
-        try await socket.send(.string(text))
-        guard generation == socketGeneration, socket === self.socket else {
-            throw VoicePipelineError.socketClosed
-        }
+        try await sendWebSocketMessage(.string(text), timeout: gatewayWriteTimeout)
     }
 
     private func sendBinary(opcode: VoiceOpcode, payload: Data = Data()) async throws {
-        let generation = socketGeneration
-        guard let socket else { throw VoicePipelineError.socketClosed }
-        try await socket.send(.data(VoiceBinaryFrame.encodeClientFrame(opcode: opcode, payload: payload)))
-        guard generation == socketGeneration, socket === self.socket else {
-            throw VoicePipelineError.socketClosed
-        }
+        try await sendWebSocketMessage(
+            .data(VoiceBinaryFrame.encodeClientFrame(opcode: opcode, payload: payload)),
+            timeout: gatewayWriteTimeout
+        )
     }
 
     private func receiveLoop(generation: UInt64) async {
@@ -521,7 +644,7 @@ actor VoiceGatewayConnection {
     }
 
     private func sendHeartbeat(generation: UInt64) async {
-        guard generation == socketGeneration else { return }
+        guard generation == socketGeneration, let heartbeatSocket = socket else { return }
         if outstandingHeartbeatNonces.count >= 2 {
             await debug("Voice gateway missed \(missedHeartbeatAcks) heartbeat acks; treating the socket as dead.")
             guard generation == socketGeneration else { return }
@@ -538,17 +661,124 @@ actor VoiceGatewayConnection {
             nonce: nonce,
             sequenceAck: lastSequenceNumber
         )
-        do {
-            try await sendJSON(
-                VoiceGatewayOutgoingPayload(op: VoiceOpcode.heartbeat.rawValue, data: heartbeat)
-            )
-        } catch {
-            await debug("Voice gateway heartbeat send failed: \(error.localizedDescription)")
-            socket?.cancel(with: .abnormalClosure, reason: nil)
-            return
-        }
+        // Register before awaiting the websocket write. The receive loop can
+        // process an immediate Op 6 ACK while `sendJSON` is suspended; adding
+        // it afterwards would incorrectly classify that valid ACK as stale
+        // and eventually reconnect a healthy voice session.
         outstandingHeartbeatNonces.insert(nonce)
         missedHeartbeatAcks = outstandingHeartbeatNonces.count
+        do {
+            try await sendHeartbeatWithDeadline(
+                heartbeat,
+                generation: generation,
+                socket: heartbeatSocket
+            )
+        } catch {
+            // `startHeartbeat` can replace a sleeping loop after a valid
+            // Hello/RESUMED exchange. Its cancelled old task must neither
+            // mutate a replacement socket's nonce accounting nor close that
+            // replacement socket when the bounded send wakes up.
+            guard !Task.isCancelled,
+                  generation == socketGeneration,
+                  heartbeatSocket === self.socket else {
+                return
+            }
+            // The heartbeat was never put on the wire, so it must not count
+            // as an unacknowledged heartbeat on a subsequent recovery path.
+            outstandingHeartbeatNonces.remove(nonce)
+            missedHeartbeatAcks = outstandingHeartbeatNonces.count
+            let detail: String
+            if let pipelineError = error as? VoicePipelineError,
+               case .timeout = pipelineError {
+                detail = "did not complete before its 5-second deadline"
+            } else {
+                detail = "failed: \(error.localizedDescription)"
+            }
+            await debug("Voice gateway heartbeat send \(detail)")
+            heartbeatSocket.cancel(with: .abnormalClosure, reason: nil)
+            return
+        }
+    }
+
+    /// Perform an outbound gateway write with a hard deadline. This keeps
+    /// every gateway path live, including the serialized DAVE outbox; the
+    /// heartbeat uses a shorter deadline than ordinary handshakes/replies.
+    ///
+    /// Structured task groups are deliberately avoided because a hung
+    /// `URLSessionWebSocketTask.send` can ignore cancellation and prevent the
+    /// parent from returning. The deadline closes the concrete socket, which
+    /// wakes `receive()` and lets VoicePlaybackService enter its normal
+    /// recovery path.
+    private func sendWebSocketMessage(
+        _ message: URLSessionWebSocketTask.Message,
+        timeout: Duration,
+        expectedGeneration: UInt64? = nil,
+        expectedSocket: URLSessionWebSocketTask? = nil
+    ) async throws {
+        let generation = socketGeneration
+        guard expectedGeneration == nil || expectedGeneration == generation,
+              let socket,
+              expectedSocket == nil || expectedSocket === socket else {
+            throw VoicePipelineError.socketClosed
+        }
+
+        let race = VoiceGatewayWriteDeadlineRace()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                guard race.installContinuation(continuation) else { return }
+                let operation = Task {
+                    guard await race.waitForOperationStart(), !Task.isCancelled else { return }
+                    do {
+                        try await socket.send(message)
+                        race.succeed()
+                    } catch {
+                        race.fail(error)
+                    }
+                }
+                race.installOperation(operation)
+                race.allowOperationStart()
+                let deadline = Task {
+                    do {
+                        try await Task.sleep(for: timeout)
+                    } catch {
+                        return
+                    }
+                    // A cancelled timeout task can already have woken as a
+                    // successful write resolves the race. Only the winner is
+                    // allowed to declare this captured socket unhealthy.
+                    if race.timeOut() {
+                        socket.cancel(with: .abnormalClosure, reason: nil)
+                    }
+                }
+                race.installTimeout(deadline)
+            }
+        } onCancel: {
+            // A caller can be superseded by a valid resume. Let the current
+            // socket survive that cancellation; only the deadline above
+            // declares this captured socket unhealthy.
+            race.cancel()
+        }
+        guard generation == socketGeneration, socket === self.socket else {
+            throw VoicePipelineError.socketClosed
+        }
+    }
+
+    private func sendHeartbeatWithDeadline(
+        _ heartbeat: VoiceHeartbeatPayload,
+        generation: UInt64,
+        socket: URLSessionWebSocketTask
+    ) async throws {
+        let payload = VoiceGatewayOutgoingPayload(op: VoiceOpcode.heartbeat.rawValue, data: heartbeat)
+        let data = try JSONEncoder().encode(payload)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw VoicePipelineError.unexpectedPayload("non-utf8 heartbeat payload")
+        }
+        try await sendWebSocketMessage(
+            .string(text),
+            timeout: heartbeatWriteTimeout,
+            expectedGeneration: generation,
+            expectedSocket: socket
+        )
     }
 
     private func debug(_ message: String) async {

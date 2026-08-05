@@ -15,7 +15,8 @@ final class VoicePlaybackServiceTests: XCTestCase {
     private func makePipeline(
         resumeConfirmationTimeout: Duration = .seconds(5),
         connectionReadinessTimeout: Duration = .seconds(15),
-        daveDowngradeTransitionTimeout: Duration = .seconds(12)
+        daveDowngradeTransitionTimeout: Duration = .seconds(12),
+        daveTransitionGateProgressTimeout: Duration = .seconds(15)
     ) -> (VoicePlaybackService, FakeVoiceGateway, FakeVoiceTransport) {
         let server = makeVoiceServerInfo()
         let gateway = FakeVoiceGateway(server: server)
@@ -25,7 +26,8 @@ final class VoicePlaybackServiceTests: XCTestCase {
             transportFactory: { _, _ in transport },
             resumeConfirmationTimeout: resumeConfirmationTimeout,
             connectionReadinessTimeout: connectionReadinessTimeout,
-            daveDowngradeTransitionTimeout: daveDowngradeTransitionTimeout
+            daveDowngradeTransitionTimeout: daveDowngradeTransitionTimeout,
+            daveTransitionGateProgressTimeout: daveTransitionGateProgressTimeout
         )
         return (playback, gateway, transport)
     }
@@ -146,6 +148,96 @@ final class VoicePlaybackServiceTests: XCTestCase {
         _ = await speech.result
     }
 
+    func testCancellingSpeechBeforeSpeakingIndicatorFailsSessionForRecovery() async throws {
+        let (playback, gateway, _) = makePipeline()
+        try await connect(playback, gateway)
+        await gateway.setSpeakingSendsBlocked(true)
+
+        let speech = Task {
+            _ = try? await playback.speak(pcm: makeRenderedBuffer(frames: 48_000))
+        }
+        await waitUntil { await gateway.blockedSpeakingSendCount == 1 }
+
+        // The websocket write is wedged before `streamSpeech` has set
+        // `isSpeaking`. Cancellation must still fail this generation rather
+        // than leave a connected-looking silent voice session behind.
+        speech.cancel()
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+
+        await gateway.releaseBlockedSpeakingSends()
+        _ = await speech.result
+    }
+
+    func testSpeakingUpdatesStayOrderedAcrossOverlappingUtterances() async throws {
+        let (playback, gateway, _) = makePipeline()
+        try await connect(playback, gateway)
+        await gateway.setSpeakingFalseSendsBlocked(true)
+
+        // Let A reach its asynchronous teardown, then begin B while A's
+        // `speaking: false` write is still in flight. Discord must see A's
+        // false before B's true; otherwise the delayed false can mute B.
+        let first = Task {
+            try await playback.speak(pcm: makeRenderedBuffer())
+        }
+        await waitUntil { await gateway.blockedSpeakingFalseSendCount == 1 }
+
+        let second = Task {
+            try await playback.speak(pcm: makeRenderedBuffer())
+        }
+        try? await Task.sleep(for: .milliseconds(80))
+        let updatesWhileTeardownBlocked = await gateway.speakingUpdates
+        XCTAssertEqual(
+            updatesWhileTeardownBlocked,
+            [true],
+            "the next speaking update must wait behind the prior teardown"
+        )
+
+        await gateway.setSpeakingFalseSendsBlocked(false)
+        await gateway.releaseBlockedSpeakingFalseSends()
+        try await first.value
+        try await second.value
+        await waitUntil { (await gateway.speakingUpdates).count == 4 }
+        let finalUpdates = await gateway.speakingUpdates
+        XCTAssertEqual(finalUpdates, [true, false, true, false])
+    }
+
+    func testNewSpeechReservesSpeakingOwnershipBeforeItsTrueUpdateCompletes() async throws {
+        let (playback, gateway, _) = makePipeline()
+        try await connect(playback, gateway)
+
+        // Let A start normally, then hold B's `speaking: true` write. A's
+        // asynchronous teardown now runs while B's update is in flight. It
+        // must see B's reserved receipt and not queue a stale false behind it.
+        let first = Task {
+            try await playback.speak(pcm: makeRenderedBuffer())
+        }
+        await waitUntil { (await gateway.speakingUpdates) == [true] }
+
+        await gateway.setSpeakingSendsBlocked(true)
+        let second = Task {
+            try await playback.speak(pcm: makeRenderedBuffer())
+        }
+        await waitUntil { await gateway.blockedSpeakingSendCount == 1 }
+
+        try await first.value
+        try? await Task.sleep(for: .milliseconds(80))
+        await gateway.setSpeakingSendsBlocked(false)
+        await gateway.releaseBlockedSpeakingSends()
+        try await second.value
+
+        await waitUntil { (await gateway.speakingUpdates).count >= 3 }
+        try? await Task.sleep(for: .milliseconds(80))
+        let updates = await gateway.speakingUpdates
+        XCTAssertEqual(
+            updates,
+            [true, true, false],
+            "an old teardown must not enqueue false after a newer true update"
+        )
+    }
+
     func testNetworkPathBaselineDoesNotRecoverHealthyIdleSession() async throws {
         let (playback, gateway, transport) = makePipeline()
         try await connect(playback, gateway)
@@ -165,6 +257,132 @@ final class VoicePlaybackServiceTests: XCTestCase {
             if case .failed = await playback.currentStatus { return true }
             return false
         }
+    }
+
+    func testSameInterfaceRouteChangeRebuildsSessionBeforeNextRead() async throws {
+        let (playback, gateway, transport) = makePipeline()
+        try await connect(playback, gateway)
+
+        let wifi = makePath(status: .satisfied, interfaces: [.wifi])
+        // `NWPath` can change when a device roams between Wi-Fi access points
+        // even if its public interface summary is still `satisfied Wi-Fi`.
+        // The transport already suppressed the initial baseline, so this later
+        // callback must rebuild rather than leave UDP pinned to the old route.
+        await transport.emitNetworkPathRouteChange(from: wifi, to: wifi)
+
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+    }
+
+    func testRouteSettleCooldownSurvivesAutomaticRecoveryConnection() async throws {
+        let server = makeVoiceServerInfo()
+        let firstGateway = FakeVoiceGateway(server: server)
+        let secondGateway = FakeVoiceGateway(server: server)
+        let firstTransport = FakeVoiceTransport()
+        let secondTransport = FakeVoiceTransport()
+        let pipeline = SequencedVoicePipeline(
+            gateways: [firstGateway, secondGateway],
+            transports: [firstTransport, secondTransport]
+        )
+        let playback = VoicePlaybackService(
+            gatewayFactory: { session, info in pipeline.makeGateway(session, info) },
+            transportFactory: { host, port in pipeline.makeTransport(host, port) }
+        )
+
+        let firstConnect = Task { try await playback.connect(server: server) }
+        await waitUntil { await firstGateway.connectCount == 1 }
+        await firstGateway.emitReady()
+        await firstGateway.emitSessionDescription(daveProtocolVersion: nil)
+        try await firstConnect.value
+
+        let wifi = makePath(status: .satisfied, interfaces: [.wifi])
+        await firstTransport.emitNetworkPathRouteChange(from: wifi, to: wifi)
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+
+        // This is the service-level equivalent of AppModel's automatic
+        // recovery teardown: retain the path cooldown, then establish a clean
+        // replacement connection on the route that is still settling.
+        await playback.disconnect(preservingNetworkPathRecoveryCooldown: true)
+        let secondConnect = Task { try await playback.connect(server: server) }
+        await waitUntil { await secondGateway.connectCount == 1 }
+        await secondGateway.emitReady(ssrc: 84)
+        await secondGateway.emitSessionDescription(daveProtocolVersion: nil)
+        try await secondConnect.value
+
+        await secondTransport.emitNetworkPathRouteChange(from: wifi, to: wifi)
+        try? await Task.sleep(for: .milliseconds(50))
+        let status = await playback.currentStatus
+        XCTAssertEqual(status, .connected, "route-settle churn must not consume another automatic rejoin")
+        let replacementStopped = await secondTransport.stopped
+        XCTAssertFalse(replacementStopped)
+
+        await playback.disconnect()
+    }
+
+    func testPathRecoveryBudgetDefersChurnThenRearmsAfterStability() async throws {
+        let server = makeVoiceServerInfo()
+        let firstGateway = FakeVoiceGateway(server: server)
+        let secondGateway = FakeVoiceGateway(server: server)
+        let firstTransport = FakeVoiceTransport()
+        let secondTransport = FakeVoiceTransport()
+        let pipeline = SequencedVoicePipeline(
+            gateways: [firstGateway, secondGateway],
+            transports: [firstTransport, secondTransport]
+        )
+        let playback = VoicePlaybackService(
+            gatewayFactory: { session, info in pipeline.makeGateway(session, info) },
+            transportFactory: { host, port in pipeline.makeTransport(host, port) },
+            networkPathRecoveryBudgetStabilityWindow: .milliseconds(100)
+        )
+
+        let firstConnect = Task { try await playback.connect(server: server) }
+        await waitUntil { await firstGateway.connectCount == 1 }
+        await firstGateway.emitReady()
+        await firstGateway.emitSessionDescription(daveProtocolVersion: nil)
+        try await firstConnect.value
+
+        let wifi = makePath(status: .satisfied, interfaces: [.wifi])
+        await firstTransport.emitNetworkPathRouteChange(from: wifi, to: wifi)
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+
+        // Preserve the automatic-recovery policy, then reconnect. A route
+        // returning from unavailable normally bypasses the settle cooldown;
+        // it must still respect the one proactive-rebuild budget rather than
+        // consume every AppModel rejoin attempt during path churn.
+        await playback.disconnect(preservingNetworkPathRecoveryCooldown: true)
+        let secondConnect = Task { try await playback.connect(server: server) }
+        await waitUntil { await secondGateway.connectCount == 1 }
+        await secondGateway.emitReady(ssrc: 85)
+        await secondGateway.emitSessionDescription(daveProtocolVersion: nil)
+        try await secondConnect.value
+
+        let unavailable = makePath(status: .unsatisfied, interfaces: [])
+        await secondTransport.emitNetworkPathRouteChange(from: unavailable, to: wifi)
+        try? await Task.sleep(for: .milliseconds(50))
+        let status = await playback.currentStatus
+        XCTAssertEqual(status, .connected, "a recovered route must not spend a second automatic path rebuild")
+        let replacementStopped = await secondTransport.stopped
+        XCTAssertFalse(replacementStopped)
+
+        // Once the replacement has stayed quiet beyond the route-settle
+        // window, restore the proactive guard. A later genuine handoff must
+        // not be ignored permanently just because an earlier route churned.
+        try? await Task.sleep(for: .milliseconds(150))
+        await secondTransport.emitNetworkPathRouteChange(from: unavailable, to: wifi)
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+
+        await playback.disconnect()
     }
 
     func testUsableNetworkPathChangeDuringSpeechFailsForFreshRecovery() async throws {
@@ -323,6 +541,52 @@ final class VoicePlaybackServiceTests: XCTestCase {
         XCTAssertFalse(packets.isEmpty, "downgraded session must still send audio frames")
     }
 
+    func testDaveDowngradeHonorsExecuteAlreadyProcessedBeforePrepareHandler() async throws {
+        let (playback, gateway, _) = makePipeline(
+            daveDowngradeTransitionTimeout: .milliseconds(500)
+        )
+        let connectTask = Task { try await playback.connect(server: gateway.server) }
+        await waitUntil { await gateway.connectCount == 1 }
+        await gateway.emitReady()
+        await gateway.emitSessionDescription(daveProtocolVersion: 1)
+        await waitUntil { await playback.getDaveDiagnostics() != nil }
+
+        // A retained/replayed Execute can reach the callback before the
+        // serialized Prepare handler runs. Once transition-ready is sent, the
+        // recorded earlier receipt must finish the downgrade rather than let
+        // its watchdog mistake the already-seen Execute for packet loss.
+        await gateway.emitExecuteTransition(17)
+        try? await Task.sleep(for: .milliseconds(20))
+        await gateway.emitPrepareTransition(version: 0, transitionId: 17)
+        await waitUntil { await gateway.transitionReadyIds.contains(17) }
+
+        try await connectTask.value
+        let status = await playback.currentStatus
+        XCTAssertEqual(status, .connected)
+    }
+
+    func testDaveDowngradeRetainsExecuteQueuedDuringCoordinatorSetup() async throws {
+        let (playback, gateway, _) = makePipeline(
+            daveDowngradeTransitionTimeout: .milliseconds(500)
+        )
+        let connectTask = Task { try await playback.connect(server: gateway.server) }
+        await waitUntil { await gateway.connectCount == 1 }
+        await gateway.emitReady()
+
+        // SESSION_DESCRIPTION queues coordinator setup, but it does not wait
+        // for libdave to finish configuring. A replayed Execute can therefore
+        // be recorded before setup reaches the event tail; clearing it during
+        // construction would strand the following Prepare v0 until timeout.
+        await gateway.emitSessionDescription(daveProtocolVersion: 1)
+        await gateway.emitExecuteTransition(18)
+        await gateway.emitPrepareTransition(version: 0, transitionId: 18)
+        await waitUntil { await gateway.transitionReadyIds.contains(18) }
+
+        try await connectTask.value
+        let status = await playback.currentStatus
+        XCTAssertEqual(status, .connected)
+    }
+
     func testDaveDowngradeMissingExecuteFailsAtDeadline() async throws {
         let (playback, gateway, _) = makePipeline(
             daveDowngradeTransitionTimeout: .milliseconds(100)
@@ -378,9 +642,71 @@ final class VoicePlaybackServiceTests: XCTestCase {
         await playback.disconnect()
     }
 
+    func testDaveGateProgressWatchdogRecoversStalledSecureTransition() async throws {
+        let (playback, gateway, _) = makePipeline(
+            daveTransitionGateProgressTimeout: .milliseconds(100)
+        )
+        try await connect(playback, gateway)
+
+        // No external sender/Execute follows this upgrade. The gate remains
+        // closed, so the host watchdog must recover rather than leave a
+        // connected-looking announcer paused indefinitely.
+        await gateway.emitPrepareEpoch(version: 1, epoch: 1, transitionId: 19)
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+    }
+
+    func testDaveGateWatchdogIsNotDeferredByCallbacksBehindStalledTail() async throws {
+        let (playback, gateway, _) = makePipeline(
+            daveTransitionGateProgressTimeout: .milliseconds(100)
+        )
+        let connectTask = Task { try await playback.connect(server: gateway.server) }
+        await waitUntil { await gateway.connectCount == 1 }
+        await gateway.emitReady()
+        await gateway.emitSessionDescription(daveProtocolVersion: 1)
+        await waitUntil { await playback.getDaveDiagnostics() != nil }
+
+        // Hold a downgrade handler in its transition-ready write. The next
+        // Execute is a gated callback waiting behind that serial tail event;
+        // a continuing stream of later Executes must not restart its host
+        // deadline merely because they reached the gateway boundary.
+        await gateway.setTransitionReadySendsBlocked(true)
+        await gateway.emitPrepareTransition(version: 0, transitionId: 50)
+        await waitUntil { await gateway.blockedTransitionReadySendCount == 1 }
+
+        await gateway.emitExecuteTransition(50)
+        let callbackFlood = Task {
+            var transitionID: UInt64 = 51
+            while !Task.isCancelled {
+                await gateway.emitExecuteTransition(transitionID)
+                transitionID &+= 1
+                do {
+                    try await Task.sleep(for: .milliseconds(20))
+                } catch {
+                    return
+                }
+            }
+        }
+
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+        callbackFlood.cancel()
+        _ = await callbackFlood.result
+
+        // The fake deliberately models a non-cooperative write. Release it so
+        // the queued task can unwind after the generation is invalidated.
+        await gateway.releaseBlockedTransitionReadySends()
+        _ = await connectTask.result
+    }
+
     func testZeroIDSoleMemberResetFollowsPrepareEpochWithoutLiftingDaveGate() async throws {
         let (playback, gateway, transport) = makePipeline(
-            connectionReadinessTimeout: .milliseconds(250)
+            connectionReadinessTimeout: .milliseconds(250),
+            daveTransitionGateProgressTimeout: .milliseconds(100)
         )
         let connectTask = Task { try await playback.connect(server: gateway.server) }
         await waitUntil { await gateway.connectCount == 1 }

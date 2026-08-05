@@ -64,6 +64,22 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
     /// still resolves on disconnect.
     private var connectBlocked = false
     private var blockedConnectContinuations: [CheckedContinuation<Void, Never>] = []
+    /// Models a websocket write that wedges before the local service has set
+    /// its `isSpeaking` indicator. This covers the cancellation boundary that
+    /// must still trigger a clean rejoin.
+    private var speakingSendsBlocked = false
+    private var blockedSpeakingSendCountStorage = 0
+    private var blockedSpeakingSendContinuations: [CheckedContinuation<Void, Never>] = []
+    /// Separately pause only `speaking: false` so tests can prove a following
+    /// `speaking: true` is queued behind the teardown on the wire.
+    private var speakingFalseSendsBlocked = false
+    private var blockedSpeakingFalseSendCountStorage = 0
+    private var blockedSpeakingFalseSendContinuations: [CheckedContinuation<Void, Never>] = []
+    /// Lets a DAVE transition-ready write hold the serialized MLS event tail
+    /// while tests inject later gateway callbacks behind it.
+    private var transitionReadySendsBlocked = false
+    private var blockedTransitionReadySendCountStorage = 0
+    private var blockedTransitionReadySendContinuations: [CheckedContinuation<Void, Never>] = []
 
     private var onReady: ((VoiceReadyInfo) async -> Void)?
     private var onSessionDescription: ((VoiceSessionKey) async -> Void)?
@@ -87,10 +103,41 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
 
     func setResumeError(_ error: Error?) { resumeError = error }
     func setConnectBlocked(_ blocked: Bool) { connectBlocked = blocked }
+    func setSpeakingSendsBlocked(_ blocked: Bool) { speakingSendsBlocked = blocked }
+    func setSpeakingFalseSendsBlocked(_ blocked: Bool) { speakingFalseSendsBlocked = blocked }
+    func setTransitionReadySendsBlocked(_ blocked: Bool) { transitionReadySendsBlocked = blocked }
+
+    var blockedSpeakingSendCount: Int { blockedSpeakingSendCountStorage }
+    var blockedSpeakingFalseSendCount: Int { blockedSpeakingFalseSendCountStorage }
+    var blockedTransitionReadySendCount: Int { blockedTransitionReadySendCountStorage }
 
     func releaseBlockedConnects() {
         let continuations = blockedConnectContinuations
         blockedConnectContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func releaseBlockedSpeakingSends() {
+        let continuations = blockedSpeakingSendContinuations
+        blockedSpeakingSendContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func releaseBlockedSpeakingFalseSends() {
+        let continuations = blockedSpeakingFalseSendContinuations
+        blockedSpeakingFalseSendContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func releaseBlockedTransitionReadySends() {
+        let continuations = blockedTransitionReadySendContinuations
+        blockedTransitionReadySendContinuations.removeAll()
         for continuation in continuations {
             continuation.resume()
         }
@@ -114,10 +161,31 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
     }
 
     func sendSpeaking(_ speaking: Bool, ssrc: UInt32) async throws {
+        if speakingSendsBlocked {
+            blockedSpeakingSendCountStorage += 1
+            await withCheckedContinuation { continuation in
+                blockedSpeakingSendContinuations.append(continuation)
+            }
+            try Task.checkCancellation()
+        }
+        if !speaking, speakingFalseSendsBlocked {
+            blockedSpeakingFalseSendCountStorage += 1
+            await withCheckedContinuation { continuation in
+                blockedSpeakingFalseSendContinuations.append(continuation)
+            }
+            try Task.checkCancellation()
+        }
         speakingUpdates.append(speaking)
     }
 
     func sendTransitionReady(transitionId: UInt64) async throws {
+        if transitionReadySendsBlocked {
+            blockedTransitionReadySendCountStorage += 1
+            await withCheckedContinuation { continuation in
+                blockedTransitionReadySendContinuations.append(continuation)
+            }
+            try Task.checkCancellation()
+        }
         transitionReadyIds.append(transitionId)
     }
 
@@ -266,6 +334,17 @@ actor FakeVoiceTransport: VoiceMediaTransport {
         guard previous != snapshot else { return }
         lastObservedNetworkPath = snapshot
         await onNetworkPathChange?(previous, snapshot)
+    }
+
+    /// Production compares full `NWPath` values before projecting them into
+    /// privacy-safe snapshots. A Wi-Fi roam can therefore be a real route
+    /// change even when the public snapshot fields remain identical.
+    func emitNetworkPathRouteChange(
+        from previous: VoiceNetworkPathSnapshot,
+        to current: VoiceNetworkPathSnapshot
+    ) async {
+        guard !stopped else { return }
+        await onNetworkPathChange?(previous, current)
     }
 
     private func resumeBlockedSends() {
