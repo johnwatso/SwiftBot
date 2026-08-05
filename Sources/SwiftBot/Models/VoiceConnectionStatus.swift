@@ -28,9 +28,9 @@ enum VoiceConnectionStatus: Equatable, Sendable {
 
     var canQueueAnnouncements: Bool {
         switch self {
-        case .connected, .recovering:
+        case .connecting, .connected, .recovering:
             return true
-        case .idle, .connecting, .disconnecting, .failed:
+        case .idle, .disconnecting, .failed:
             return false
         }
     }

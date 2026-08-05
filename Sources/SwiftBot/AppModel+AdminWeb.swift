@@ -53,7 +53,8 @@ extension AppModel {
             webUIEnabled: settings.adminWebUI.enabled,
             webUIBaseURL: adminWebBaseURL(),
             clusterMode: settings.clusterMode.rawValue,
-            runtimeState: clusterSnapshot.runtimeState.rawValue
+            runtimeState: clusterSnapshot.runtimeState.rawValue,
+            isFailoverManagedNode: isFailoverManagedNode
         )
     }
 
@@ -776,7 +777,10 @@ extension AppModel {
                 prefix: "/"
             ),
             appleIntelligence: .init(
-                localAIDMReplyEnabled: settings.localAIDMReplyEnabled
+                localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
+                useAIInGuildChannels: settings.behavior.useAIInGuildChannels,
+                allowDMs: settings.behavior.allowDMs,
+                localAISystemPrompt: settings.localAISystemPrompt
             ),
             wikiBridge: .init(
                 enabled: settings.wikiBot.isEnabled,
@@ -792,15 +796,20 @@ extension AppModel {
                 mode: settings.clusterMode.rawValue,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
+                leaderPort: settings.clusterLeaderPort,
                 listenPort: settings.clusterListenPort,
+                workerOffloadEnabled: settings.clusterWorkerOffloadEnabled,
                 offloadAIReplies: settings.clusterOffloadAIReplies,
-                offloadWikiLookups: settings.clusterOffloadWikiLookups
+                offloadWikiLookups: settings.clusterOffloadWikiLookups,
+                autoReclaimAfterHours: settings.clusterAutoReclaimAfterHours
             ),
             general: .init(
                 autoStart: settings.autoStart,
                 webUIEnabled: settings.adminWebUI.enabled,
                 webUIBaseURL: adminWebBaseURL()
-            )
+            ),
+            userTimezones: .init(mappings: settings.userTimezones),
+            swiftMiner: .init(enabled: settings.swiftMiner.enabled, paired: settings.swiftMiner.isPaired)
         )
     }
 
@@ -809,6 +818,11 @@ extension AppModel {
         if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
         if let value = patch.bugTrackingEnabled { settings.bugTrackingEnabled = value }
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
+        if let value = patch.useAIInGuildChannels { settings.behavior.useAIInGuildChannels = value }
+        if let value = patch.allowDMs { settings.behavior.allowDMs = value }
+        if let value = patch.localAISystemPrompt {
+            settings.localAISystemPrompt = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         if let value = patch.wikiBridgeEnabled { settings.wikiBot.isEnabled = value }
         if let value = patch.patchyMonitoringEnabled { settings.patchy.monitoringEnabled = value }
         if let value = patch.clusterMode,
@@ -817,10 +831,27 @@ extension AppModel {
         }
         if let value = patch.clusterNodeName { settings.clusterNodeName = value }
         if let value = patch.clusterLeaderAddress { settings.clusterLeaderAddress = value }
+        if let value = patch.clusterLeaderPort { settings.clusterLeaderPort = max(1, value) }
         if let value = patch.clusterListenPort { settings.clusterListenPort = max(1, value) }
+        if let value = patch.clusterWorkerOffloadEnabled { settings.clusterWorkerOffloadEnabled = value }
         if let value = patch.clusterOffloadAIReplies { settings.clusterOffloadAIReplies = value }
         if let value = patch.clusterOffloadWikiLookups { settings.clusterOffloadWikiLookups = value }
+        if let value = patch.clusterAutoReclaimAfterHours {
+            settings.clusterAutoReclaimAfterHours = min(72, max(0, value))
+        }
         if let value = patch.autoStart { settings.autoStart = value }
+        if let value = patch.userTimezones {
+            settings.userTimezones = Dictionary(uniqueKeysWithValues: value.compactMap { userID, timezone in
+                let trimmedID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmedTimezone = timezone.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedID.isEmpty, !trimmedTimezone.isEmpty,
+                      TimeZone(identifier: trimmedTimezone) != nil else { return nil }
+                return (trimmedID, trimmedTimezone)
+            })
+        }
+        if let value = patch.swiftMinerEnabled, settings.swiftMiner.isPaired {
+            settings.swiftMiner.enabled = value
+        }
         let includesMusicLinkWatchEdit = patch.musicLinkWatchEnabled != nil || patch.musicLinkWatchChannelIDs != nil
         if let value = patch.musicLinkWatchEnabled { settings.musicLinkWatch.isEnabled = value }
         if let values = patch.musicLinkWatchChannelIDs {
@@ -1283,7 +1314,8 @@ extension AppModel {
                         webUIEnabled: false,
                         webUIBaseURL: "",
                         clusterMode: nil,
-                        runtimeState: nil
+                        runtimeState: nil,
+                        isFailoverManagedNode: false
                     )
                 }
                 return await MainActor.run { model.adminWebStatusSnapshot() }
@@ -1331,11 +1363,13 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebConfigPayload(
                         commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
-                        appleIntelligence: .init(localAIDMReplyEnabled: false),
+                        appleIntelligence: .init(localAIDMReplyEnabled: false, useAIInGuildChannels: false, allowDMs: false, localAISystemPrompt: ""),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
-                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: false, offloadWikiLookups: false),
-                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: "")
+                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: false, offloadAIReplies: false, offloadWikiLookups: false, autoReclaimAfterHours: 0),
+                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: ""),
+                        userTimezones: .init(mappings: [:]),
+                        swiftMiner: .init(enabled: false, paired: false)
                     )
                 }
                 return await MainActor.run { model.adminWebConfigSnapshot() }
@@ -1379,11 +1413,13 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebConfigPayload(
                         commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
-                        appleIntelligence: .init(localAIDMReplyEnabled: false),
+                        appleIntelligence: .init(localAIDMReplyEnabled: false, useAIInGuildChannels: false, allowDMs: false, localAISystemPrompt: ""),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
-                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: true, offloadWikiLookups: true),
-                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: "")
+                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: false, offloadAIReplies: true, offloadWikiLookups: true, autoReclaimAfterHours: 0),
+                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: ""),
+                        userTimezones: .init(mappings: [:]),
+                        swiftMiner: .init(enabled: false, paired: false)
                     )
                 }
                 return await MainActor.run { model.adminWebConfigSnapshot() }
@@ -1776,7 +1812,8 @@ extension AppModel {
                     return AdminWebSweepPayload(
                         globalPaused: false, state: "Idle", stateTone: "gray", nextRunDescription: "Unknown",
                         enabledPolicyCount: 0, totalPolicyCount: 0, messagesTodayCount: 0, suppressedTodayCount: 0, summariesThisWeekCount: 0,
-                        policies: [], recentReports: [], suggestions: [], isScanningSuggestions: false, lastSuggestionScanAt: nil, scanProgressDone: 0, scanProgressTotal: 0
+                        policies: [], recentReports: [], suggestions: [], isScanningSuggestions: false, lastSuggestionScanAt: nil, scanProgressDone: 0, scanProgressTotal: 0,
+                        servers: [], textChannelsByServer: [:]
                     )
                 }
                 return await MainActor.run { model.adminWebSweepSnapshot() }
@@ -1790,6 +1827,39 @@ extension AppModel {
                 guard let model = self else { return false }
                 await MainActor.run { model.sweepService.upsert(policy) }
                 return true
+            },
+            createSweepPolicy: { [weak self] patch in
+                guard let model = self else { return nil }
+                return await MainActor.run {
+                    guard let guildName = model.connectedServers[patch.guildID],
+                          let channel = model.availableTextChannelsByServer[patch.guildID]?.first(where: { $0.id == patch.channelID }),
+                          let kind = SweepStrategyKind(rawValue: patch.strategyKind) else { return nil }
+                    let schedule: SweepSchedule = patch.scheduleMinutes > 0
+                        ? .interval(minutes: min(43_200, max(1, patch.scheduleMinutes)))
+                        : .manual
+                    let policy = SweepPolicy(
+                        name: patch.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                        guildID: patch.guildID,
+                        guildName: guildName,
+                        channelID: channel.id,
+                        channelName: channel.name,
+                        strategies: [SweepStrategy(
+                            kind: kind,
+                            ageHours: min(8_760, max(0, patch.ageHours)),
+                            keepCount: min(1_000, max(0, patch.keepCount)),
+                            fromBotsOnly: patch.fromBotsOnly
+                        )],
+                        schedule: schedule,
+                        safety: SweepSafetyRails(
+                            maxMessagesPerRun: min(1_000, max(1, patch.maxMessagesPerRun)),
+                            minMessageAgeMinutes: min(43_200, max(0, patch.minMessageAgeMinutes)),
+                            protectPinned: patch.protectPinned,
+                            protectReacted: patch.protectReacted
+                        )
+                    )
+                    model.sweepService.upsert(policy)
+                    return policy
+                }
             },
             deleteSweepPolicy: { [weak self] policyID in
                 guard let model = self else { return false }
@@ -2862,6 +2932,9 @@ extension AppModel {
             @MainActor
             private func adminWebSweepSnapshot() -> AdminWebSweepPayload {
                 let s = sweepService
+                let serverIDs = connectedServers.keys.sorted {
+                    (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+                }
                 return AdminWebSweepPayload(
                     globalPaused: s.globalPaused,
                     state: s.state.displayName,
@@ -2878,7 +2951,13 @@ extension AppModel {
                     isScanningSuggestions: s.isScanningSuggestions,
                     lastSuggestionScanAt: s.lastSuggestionScanAt,
                     scanProgressDone: s.scanProgress.done,
-                    scanProgressTotal: s.scanProgress.total
+                    scanProgressTotal: s.scanProgress.total,
+                    servers: serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) },
+                    textChannelsByServer: Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+                        (serverID, (availableTextChannelsByServer[serverID] ?? [])
+                            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                            .map { AdminWebSimpleOption(id: $0.id, name: $0.name) })
+                    })
                 )
             }
 

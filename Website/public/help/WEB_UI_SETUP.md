@@ -41,9 +41,9 @@ This is the default. After installing SwiftBot:
 
 1. Open **Settings → Web UI**.
 2. Enable **Enable Admin Web UI**.
-3. Visit `http://localhost:8090` (or whatever port is set under **Advanced**).
+3. Visit `http://localhost:38888`.
 
-In local-only mode Discord OAuth still works — register `http://localhost:8090/auth/discord/callback` as a redirect URI on your Discord application (see [Bot Setup → Step 5](BOT_SETUP.md#5-register-redirect-uris)).
+In local-only mode Discord OAuth still works — register `http://localhost:38888/auth/discord/callback` as a redirect URI on your Discord application (see [Bot Setup → Step 5](BOT_SETUP.md#5-register-redirect-uris)).
 
 ---
 
@@ -66,7 +66,7 @@ Full walkthrough: [§6 Cloudflare Tunnel step-by-step](#6-cloudflare-tunnel-step
 
 If you already operate a reverse proxy (nginx, Caddy, Traefik, HAProxy, a different tunnel service like Tailscale Funnel or ngrok, etc.), point it at SwiftBot's local port and tell SwiftBot what public URL it's served under.
 
-1. Forward your proxy to `http://localhost:8090` on the SwiftBot host.
+1. Forward your proxy to `http://localhost:38888` on the SwiftBot host.
 2. In SwiftBot, **Settings → Web UI → Advanced**, set **Override Public Base URL** to your public URL — e.g. `https://swiftbot.example.com`.
 3. Make sure your proxy terminates TLS — SwiftBot's local server is plain HTTP.
 4. Register `https://swiftbot.example.com/auth/discord/callback` as a Discord OAuth redirect URI.
@@ -79,7 +79,7 @@ The Cloudflare Tunnel toggle in SwiftBot does **not** need to be enabled in this
 
 ## 5. Port forwarding — not supported
 
-**Don't open port 8090 (or any other SwiftBot port) directly on your router.** SwiftBot isn't designed to be reached this way and we don't support it.
+**Don't open port 38888 (or any other SwiftBot port) directly on your router.** SwiftBot isn't designed to be reached this way and we don't support it.
 
 Reasons:
 
@@ -210,7 +210,7 @@ Setup typically takes 10–30 seconds. When all rows turn green, the URL preview
 
 ## 7. Update Discord OAuth redirects
 
-If you signed in with Discord OAuth before enabling Internet Access, your redirect URI was the local one (`http://localhost:8090/auth/discord/callback`). Now that the dashboard has a public hostname, you need to **add** the new redirect to your Discord application.
+If you signed in with Discord OAuth before enabling Internet Access, your redirect URI was the local one (`http://localhost:38888/auth/discord/callback`). Now that the dashboard has a public hostname, you need to **add** the new redirect to your Discord application.
 
 1. Open the [Discord Developer Portal](https://discord.com/developers/applications) → your app → **OAuth2 → Redirects**.
 2. Click **Add Redirect** and paste:

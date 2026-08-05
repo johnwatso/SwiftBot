@@ -4686,6 +4686,7 @@
         case 'applySweepSuggestion': applySweepSuggestion(el.dataset.id); break;
         case 'dismissSweepSuggestion': dismissSweepSuggestion(el.dataset.id); break;
         case 'previewSweepPolicy': previewSweepPolicy(el.dataset.id); break;
+        case 'editSweepPolicy': openSweepPolicyEditor(el.dataset.id); break;
         case 'runSweepPolicy': runSweepPolicy(el.dataset.id); break;
         case 'deleteSweepPolicy': deleteSweepPolicy(el.dataset.id); break;
       }
@@ -5913,7 +5914,8 @@
       modifyMessage: 'Modify the message',
       log: 'Write to the log',
       webhook: 'Call a webhook',
-      delay: 'Wait'
+      delay: 'Wait',
+      aiTransform: 'Transform with Apple Intelligence'
     };
     const AUTO_MEMBER_OPS = {
       addRole: 'Add role',
@@ -5938,13 +5940,17 @@
       fromBot: 'Posted by bot / person',
       minVoiceDurationSeconds: 'Voice duration ≥',
       reactionEmoji: 'Reaction emoji',
-      mediaSource: 'Media source'
+      mediaSource: 'Media source',
+      messageContainsSpamLink: 'Contains a spam link',
+      messageCapsPercentage: 'Caps percentage ≥',
+      messageMentionsCount: 'Mentions ≥'
     };
     const AUTO_FILTER_MENU = {
       messageCreated: ['inChannel', 'directMessage', 'messageContains', 'messageContainsAny',
                        'messageEquals', 'messageDoesNotContain', 'messageMatchesRegex',
                        'messageIsReply', 'fromBot', 'userIsOneOf',
-                       'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles'],
+                       'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles',
+                       'messageContainsSpamLink', 'messageCapsPercentage', 'messageMentionsCount'],
       userJoinedVoice: ['inChannel', 'minVoiceDurationSeconds', 'userIsOneOf',
                         'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles'],
       userLeftVoice:  ['inChannel', 'minVoiceDurationSeconds', 'userIsOneOf',
@@ -5982,6 +5988,8 @@
         case 'messageIsReply':           f.boolValue = true; break;
         case 'fromBot':                  f.boolValue = false; break;
         case 'minVoiceDurationSeconds':  f.intValue = 60; break;
+        case 'messageCapsPercentage':    f.intValue = 70; break;
+        case 'messageMentionsCount':     f.intValue = 3; break;
       }
       return f;
     }
@@ -6271,6 +6279,11 @@
               <input id="autoCommandName" class="field-input" value="${escapeHTML(rule.trigger.commandName || '')}" placeholder="report">
             </div>
           ` : ''}
+          ${['messageCreated', 'reactionAdded', 'slashCommand'].includes(rule.trigger.kind) ? `
+            <div class="automation-editor-row"><label>Trigger channel</label><select id="autoTriggerChannel" class="field-select"><option value="">Any channel</option>${ctx.textChannels.map(channel => `<option value="${channel.id}" ${channel.id === rule.trigger.channelId ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('')}</select></div>
+          ` : ''}
+          ${rule.trigger.kind === 'reactionAdded' ? `<div class="automation-editor-row"><label>Reaction emoji</label><input id="autoTriggerEmoji" class="field-input" value="${escapeHTML(rule.trigger.reactionEmoji || '')}" placeholder="Any emoji"></div>` : ''}
+          ${rule.trigger.kind === 'userLeftVoice' ? `<div class="automation-editor-row"><label>Minimum stay (seconds)</label><input id="autoTriggerVoiceDuration" type="number" min="0" class="field-input" value="${rule.trigger.voiceDurationThreshold ?? ''}" placeholder="Any duration"></div>` : ''}
         </div>
 
         <div class="automation-editor-section">
@@ -6304,6 +6317,12 @@
       });
       root.querySelector('#autoCommandName')?.addEventListener('input', (e) => {
         rule.trigger.commandName = e.target.value;
+      });
+      root.querySelector('#autoTriggerChannel')?.addEventListener('change', (e) => { rule.trigger.channelId = e.target.value || null; });
+      root.querySelector('#autoTriggerEmoji')?.addEventListener('input', (e) => { rule.trigger.reactionEmoji = e.target.value || null; });
+      root.querySelector('#autoTriggerVoiceDuration')?.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value, 10);
+        rule.trigger.voiceDurationThreshold = Number.isFinite(value) ? value : null;
       });
       root.querySelector('#autoFilterAdd').addEventListener('change', (e) => {
         const kind = e.target.value;
@@ -6432,10 +6451,14 @@
             </select>
           </div>`;
         case 'minVoiceDurationSeconds':
+        case 'messageCapsPercentage':
+        case 'messageMentionsCount':
           return `<div class="automation-editor-row">
-            <label>Minimum (s)</label>
+            <label>${f.kind === 'messageCapsPercentage' ? 'Percentage' : (f.kind === 'messageMentionsCount' ? 'Mentions' : 'Minimum (s)')}</label>
             <input type="number" class="field-input auto-filter-int" data-filter-index="${idx}" value="${f.intValue ?? 60}">
           </div>`;
+        case 'messageContainsSpamLink':
+          return '<div class="automation-editor-row"><label>Detection</label><span class="command-desc">Uses SwiftBot’s spam-link detector.</span></div>';
       }
       return '';
     }
@@ -6576,6 +6599,8 @@
                  row('Body', `<textarea class="field-input auto-step-field" data-field="webhookContent" data-step-index="${idx}" rows="3">${escapeHTML(s.webhookContent || '')}</textarea>`);
         case 'delay':
           return row('Seconds', `<input type="number" class="field-input auto-step-field" data-field="delaySeconds" data-step-index="${idx}" value="${s.delaySeconds ?? 5}">`);
+        case 'aiTransform':
+          return row('Prompt', `<textarea class="field-input auto-step-field" data-field="aiPrompt" data-step-index="${idx}" rows="3" placeholder="Rewrite {message} as a short helpful reply">${escapeHTML(s.aiPrompt || '')}</textarea>`);
       }
       return '';
     }
@@ -6821,10 +6846,15 @@
       `).join('');
       root.querySelectorAll('[data-welcome-rule]').forEach(el => {
         const kind = el.dataset.welcomeRule;
-        el.querySelector('.welcome-rule-toggle')?.addEventListener('click', (e) => {
+        el.querySelector('.welcome-rule-toggle')?.addEventListener('click', async (e) => {
           e.stopPropagation();
           welcomeRuleEnabled(kind) ? disableWelcomeRule(kind) : enableWelcomeRule(kind);
-          renderWelcomeFlow();
+          try {
+            await saveWelcomeFlow();
+          } catch (error) {
+            setMessage(error.message || 'Welcome Flow could not be saved.', 'error');
+            renderWelcomeFlow();
+          }
         });
         el.querySelector('.welcome-rule-edit')?.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -6889,8 +6919,11 @@
           row('Channel', channelSelect('wfPublicChannel', s.publicChannelId)) +
           row('Format', `<select id="wfPublicFormat" class="field-select"><option value="plainText" ${s.publicMessageFormat === 'plainText' ? 'selected' : ''}>Plain Text</option><option value="embed" ${s.publicMessageFormat === 'embed' ? 'selected' : ''}>Embed</option></select>`) +
           row('Message', `<textarea id="wfPublicMessage" class="field-input" rows="4">${escapeHTML(s.publicMessageTemplate || '')}</textarea>`) +
+          row('Random message pool', `<textarea id="wfPublicPool" class="field-input" rows="4" placeholder="One template per line">${escapeHTML((s.publicMessageTemplatePool || []).join('\n'))}</textarea>`) +
           row('Embed title', `<input id="wfPublicTitle" class="field-input" value="${escapeHTML(s.publicEmbedTitleTemplate || '')}">`) +
-          row('Embed footer', `<input id="wfPublicFooter" class="field-input" value="${escapeHTML(s.publicEmbedFooterTemplate || '')}">`);
+          row('Embed footer', `<input id="wfPublicFooter" class="field-input" value="${escapeHTML(s.publicEmbedFooterTemplate || '')}">`) +
+          row('Show member avatar', `<input id="wfPublicAvatar" type="checkbox" ${s.publicEmbedShowAvatar !== false ? 'checked' : ''}>`) +
+          row('Show member author line', `<input id="wfPublicAuthor" type="checkbox" ${s.publicEmbedShowAuthor ? 'checked' : ''}>`);
       } else if (kind === 'directMessage') {
         html = row('Enabled', `<input id="wfDmEnabled" type="checkbox" ${s.dmWelcomeEnabled ? 'checked' : ''}>`) +
           row('Message', `<textarea id="wfDmMessage" class="field-input" rows="5">${escapeHTML(s.dmMessageTemplate || '')}</textarea>`) +
@@ -6937,8 +6970,11 @@
         byID('wfPublicChannel').onchange = e => { s.publicChannelId = e.target.value; };
         byID('wfPublicFormat').onchange = e => { s.publicMessageFormat = e.target.value; };
         byID('wfPublicMessage').oninput = e => { s.publicMessageTemplate = e.target.value; };
+        byID('wfPublicPool').oninput = e => { s.publicMessageTemplatePool = e.target.value.split('\n').map(value => value.trim()).filter(Boolean); };
         byID('wfPublicTitle').oninput = e => { s.publicEmbedTitleTemplate = e.target.value; };
         byID('wfPublicFooter').oninput = e => { s.publicEmbedFooterTemplate = e.target.value; };
+        byID('wfPublicAvatar').onchange = e => { s.publicEmbedShowAvatar = e.target.checked; };
+        byID('wfPublicAuthor').onchange = e => { s.publicEmbedShowAuthor = e.target.checked; };
       } else if (kind === 'directMessage') {
         byID('wfDmEnabled').onchange = e => { s.dmWelcomeEnabled = e.target.checked; };
         byID('wfDmMessage').oninput = e => { s.dmMessageTemplate = e.target.value; };
@@ -7447,9 +7483,13 @@
       const key = target.id;
       if (patchySaveTimers[key]) clearTimeout(patchySaveTimers[key]);
       patchySaveTimers[key] = setTimeout(async () => {
-        await postJSON('/api/patchy/target/upsert', { target });
-        await loadPatchy();
-        if (currentView === 'patchy') renderPatchyView();
+        try {
+          await postJSON('/api/patchy/target/upsert', { target });
+          await loadPatchy();
+          if (currentView === 'patchy') renderPatchyView();
+        } catch (error) {
+          setMessage(error.message || 'Patchy changes could not be saved.', 'error');
+        }
       }, 220);
     }
 
@@ -7472,9 +7512,7 @@
         renderSweepView();
       };
       
-      newButton.onclick = () => {
-        setMessage('Create and edit Sweep rules in the macOS app. This web view supports monitoring, pause/resume, previews, run now, toggles, delete, and suggestions.', 'info');
-      };
+      newButton.onclick = () => openSweepPolicyCreator();
 
       // Metrics
       metrics.innerHTML = `
@@ -7544,6 +7582,7 @@
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
               <button class="icon-btn" style="width: 28px; height: 28px;" data-action="previewSweepPolicy" data-id="${p.id}" title="Preview (Dry Run)"><i class="lucide" data-lucide="eye" style="width: 14px; height: 14px;"></i></button>
+              <button class="icon-btn" style="width: 28px; height: 28px;" data-action="editSweepPolicy" data-id="${p.id}" title="Edit rule"><i class="lucide" data-lucide="pencil" style="width: 14px; height: 14px;"></i></button>
               <button class="icon-btn" style="width: 28px; height: 28px;" data-action="runSweepPolicy" data-id="${p.id}" title="Run Now (Live)"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
               <label class="switch" style="transform: scale(0.8); margin-left: 4px;"><input type="checkbox" ${p.isEnabled ? 'checked' : ''} data-action="toggleSweepPolicy" data-id="${p.id}"><span class="switch-track"><span class="switch-knob"></span></span></label>
               <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" data-action="deleteSweepPolicy" data-id="${p.id}" title="Delete"><i class="lucide" data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
@@ -7551,7 +7590,7 @@
           </div>
         `).join('');
       } else {
-        rulesList.innerHTML = '<div class="placeholder">No Sweep rules yet. Create one in the native app to get started.</div>';
+        rulesList.innerHTML = '<div class="placeholder">No Sweep rules yet. Create one to get started.</div>';
       }
 
       // Audit Log
@@ -7578,6 +7617,133 @@
       await postJSON('/api/sweep/policy/toggle', { policyID: id, enabled });
       await loadSweep();
       renderSweepView();
+    }
+
+    function openSweepPolicyCreator() {
+      const servers = sweepData?.servers || [];
+      const serverOptions = servers.map(server => `<option value="${escapeHTML(server.id)}">${escapeHTML(server.name)}</option>`).join('');
+      showModal('New Sweep Rule', `
+        <div class="automation-editor-section">
+          <div class="automation-editor-row"><label>Rule Name</label><input id="sweepCreateName" class="field-input" value="New Sweep Rule"></div>
+          <div class="automation-editor-row"><label>Server</label><select id="sweepCreateGuild" class="field-select"><option value="">— Select a server —</option>${serverOptions}</select></div>
+          <div class="automation-editor-row"><label>Channel</label><select id="sweepCreateChannel" class="field-select"><option value="">— Select a server first —</option></select></div>
+          <div class="automation-editor-row"><label>Task</label><select id="sweepCreateStrategy" class="field-select"><option value="compact">Trim old messages</option><option value="keepLatest">Keep newest messages</option><option value="deduplicate">Remove duplicates</option><option value="reduceNoise" selected>Clean noisy bot channel</option><option value="summarise">AI digest (in-app)</option><option value="clearAll">Clear channel</option></select></div>
+          <div class="automation-editor-row"><label>Age (hours)</label><input id="sweepCreateAge" class="field-input" type="number" min="0" max="8760" value="48"></div>
+          <div class="automation-editor-row"><label>Keep count</label><input id="sweepCreateKeep" class="field-input" type="number" min="0" max="1000" value="1"></div>
+          <div class="automation-editor-row"><label>Bots only</label><input id="sweepCreateBots" type="checkbox" checked></div>
+          <div class="automation-editor-row"><label>Repeat every (minutes)</label><input id="sweepCreateInterval" class="field-input" type="number" min="0" max="43200" value="60"><span class="command-desc">Set 0 for manual only.</span></div>
+          <div class="automation-editor-row"><label>Max messages/run</label><input id="sweepCreateMax" class="field-input" type="number" min="1" max="1000" value="200"></div>
+          <div class="automation-editor-row"><label>Minimum message age (minutes)</label><input id="sweepCreateMinAge" class="field-input" type="number" min="0" max="43200" value="5"></div>
+          <div class="automation-editor-row"><label>Protect pinned messages</label><input id="sweepCreatePinned" type="checkbox" checked></div>
+          <div class="automation-editor-row"><label>Protect reacted messages</label><input id="sweepCreateReacted" type="checkbox" checked></div>
+        </div>`, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="sweepCreateSave" class="primary-action" type="button">Create Rule</button>
+      `);
+      const guild = document.getElementById('sweepCreateGuild');
+      const channel = document.getElementById('sweepCreateChannel');
+      const populateChannels = () => {
+        const channels = sweepData?.textChannelsByServer?.[guild?.value || ''] || [];
+        channel.innerHTML = `<option value="">— Select a channel —</option>${channels.map(item => `<option value="${escapeHTML(item.id)}">#${escapeHTML(item.name)}</option>`).join('')}`;
+      };
+      guild?.addEventListener('change', populateChannels);
+      document.getElementById('sweepCreateSave')?.addEventListener('click', async () => {
+        try {
+          await postJSON('/api/sweep/policy/create', {
+            name: document.getElementById('sweepCreateName')?.value || '',
+            guildID: guild?.value || '',
+            channelID: channel?.value || '',
+            strategyKind: document.getElementById('sweepCreateStrategy')?.value || 'reduceNoise',
+            ageHours: Number(document.getElementById('sweepCreateAge')?.value || 48),
+            keepCount: Number(document.getElementById('sweepCreateKeep')?.value || 1),
+            fromBotsOnly: !!document.getElementById('sweepCreateBots')?.checked,
+            scheduleMinutes: Number(document.getElementById('sweepCreateInterval')?.value || 0),
+            maxMessagesPerRun: Number(document.getElementById('sweepCreateMax')?.value || 200),
+            minMessageAgeMinutes: Number(document.getElementById('sweepCreateMinAge')?.value || 5),
+            protectPinned: !!document.getElementById('sweepCreatePinned')?.checked,
+            protectReacted: !!document.getElementById('sweepCreateReacted')?.checked
+          });
+          await loadSweep();
+          renderSweepView();
+          hideModal();
+        } catch (error) {
+          setMessage(error.message || 'Could not create Sweep rule.', 'error');
+        }
+      });
+    }
+
+    function openSweepPolicyEditor(policyID) {
+      const policy = sweepData?.policies?.find(item => item.id === policyID);
+      if (!policy) {
+        setMessage('Sweep rule could not be found.', 'error');
+        return;
+      }
+      const firstStrategy = policy.strategies?.[0] || {};
+      const safety = policy.safety || {};
+      const servers = sweepData?.servers || [];
+      const serverOptions = servers.map(server => `<option value="${escapeHTML(server.id)}" ${server.id === policy.guildID ? 'selected' : ''}>${escapeHTML(server.name)}</option>`).join('');
+      showModal('Edit Sweep Rule', `
+        <div class="automation-editor-section">
+          <p class="command-desc">This updates the rule’s core task and safety limits. Its existing schedule is retained.</p>
+          <div class="automation-editor-row"><label>Rule Name</label><input id="sweepEditName" class="field-input" value="${escapeHTML(policy.name || '')}"></div>
+          <div class="automation-editor-row"><label>Server</label><select id="sweepEditGuild" class="field-select">${serverOptions}</select></div>
+          <div class="automation-editor-row"><label>Channel</label><select id="sweepEditChannel" class="field-select"></select></div>
+          <div class="automation-editor-row"><label>Task</label><select id="sweepEditStrategy" class="field-select"><option value="compact">Trim old messages</option><option value="keepLatest">Keep newest messages</option><option value="deduplicate">Remove duplicates</option><option value="reduceNoise">Clean noisy bot channel</option><option value="summarise">AI digest (in-app)</option><option value="clearAll">Clear channel</option></select></div>
+          <div class="automation-editor-row"><label>Age (hours)</label><input id="sweepEditAge" class="field-input" type="number" min="0" max="8760" value="${Number(firstStrategy.ageHours || 0)}"></div>
+          <div class="automation-editor-row"><label>Keep count</label><input id="sweepEditKeep" class="field-input" type="number" min="0" max="1000" value="${Number(firstStrategy.keepCount || 0)}"></div>
+          <div class="automation-editor-row"><label>Bots only</label><input id="sweepEditBots" type="checkbox" ${firstStrategy.fromBotsOnly ? 'checked' : ''}></div>
+          <div class="automation-editor-row"><label>Max messages/run</label><input id="sweepEditMax" class="field-input" type="number" min="1" max="1000" value="${Number(safety.maxMessagesPerRun || 200)}"></div>
+          <div class="automation-editor-row"><label>Minimum message age (minutes)</label><input id="sweepEditMinAge" class="field-input" type="number" min="0" max="43200" value="${Number(safety.minMessageAgeMinutes || 0)}"></div>
+          <div class="automation-editor-row"><label>Protect pinned messages</label><input id="sweepEditPinned" type="checkbox" ${safety.protectPinned ? 'checked' : ''}></div>
+          <div class="automation-editor-row"><label>Protect reacted messages</label><input id="sweepEditReacted" type="checkbox" ${safety.protectReacted ? 'checked' : ''}></div>
+          <div class="automation-editor-row"><label>Rule enabled</label><input id="sweepEditEnabled" type="checkbox" ${policy.isEnabled ? 'checked' : ''}></div>
+        </div>`, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="sweepEditSave" class="primary-action" type="button">Save Rule</button>
+      `);
+      const guild = document.getElementById('sweepEditGuild');
+      const channel = document.getElementById('sweepEditChannel');
+      const populateChannels = () => {
+        const channels = sweepData?.textChannelsByServer?.[guild?.value || ''] || [];
+        channel.innerHTML = channels.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === policy.channelID ? 'selected' : ''}>#${escapeHTML(item.name)}</option>`).join('');
+      };
+      populateChannels();
+      document.getElementById('sweepEditStrategy').value = firstStrategy.kind || 'reduceNoise';
+      guild?.addEventListener('change', populateChannels);
+      document.getElementById('sweepEditSave')?.addEventListener('click', async () => {
+        try {
+          const selectedChannel = (sweepData?.textChannelsByServer?.[guild?.value || ''] || []).find(item => item.id === channel?.value);
+          const updated = {
+            ...policy,
+            name: document.getElementById('sweepEditName')?.value || policy.name,
+            guildID: guild?.value || policy.guildID,
+            guildName: (servers.find(server => server.id === guild?.value)?.name) || policy.guildName,
+            channelID: channel?.value || policy.channelID,
+            channelName: selectedChannel?.name || policy.channelName,
+            isEnabled: !!document.getElementById('sweepEditEnabled')?.checked,
+            strategies: [{
+              ...firstStrategy,
+              kind: document.getElementById('sweepEditStrategy')?.value || firstStrategy.kind,
+              ageHours: Number(document.getElementById('sweepEditAge')?.value || 0),
+              keepCount: Number(document.getElementById('sweepEditKeep')?.value || 0),
+              fromBotsOnly: !!document.getElementById('sweepEditBots')?.checked
+            }],
+            safety: {
+              ...safety,
+              maxMessagesPerRun: Number(document.getElementById('sweepEditMax')?.value || 200),
+              minMessageAgeMinutes: Number(document.getElementById('sweepEditMinAge')?.value || 0),
+              protectPinned: !!document.getElementById('sweepEditPinned')?.checked,
+              protectReacted: !!document.getElementById('sweepEditReacted')?.checked
+            }
+          };
+          await postJSON('/api/sweep/policy/update', updated);
+          await loadSweep();
+          renderSweepView();
+          hideModal();
+        } catch (error) {
+          setMessage(error.message || 'Could not save Sweep rule.', 'error');
+        }
+      });
     }
 
     async function runSweepPolicy(id) {
@@ -7739,7 +7905,14 @@
           <span class="value">${uniqueWatchedTextChannels}</span>
           <div class="command-desc">Distinct text sources</div>
         </div>
+        <div class="commands-toggle-card">
+          <span class="label">Default Announcer</span>
+          <span class="value">${announcerData.autoConnect ? 'Auto-connect' : 'Manual'}</span>
+          <button id="announcerGlobalSettings" class="mini-btn" type="button">Configure</button>
+        </div>
       `;
+
+      top.querySelector('#announcerGlobalSettings')?.addEventListener('click', openAnnouncerGlobalSettings);
 
       // Render cards
       if (announcerData.configs.length === 0) {
@@ -7812,6 +7985,41 @@
       refreshIcons();
     }
 
+    function openAnnouncerGlobalSettings() {
+      const settings = announcerData;
+      const serverOptions = (settings.servers || []).map(server => `<option value="${escapeHTML(server.id)}" ${server.id === settings.guildID ? 'selected' : ''}>${escapeHTML(server.name)}</option>`).join('');
+      const selectedServer = settings.guildID || settings.servers?.[0]?.id || '';
+      const textOptions = (settings.textChannelsByServer?.[selectedServer] || []).map(channel => `<option value="${escapeHTML(channel.id)}" ${channel.id === settings.watchedTextChannelID ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('');
+      const voiceOptions = (settings.voiceChannelsByServer?.[selectedServer] || []).map(channel => `<option value="${escapeHTML(channel.id)}" ${channel.id === settings.voiceChannelID ? 'selected' : ''}>${escapeHTML(channel.name)}</option>`).join('');
+      showModal('Default Announcer', `
+        <div class="automation-editor-section">
+          <div class="automation-editor-row"><label>Server</label><select id="agGuild" class="field-select"><option value="">— Select a server —</option>${serverOptions}</select></div>
+          <div class="automation-editor-row"><label>Voice Channel</label><select id="agVoice" class="field-select"><option value="">— None —</option>${voiceOptions}</select></div>
+          <div class="automation-editor-row"><label>Text Channel</label><select id="agText" class="field-select"><option value="">— None —</option>${textOptions}</select></div>
+          <div class="automation-editor-row"><label>Read Text Source</label><input id="agTextEnabled" type="checkbox" ${settings.textChannelSourceEnabled ? 'checked' : ''}></div>
+          <div class="automation-editor-row"><label>Auto-connect at bot start</label><input id="agAutoConnect" type="checkbox" ${settings.autoConnect ? 'checked' : ''}></div>
+        </div>`, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="announcerGlobalSave" class="primary-action" type="button">Save</button>
+      `);
+      document.getElementById('announcerGlobalSave')?.addEventListener('click', async () => {
+        try {
+          await postJSON('/api/announcer/settings', {
+            guildID: document.getElementById('agGuild')?.value || '',
+            voiceChannelID: document.getElementById('agVoice')?.value || '',
+            watchedTextChannelID: document.getElementById('agText')?.value || '',
+            textChannelSourceEnabled: !!document.getElementById('agTextEnabled')?.checked,
+            autoConnect: !!document.getElementById('agAutoConnect')?.checked
+          });
+          await loadAnnouncer();
+          renderAnnouncerView();
+          hideModal();
+        } catch (error) {
+          setMessage(error.message || 'Could not save announcer settings.', 'error');
+        }
+      });
+    }
+
     function getTintHex(tint) {
       switch (tint) {
         case 'purple': return '#a855f7';
@@ -7836,6 +8044,16 @@
         tint: 'purple',
         autoJoin: false,
         introduceOnManualJoin: false,
+        autoJoinOnStream: false,
+        introduceOnStreamJoin: false,
+        readVoiceChannelChat: true,
+        ignoreWebhooks: false,
+        skipBots: false,
+        ignoreLinks: true,
+        summariseLong: false,
+        keepShort: false,
+        smartShortenWithAppleIntelligence: false,
+        ignoreEmojiSpam: false,
         preferredVoiceIdentifier: '',
         connectionMode: 'fixed',
         connectionMinutes: 20,
@@ -7862,6 +8080,16 @@
         config.preferredVoiceIdentifier = document.getElementById('acPreferredVoice').value;
         config.autoJoin = document.getElementById('acAutoJoin').checked;
         config.introduceOnManualJoin = document.getElementById('acIntroduceOnManualJoin').checked;
+        config.autoJoinOnStream = document.getElementById('acAutoJoinOnStream').checked;
+        config.introduceOnStreamJoin = document.getElementById('acIntroduceOnStreamJoin').checked;
+        config.readVoiceChannelChat = document.getElementById('acReadVoiceChat').checked;
+        config.ignoreWebhooks = document.getElementById('acIgnoreWebhooks').checked;
+        config.skipBots = document.getElementById('acSkipBots').checked;
+        config.ignoreLinks = document.getElementById('acIgnoreLinks').checked;
+        config.summariseLong = document.getElementById('acSummariseLong').checked;
+        config.keepShort = document.getElementById('acKeepShort').checked;
+        config.smartShortenWithAppleIntelligence = document.getElementById('acSmartShorten').checked;
+        config.ignoreEmojiSpam = document.getElementById('acIgnoreEmojiSpam').checked;
         config.connectionMode = document.getElementById('acConnectionMode').value;
         config.connectionMinutes = parseInt(document.getElementById('acConnectionMinutes').value) || 20;
         config.enabled = document.getElementById('acEnabled').checked;
@@ -8001,6 +8229,16 @@
         row('Reading Voice', voiceSelectHTML) +
         row('Auto-join', `<input id="acAutoJoin" type="checkbox" ${config.autoJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Join automatically when a user enters voice</span>`) +
         row('Manual intro', `<input id="acIntroduceOnManualJoin" type="checkbox" ${config.introduceOnManualJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Say a short intro after /announce join</span>`) +
+        row('Join on Go Live', `<input id="acAutoJoinOnStream" type="checkbox" ${config.autoJoinOnStream ? 'checked' : ''}>`) +
+        row('Stream intro', `<input id="acIntroduceOnStreamJoin" type="checkbox" ${config.introduceOnStreamJoin ? 'checked' : ''}>`) +
+        row('Read Text-in-Voice', `<input id="acReadVoiceChat" type="checkbox" ${config.readVoiceChannelChat ? 'checked' : ''}>`) +
+        row('Ignore webhooks', `<input id="acIgnoreWebhooks" type="checkbox" ${config.ignoreWebhooks ? 'checked' : ''}>`) +
+        row('Skip bot messages', `<input id="acSkipBots" type="checkbox" ${config.skipBots ? 'checked' : ''}>`) +
+        row('Ignore links', `<input id="acIgnoreLinks" type="checkbox" ${config.ignoreLinks ? 'checked' : ''}>`) +
+        row('Shorten long messages', `<input id="acSummariseLong" type="checkbox" ${config.summariseLong ? 'checked' : ''}>`) +
+        row('Keep announcements short', `<input id="acKeepShort" type="checkbox" ${config.keepShort ? 'checked' : ''}>`) +
+        row('Use Apple Intelligence to shorten', `<input id="acSmartShorten" type="checkbox" ${config.smartShortenWithAppleIntelligence ? 'checked' : ''}>`) +
+        row('Ignore emoji spam', `<input id="acIgnoreEmojiSpam" type="checkbox" ${config.ignoreEmojiSpam ? 'checked' : ''}>`) +
         row('Connection Mode', connectionModeHTML) +
         row('Fixed Stay Duration', connectionMinutesHTML) +
         row('Reads Text Channels', `<div id="acTextChannelsList" style="max-height: 150px; overflow-y: auto; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--cv-border); border-radius: 6px;"></div>`);
@@ -8172,6 +8410,20 @@
                   <label class="patchy-kv">Steam App ID
                     <input class="field-input patchy-steam" value="${(target.steamAppID || '').replaceAll('"', '&quot;')}" placeholder="e.g. 2073850" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
                   </label>
+                  <label class="patchy-kv" style="display:flex;align-items:center;gap:8px;">Use Steam Icon
+                    <input class="patchy-steam-icon" type="checkbox" ${target.useSteamIcon ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
+                  </label>
+                ` : ''}
+
+                ${target.source === 'Apple' ? `
+                  <label class="patchy-kv">Apple Product
+                    <select class="field-select patchy-apple-product" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
+                      ${['macOS', 'iOS', 'iPadOS', 'tvOS', 'watchOS', 'visionOS', 'Xcode', 'Safari'].map(product => `<option value="${product}" ${target.appleProduct === product ? 'selected' : ''}>${product}</option>`).join('')}
+                    </select>
+                  </label>
+                  <label class="patchy-kv" style="display:flex;align-items:center;gap:8px;">Include Betas
+                    <input class="patchy-apple-betas" type="checkbox" ${target.appleIncludeBetas ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
+                  </label>
                 ` : ''}
 
                 ${target.source === 'GitHub' ? `
@@ -8247,8 +8499,9 @@
                     <label style="display:flex;align-items:center;gap:8px;font-size:11px;">
                       Branch Mode:
                       <select class="field-select patchy-github-mode" style="min-width:120px;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
-                        <option value="auto" ${target.githubBranchMode === 'auto' ? 'selected' : ''}>Auto</option>
-                        <option value="fixed" ${target.githubBranchMode === 'fixed' ? 'selected' : ''}>Fixed</option>
+                        <option value="main" ${target.githubBranchMode === 'main' ? 'selected' : ''}>Main branch</option>
+                        <option value="specific" ${target.githubBranchMode === 'specific' ? 'selected' : ''}>Specific branch</option>
+                        <option value="all" ${target.githubBranchMode === 'all' ? 'selected' : ''}>All branches</option>
                       </select>
                     </label>
                   </div>
@@ -8306,6 +8559,9 @@
         });
         card.querySelector('.patchy-source')?.addEventListener('change', (e) => commit(t => { t.source = e.target.value; }));
         card.querySelector('.patchy-steam')?.addEventListener('input', (e) => commit(t => { t.steamAppID = e.target.value; }));
+        card.querySelector('.patchy-steam-icon')?.addEventListener('change', (e) => commit(t => { t.useSteamIcon = e.target.checked; }));
+        card.querySelector('.patchy-apple-product')?.addEventListener('change', (e) => commit(t => { t.appleProduct = e.target.value; }));
+        card.querySelector('.patchy-apple-betas')?.addEventListener('change', (e) => commit(t => { t.appleIncludeBetas = e.target.checked; }));
         card.querySelector('.patchy-github-repo')?.addEventListener('input', (e) => commit(t => { t.githubRepo = e.target.value; }));
         card.querySelector('.patchy-github-branch')?.addEventListener('input', (e) => commit(t => { t.githubBranch = e.target.value; }));
         card.querySelector('.patchy-swiftminer-game')?.addEventListener('input', (e) => commit(t => { t.swiftMinerGameName = e.target.value; }));
@@ -8376,9 +8632,13 @@
       const key = source.id;
       if (wikiSaveTimers[key]) clearTimeout(wikiSaveTimers[key]);
       wikiSaveTimers[key] = setTimeout(async () => {
-        await postJSON('/api/wikibridge/source/upsert', { source });
-        await loadWikiBridge();
-        if (currentView === 'wikibridge') renderWikiBridgeView();
+        try {
+          await postJSON('/api/wikibridge/source/upsert', { source });
+          await loadWikiBridge();
+          if (currentView === 'wikibridge') renderWikiBridgeView();
+        } catch (error) {
+          setMessage(error.message || 'Lookup source changes could not be saved.', 'error');
+        }
       }, 220);
     }
 
@@ -8438,7 +8698,27 @@
             <label class="wiki-kv">API Path
               <input class="field-input wiki-api" value="${(source.apiPath || '').replaceAll('"', '&quot;')}">
             </label>
+            <label class="wiki-kv">Search Scope
+              <input class="field-input wiki-scope" value="${(source.searchScope || '').replaceAll('"', '&quot;')}" placeholder="Optional namespace or category">
+            </label>
           </div>
+          <details style="margin-top:10px;">
+            <summary style="cursor:pointer;color:var(--muted);font-size:12px;">Commands, formatting & parsing</summary>
+            <div class="wiki-row" style="margin-top:10px;">
+              <label class="wiki-kv">Include Stat Blocks <input class="wiki-stat-blocks" type="checkbox" ${source.formatting?.includeStatBlocks !== false ? 'checked' : ''}></label>
+              <label class="wiki-kv">Use Embeds <input class="wiki-use-embeds" type="checkbox" ${source.formatting?.useEmbeds !== false ? 'checked' : ''}></label>
+              <label class="wiki-kv">Compact Mode <input class="wiki-compact" type="checkbox" ${source.formatting?.compactMode ? 'checked' : ''}></label>
+            </div>
+            <label class="wiki-kv" style="display:block;margin-top:8px;">Hidden Embed Fields (comma-separated)
+              <input class="field-input wiki-hidden-fields" value="${escapeHTML((source.formatting?.hiddenEmbedFields || []).join(', '))}">
+            </label>
+            <label class="wiki-kv" style="display:block;margin-top:8px;">Command Definitions (JSON)
+              <textarea class="field-input wiki-commands" rows="4">${escapeHTML(JSON.stringify(source.commands || [], null, 2))}</textarea>
+            </label>
+            <label class="wiki-kv" style="display:block;margin-top:8px;">Parsing Rules (JSON)
+              <textarea class="field-input wiki-parsing-rules" rows="4">${escapeHTML(JSON.stringify(source.parsingRules || [], null, 2))}</textarea>
+            </label>
+          </details>
           <div class="wiki-row">
             <div class="wiki-kv">Commands<br><strong>${(source.commands || []).length}</strong></div>
             <div class="wiki-kv">Parsing Rules<br><strong>${(source.parsingRules || []).length}</strong></div>
@@ -8470,6 +8750,22 @@
         card.querySelector('.wiki-name')?.addEventListener('input', (e) => commit(s => { s.name = e.target.value; }));
         card.querySelector('.wiki-base')?.addEventListener('input', (e) => commit(s => { s.baseURL = e.target.value; }));
         card.querySelector('.wiki-api')?.addEventListener('input', (e) => commit(s => { s.apiPath = e.target.value; }));
+        card.querySelector('.wiki-scope')?.addEventListener('input', (e) => commit(s => { s.searchScope = e.target.value; }));
+        card.querySelector('.wiki-stat-blocks')?.addEventListener('change', (e) => commit(s => { s.formatting = { ...(s.formatting || {}), includeStatBlocks: e.target.checked }; }));
+        card.querySelector('.wiki-use-embeds')?.addEventListener('change', (e) => commit(s => { s.formatting = { ...(s.formatting || {}), useEmbeds: e.target.checked }; }));
+        card.querySelector('.wiki-compact')?.addEventListener('change', (e) => commit(s => { s.formatting = { ...(s.formatting || {}), compactMode: e.target.checked }; }));
+        card.querySelector('.wiki-hidden-fields')?.addEventListener('change', (e) => commit(s => { s.formatting = { ...(s.formatting || {}), hiddenEmbedFields: e.target.value.split(',').map(value => value.trim()).filter(Boolean) }; }));
+        const parseJSONField = (selector, property) => card.querySelector(selector)?.addEventListener('change', (e) => {
+          try {
+            const value = JSON.parse(e.target.value || '[]');
+            if (!Array.isArray(value)) throw new Error('Expected an array.');
+            commit(s => { s[property] = value; });
+          } catch (error) {
+            setMessage(`Invalid ${property}: ${error.message || 'enter a JSON array.'}`, 'error');
+          }
+        });
+        parseJSONField('.wiki-commands', 'commands');
+        parseJSONField('.wiki-parsing-rules', 'parsingRules');
         card.querySelector('.wiki-primary')?.addEventListener('click', async () => {
           await postJSON('/api/wikibridge/source/primary', { sourceID });
           await Promise.all([loadWikiBridge(), loadConfig(), loadOverview()]);
@@ -8525,17 +8821,24 @@
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Apple Intelligence</div>
           <div class="setting-row"><div class="left"><div class="title">Enable DM AI Replies</div><div class="desc">Allow automatic AI responses in DMs.</div></div><label class="switch"><input id="setAiDm" type="checkbox" ${cfg.appleIntelligence.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Reply When Mentioned</div><div class="desc">Allow AI replies in guild channels when the bot is mentioned.</div></div><label class="switch"><input id="setAiGuild" type="checkbox" ${cfg.appleIntelligence.useAIInGuildChannels ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Allow DMs From Anyone</div><div class="desc">Accept direct-message conversations without a prior trust relationship.</div></div><label class="switch"><input id="setAiAllowDMs" type="checkbox" ${cfg.appleIntelligence.allowDMs ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Personality Prompt</label><textarea id="setAiPrompt" class="field-input" rows="4">${escapeHTML(cfg.appleIntelligence.localAISystemPrompt || '')}</textarea></div>
+          <button id="setAiSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save Personality</button>
           <div class="info-row"><span class="label">Engine</span><span class="value">Apple Intelligence (on-device)</span></div>
         </section>
 
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="network"></i> SwiftMesh</div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="setMeshMode" class="field-select"><option value="Standalone" ${cfg.swiftMesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${cfg.swiftMesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${cfg.swiftMesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${cfg.swiftMesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="setMeshMode" class="field-select"><option value="Standalone" ${cfg.swiftMesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${cfg.swiftMesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Standby" ${cfg.swiftMesh.mode === 'Standby' ? 'selected' : ''}>Standby</option>${cfg.swiftMesh.mode === 'Worker' ? '<option value="Worker" selected>Worker (Deprecated)</option>' : ''}</select></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="setMeshNode" class="field-input" value="${(cfg.swiftMesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="setMeshLeader" class="field-input" value="${(cfg.swiftMesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Port</label><input id="setMeshLeaderPort" class="field-input" type="number" min="1" value="${cfg.swiftMesh.leaderPort || 0}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="setMeshPort" class="field-input" type="number" min="1" value="${cfg.swiftMesh.listenPort || 0}"></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Worker Offload</div><div class="desc">Master switch for distributing supported work to worker nodes.</div></div><label class="switch"><input id="setMeshWorkerOffload" type="checkbox" ${cfg.swiftMesh.workerOffloadEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI reply jobs to workers from Primary.</div></div><label class="switch"><input id="setMeshOffloadAI" type="checkbox" ${cfg.swiftMesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookup jobs to workers from Primary.</div></div><label class="switch"><input id="setMeshOffloadWiki" type="checkbox" ${cfg.swiftMesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Auto-Reclaim After (hours)</label><input id="setMeshAutoReclaim" class="field-input" type="number" min="0" max="72" value="${cfg.swiftMesh.autoReclaimAfterHours || 0}"></div>
           <button id="setMeshSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save SwiftMesh</button>
         </section>
 
@@ -8546,6 +8849,18 @@
           <div class="info-row"><span class="label">Lookup Sources</span><span class="value">${cfg.wikiBridge.enabledSources}/${cfg.wikiBridge.totalSources}</span></div>
           <div class="info-row"><span class="label">Patchy Targets</span><span class="value">${cfg.patchy.enabledTargets}/${cfg.patchy.totalTargets}</span></div>
         </section>
+
+        <section class="settings-panel glass">
+          <div class="panel-title"><i class="lucide" data-lucide="clock-3"></i> User Timezones</div>
+          <div class="command-desc" style="margin-bottom:8px;">Discord user ID to IANA timezone mapping used by /timestamp. Use one <code>userID=Area/City</code> entry per line.</div>
+          <textarea id="setUserTimezones" class="field-input" rows="5">${escapeHTML(Object.entries(cfg.userTimezones?.mappings || {}).sort(([a], [b]) => a.localeCompare(b)).map(([id, timezone]) => `${id}=${timezone}`).join('\n'))}</textarea>
+          <button id="setUserTimezonesSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save Timezones</button>
+        </section>
+
+        <section class="settings-panel glass">
+          <div class="panel-title"><i class="lucide" data-lucide="pickaxe"></i> SwiftMiner</div>
+          <div class="setting-row"><div class="left"><div class="title">Enable SwiftMiner Integration</div><div class="desc">${cfg.swiftMiner.paired ? 'Pairing is configured on this Mac.' : 'Pair SwiftMiner in the macOS app before enabling this integration.'}</div></div><label class="switch"><input id="setSwiftMinerEnabled" type="checkbox" ${cfg.swiftMiner.enabled ? 'checked' : ''} ${cfg.swiftMiner.paired ? '' : 'disabled'}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+        </section>
       `;
 
       top.querySelector('#setAutoStart')?.addEventListener('change', e => saveConfigPatch({ autoStart: e.target.checked }));
@@ -8553,16 +8868,37 @@
       panels.querySelector('#setCmdSlash')?.addEventListener('change', e => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       panels.querySelector('#setAiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+      panels.querySelector('#setAiGuild')?.addEventListener('change', e => saveConfigPatch({ useAIInGuildChannels: e.target.checked }));
+      panels.querySelector('#setAiAllowDMs')?.addEventListener('change', e => saveConfigPatch({ allowDMs: e.target.checked }));
+      panels.querySelector('#setAiSave')?.addEventListener('click', () => saveConfigPatch({ localAISystemPrompt: panels.querySelector('#setAiPrompt')?.value || '' }));
       panels.querySelector('#setWikiEnabled')?.addEventListener('change', e => saveConfigPatch({ wikiBridgeEnabled: e.target.checked }));
       panels.querySelector('#setPatchyEnabled')?.addEventListener('change', e => saveConfigPatch({ patchyMonitoringEnabled: e.target.checked }));
+      panels.querySelector('#setSwiftMinerEnabled')?.addEventListener('change', e => saveConfigPatch({ swiftMinerEnabled: e.target.checked }));
+      panels.querySelector('#setUserTimezonesSave')?.addEventListener('click', () => {
+        const mappings = {};
+        const invalid = [];
+        (panels.querySelector('#setUserTimezones')?.value || '').split('\n').map(line => line.trim()).filter(Boolean).forEach(line => {
+          const separator = line.indexOf('=');
+          if (separator <= 0 || !line.slice(separator + 1).trim()) invalid.push(line);
+          else mappings[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
+        });
+        if (invalid.length) {
+          setMessage('Use one userID=Area/City mapping per line.', 'error');
+          return;
+        }
+        saveConfigPatch({ userTimezones: mappings });
+      });
       panels.querySelector('#setMeshSave')?.addEventListener('click', () => {
         saveConfigPatch({
           clusterMode: panels.querySelector('#setMeshMode')?.value || 'Standalone',
           clusterNodeName: panels.querySelector('#setMeshNode')?.value || '',
           clusterLeaderAddress: panels.querySelector('#setMeshLeader')?.value || '',
+          clusterLeaderPort: Number(panels.querySelector('#setMeshLeaderPort')?.value || 0),
           clusterListenPort: Number(panels.querySelector('#setMeshPort')?.value || 0),
+          clusterWorkerOffloadEnabled: !!panels.querySelector('#setMeshWorkerOffload')?.checked,
           clusterOffloadAIReplies: !!panels.querySelector('#setMeshOffloadAI')?.checked,
-          clusterOffloadWikiLookups: !!panels.querySelector('#setMeshOffloadWiki')?.checked
+          clusterOffloadWikiLookups: !!panels.querySelector('#setMeshOffloadWiki')?.checked,
+          clusterAutoReclaimAfterHours: Number(panels.querySelector('#setMeshAutoReclaim')?.value || 0)
         });
       });
       refreshIcons();
@@ -8673,10 +9009,17 @@
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Runtime</div>
           <div class="setting-row"><div class="left"><div class="title">DM AI Replies</div><div class="desc">Automatically reply in direct messages.</div></div><label class="switch"><input id="aiDm" type="checkbox" ${cfg.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Guild Mention Replies</div><div class="desc">Reply when members mention the bot in a server.</div></div><label class="switch"><input id="aiGuild" type="checkbox" ${cfg.useAIInGuildChannels ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Allow DMs From Anyone</div><div class="desc">Allow direct messages from users who have not interacted with the bot.</div></div><label class="switch"><input id="aiAllowDMs" type="checkbox" ${cfg.allowDMs ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Personality Prompt</label><textarea id="aiPrompt" class="field-input" rows="5">${escapeHTML(cfg.localAISystemPrompt || '')}</textarea></div>
+          <button id="aiSavePrompt" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save Personality</button>
         </section>
       `;
 
       panels.querySelector('#aiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+      panels.querySelector('#aiGuild')?.addEventListener('change', e => saveConfigPatch({ useAIInGuildChannels: e.target.checked }));
+      panels.querySelector('#aiAllowDMs')?.addEventListener('change', e => saveConfigPatch({ allowDMs: e.target.checked }));
+      panels.querySelector('#aiSavePrompt')?.addEventListener('click', () => saveConfigPatch({ localAISystemPrompt: panels.querySelector('#aiPrompt')?.value || '' }));
     }
 
     function renderActivityView() {
@@ -9590,9 +9933,12 @@
           <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="meshMode" class="field-select"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Primary</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Fail Over</option>${workerOption}</select></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="meshNode" class="field-input" value="${escapeHTML(mesh.nodeName || '')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Primary Host</label><input id="meshLeader" class="field-input" value="${escapeHTML(mesh.leaderAddress || '')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Primary Port</label><input id="meshLeaderPort" class="field-input" type="number" min="1" value="${escapeHTML(mesh.leaderPort || 0)}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="meshPort" class="field-input" type="number" min="1" value="${escapeHTML(mesh.listenPort || 0)}"></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Worker Offload</div><div class="desc">Master switch for supported work distribution.</div></div><label class="switch"><input id="meshWorkerOffload" type="checkbox" ${mesh.workerOffloadEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI replies to workers when Primary.</div></div><label class="switch"><input id="meshOffloadAI" type="checkbox" ${mesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookups to workers when Primary.</div></div><label class="switch"><input id="meshOffloadWiki" type="checkbox" ${mesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Auto-Reclaim After (hours)</label><input id="meshAutoReclaim" class="field-input" type="number" min="0" max="72" value="${escapeHTML(mesh.autoReclaimAfterHours || 0)}"></div>
           <div class="mesh-config-actions">
             <button id="meshSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save</button>
             <button id="meshRefresh" class="mini-btn" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
@@ -9620,9 +9966,12 @@
           clusterMode: panels.querySelector('#meshMode')?.value || 'Standalone',
           clusterNodeName: panels.querySelector('#meshNode')?.value || '',
           clusterLeaderAddress: panels.querySelector('#meshLeader')?.value || '',
+          clusterLeaderPort: Number(panels.querySelector('#meshLeaderPort')?.value || 0),
           clusterListenPort: Number(panels.querySelector('#meshPort')?.value || 0),
+          clusterWorkerOffloadEnabled: !!panels.querySelector('#meshWorkerOffload')?.checked,
           clusterOffloadAIReplies: !!panels.querySelector('#meshOffloadAI')?.checked,
-          clusterOffloadWikiLookups: !!panels.querySelector('#meshOffloadWiki')?.checked
+          clusterOffloadWikiLookups: !!panels.querySelector('#meshOffloadWiki')?.checked,
+          clusterAutoReclaimAfterHours: Number(panels.querySelector('#meshAutoReclaim')?.value || 0)
         });
       });
       panels.querySelector('#meshRefresh')?.addEventListener('click', async () => {
@@ -9917,7 +10266,7 @@
 
     function isFailoverWebLocked(view) {
       if (!dashboardStatus || !dashboardStatus.isFailoverManagedNode) return false;
-      const locked = ['settings', 'voice', 'commands', 'aibots', 'patchy', 'wikibridge', 'recordings'];
+      const locked = ['settings', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'aibots', 'patchy', 'sweep', 'wikibridge', 'recordings', 'swiftmesh'];
       return locked.includes(view);
     }
 

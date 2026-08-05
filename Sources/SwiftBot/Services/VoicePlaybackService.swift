@@ -30,6 +30,11 @@ actor VoicePlaybackService {
     /// handshake. A verified DAVE sole-member reset clears this timer because
     /// the protocol intentionally waits for a future MLS group indefinitely.
     private let connectionReadinessTimeout: Duration
+    /// A downgrade is only safe after Discord sends the matching Execute
+    /// Transition. If that acknowledgement is lost, keeping the old MLS
+    /// context alive produces a connected-looking but silent session, so bound
+    /// the wait and let the normal reconnect path rebuild both transports.
+    private let daveDowngradeTransitionTimeout: Duration
     private var status: Status = .idle
     private var gateway: (any VoicePlaybackGateway)?
     private var transport: (any VoiceMediaTransport)?
@@ -40,6 +45,15 @@ actor VoicePlaybackService {
     private var negotiatedMode: VoiceEncryptionMode?
     private var daveCoordinator: DaveSessionCoordinator?
     private var daveMediaRequired: Bool = false
+    /// Set synchronously as soon as a DAVE epoch/reset event reaches the
+    /// gateway callback, before that event is serialized behind native MLS
+    /// work. This closes the tiny re-entrancy window in which one stale frame
+    /// could otherwise be sent under the previous media context.
+    private var daveTransitionGatePending = false
+    /// The DAVE transition that owns the current fail-closed gate. A late
+    /// media-ready result from an older transition must never lift a gate that
+    /// was armed by a newer Prepare Epoch callback.
+    private var daveTransitionGateTransitionId: UInt64?
     private var daveExternalSender: Data?
     /// DAVE gateway callbacks arrive independently from the WebSocket receive
     /// loop. Swift actors are re-entrant at `await` points, so serialize their
@@ -56,6 +70,7 @@ actor VoicePlaybackService {
     /// only observes its result so a stuck mid-call refresh triggers SwiftBot's
     /// normal reconnect path instead of leaving announcements paused forever.
     private var daveReadinessObservationTask: Task<Void, Never>?
+    private var daveDowngradeTransitionDeadlineTask: Task<Void, Never>?
     /// Monotonically increasing ownership token for the live connection. Every
     /// gateway callback and asynchronous worker captures this token. A delayed
     /// callback from a previous WebSocket/UDP session must never be allowed to
@@ -93,12 +108,21 @@ actor VoicePlaybackService {
     /// utterance can clear the flag (or fail the session) after a new
     /// connection has already begun speaking.
     private var speakingGeneration: UInt64?
+    /// Used only for diagnostics. This makes it possible to distinguish a
+    /// gateway-speaking update from a first successfully encrypted UDP frame
+    /// when investigating reports of a lit speaking indicator with no audio.
+    private var speakingStartedAt: ContinuousClock.Instant?
+    private var didSendFirstAudioFrameForSpeech = false
     /// Periodic Discord UDP keepalive. Keeps the NAT/UDP mapping alive between
     /// utterances so playback doesn't go stale — without sending RTP audio, so
     /// the speaking ring stays off while idle.
     private var keepaliveTask: Task<Void, Never>?
     private var keepaliveCounter: UInt32 = 0
     private var keepaliveFailureCount: Int = 0
+    /// A path monitor can report several details for one route handoff. Once a
+    /// usable new route has requested recovery, ignore the rest until the next
+    /// connection generation owns a fresh UDP transport.
+    private var pathRecoveryRequested = false
     /// When the current connect attempt began, used to time each handshake phase
     /// in the diagnostics log (so a slow connect can be pinpointed).
     private var connectStartedAt: ContinuousClock.Instant?
@@ -124,13 +148,15 @@ actor VoicePlaybackService {
         gatewayFactory: @escaping GatewayFactory = { VoiceGatewayConnection(session: $0, server: $1) },
         transportFactory: @escaping TransportFactory = { VoiceUDPTransport(host: $0, port: $1) },
         resumeConfirmationTimeout: Duration = .seconds(5),
-        connectionReadinessTimeout: Duration = .seconds(15)
+        connectionReadinessTimeout: Duration = .seconds(15),
+        daveDowngradeTransitionTimeout: Duration = .seconds(12)
     ) {
         self.session = session
         self.gatewayFactory = gatewayFactory
         self.transportFactory = transportFactory
         self.resumeConfirmationTimeout = resumeConfirmationTimeout
         self.connectionReadinessTimeout = connectionReadinessTimeout
+        self.daveDowngradeTransitionTimeout = daveDowngradeTransitionTimeout
     }
 
     func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
@@ -167,11 +193,14 @@ actor VoicePlaybackService {
         lastDaveStepAt = nil
         pendingDaveDowngradeTransitionId = nil
         pendingDaveSoleMemberReset = false
+        daveTransitionGatePending = false
+        daveTransitionGateTransitionId = nil
         voiceResumeAttemptsRemaining = 1
         awaitingVoiceResume = false
         voiceResumeConfirmationTask?.cancel()
         voiceResumeConfirmationTask = nil
         daveOutboxRetryAttempts = 0
+        pathRecoveryRequested = false
         if Task.isCancelled {
             await cancelConnectionIfCurrent(generation)
             throw CancellationError()
@@ -215,6 +244,13 @@ actor VoicePlaybackService {
                     }
                 }
                 await gateway.setOnDavePrepareEpoch { [weak self] protocolVersion, epoch, transitionId in
+                    // This is deliberately a separate actor hop before the
+                    // serialized MLS event. `enqueueDaveGatewayEvent` can be
+                    // waiting on a slow native callback while audio is active.
+                    await self?.armDaveTransitionGate(
+                        transitionId: transitionId,
+                        generation: generation
+                    )
                     await self?.enqueueDaveGatewayEvent(generation: generation) { service in
                         await service.handleDavePrepareEpoch(
                             protocolVersion: protocolVersion,
@@ -225,6 +261,12 @@ actor VoicePlaybackService {
                     }
                 }
                 await gateway.setOnDavePrepareTransition { [weak self] protocolVersion, transitionId in
+                    if transitionId == 0 || protocolVersion > 0 {
+                        await self?.armDaveTransitionGate(
+                            transitionId: transitionId,
+                            generation: generation
+                        )
+                    }
                     await self?.enqueueDaveGatewayEvent(generation: generation) { service in
                         await service.handleDavePrepareTransition(
                             protocolVersion: protocolVersion,
@@ -306,6 +348,8 @@ actor VoicePlaybackService {
         }
         daveCoordinator = nil
         daveMediaRequired = false
+        daveTransitionGatePending = false
+        daveTransitionGateTransitionId = nil
         daveExternalSender = nil
         pendingDaveDowngradeTransitionId = nil
         pendingDaveSoleMemberReset = false
@@ -330,9 +374,21 @@ actor VoicePlaybackService {
     /// speech before the matching Execute Transition had installed the new
     /// outbound ratchet.
     private func isDaveMediaReadyForCurrentSession() async -> Bool {
+        guard !daveTransitionGatePending else { return false }
         guard daveMediaRequired else { return true }
         guard let coordinator = daveCoordinator else { return false }
         return await coordinator.getDiagnostics().mediaReady
+    }
+
+    /// Fail closed before a DAVE event enters the serialized native callback
+    /// chain. The gateway invokes this actor method before queuing the event,
+    /// so a concurrently paced audio task observes the gate even if an earlier
+    /// MLS event is still awaiting native work.
+    private func armDaveTransitionGate(transitionId: UInt64, generation: UInt64) {
+        guard isCurrentConnection(generation) else { return }
+        daveMediaRequired = true
+        daveTransitionGatePending = true
+        daveTransitionGateTransitionId = transitionId
     }
 
     /// `SendableAudioBuffer` entry point so a rendered buffer can cross from the
@@ -382,6 +438,8 @@ actor VoicePlaybackService {
         }
         isSpeaking = true
         speakingGeneration = generation
+        speakingStartedAt = ContinuousClock().now
+        didSendFirstAudioFrameForSpeech = false
         defer {
             Task { [weak self] in
                 await self?.finishSpeech(generation: generation, gateway: gateway, ssrc: ssrc)
@@ -440,6 +498,13 @@ actor VoicePlaybackService {
                 throw VoicePipelineError.daveNotReady
             } catch VoicePipelineError.notConnected {
                 throw VoicePipelineError.notConnected
+            } catch let error as DaveError where error.recoveryHint == .retryLater {
+                // libdave 2.0.1 uses this for a normal transition race (for
+                // example mediaNotReady while Execute is being applied). Drop
+                // the current utterance into the announcer's bounded DAVE
+                // retry path instead of tearing down an otherwise healthy WS.
+                await debug("DAVE media changed while encrypting audio; pausing this read until the matching transition is ready.", generation: generation)
+                throw VoicePipelineError.daveNotReady
             } catch {
                 await failIfCurrent("voice audio send failed: \(error.localizedDescription)", generation: generation)
                 throw VoicePipelineError.socketClosed
@@ -452,7 +517,19 @@ actor VoicePlaybackService {
 
         // Standard Discord end-of-speech marker: a short burst of Opus silence
         // flushes the receiving decoder so the next utterance isn't clipped.
-        await sendTrailingSilence(5, transport: transport, generation: generation)
+        do {
+            try await sendTrailingSilence(5, transport: transport, generation: generation)
+        } catch VoicePipelineError.daveNotReady {
+            throw VoicePipelineError.daveNotReady
+        } catch VoicePipelineError.notConnected {
+            throw VoicePipelineError.notConnected
+        } catch let error as DaveError where error.recoveryHint == .retryLater {
+            await debug("DAVE media changed while finalizing audio; pausing this read until the matching transition is ready.", generation: generation)
+            throw VoicePipelineError.daveNotReady
+        } catch {
+            await failIfCurrent("voice end-of-speech send failed: \(error.localizedDescription)", generation: generation)
+            throw VoicePipelineError.socketClosed
+        }
     }
 
     /// Cancellation is a reliability boundary, not merely an early return:
@@ -477,36 +554,41 @@ actor VoicePlaybackService {
         _ count: Int,
         transport: any VoiceMediaTransport,
         generation: UInt64
-    ) async {
-        guard isCurrentConnection(generation) else { return }
+    ) async throws {
+        guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
         // A DAVE Prepare can race the end-of-speech marker. Silence is still
         // media, so it must obey the same coordinator-owned gate as real Opus
         // frames; otherwise the final five packets can leak transport-only
         // payloads immediately after an upgrade is announced.
-        guard await isDaveMediaReadyForCurrentSession() else { return }
+        guard await isDaveMediaReadyForCurrentSession() else { throw VoicePipelineError.daveNotReady }
         guard isCurrentConnection(generation),
               var rtp = self.rtp,
               var encryption = self.encryption,
-              let ssrc = ssrc else { return }
+              let ssrc = ssrc else { throw VoicePipelineError.notConnected }
+        let clock = ContinuousClock()
+        var nextDeadline = clock.now
         for _ in 0..<count {
-            guard isCurrentConnection(generation) else { return }
-            guard await isDaveMediaReadyForCurrentSession() else { return }
-            guard isCurrentConnection(generation) else { return }
+            try Task.checkCancellation()
+            guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
+            guard await isDaveMediaReadyForCurrentSession() else { throw VoicePipelineError.daveNotReady }
+            guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
             let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
             let plainPayload = RTPPacketBuilder.opusSilenceFrame
             let encryptedPayload: Data
             if let coordinator = daveCoordinator {
-                guard let encrypted = try? await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc) else { return }
-                guard isCurrentConnection(generation) else { return }
-                encryptedPayload = encrypted
+                encryptedPayload = try await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc)
+                guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
             } else {
                 encryptedPayload = plainPayload
             }
-            guard let packet = try? encryption.seal(rtpHeader: header, payload: encryptedPayload) else { return }
-            try? await transport.send(packet)
-            guard isCurrentConnection(generation) else { return }
+            let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
+            try await transport.send(packet)
+            await noteFirstAudioFrameSent(generation: generation)
+            guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
+            nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(OpusFrameEncoder.frameDuration * 1000)))
+            try await clock.sleep(until: nextDeadline)
         }
-        guard isCurrentConnection(generation) else { return }
+        guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
         self.rtp = rtp
         self.encryption = encryption
     }
@@ -544,6 +626,7 @@ actor VoicePlaybackService {
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
         try await transport.send(packet)
+        await noteFirstAudioFrameSent(generation: generation)
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
@@ -559,8 +642,20 @@ actor VoicePlaybackService {
         guard speakingGeneration == generation else { return }
         isSpeaking = false
         speakingGeneration = nil
+        speakingStartedAt = nil
+        didSendFirstAudioFrameForSpeech = false
         guard isCurrentConnection(generation) else { return }
         try? await gateway.sendSpeaking(false, ssrc: ssrc)
+    }
+
+    private func noteFirstAudioFrameSent(generation: UInt64) async {
+        guard isCurrentConnection(generation),
+              speakingGeneration == generation,
+              !didSendFirstAudioFrameForSpeech,
+              let speakingStartedAt else { return }
+        didSendFirstAudioFrameForSpeech = true
+        let elapsed = Self.format(ContinuousClock().now - speakingStartedAt)
+        await debug("Voice speaking update sent; first encrypted UDP audio frame sent \(elapsed) later.", generation: generation)
     }
 
     private func handleReady(_ info: VoiceReadyInfo, generation: UInt64) async {
@@ -589,6 +684,13 @@ actor VoicePlaybackService {
         guard isCurrentConnection(generation) else {
             await udp.stop()
             return
+        }
+        await udp.setOnNetworkPathChange { [weak self] previous, current in
+            await self?.handleVoiceNetworkPathChange(
+                previous: previous,
+                current: current,
+                generation: generation
+            )
         }
         do {
             try await udp.start()
@@ -762,6 +864,7 @@ actor VoicePlaybackService {
                 return
             }
             guard isCurrentConnection(generation) else { return }
+            startDaveDowngradeTransitionDeadline(transitionId: transitionId, generation: generation)
             await daveLog("DAVE downgrade prepared (id \(transitionId)); transition-ready sent, awaiting execute-transition.")
         } else {
             await failIfCurrent(
@@ -777,6 +880,8 @@ actor VoicePlaybackService {
     private func applyDaveDowngrade(transitionId: UInt64, generation: UInt64) async {
         guard isCurrentConnection(generation) else { return }
         pendingDaveDowngradeTransitionId = nil
+        daveDowngradeTransitionDeadlineTask?.cancel()
+        daveDowngradeTransitionDeadlineTask = nil
         pendingDaveSoleMemberReset = false
         daveReadinessObservationTask?.cancel()
         daveReadinessObservationTask = nil
@@ -788,6 +893,8 @@ actor VoicePlaybackService {
         // a fresh one if the call later upgrades again.
         daveExternalSender = nil
         daveMediaRequired = false
+        daveTransitionGatePending = false
+        daveTransitionGateTransitionId = nil
         await daveLog("DAVE downgrade executed (id \(transitionId)); media is transport-encrypted only until Discord re-upgrades the call.")
         guard isCurrentConnection(generation) else { return }
         if status != .connected {
@@ -873,10 +980,11 @@ actor VoicePlaybackService {
                 generation: generation
             )
             guard isCurrentConnection(generation) else { return }
-            await handleDaveGatewayResult(
-                result,
-                reason: "prepare epoch \(epoch)",
-                generation: generation
+                await handleDaveGatewayResult(
+                    result,
+                    reason: "prepare epoch \(epoch)",
+                    transitionId: transitionId,
+                    generation: generation
             )
             await executePendingDaveSoleMemberResetIfPossible(generation: generation)
             guard isCurrentConnection(generation) else { return }
@@ -895,6 +1003,7 @@ actor VoicePlaybackService {
                 await handleDaveGatewayResult(
                     senderResult,
                     reason: "prepare epoch \(epoch) (cached external sender)",
+                    transitionId: transitionId,
                     generation: generation
                 )
             }
@@ -926,7 +1035,12 @@ actor VoicePlaybackService {
                 generation: generation
             )
             guard isCurrentConnection(generation) else { return }
-            await handleDaveGatewayResult(result, reason: "sole-member reset", generation: generation)
+            await handleDaveGatewayResult(
+                result,
+                reason: "sole-member reset",
+                transitionId: 0,
+                generation: generation
+            )
             guard isCurrentConnection(generation) else { return }
             if status == .connecting {
                 // This is an authenticated protocol state, not a stalled
@@ -964,11 +1078,44 @@ actor VoicePlaybackService {
             await handleDaveGatewayResult(
                 result,
                 reason: "execute transition \(transitionId)",
+                transitionId: transitionId,
                 generation: generation
             )
         } catch {
             await handleDaveGatewayError(error, context: "execute transition \(transitionId)", generation: generation)
         }
+    }
+
+    /// A DAVE downgrade cannot be considered complete merely because we sent
+    /// Transition Ready: Discord must authorize the exact transition with
+    /// Execute. Treat a missing Execute as a recoverable connection failure
+    /// rather than leaving media encrypted with a stale ratchet indefinitely.
+    private func startDaveDowngradeTransitionDeadline(transitionId: UInt64, generation: UInt64) {
+        guard isCurrentConnection(generation), pendingDaveDowngradeTransitionId == transitionId else { return }
+        daveDowngradeTransitionDeadlineTask?.cancel()
+        daveDowngradeTransitionDeadlineTask = Task { [weak self, daveDowngradeTransitionTimeout] in
+            do {
+                try await Task.sleep(for: daveDowngradeTransitionTimeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.failIfDaveDowngradeExecutionIsMissing(
+                transitionId: transitionId,
+                generation: generation
+            )
+        }
+    }
+
+    private func failIfDaveDowngradeExecutionIsMissing(
+        transitionId: UInt64,
+        generation: UInt64
+    ) async {
+        guard isCurrentConnection(generation), pendingDaveDowngradeTransitionId == transitionId else { return }
+        await failIfCurrent(
+            "DAVE downgrade transition \(transitionId) was not executed before its deadline",
+            generation: generation
+        )
     }
 
     private func handleDaveExternalSender(_ data: Data, generation: UInt64) async {
@@ -1052,7 +1199,12 @@ actor VoicePlaybackService {
                 generation: generation
             )
             guard isCurrentConnection(generation) else { return }
-            await handleDaveGatewayResult(result, reason: "commit \(transitionId)", generation: generation)
+            await handleDaveGatewayResult(
+                result,
+                reason: "commit \(transitionId)",
+                transitionId: transitionId,
+                generation: generation
+            )
             if result.needsRecovery {
                 await daveLog("DAVE commit rejected; coordinator reset and recovery actions remain queued (id \(transitionId)).")
                 return
@@ -1083,7 +1235,12 @@ actor VoicePlaybackService {
                 generation: generation
             )
             guard isCurrentConnection(generation) else { return }
-            await handleDaveGatewayResult(result, reason: "welcome \(transitionId)", generation: generation)
+            await handleDaveGatewayResult(
+                result,
+                reason: "welcome \(transitionId)",
+                transitionId: transitionId,
+                generation: generation
+            )
             if result.needsRecovery {
                 await daveLog("DAVE welcome rejected; coordinator reset and recovery actions remain queued (id \(transitionId)).")
                 return
@@ -1200,6 +1357,7 @@ actor VoicePlaybackService {
     private func handleDaveGatewayResult(
         _ result: DiscordDaveGatewayResult,
         reason: String,
+        transitionId: UInt64? = nil,
         generation: UInt64
     ) async {
         guard isCurrentConnection(generation) else { return }
@@ -1216,6 +1374,14 @@ actor VoicePlaybackService {
             return
         }
 
+        if daveTransitionGatePending {
+            guard daveTransitionGateTransitionId == transitionId else {
+                await verbose("DAVE \(reason) reported media ready for an older transition; retaining the newer media gate.")
+                return
+            }
+            daveTransitionGatePending = false
+            daveTransitionGateTransitionId = nil
+        }
         daveReadinessObservationTask?.cancel()
         daveReadinessObservationTask = nil
         if status == .connected {
@@ -1390,6 +1556,8 @@ actor VoicePlaybackService {
         recognizedUserIds.removeAll()
         daveCoordinator = nil
         daveMediaRequired = false
+        daveTransitionGatePending = false
+        daveTransitionGateTransitionId = nil
         daveExternalSender = nil
         pendingDaveDowngradeTransitionId = nil
         pendingDaveSoleMemberReset = false
@@ -1488,6 +1656,39 @@ actor VoicePlaybackService {
         }
     }
 
+    /// A route change can leave a UDP socket pinned to an obsolete interface,
+    /// even when no announcement is currently speaking. Rebuild once when a
+    /// materially different usable route appears so the next read does not
+    /// become a silent first probe. Cosmetic Network.framework changes (for
+    /// example constrained/expensive flags alone) deliberately do not churn
+    /// the voice session.
+    private func handleVoiceNetworkPathChange(
+        previous: VoiceNetworkPathSnapshot,
+        current: VoiceNetworkPathSnapshot,
+        generation: UInt64
+    ) async {
+        guard isCurrentConnection(generation), status == .connected else { return }
+        guard current.status == .satisfied else {
+            await debug("Voice network path became unavailable; waiting for a usable route before considering voice recovery.", generation: generation)
+            return
+        }
+        let changedInterfaces = previous.activeInterfaceTypes != current.activeInterfaceTypes
+        let recoveredUsableRoute = previous.status != .satisfied
+        guard changedInterfaces || recoveredUsableRoute else {
+            await debug("Voice network path detail changed without a route handoff; keeping the existing voice session.", generation: generation)
+            return
+        }
+        guard !pathRecoveryRequested else { return }
+        pathRecoveryRequested = true
+        let previousInterfaces = previous.activeInterfaceTypes.map(\.rawValue).joined(separator: ",")
+        let currentInterfaces = current.activeInterfaceTypes.map(\.rawValue).joined(separator: ",")
+        await debug(
+            "Voice network path changed (\(previousInterfaces.isEmpty ? "unknown" : previousInterfaces) → \(currentInterfaces.isEmpty ? "unknown" : currentInterfaces)); rebuilding the voice session before further audio.",
+            generation: generation
+        )
+        await failIfCurrent("voice network path changed", generation: generation)
+    }
+
     // MARK: - Connection lifetime
 
     /// Start a new ownership epoch. All prior workers are cancelled before any
@@ -1507,8 +1708,11 @@ actor VoicePlaybackService {
         cancelConnectionWorkers()
         isSpeaking = false
         speakingGeneration = nil
+        speakingStartedAt = nil
+        didSendFirstAudioFrameForSpeech = false
         awaitingVoiceResume = false
         keepaliveFailureCount = 0
+        pathRecoveryRequested = false
     }
 
     private func cancelConnectionWorkers() {
@@ -1527,6 +1731,8 @@ actor VoicePlaybackService {
         daveOutboxRetryAttempts = 0
         daveReadinessObservationTask?.cancel()
         daveReadinessObservationTask = nil
+        daveDowngradeTransitionDeadlineTask?.cancel()
+        daveDowngradeTransitionDeadlineTask = nil
     }
 
     /// Queue one DAVE/MLS callback behind earlier callbacks from this voice

@@ -1,5 +1,35 @@
 import Foundation
 
+/// A privacy-safe summary of the system route observed by the UDP transport.
+/// The transport records its first snapshot as a baseline, then only reports
+/// subsequent route changes to its owner. Keeping the Network framework types
+/// out of this seam makes route recovery deterministic to unit test.
+struct VoiceNetworkPathSnapshot: Sendable, Equatable {
+    enum Status: String, Sendable {
+        case satisfied
+        case unsatisfied
+        case requiresConnection
+        case unknown
+    }
+
+    enum InterfaceType: String, Sendable, CaseIterable {
+        case other
+        case wifi
+        case cellular
+        case wiredEthernet
+        case loopback
+        case unknown
+    }
+
+    let status: Status
+    let activeInterfaceTypes: [InterfaceType]
+    let isExpensive: Bool
+    let isConstrained: Bool
+    let supportsIPv4: Bool
+    let supportsIPv6: Bool
+    let supportsDNS: Bool
+}
+
 /// Seam between `VoicePlaybackService` and the Discord voice websocket, so
 /// connection/recovery/DAVE handling can be exercised in unit tests with a
 /// scripted fake gateway instead of a live socket.
@@ -43,6 +73,12 @@ protocol VoiceMediaTransport: Actor {
     func stop()
     func discoverAddress(ssrc: UInt32) async throws -> VoiceUDPTransport.DiscoveredAddress
     func send(_ data: Data) async throws
+    /// The first path observed after `start()` is a baseline only. The handler
+    /// receives only a genuine later route change, with snapshots before and
+    /// after the change so the pipeline can defer recovery while offline.
+    func setOnNetworkPathChange(
+        _ handler: @escaping @Sendable (VoiceNetworkPathSnapshot, VoiceNetworkPathSnapshot) async -> Void
+    )
 }
 
 /// The one thing `VoiceAnnouncementService` needs from the playback pipeline:

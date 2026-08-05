@@ -207,32 +207,73 @@ actor FakeVoiceTransport: VoiceMediaTransport {
     /// connection is already active.
     private var sendsBlocked = false
     private var blockedSendContinuations: [CheckedContinuation<Void, Never>] = []
+    private var onNetworkPathChange: (@Sendable (VoiceNetworkPathSnapshot, VoiceNetworkPathSnapshot) async -> Void)?
+    private var lastObservedNetworkPath: VoiceNetworkPathSnapshot?
 
     func setSendsBlocked(_ blocked: Bool) { sendsBlocked = blocked }
 
     func releaseBlockedSends() {
-        let continuations = blockedSendContinuations
-        blockedSendContinuations.removeAll()
-        for continuation in continuations {
-            continuation.resume()
-        }
+        resumeBlockedSends()
     }
 
-    func start() async throws { started = true }
-    func stop() { stopped = true }
+    func start() async throws {
+        guard !stopped else { throw VoicePipelineError.socketClosed }
+        started = true
+    }
+    func stop() {
+        guard !stopped else { return }
+        stopped = true
+        onNetworkPathChange = nil
+        lastObservedNetworkPath = nil
+        // Mirror the production transport's hard-abort guarantee: callers
+        // waiting in a deliberately non-cooperative send must not need a test
+        // helper to release them after the session is torn down.
+        resumeBlockedSends()
+    }
 
     func discoverAddress(ssrc: UInt32) async throws -> VoiceUDPTransport.DiscoveredAddress {
         VoiceUDPTransport.DiscoveredAddress(ip: "198.51.100.4", port: 50_000)
     }
 
     func send(_ data: Data) async throws {
+        guard !stopped else { throw VoicePipelineError.socketClosed }
         if sendsBlocked {
             blockedSendCount += 1
             await withCheckedContinuation { continuation in
                 blockedSendContinuations.append(continuation)
             }
         }
+        guard !stopped else { throw VoicePipelineError.socketClosed }
+        try Task.checkCancellation()
         sentPackets.append(data)
+    }
+
+    func setOnNetworkPathChange(
+        _ handler: @escaping @Sendable (VoiceNetworkPathSnapshot, VoiceNetworkPathSnapshot) async -> Void
+    ) {
+        onNetworkPathChange = handler
+    }
+
+    /// Mirrors `VoiceUDPTransport`'s first-observation baseline so playback
+    /// tests can prove the initial normal network state never triggers a
+    /// recovery. Only a changed later snapshot invokes the registered handler.
+    func emitNetworkPathUpdate(_ snapshot: VoiceNetworkPathSnapshot) async {
+        guard !stopped else { return }
+        guard let previous = lastObservedNetworkPath else {
+            lastObservedNetworkPath = snapshot
+            return
+        }
+        guard previous != snapshot else { return }
+        lastObservedNetworkPath = snapshot
+        await onNetworkPathChange?(previous, snapshot)
+    }
+
+    private func resumeBlockedSends() {
+        let continuations = blockedSendContinuations
+        blockedSendContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
     }
 }
 
