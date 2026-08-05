@@ -316,10 +316,10 @@ extension AppModel {
     func speakAnnouncement(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard voiceConnectionStatus.isConnected else {
+        guard voiceConnectionStatus.canQueueAnnouncements else {
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
-                description: "Discord speech skipped because voice is not connected."
+                description: "Discord speech skipped because the voice announcer is unavailable."
             ))
             return
         }
@@ -330,8 +330,20 @@ extension AppModel {
             ))
             return
         }
+        if !voiceConnectionStatus.isConnected {
+            // Preserve the direct read while the handshake/DAVE gate is still
+            // settling instead of letting it make a speculative not-connected
+            // playback attempt before the connected callback resumes draining.
+            await announcer.setPaused(true)
+        }
         incrementSpokenToday()
         await announcer.enqueue(trimmed)
+        if !voiceConnectionStatus.isConnected {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Discord speech queued until the voice media path is ready."
+            ))
+        }
     }
 
     /// Speak `text` through the Mac's local speakers using
@@ -775,6 +787,9 @@ extension AppModel {
         case .connecting:
             if !voiceRecovery.inProgress {
                 voiceConnectionStatus = .connecting
+            }
+            if let announcer = voiceAnnouncementServiceStorage {
+                await announcer.setPaused(true)
             }
         case .connected:
             voiceConnectionStatus = .connected

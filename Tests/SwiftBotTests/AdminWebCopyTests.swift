@@ -2,13 +2,14 @@ import XCTest
 @testable import SwiftBot
 
 final class AdminWebCopyTests: XCTestCase {
-    func testSweepWebCreationCopyIsNativeFirst() throws {
+    func testSweepWebCreationAndEditingAreAvailable() throws {
         let adminHTML = try XCTUnwrap(
             Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "admin")
         )
         let html = try String(contentsOf: adminHTML, encoding: .utf8)
 
-        XCTAssertTrue(html.contains("Create and edit Sweep rules in the macOS app."))
+        XCTAssertTrue(html.contains("showModal('New Sweep Rule'"))
+        XCTAssertTrue(html.contains("showModal('Edit Sweep Rule'"))
         XCTAssertFalse(html.contains("Web parity will follow"))
     }
 

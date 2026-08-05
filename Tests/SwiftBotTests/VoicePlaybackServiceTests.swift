@@ -14,7 +14,8 @@ final class VoicePlaybackServiceTests: XCTestCase {
 
     private func makePipeline(
         resumeConfirmationTimeout: Duration = .seconds(5),
-        connectionReadinessTimeout: Duration = .seconds(15)
+        connectionReadinessTimeout: Duration = .seconds(15),
+        daveDowngradeTransitionTimeout: Duration = .seconds(12)
     ) -> (VoicePlaybackService, FakeVoiceGateway, FakeVoiceTransport) {
         let server = makeVoiceServerInfo()
         let gateway = FakeVoiceGateway(server: server)
@@ -23,7 +24,8 @@ final class VoicePlaybackServiceTests: XCTestCase {
             gatewayFactory: { _, _ in gateway },
             transportFactory: { _, _ in transport },
             resumeConfirmationTimeout: resumeConfirmationTimeout,
-            connectionReadinessTimeout: connectionReadinessTimeout
+            connectionReadinessTimeout: connectionReadinessTimeout,
+            daveDowngradeTransitionTimeout: daveDowngradeTransitionTimeout
         )
         return (playback, gateway, transport)
     }
@@ -40,6 +42,21 @@ final class VoicePlaybackServiceTests: XCTestCase {
         try await connectTask.value
     }
 
+    private func makePath(
+        status: VoiceNetworkPathSnapshot.Status,
+        interfaces: [VoiceNetworkPathSnapshot.InterfaceType]
+    ) -> VoiceNetworkPathSnapshot {
+        VoiceNetworkPathSnapshot(
+            status: status,
+            activeInterfaceTypes: interfaces,
+            isExpensive: false,
+            isConstrained: false,
+            supportsIPv4: true,
+            supportsIPv6: true,
+            supportsDNS: true
+        )
+    }
+
     func testConnectCompletesWithoutDave() async throws {
         let (playback, gateway, transport) = makePipeline()
         try await connect(playback, gateway)
@@ -50,6 +67,12 @@ final class VoicePlaybackServiceTests: XCTestCase {
         XCTAssertTrue(started)
         let selects = await gateway.selectProtocolCount
         XCTAssertEqual(selects, 1)
+    }
+
+    func testConnectingVoiceSessionAcceptsQueuedAnnouncements() {
+        XCTAssertTrue(VoiceConnectionStatus.connecting.canQueueAnnouncements)
+        XCTAssertTrue(VoiceConnectionStatus.recovering("rejoining").canQueueAnnouncements)
+        XCTAssertFalse(VoiceConnectionStatus.failed("offline").canQueueAnnouncements)
     }
 
     func testDuplicateHandshakeEventsAreIdempotent() async throws {
@@ -100,6 +123,70 @@ final class VoicePlaybackServiceTests: XCTestCase {
             if case .failed = await playback.currentStatus { return true }
             return false
         }
+    }
+
+    func testCancellingBlockedSpeechReturnsWithoutManualSendRelease() async throws {
+        let (playback, gateway, transport) = makePipeline()
+        try await connect(playback, gateway)
+        await transport.setSendsBlocked(true)
+        let completion = CompletionSignal()
+
+        let speech = Task {
+            _ = try? await playback.speak(pcm: makeRenderedBuffer(frames: 48_000))
+            await completion.finish()
+        }
+        await waitUntil { await transport.blockedSendCount == 1 }
+
+        speech.cancel()
+        await waitUntil(timeout: 1) { await completion.isCompleted }
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+        _ = await speech.result
+    }
+
+    func testNetworkPathBaselineDoesNotRecoverHealthyIdleSession() async throws {
+        let (playback, gateway, transport) = makePipeline()
+        try await connect(playback, gateway)
+
+        await transport.emitNetworkPathUpdate(makePath(status: .satisfied, interfaces: [.wifi]))
+        let status = await playback.currentStatus
+        XCTAssertEqual(status, .connected, "the first path observation is only a baseline")
+    }
+
+    func testUsableNetworkPathChangeRebuildsIdleSessionBeforeNextRead() async throws {
+        let (playback, gateway, transport) = makePipeline()
+        try await connect(playback, gateway)
+
+        await transport.emitNetworkPathUpdate(makePath(status: .satisfied, interfaces: [.wifi]))
+        await transport.emitNetworkPathUpdate(makePath(status: .satisfied, interfaces: [.cellular]))
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+    }
+
+    func testUsableNetworkPathChangeDuringSpeechFailsForFreshRecovery() async throws {
+        let (playback, gateway, transport) = makePipeline()
+        try await connect(playback, gateway)
+
+        let speech = Task {
+            try await playback.speak(pcm: makeRenderedBuffer(frames: 48_000))
+        }
+        await waitUntil { (await gateway.speakingUpdates).contains(true) }
+
+        await transport.emitNetworkPathUpdate(makePath(status: .satisfied, interfaces: [.wifi]))
+        await transport.emitNetworkPathUpdate(makePath(status: .unsatisfied, interfaces: []))
+        let statusAfterRouteLoss = await playback.currentStatus
+        XCTAssertEqual(statusAfterRouteLoss, .connected, "route loss alone waits for a usable route")
+        await transport.emitNetworkPathUpdate(makePath(status: .satisfied, interfaces: [.cellular]))
+
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+        _ = try? await speech.value
     }
 
     func testConnectWhileConnectingThrows() async throws {
@@ -234,6 +321,27 @@ final class VoicePlaybackServiceTests: XCTestCase {
         try await playback.speak(pcm: makeRenderedBuffer())
         let packets = await transport.sentPackets
         XCTAssertFalse(packets.isEmpty, "downgraded session must still send audio frames")
+    }
+
+    func testDaveDowngradeMissingExecuteFailsAtDeadline() async throws {
+        let (playback, gateway, _) = makePipeline(
+            daveDowngradeTransitionTimeout: .milliseconds(100)
+        )
+        let connectTask = Task { try await playback.connect(server: gateway.server) }
+        await waitUntil { await gateway.connectCount == 1 }
+        await gateway.emitReady()
+        await gateway.emitSessionDescription(daveProtocolVersion: 1)
+        await gateway.emitPrepareTransition(version: 0, transitionId: 9)
+        await waitUntil { await gateway.transitionReadyIds.contains(9) }
+
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+        let result = await connectTask.result
+        if case .success = result {
+            XCTFail("a DAVE downgrade without Execute must not leave the pipeline connected")
+        }
     }
 
     func testPrepareEpochImmediatelyGatesMediaAndRetainsTransitionID() async throws {
@@ -444,7 +552,6 @@ final class VoicePlaybackServiceTests: XCTestCase {
         try await secondConnect.value
 
         staleSpeech.cancel()
-        await firstTransport.releaseBlockedSends()
         await waitUntil(timeout: 1) { await speechFinished.isCompleted }
 
         let status = await playback.currentStatus

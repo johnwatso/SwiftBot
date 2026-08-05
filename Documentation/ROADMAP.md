@@ -270,6 +270,7 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 | Commit | Summary |
 |---|---|
 | `_working-tree_` | Hardened the Discord voice playback lifecycle with per-connection generation ownership, cancellation of stale workers, prompt resolution of a pending connect on disconnect, and fail-closed session teardown. DAVE now uses libdave 2.0.1’s acknowledged outbox and media gate, validates gateway integers exactly, ignores pre-group proposals, handles the epoch-1 zero-ID sole-member reset without a bogus ready/timeout, and blocks both speech and trailing silence during a DAVE upgrade. Transport encryption prefers AES, uses verified XChaCha fallback, validates keys/nonces, and makes socket-resume writes retry-safe. Added deterministic scripted gateway/UDP fakes plus replay, non-cooperative-connect, stale-speech, DAVE transition, and crypto regression coverage. |
+| `_working-tree_` | Documented the remaining DAVE MLS interoperability boundary in `Documentation/DAVE_MLS_INTEGRATION_HARNESS.md`: a real test must be explicitly opted in and use a fresh stateful disposable peer; random or static MLS bytes are not valid coverage. The next action is a pinned upstream libdave harness or a disposable live Discord Voice test that relays SwiftBot’s freshly emitted key package. |
 
 ### 2026-07-31 — Patchy AMD and Music Lookup Reliability
 

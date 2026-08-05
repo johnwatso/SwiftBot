@@ -4,6 +4,43 @@ import XCTest
 
 final class VoiceAnnouncementServiceDrainTests: XCTestCase {
 
+    /// Deliberately ignores cancellation until the test releases it. This
+    /// models the old wedged UDP completion path and proves the announcement
+    /// deadline is a true escape boundary rather than a structured task-group
+    /// cancellation that waits indefinitely for the child.
+    private actor NonCooperativePlayback: AnnouncementPlayback {
+        private var entered = false
+        private var continuations: [CheckedContinuation<Void, Never>] = []
+
+        var hasEntered: Bool { entered }
+
+        func speak(pcm wrapped: SendableAudioBuffer) async throws {
+            entered = true
+            await withCheckedContinuation { continuation in
+                continuations.append(continuation)
+            }
+        }
+
+        func release() {
+            let waiting = continuations
+            continuations.removeAll()
+            for continuation in waiting {
+                continuation.resume()
+            }
+        }
+    }
+
+    private actor RenderAttemptCounter {
+        private var attempts = 0
+
+        func next() -> Int {
+            attempts += 1
+            return attempts
+        }
+
+        var count: Int { attempts }
+    }
+
     private func makeAnnouncer(
         playback: FakeAnnouncementPlayback
     ) throws -> VoiceAnnouncementService {
@@ -125,6 +162,29 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         XCTAssertNotNil(health.lastFailureAt, "the timed-out batch should be recorded")
     }
 
+    func testTransientRenderFailureRetriesAndKeepsAnnouncement() async throws {
+        let playback = FakeAnnouncementPlayback()
+        let attempts = RenderAttemptCounter()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            renderOverride: { _, _ in
+                if await attempts.next() <= 2 {
+                    throw VoicePipelineError.timeout
+                }
+                return makeRenderedBuffer()
+            }
+        )
+
+        await announcer.enqueue("retry this render")
+        await waitUntil { await announcer.recentHistory.count == 1 }
+
+        let renderAttempts = await attempts.count
+        let speaks = await playback.speakCount
+        XCTAssertGreaterThanOrEqual(renderAttempts, 3)
+        XCTAssertEqual(speaks, 1, "a transient renderer failure must not drop the queued announcement")
+    }
+
     func testTimedOutPlaybackPausesAndPreservesQueuedAnnouncement() async throws {
         let playback = FakeAnnouncementPlayback()
         await playback.setDelay(.seconds(60))
@@ -147,5 +207,27 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         XCTAssertEqual(pending.map(\.text), ["keep this after a stalled UDP write"])
         let recent = await announcer.recentHistory
         XCTAssertTrue(recent.isEmpty)
+    }
+
+    func testPlaybackDeadlineEscapesNonCooperativeOperation() async throws {
+        let playback = NonCooperativePlayback()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            speechPlaybackTimeout: .milliseconds(10),
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+
+        await announcer.enqueue("keep this after a non-cooperative send")
+        await waitUntil { await playback.hasEntered }
+        await waitUntil(timeout: 1) {
+            let health = await announcer.healthSnapshot
+            return health.isPaused && health.queueDepth == 1 &&
+                health.lastFailureReason == VoicePipelineError.playbackTimedOut.localizedDescription
+        }
+
+        // Clean up the intentionally detached operation so this test never
+        // leaves a background task parked after the assertion has passed.
+        await playback.release()
     }
 }

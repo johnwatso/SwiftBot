@@ -35,6 +35,9 @@ struct AdminWebStatusPayload: Codable {
     /// Transient runtime state ("idle" / "promoting" / "demoting" /
     /// "isolated" / "recovering"). Optional for back-compat.
     let runtimeState: String?
+    /// A standby or worker node is controlled by the active Primary and must
+    /// not accept direct browser configuration edits.
+    let isFailoverManagedNode: Bool
 }
 
 struct AdminWebLivePayload: Codable {
@@ -196,6 +199,8 @@ struct AdminWebSweepPayload: Codable {
     let lastSuggestionScanAt: Date?
     let scanProgressDone: Int
     let scanProgressTotal: Int
+    let servers: [AdminWebSimpleOption]
+    let textChannelsByServer: [String: [AdminWebSimpleOption]]
 }
 
 struct AdminWebSweepRunReportPayload: Codable {
@@ -246,6 +251,9 @@ struct AdminWebConfigPayload: Codable {
 
     struct AppleIntelligence: Codable {
         let localAIDMReplyEnabled: Bool
+        let useAIInGuildChannels: Bool
+        let allowDMs: Bool
+        let localAISystemPrompt: String
     }
 
     struct WikiBridge: Codable {
@@ -264,9 +272,12 @@ struct AdminWebConfigPayload: Codable {
         let mode: String
         let nodeName: String
         let leaderAddress: String
+        let leaderPort: Int
         let listenPort: Int
+        let workerOffloadEnabled: Bool
         let offloadAIReplies: Bool
         let offloadWikiLookups: Bool
+        let autoReclaimAfterHours: Int
     }
 
     struct General: Codable {
@@ -275,12 +286,23 @@ struct AdminWebConfigPayload: Codable {
         let webUIBaseURL: String
     }
 
+    struct UserTimezones: Codable {
+        let mappings: [String: String]
+    }
+
+    struct SwiftMiner: Codable {
+        let enabled: Bool
+        let paired: Bool
+    }
+
     let commands: Commands
     let appleIntelligence: AppleIntelligence
     let wikiBridge: WikiBridge
     let patchy: Patchy
     let swiftMesh: SwiftMesh
     let general: General
+    let userTimezones: UserTimezones
+    let swiftMiner: SwiftMiner
 }
 
 struct AdminWebConfigPatch: Codable {
@@ -290,17 +312,25 @@ struct AdminWebConfigPatch: Codable {
     var bugTrackingEnabled: Bool?
     var prefix: String?
     var localAIDMReplyEnabled: Bool?
+    var useAIInGuildChannels: Bool?
+    var allowDMs: Bool?
+    var localAISystemPrompt: String?
     var wikiBridgeEnabled: Bool?
     var patchyMonitoringEnabled: Bool?
     var clusterMode: String?
     var clusterNodeName: String?
     var clusterLeaderAddress: String?
+    var clusterLeaderPort: Int?
     var clusterListenPort: Int?
+    var clusterWorkerOffloadEnabled: Bool?
     var clusterOffloadAIReplies: Bool?
     var clusterOffloadWikiLookups: Bool?
+    var clusterAutoReclaimAfterHours: Int?
     var autoStart: Bool?
     var musicLinkWatchEnabled: Bool?
     var musicLinkWatchChannelIDs: [String]?
+    var userTimezones: [String: String]?
+    var swiftMinerEnabled: Bool?
 }
 
 struct AdminWebCommandCatalogItem: Codable {
@@ -572,6 +602,21 @@ struct AdminWebSweepPolicyIDPatch: Codable {
     let policyID: UUID
 }
 
+struct AdminWebSweepPolicyCreatePatch: Codable {
+    let name: String
+    let guildID: String
+    let channelID: String
+    let strategyKind: String
+    let ageHours: Int
+    let keepCount: Int
+    let fromBotsOnly: Bool
+    let scheduleMinutes: Int
+    let maxMessagesPerRun: Int
+    let minMessageAgeMinutes: Int
+    let protectPinned: Bool
+    let protectReacted: Bool
+}
+
 struct AdminWebSweepSuggestionIDPatch: Codable {
     let suggestionID: UUID
 }
@@ -775,6 +820,7 @@ actor AdminWebServer {
     private var sweepProvider: (@Sendable () async -> AdminWebSweepPayload)?
     private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
     private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
+    private var createSweepPolicy: (@Sendable (AdminWebSweepPolicyCreatePatch) async -> SweepPolicy?)?
     private var deleteSweepPolicy: (@Sendable (UUID) async -> Bool)?
     private var setSweepPolicyEnabled: (@Sendable (UUID, Bool) async -> Bool)?
     private var runSweepPolicy: (@Sendable (UUID) async -> Bool)?
@@ -892,6 +938,7 @@ actor AdminWebServer {
         sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
         setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
         updateSweepPolicy: @escaping @Sendable (SweepPolicy) async -> Bool,
+        createSweepPolicy: @escaping @Sendable (AdminWebSweepPolicyCreatePatch) async -> SweepPolicy?,
         deleteSweepPolicy: @escaping @Sendable (UUID) async -> Bool,
         setSweepPolicyEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
         runSweepPolicy: @escaping @Sendable (UUID) async -> Bool,
@@ -972,6 +1019,7 @@ actor AdminWebServer {
         self.sweepProvider = sweepProvider
         self.setSweepGlobalPaused = setSweepGlobalPaused
         self.updateSweepPolicy = updateSweepPolicy
+        self.createSweepPolicy = createSweepPolicy
         self.deleteSweepPolicy = deleteSweepPolicy
         self.setSweepPolicyEnabled = setSweepPolicyEnabled
         self.runSweepPolicy = runSweepPolicy
@@ -1390,6 +1438,22 @@ actor AdminWebServer {
         pruneExpiredState()
         pruneExpiredSessions()
 
+        // Browser edits must never bypass SwiftMesh failover ownership. The
+        // native app may explicitly forward selected edits to the Primary,
+        // but the WebUI has no such acknowledgement flow, so it is strictly
+        // read-only on standby and worker nodes. Keep this at the router
+        // boundary so new mutation endpoints cannot accidentally omit it.
+        if request.method != "GET",
+           request.path.hasPrefix("/api/"),
+           !request.path.hasPrefix("/api/remote/") {
+            if let status = await statusProvider?(), status.isFailoverManagedNode {
+                return jsonResponse(
+                    ["error": "failover_managed", "message": "This node is managed by the active Primary and is read-only in WebUI."],
+                    status: "409 Conflict"
+                )
+            }
+        }
+
         if request.method == "GET" && request.path == config.redirectPath {
             return await handleDiscordCallback(request: request)
         }
@@ -1600,6 +1664,9 @@ actor AdminWebServer {
             await logger?("Remote API updated settings")
             return jsonResponse(["ok": true])
         case ("GET", "/api/status"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
             let payload = await statusProvider?() ?? AdminWebStatusPayload(
                 botStatus: "stopped",
                 botUsername: "SwiftBot",
@@ -1610,10 +1677,14 @@ actor AdminWebServer {
                 webUIEnabled: false,
                 webUIBaseURL: "",
                 clusterMode: nil,
-                runtimeState: nil
+                runtimeState: nil,
+                isFailoverManagedNode: false
             )
             return codableResponse(payload)
         case ("GET", "/api/overview"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
             let payload = await overviewProvider?() ?? AdminWebOverviewPayload(
                 metrics: [],
                 cluster: AdminWebClusterPayload(connectedNodes: 0, leader: "Unavailable", mode: "standalone"),
@@ -2022,7 +2093,7 @@ actor AdminWebServer {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
             do {
-                let patch = try decoder.decode(AdminWebPatchyTargetPatch.self, from: request.body)
+                let patch = try apiDecoder.decode(AdminWebPatchyTargetPatch.self, from: request.body)
                 try patch.validate()
                 guard await updatePatchyTarget?(patch.target) == true else {
                     return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
@@ -2124,6 +2195,22 @@ actor AdminWebServer {
                 return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/policy/create"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepPolicyCreatePatch.self, from: request.body),
+                  let policy = await createSweepPolicy?(patch) else {
+                return jsonResponse(["error": "create_failed"], status: "400 Bad Request")
+            }
+            audit(source: "webui", actor: actorLabel(session), action: "sweep.policy.create", detail: policy.name)
+            return codableResponse(policy)
         case ("POST", "/api/sweep/policy/update"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -2135,7 +2222,7 @@ actor AdminWebServer {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
             do {
-                let patch = try decoder.decode(SweepPolicy.self, from: request.body)
+                let patch = try apiDecoder.decode(SweepPolicy.self, from: request.body)
                 try patch.validate()
                 guard await updateSweepPolicy?(patch) == true else {
                     return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
@@ -2222,7 +2309,7 @@ actor AdminWebServer {
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
-            guard let patch = try? decoder.decode(SweepPolicy.self, from: request.body) else {
+            guard let patch = try? apiDecoder.decode(SweepPolicy.self, from: request.body) else {
                 return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
             }
             if let report = await previewSweepDraft?(patch) {
@@ -2505,7 +2592,7 @@ actor AdminWebServer {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
             do {
-                let patch = try decoder.decode(AdminWebWikiSourcePatch.self, from: request.body)
+                let patch = try apiDecoder.decode(AdminWebWikiSourcePatch.self, from: request.body)
                 try patch.validate()
                 guard await updateWikiSource?(patch.source) == true else {
                     return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
@@ -2581,34 +2668,6 @@ actor AdminWebServer {
             guard await deleteWikiSource?(patch.sourceID) == true else {
                 return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
             }
-            return jsonResponse(["ok": true])
-        case ("POST", "/api/bot/start"):
-            guard let session = authenticatedSession(for: request) else {
-                return unauthorizedResponse()
-            }
-            guard requireRole(.admin, session: session) else {
-                return forbiddenResponse()
-            }
-            guard validateCSRF(session: session, request: request) else {
-                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
-            }
-            _ = await startBot?()
-            await logger?("Admin Web UI requested bot start")
-            audit(source: "Web Config", actor: actorLabel(session), action: "Started bot", level: "ok")
-            return jsonResponse(["ok": true])
-        case ("POST", "/api/bot/stop"):
-            guard let session = authenticatedSession(for: request) else {
-                return unauthorizedResponse()
-            }
-            guard requireRole(.admin, session: session) else {
-                return forbiddenResponse()
-            }
-            guard validateCSRF(session: session, request: request) else {
-                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
-            }
-            _ = await stopBot?()
-            await logger?("Admin Web UI requested bot stop")
-            audit(source: "Web Config", actor: actorLabel(session), action: "Stopped bot", level: "warning")
             return jsonResponse(["ok": true])
         case ("POST", "/api/swiftmesh/refresh"):
             guard let session = authenticatedSession(for: request) else {

@@ -30,6 +30,10 @@ actor VoiceGatewayConnection {
     /// with no close frame; missing two acks in a row is treated as a dead
     /// connection so recovery starts in seconds instead.
     private var missedHeartbeatAcks: Int = 0
+    /// Voice gateway v8 includes the echoed heartbeat nonce in Op 6. Keeping
+    /// the small outstanding set prevents an old/stale ACK from making a
+    /// half-open resumed socket look healthy.
+    private var outstandingHeartbeatNonces: Set<UInt64> = []
 
     private var onReady: ((VoiceReadyInfo) async -> Void)?
     private var onSessionDescription: ((VoiceSessionKey) async -> Void)?
@@ -74,6 +78,7 @@ actor VoiceGatewayConnection {
         oldSocket?.cancel(with: .normalClosure, reason: nil)
         lastSequenceNumber = -1
         heartbeatNonce = 0
+        outstandingHeartbeatNonces.removeAll()
         advertisedEncryptionModes.removeAll()
         selectedEncryptionMode = nil
         let url = try buildGatewayURL()
@@ -306,6 +311,7 @@ actor VoiceGatewayConnection {
             }
             heartbeatIntervalMs = payload.data.heartbeatInterval
             missedHeartbeatAcks = 0
+            outstandingHeartbeatNonces.removeAll()
             await debug("Voice gateway hello received; heartbeat every \(heartbeatIntervalMs) ms.")
             guard generation == socketGeneration else { return }
             startHeartbeat(generation: generation)
@@ -399,12 +405,24 @@ actor VoiceGatewayConnection {
             )
 
         case .heartbeatAck:
-            missedHeartbeatAcks = 0
+            guard let payload = await decodePayload(
+                VoiceGatewayHeartbeatAck.self,
+                from: data,
+                opcode: .heartbeatAck,
+                generation: generation
+            ) else { return }
+            let nonce = payload.nonce
+            guard outstandingHeartbeatNonces.remove(nonce) != nil else {
+                await debug("Voice gateway ignored heartbeat ACK for an unknown nonce.")
+                return
+            }
+            missedHeartbeatAcks = outstandingHeartbeatNonces.count
 
         case .resumed:
             await debug("Voice gateway session resumed.")
             guard generation == socketGeneration else { return }
             missedHeartbeatAcks = 0
+            outstandingHeartbeatNonces.removeAll()
             // A new websocket normally sends Hello before Resumed. Starting a
             // fresh loop here too covers gateway implementations that omit a
             // second Hello, while `startHeartbeat` replaces rather than leaks
@@ -477,6 +495,7 @@ actor VoiceGatewayConnection {
         receiveTask?.cancel()
         receiveTask = nil
         missedHeartbeatAcks = 0
+        outstandingHeartbeatNonces.removeAll()
     }
 
     private func startReceiveLoop() {
@@ -490,6 +509,7 @@ actor VoiceGatewayConnection {
         guard generation == socketGeneration else { return }
         heartbeatTask?.cancel()
         missedHeartbeatAcks = 0
+        outstandingHeartbeatNonces.removeAll()
         let intervalNs = UInt64(heartbeatIntervalMs) * 1_000_000
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -502,7 +522,7 @@ actor VoiceGatewayConnection {
 
     private func sendHeartbeat(generation: UInt64) async {
         guard generation == socketGeneration else { return }
-        if missedHeartbeatAcks >= 2 {
+        if outstandingHeartbeatNonces.count >= 2 {
             await debug("Voice gateway missed \(missedHeartbeatAcks) heartbeat acks; treating the socket as dead.")
             guard generation == socketGeneration else { return }
             heartbeatTask?.cancel()
@@ -512,15 +532,23 @@ actor VoiceGatewayConnection {
             socket?.cancel(with: .abnormalClosure, reason: nil)
             return
         }
-        missedHeartbeatAcks += 1
         heartbeatNonce &+= 1
+        let nonce = heartbeatNonce & 0x7fff_ffff_ffff_ffff
         let heartbeat = VoiceHeartbeatPayload(
-            nonce: heartbeatNonce & 0x7fff_ffff_ffff_ffff,
+            nonce: nonce,
             sequenceAck: lastSequenceNumber
         )
-        try? await sendJSON(
-            VoiceGatewayOutgoingPayload(op: VoiceOpcode.heartbeat.rawValue, data: heartbeat)
-        )
+        do {
+            try await sendJSON(
+                VoiceGatewayOutgoingPayload(op: VoiceOpcode.heartbeat.rawValue, data: heartbeat)
+            )
+        } catch {
+            await debug("Voice gateway heartbeat send failed: \(error.localizedDescription)")
+            socket?.cancel(with: .abnormalClosure, reason: nil)
+            return
+        }
+        outstandingHeartbeatNonces.insert(nonce)
+        missedHeartbeatAcks = outstandingHeartbeatNonces.count
     }
 
     private func debug(_ message: String) async {
@@ -559,6 +587,34 @@ private struct VoiceGatewayHello: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case data = "d"
+    }
+}
+
+/// Voice gateway v8 sends the original heartbeat nonce back in Op 6. Earlier
+/// gateway versions used the bare number, so accept both documented shapes
+/// while decoding the nonce exactly (never through `Double`).
+private struct VoiceGatewayHeartbeatAck: Decodable {
+    private struct ObjectPayload: Decodable {
+        let nonce: VoiceExactUInt64
+
+        enum CodingKeys: String, CodingKey {
+            case nonce = "t"
+        }
+    }
+
+    let nonce: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case data = "d"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let object = try? container.decode(ObjectPayload.self, forKey: .data) {
+            nonce = object.nonce.value
+        } else {
+            nonce = try container.decode(VoiceExactUInt64.self, forKey: .data).value
+        }
     }
 }
 

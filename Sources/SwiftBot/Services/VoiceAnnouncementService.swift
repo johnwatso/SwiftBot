@@ -2,6 +2,93 @@ import AVFoundation
 import Foundation
 import OSLog
 
+/// A one-shot race between an announcement playback operation and its deadline.
+/// It intentionally does not use a structured task group: structured
+/// cancellation waits for every child to return, which means a non-cooperative
+/// network implementation can otherwise hold the serial announcer queue
+/// forever after its deadline has passed.
+private final class PlaybackDeadlineRace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var result: Result<Void, Error>?
+    private var operationTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+
+    func installContinuation(_ continuation: CheckedContinuation<Void, Error>) {
+        let completed: Result<Void, Error>?
+        lock.lock()
+        completed = result
+        if completed == nil {
+            self.continuation = continuation
+        }
+        lock.unlock()
+        if let completed {
+            continuation.resume(with: completed)
+        }
+    }
+
+    func installOperation(_ task: Task<Void, Never>) {
+        let shouldCancel: Bool
+        lock.lock()
+        shouldCancel = result != nil
+        if !shouldCancel {
+            operationTask = task
+        }
+        lock.unlock()
+        if shouldCancel { task.cancel() }
+    }
+
+    func installTimeout(_ task: Task<Void, Never>) {
+        let shouldCancel: Bool
+        lock.lock()
+        shouldCancel = result != nil
+        if !shouldCancel {
+            timeoutTask = task
+        }
+        lock.unlock()
+        if shouldCancel { task.cancel() }
+    }
+
+    func succeed() {
+        resolve(.success(()), cancellingOperation: false)
+    }
+
+    func fail(_ error: Error) {
+        resolve(.failure(error), cancellingOperation: false)
+    }
+
+    func timeOut() {
+        resolve(.failure(VoicePipelineError.playbackTimedOut), cancellingOperation: true)
+    }
+
+    func cancel() {
+        resolve(.failure(CancellationError()), cancellingOperation: true)
+    }
+
+    private func resolve(_ outcome: Result<Void, Error>, cancellingOperation: Bool) {
+        let continuation: CheckedContinuation<Void, Error>?
+        let operation: Task<Void, Never>?
+        let timeout: Task<Void, Never>?
+        lock.lock()
+        guard result == nil else {
+            lock.unlock()
+            return
+        }
+        result = outcome
+        continuation = self.continuation
+        self.continuation = nil
+        operation = cancellingOperation ? operationTask : nil
+        operationTask = nil
+        timeout = timeoutTask
+        timeoutTask = nil
+        lock.unlock()
+
+        timeout?.cancel()
+        operation?.cancel()
+        continuation?.resume(with: outcome)
+    }
+}
+
 /// Serializes spoken announcements over a `VoicePlaybackService`. Queues
 /// incoming text, renders each via `VoiceTTSSource`, and drains them one at a
 /// time so announcements never overlap.
@@ -45,6 +132,10 @@ actor VoiceAnnouncementService {
     private let maxCoalescedAnnouncements: Int = 4
     private let maxCoalescedCharacters: Int = 420
     private var retryCounts: [UUID: Int] = [:]
+    /// Rendering can fail transiently while macOS wakes a voice asset or the
+    /// synthesizer restarts. Keep a small independent budget so a TTS failure
+    /// does not silently discard the announcement before it reaches playback.
+    private var renderRetryCounts: [UUID: Int] = [:]
     private var drainStartTask: Task<Void, Never>?
     private var health = VoiceAnnouncerHealth()
 
@@ -130,6 +221,7 @@ actor VoiceAnnouncementService {
         drainStartTask = nil
         queue.removeAll()
         retryCounts.removeAll()
+        renderRetryCounts.removeAll()
         await onQueueChange?(queue)
         await publishHealth(phase: paused ? .paused : .idle)
     }
@@ -157,6 +249,7 @@ actor VoiceAnnouncementService {
             queue.removeFirst(overflow)
             for item in removed {
                 retryCounts[item.id] = nil
+                renderRetryCounts[item.id] = nil
             }
         }
         queue.append(announcement)
@@ -245,7 +338,7 @@ actor VoiceAnnouncementService {
                     let rendered = try await renderSpeechAudio(text: speechText)
                     current = RenderedBatch(batch: batch, speechText: speechText, audio: rendered)
                 } catch {
-                    await handleDrainFailure(error, batch: batch)
+                    await handleDrainFailure(error, batch: batch, stage: .rendering)
                     continue
                 }
             }
@@ -282,6 +375,7 @@ actor VoiceAnnouncementService {
                 await onDebug?("Finished Discord speech (\(current.speechText.count) chars, \(current.batch.count) message\(current.batch.count == 1 ? "" : "s")).")
                 for item in current.batch {
                     retryCounts[item.id] = nil
+                    renderRetryCounts[item.id] = nil
                     recordRecent(item)
                 }
                 await publishHealth(
@@ -303,7 +397,7 @@ actor VoiceAnnouncementService {
                     }
                     await onQueueChange?(queue)
                 }
-                await handleDrainFailure(error, batch: current.batch)
+                await handleDrainFailure(error, batch: current.batch, stage: .playback)
                 continue
             }
 
@@ -323,8 +417,35 @@ actor VoiceAnnouncementService {
         await publishHealth(phase: paused ? .paused : (queue.isEmpty ? .idle : .queued))
     }
 
-    private func handleDrainFailure(_ error: Error, batch: [Announcement]) async {
+    private enum DrainFailureStage {
+        case rendering
+        case playback
+    }
+
+    private func handleDrainFailure(
+        _ error: Error,
+        batch: [Announcement],
+        stage: DrainFailureStage
+    ) async {
         guard let first = batch.first else { return }
+        if stage == .rendering, isRetryableRenderError(error) {
+            let retries = renderRetryCounts[first.id, default: 0]
+            if retries < 2 {
+                renderRetryCounts[first.id] = retries + 1
+                requeue(batch)
+                await onQueueChange?(queue)
+                await publishHealth(
+                    phase: .recovering,
+                    retryStreak: retries + 1,
+                    lastFailureAt: Date(),
+                    lastFailureReason: error.localizedDescription
+                )
+                await onDebug?("Discord speech rendering failed; retrying the queued read (\(retries + 1)/2).")
+                try? await Task.sleep(for: .milliseconds(250 * (retries + 1)))
+                return
+            }
+            renderRetryCounts[first.id] = nil
+        }
         if case VoicePipelineError.daveNotReady = error {
             let retries = retryCounts[first.id, default: 0]
             if retries < 5 {
@@ -376,6 +497,10 @@ actor VoiceAnnouncementService {
             )
             return
         }
+        for item in batch {
+            retryCounts[item.id] = nil
+            renderRetryCounts[item.id] = nil
+        }
         Self.logger.error("announcement failed: \(error.localizedDescription)")
         await onDebug?("Discord speech failed: \(error.localizedDescription)")
         await publishHealth(
@@ -386,6 +511,10 @@ actor VoiceAnnouncementService {
             activeStartedAt: nil,
             activeCharacterCount: nil
         )
+    }
+
+    private func isRetryableRenderError(_ error: Error) -> Bool {
+        !(error is CancellationError)
     }
 
     private func isReconnectablePlaybackError(_ error: Error) -> Bool {
@@ -480,19 +609,31 @@ actor VoiceAnnouncementService {
     private func speakWithTimeout(_ audio: SendableAudioBuffer) async throws {
         let playback = self.playback
         let timeout = speechPlaybackTimeout
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try await playback.speak(pcm: audio)
+        let race = PlaybackDeadlineRace()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                race.installContinuation(continuation)
+                let operation = Task {
+                    do {
+                        try await playback.speak(pcm: audio)
+                        race.succeed()
+                    } catch {
+                        race.fail(error)
+                    }
+                }
+                race.installOperation(operation)
+                let deadline = Task {
+                    do {
+                        try await Task.sleep(for: timeout)
+                    } catch {
+                        return
+                    }
+                    race.timeOut()
+                }
+                race.installTimeout(deadline)
             }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                throw VoicePipelineError.playbackTimedOut
-            }
-            defer { group.cancelAll() }
-            guard let first = try await group.next() else {
-                throw VoicePipelineError.playbackTimedOut
-            }
-            return first
+        } onCancel: {
+            race.cancel()
         }
     }
 
