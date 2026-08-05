@@ -16,11 +16,18 @@ protocol VoicePlaybackGateway: Actor {
     func sendInvalidCommitWelcome(transitionId: UInt64) async throws
     func setOnReady(_ handler: @escaping (VoiceReadyInfo) async -> Void)
     func setOnSessionDescription(_ handler: @escaping (VoiceSessionKey) async -> Void)
+    /// Fatal local validation error. This is separate from a server close code
+    /// so malformed gateway data fails immediately instead of hanging until a
+    /// handshake timeout.
+    func setOnProtocolError(_ handler: @escaping (String) async -> Void)
     func setOnClose(_ handler: @escaping (Int) async -> Void)
     func setOnDebug(_ handler: @escaping (String) async -> Void)
     func setOnClientsConnect(_ handler: @escaping ([String]) async -> Void)
     func setOnClientDisconnect(_ handler: @escaping (String) async -> Void)
-    func setOnDavePrepareEpoch(_ handler: @escaping (UInt16, UInt64) async -> Void)
+    /// DAVE's Prepare Epoch carries the transition identifier that binds this
+    /// epoch to the later Execute Transition. Preserve it exactly so the MLS
+    /// coordinator can stage the replacement media state safely.
+    func setOnDavePrepareEpoch(_ handler: @escaping (UInt16, UInt64, UInt64) async -> Void)
     func setOnDavePrepareTransition(_ handler: @escaping (UInt16, UInt64) async -> Void)
     func setOnDaveExecuteTransition(_ handler: @escaping (UInt64) async -> Void)
     func setOnDaveMlsExternalSender(_ handler: @escaping (Data) async -> Void)
