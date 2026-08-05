@@ -22,6 +22,16 @@ actor VoicePlaybackService {
     typealias GatewayFactory = @Sendable (URLSession, VoiceServerInfo) -> any VoicePlaybackGateway
     typealias TransportFactory = @Sendable (String, UInt16) -> any VoiceMediaTransport
 
+    /// A gateway receipt can close media immediately, before its potentially
+    /// slow native MLS work reaches the serialized event tail.
+    private enum DaveMediaGateRequest: Sendable {
+        case none
+        case prepareEpoch
+        case prepareTransition(transitionId: UInt64)
+        case execute(transitionId: UInt64)
+        case commitOrWelcome
+    }
+
     private let session: URLSession
     private let gatewayFactory: GatewayFactory
     private let transportFactory: TransportFactory
@@ -35,6 +45,11 @@ actor VoicePlaybackService {
     /// context alive produces a connected-looking but silent session, so bound
     /// the wait and let the normal reconnect path rebuild both transports.
     private let daveDowngradeTransitionTimeout: Duration
+    /// Gate receipt is set before libdave work enters the serial event tail.
+    /// Bound that progress independently of libdave's media-readiness
+    /// watchdog: a native callback that never returns otherwise leaves the
+    /// bot connected, visibly speaking, and permanently silent.
+    private let daveTransitionGateProgressTimeout: Duration
     private var status: Status = .idle
     private var gateway: (any VoicePlaybackGateway)?
     private var transport: (any VoiceMediaTransport)?
@@ -50,16 +65,27 @@ actor VoicePlaybackService {
     /// work. This closes the tiny re-entrancy window in which one stale frame
     /// could otherwise be sent under the previous media context.
     private var daveTransitionGatePending = false
-    /// The DAVE transition that owns the current fail-closed gate. A late
-    /// media-ready result from an older transition must never lift a gate that
-    /// was armed by a newer Prepare Epoch callback.
-    private var daveTransitionGateTransitionId: UInt64?
+    /// Receipt sequence that armed the current fail-closed gate. A late
+    /// media-ready result from an older queued event must never lift a gate
+    /// armed by a newer gateway callback; a later successor event (including
+    /// a post-sole-member Commit/Welcome with a different transition ID) may.
+    private var daveTransitionGateReceipt: UInt64?
     private var daveExternalSender: Data?
     /// DAVE gateway callbacks arrive independently from the WebSocket receive
     /// loop. Swift actors are re-entrant at `await` points, so serialize their
     /// MLS work explicitly: a Welcome must never overtake its Prepare Epoch or
     /// a replayed Execute while native MLS is processing the previous event.
     private var daveEventTail: Task<Void, Never>?
+    /// Gateway receipt order is captured synchronously before each callback is
+    /// appended to `daveEventTail`. The active receipt remains stable across
+    /// native awaits, so media-ready results can distinguish an older event
+    /// completing late from a true successor of the currently gated event.
+    private var daveGatewayEventReceiptCounter: UInt64 = 0
+    private var activeDaveGatewayEventReceipt: UInt64?
+    /// Invalidates an encrypted payload that was being prepared while an MLS
+    /// context changed. This is separate from the connection generation: a
+    /// valid connection can switch DAVE epochs without reconnecting.
+    private var daveMediaContextGeneration: UInt64 = 0
     /// libdave keeps outbound gateway messages stable until the host confirms
     /// the WebSocket write. A short bounded retry lets an in-place gateway
     /// resume resend the exact key package / transition acknowledgement rather
@@ -71,6 +97,18 @@ actor VoicePlaybackService {
     /// normal reconnect path instead of leaving announcements paused forever.
     private var daveReadinessObservationTask: Task<Void, Never>?
     private var daveDowngradeTransitionDeadlineTask: Task<Void, Never>?
+    private var daveTransitionGateProgressTask: Task<Void, Never>?
+    /// Receipt whose serial-tail progress is currently bounded. A later
+    /// gateway callback is not itself progress: it must actually reach the
+    /// serial tail before it can replace this deadline. Otherwise a stream of
+    /// callbacks behind one wedged native operation could defer recovery
+    /// forever.
+    private var daveTransitionGateProgressReceipt: UInt64?
+    /// A receipt can legitimately receive a fresh deadline when its serialized
+    /// operation finally begins. Pair it with a token so an old cancelled timer
+    /// that woke at the same instant cannot mistake that restart for its own
+    /// deadline and fail the healthy successor.
+    private var daveTransitionGateProgressToken: UInt64 = 0
     /// Monotonically increasing ownership token for the live connection. Every
     /// gateway callback and asynchronous worker captures this token. A delayed
     /// callback from a previous WebSocket/UDP session must never be allowed to
@@ -82,6 +120,17 @@ actor VoicePlaybackService {
     /// this, we keep sending frames no other client can decrypt — the bot looks
     /// connected and "speaking" while everyone hears silence.
     private var pendingDaveDowngradeTransitionId: UInt64?
+    /// Execute can arrive while earlier MLS work is still serialized. Retain
+    /// a short per-generation receipt history at the gateway boundary so the
+    /// downgrade watchdog does not mistake a queued, already-received Execute
+    /// for packet loss while a new MLS coordinator is being constructed.
+    private var pendingDaveDowngradeExecuteReceived = false
+    private var receivedDaveExecuteTransitionReceipts: [UInt64: UInt64] = [:]
+    /// Voice binary transition IDs are 16-bit on the wire. Retaining only a
+    /// recent receipt window prevents an ancient wrapped/reused ID from being
+    /// treated as the Execute for a new downgrade, without losing a legitimate
+    /// callback that is waiting behind a handful of serialized MLS events.
+    private let daveExecuteTransitionReceiptRetentionWindow: UInt64 = 64
     /// Discord's epoch-1 sole-member reset arrives as Prepare Transition ID
     /// zero, immediately following (or occasionally queued just ahead of)
     /// Prepare Epoch. It is not a normal Ready/Execute exchange. Retain the
@@ -108,6 +157,21 @@ actor VoicePlaybackService {
     /// utterance can clear the flag (or fail the session) after a new
     /// connection has already begun speaking.
     private var speakingGeneration: UInt64?
+    /// The individual `speak(...)` call that owns the Discord speaking state.
+    /// Two announcements can share a connection generation, so generation
+    /// alone is not sufficient to stop a delayed teardown from an earlier
+    /// utterance switching off a newer one.
+    private var speakingOperationReceipt: UInt64?
+    /// Discord applies speaking updates in arrival order. Keep those writes
+    /// ordered even while this actor is re-entrant: otherwise a delayed
+    /// `speaking: false` from utterance A can arrive after utterance B's
+    /// `speaking: true` and mute B despite local receipt ownership checks.
+    private var speakingUpdateTail: Task<Void, Error>?
+    /// Speech can be cancelled before Discord accepts `speaking: true`.
+    /// Retaining the operation receipt from `speak` entry makes that timeout a
+    /// recovery boundary even while the speaking indicator is still off.
+    private var speechOperationReceiptCounter: UInt64 = 0
+    private var recoveredSpeechOperationReceipts: Set<UInt64> = []
     /// Used only for diagnostics. This makes it possible to distinguish a
     /// gateway-speaking update from a first successfully encrypted UDP frame
     /// when investigating reports of a lit speaking indicator with no audio.
@@ -123,6 +187,24 @@ actor VoicePlaybackService {
     /// usable new route has requested recovery, ignore the rest until the next
     /// connection generation owns a fresh UDP transport.
     private var pathRecoveryRequested = false
+    /// Persists across automatic reconnects. Network.framework may publish a
+    /// few path-detail changes while a Wi-Fi route settles; without a
+    /// cross-generation cooldown each one could spend the entire announcer
+    /// rejoin budget even though the route is usable.
+    private var lastNetworkPathRecoveryAt: ContinuousClock.Instant?
+    private let networkPathRecoveryCooldown: Duration = .seconds(20)
+    /// A route can keep publishing policy/detail changes while the reconnect
+    /// is underway. Spend at most one proactive path-triggered rebuild in an
+    /// automatic rejoin chain; genuine UDP send/keepalive failures still have
+    /// their normal recovery path and are never hidden by this budget.
+    private let networkPathRecoveryBudget: Int = 1
+    private var networkPathRecoveryBudgetRemaining: Int = 1
+    /// A spent budget is only a route-settle guard, not a permanent opt-out of
+    /// proactive recovery. Re-arm it after a sustained quiet connection so a
+    /// later real Wi-Fi/NAT handoff is still protected.
+    private let networkPathRecoveryBudgetStabilityWindow: Duration
+    private var networkPathRecoveryBudgetResetTask: Task<Void, Never>?
+    private var networkPathRecoveryBudgetResetToken: UInt64 = 0
     /// When the current connect attempt began, used to time each handshake phase
     /// in the diagnostics log (so a slow connect can be pinpointed).
     private var connectStartedAt: ContinuousClock.Instant?
@@ -149,7 +231,9 @@ actor VoicePlaybackService {
         transportFactory: @escaping TransportFactory = { VoiceUDPTransport(host: $0, port: $1) },
         resumeConfirmationTimeout: Duration = .seconds(5),
         connectionReadinessTimeout: Duration = .seconds(15),
-        daveDowngradeTransitionTimeout: Duration = .seconds(12)
+        daveDowngradeTransitionTimeout: Duration = .seconds(12),
+        daveTransitionGateProgressTimeout: Duration = .seconds(15),
+        networkPathRecoveryBudgetStabilityWindow: Duration = .seconds(30)
     ) {
         self.session = session
         self.gatewayFactory = gatewayFactory
@@ -157,6 +241,8 @@ actor VoicePlaybackService {
         self.resumeConfirmationTimeout = resumeConfirmationTimeout
         self.connectionReadinessTimeout = connectionReadinessTimeout
         self.daveDowngradeTransitionTimeout = daveDowngradeTransitionTimeout
+        self.daveTransitionGateProgressTimeout = daveTransitionGateProgressTimeout
+        self.networkPathRecoveryBudgetStabilityWindow = networkPathRecoveryBudgetStabilityWindow
     }
 
     func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
@@ -192,9 +278,13 @@ actor VoicePlaybackService {
         connectStartedAt = ContinuousClock().now
         lastDaveStepAt = nil
         pendingDaveDowngradeTransitionId = nil
+        pendingDaveDowngradeExecuteReceived = false
+        receivedDaveExecuteTransitionReceipts.removeAll()
         pendingDaveSoleMemberReset = false
         daveTransitionGatePending = false
-        daveTransitionGateTransitionId = nil
+        daveTransitionGateReceipt = nil
+        daveGatewayEventReceiptCounter = 0
+        activeDaveGatewayEventReceipt = nil
         voiceResumeAttemptsRemaining = 1
         awaitingVoiceResume = false
         voiceResumeConfirmationTask?.cancel()
@@ -244,14 +334,7 @@ actor VoicePlaybackService {
                     }
                 }
                 await gateway.setOnDavePrepareEpoch { [weak self] protocolVersion, epoch, transitionId in
-                    // This is deliberately a separate actor hop before the
-                    // serialized MLS event. `enqueueDaveGatewayEvent` can be
-                    // waiting on a slow native callback while audio is active.
-                    await self?.armDaveTransitionGate(
-                        transitionId: transitionId,
-                        generation: generation
-                    )
-                    await self?.enqueueDaveGatewayEvent(generation: generation) { service in
+                    await self?.enqueueDaveGatewayEvent(generation: generation, gate: .prepareEpoch) { service in
                         await service.handleDavePrepareEpoch(
                             protocolVersion: protocolVersion,
                             epoch: epoch,
@@ -261,13 +344,10 @@ actor VoicePlaybackService {
                     }
                 }
                 await gateway.setOnDavePrepareTransition { [weak self] protocolVersion, transitionId in
-                    if transitionId == 0 || protocolVersion > 0 {
-                        await self?.armDaveTransitionGate(
-                            transitionId: transitionId,
-                            generation: generation
-                        )
-                    }
-                    await self?.enqueueDaveGatewayEvent(generation: generation) { service in
+                    let gate: DaveMediaGateRequest = (transitionId == 0 || protocolVersion > 0)
+                        ? .prepareTransition(transitionId: transitionId)
+                        : .none
+                    await self?.enqueueDaveGatewayEvent(generation: generation, gate: gate) { service in
                         await service.handleDavePrepareTransition(
                             protocolVersion: protocolVersion,
                             transitionId: transitionId,
@@ -276,7 +356,7 @@ actor VoicePlaybackService {
                     }
                 }
                 await gateway.setOnDaveExecuteTransition { [weak self] transitionId in
-                    await self?.enqueueDaveGatewayEvent(generation: generation) { service in
+                    await self?.enqueueDaveGatewayEvent(generation: generation, gate: .execute(transitionId: transitionId)) { service in
                         await service.handleDaveExecuteTransition(transitionId, generation: generation)
                     }
                 }
@@ -291,12 +371,12 @@ actor VoicePlaybackService {
                     }
                 }
                 await gateway.setOnDaveMlsAnnounceCommit { [weak self] data, transitionId in
-                    await self?.enqueueDaveGatewayEvent(generation: generation) { service in
+                    await self?.enqueueDaveGatewayEvent(generation: generation, gate: .commitOrWelcome) { service in
                         await service.handleDaveAnnounceCommit(data, transitionId: transitionId, generation: generation)
                     }
                 }
                 await gateway.setOnDaveMlsWelcome { [weak self] data, transitionId in
-                    await self?.enqueueDaveGatewayEvent(generation: generation) { service in
+                    await self?.enqueueDaveGatewayEvent(generation: generation, gate: .commitOrWelcome) { service in
                         await service.handleDaveWelcome(data, transitionId: transitionId, generation: generation)
                     }
                 }
@@ -325,7 +405,11 @@ actor VoicePlaybackService {
         }
     }
 
-    func disconnect() async {
+    /// `preservingNetworkPathRecoveryCooldown` is used only by the automatic
+    /// rejoin path. It prevents a burst of route-detail notifications from
+    /// repeatedly recreating otherwise fresh voice sessions; deliberate UI
+    /// disconnects retain the default and start a new route-recovery window.
+    func disconnect(preservingNetworkPathRecoveryCooldown: Bool = false) async {
         let oldGateway = gateway
         let oldTransport = transport
         let oldDaveCoordinator = daveCoordinator
@@ -349,10 +433,16 @@ actor VoicePlaybackService {
         daveCoordinator = nil
         daveMediaRequired = false
         daveTransitionGatePending = false
-        daveTransitionGateTransitionId = nil
+        daveTransitionGateReceipt = nil
         daveExternalSender = nil
         pendingDaveDowngradeTransitionId = nil
+        pendingDaveDowngradeExecuteReceived = false
+        receivedDaveExecuteTransitionReceipts.removeAll()
         pendingDaveSoleMemberReset = false
+        if !preservingNetworkPathRecoveryCooldown {
+            lastNetworkPathRecoveryAt = nil
+            networkPathRecoveryBudgetRemaining = networkPathRecoveryBudget
+        }
         connectStartedAt = nil
         lastDaveStepAt = nil
         continuation?.resume(throwing: VoicePipelineError.notConnected)
@@ -377,18 +467,118 @@ actor VoicePlaybackService {
         guard !daveTransitionGatePending else { return false }
         guard daveMediaRequired else { return true }
         guard let coordinator = daveCoordinator else { return false }
-        return await coordinator.getDiagnostics().mediaReady
+        let mediaContextGeneration = daveMediaContextGeneration
+        let diagnostics = await coordinator.getDiagnostics()
+        // `getDiagnostics` yields the actor. A Prepare/Execute callback can
+        // arm the gate while it is suspended, so revalidate every ownership
+        // input before authorizing an RTP frame.
+        guard !daveTransitionGatePending,
+              daveMediaRequired,
+              daveMediaContextGeneration == mediaContextGeneration,
+              daveCoordinator === coordinator else { return false }
+        return diagnostics.mediaReady
     }
 
     /// Fail closed before a DAVE event enters the serialized native callback
-    /// chain. The gateway invokes this actor method before queuing the event,
-    /// so a concurrently paced audio task observes the gate even if an earlier
-    /// MLS event is still awaiting native work.
-    private func armDaveTransitionGate(transitionId: UInt64, generation: UInt64) {
+    /// chain. The receipt is assigned synchronously at the gateway boundary,
+    /// so a concurrently paced audio task cannot send through a stale context
+    /// while an earlier native MLS event is still awaiting completion.
+    private func armDaveTransitionGate(
+        receipt: UInt64,
+        generation: UInt64
+    ) {
         guard isCurrentConnection(generation) else { return }
         daveMediaRequired = true
         daveTransitionGatePending = true
-        daveTransitionGateTransitionId = transitionId
+        daveTransitionGateReceipt = receipt
+        daveMediaContextGeneration &+= 1
+        // The first gated receipt bounds a preceding queued event too. Do not
+        // replace an existing deadline merely because another callback arrived
+        // behind it; only actual serialized-tail progress advances the timer.
+        if daveTransitionGateProgressTask == nil {
+            startDaveTransitionGateProgressWatchdog(receipt: receipt, generation: generation)
+        }
+    }
+
+    private func startDaveTransitionGateProgressWatchdog(receipt: UInt64, generation: UInt64) {
+        daveTransitionGateProgressTask?.cancel()
+        daveTransitionGateProgressToken &+= 1
+        let token = daveTransitionGateProgressToken
+        daveTransitionGateProgressReceipt = receipt
+        let timeout = daveTransitionGateProgressTimeout
+        daveTransitionGateProgressTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: timeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.failIfDaveTransitionGateStalled(
+                receipt: receipt,
+                token: token,
+                generation: generation
+            )
+        }
+    }
+
+    private func cancelDaveTransitionGateProgressWatchdog() {
+        daveTransitionGateProgressTask?.cancel()
+        daveTransitionGateProgressTask = nil
+        daveTransitionGateProgressReceipt = nil
+        daveTransitionGateProgressToken &+= 1
+    }
+
+    private func failIfDaveTransitionGateStalled(
+        receipt: UInt64,
+        token: UInt64,
+        generation: UInt64
+    ) async {
+        guard isCurrentConnection(generation),
+              daveTransitionGatePending,
+              daveTransitionGateProgressReceipt == receipt,
+              daveTransitionGateProgressToken == token else { return }
+        await failIfCurrent(
+            "DAVE secure-media transition did not make progress before its host deadline",
+            generation: generation
+        )
+    }
+
+    /// An Execute changes the authorization boundary just as much as a
+    /// Prepare. Gate it immediately when this is an active DAVE session, and
+    /// record matching downgrades before their serialized handler can run.
+    private func armDaveExecuteTransitionGate(
+        transitionId: UInt64,
+        receipt: UInt64,
+        generation: UInt64
+    ) -> Bool {
+        guard isCurrentConnection(generation) else { return false }
+        let affectsActiveDaveMedia = daveMediaRequired
+            || daveCoordinator != nil
+            || pendingDaveDowngradeTransitionId == transitionId
+        guard affectsActiveDaveMedia else { return false }
+        if let existingReceipt = receivedDaveExecuteTransitionReceipts[transitionId] {
+            receivedDaveExecuteTransitionReceipts[transitionId] = min(existingReceipt, receipt)
+        } else {
+            receivedDaveExecuteTransitionReceipts[transitionId] = receipt
+        }
+        if receipt > daveExecuteTransitionReceiptRetentionWindow {
+            let oldestRetainedReceipt = receipt - daveExecuteTransitionReceiptRetentionWindow
+            receivedDaveExecuteTransitionReceipts = receivedDaveExecuteTransitionReceipts.filter {
+                $0.value >= oldestRetainedReceipt
+            }
+        }
+        if pendingDaveDowngradeTransitionId == transitionId {
+            pendingDaveDowngradeExecuteReceived = true
+            // The original watchdog measures lost Execute packets. Once one
+            // has been received, give the queued apply operation a fresh,
+            // bounded processing window instead of falsely reconnecting.
+            startDaveDowngradeTransitionDeadline(transitionId: transitionId, generation: generation)
+        }
+        armDaveTransitionGate(
+            receipt: receipt,
+            generation: generation
+        )
+        return true
     }
 
     /// `SendableAudioBuffer` entry point so a rendered buffer can cross from the
@@ -402,16 +592,29 @@ actor VoicePlaybackService {
     /// 20 ms intervals.
     func speak(pcm buffer: AVAudioPCMBuffer) async throws {
         let generation = connectionGeneration
+        speechOperationReceiptCounter &+= 1
+        let operationReceipt = speechOperationReceiptCounter
         try await withTaskCancellationHandler {
-            try await streamSpeech(pcm: buffer, generation: generation)
+            try await streamSpeech(
+                pcm: buffer,
+                generation: generation,
+                operationReceipt: operationReceipt
+            )
         } onCancel: {
             Task { [weak self] in
-                await self?.cancelSpeechForRecovery(generation: generation)
+                await self?.cancelSpeechForRecovery(
+                    generation: generation,
+                    operationReceipt: operationReceipt
+                )
             }
         }
     }
 
-    private func streamSpeech(pcm buffer: AVAudioPCMBuffer, generation: UInt64) async throws {
+    private func streamSpeech(
+        pcm buffer: AVAudioPCMBuffer,
+        generation: UInt64,
+        operationReceipt: UInt64
+    ) async throws {
         try Task.checkCancellation()
         guard isCurrentConnection(generation),
               status == .connected,
@@ -427,22 +630,40 @@ actor VoicePlaybackService {
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
+        // Reserve speaking ownership before awaiting the ordered gateway write.
+        // A prior utterance's deferred teardown can run while this `true`
+        // update is still in flight; it must see this newer receipt and avoid
+        // enqueuing an obsolete `false` after it.
+        isSpeaking = true
+        speakingGeneration = generation
+        speakingOperationReceipt = operationReceipt
+        speakingStartedAt = nil
+        didSendFirstAudioFrameForSpeech = false
         do {
-            try await gateway.sendSpeaking(true, ssrc: ssrc)
+            try await sendSpeakingUpdate(
+                true,
+                gateway: gateway,
+                ssrc: ssrc,
+                generation: generation
+            )
         } catch {
             await failIfCurrent("voice speaking update failed: \(error.localizedDescription)", generation: generation)
             throw VoicePipelineError.socketClosed
         }
-        guard isCurrentConnection(generation) else {
+        guard isCurrentConnection(generation),
+              speakingGeneration == generation,
+              speakingOperationReceipt == operationReceipt else {
             throw VoicePipelineError.notConnected
         }
-        isSpeaking = true
-        speakingGeneration = generation
         speakingStartedAt = ContinuousClock().now
-        didSendFirstAudioFrameForSpeech = false
         defer {
             Task { [weak self] in
-                await self?.finishSpeech(generation: generation, gateway: gateway, ssrc: ssrc)
+                await self?.finishSpeech(
+                    generation: generation,
+                    operationReceipt: operationReceipt,
+                    gateway: gateway,
+                    ssrc: ssrc
+                )
             }
         }
 
@@ -535,11 +756,14 @@ actor VoicePlaybackService {
     /// Cancellation is a reliability boundary, not merely an early return:
     /// stop using the potentially wedged voice session so AppModel's existing
     /// bounded auto-rejoin can establish a fresh WebSocket and UDP transport.
-    private func cancelSpeechForRecovery(generation: UInt64) async {
+    private func cancelSpeechForRecovery(generation: UInt64, operationReceipt: UInt64) async {
         guard isCurrentConnection(generation),
-              speakingGeneration == generation,
-              isSpeaking,
               status == .connected else { return }
+        // `onCancel` runs while the `speak` scope is active, but its detached
+        // actor hop may land after the operation has already unwound. The
+        // generation is the ownership boundary; the receipt de-duplicates
+        // recovery for this exact cancellation without relying on `isSpeaking`.
+        guard recoveredSpeechOperationReceipts.insert(operationReceipt).inserted else { return }
         await debug("Voice playback was cancelled by its deadline; recovering the session.")
         await failIfCurrent("voice playback timed out", generation: generation)
     }
@@ -572,17 +796,31 @@ actor VoicePlaybackService {
             guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
             guard await isDaveMediaReadyForCurrentSession() else { throw VoicePipelineError.daveNotReady }
             guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
+            let mediaContextGeneration = daveMediaContextGeneration
             let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
             let plainPayload = RTPPacketBuilder.opusSilenceFrame
             let encryptedPayload: Data
             if let coordinator = daveCoordinator {
                 encryptedPayload = try await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc)
                 guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
+                guard daveMediaContextGeneration == mediaContextGeneration,
+                      await isDaveMediaReadyForCurrentSession() else {
+                    throw VoicePipelineError.daveNotReady
+                }
             } else {
                 encryptedPayload = plainPayload
             }
+            guard daveMediaContextGeneration == mediaContextGeneration else {
+                throw VoicePipelineError.daveNotReady
+            }
             let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
             try await transport.send(packet)
+            guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
+            // Persist each successfully emitted packet. If a DAVE transition
+            // stops the remaining silence burst, the next utterance must not
+            // reuse this packet's RTP sequence/timestamp values.
+            self.rtp = rtp
+            self.encryption = encryption
             await noteFirstAudioFrameSent(generation: generation)
             guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
             nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(OpusFrameEncoder.frameDuration * 1000)))
@@ -614,38 +852,83 @@ actor VoicePlaybackService {
             throw VoicePipelineError.notConnected
         }
         let plainPayload = try opus.encode(buffer)
+        let mediaContextGeneration = daveMediaContextGeneration
         let encryptedPayload: Data
         if let coordinator = daveCoordinator {
             encryptedPayload = try await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc)
             guard isCurrentConnection(generation) else {
                 throw VoicePipelineError.notConnected
             }
+            guard daveMediaContextGeneration == mediaContextGeneration,
+                  await isDaveMediaReadyForCurrentSession() else {
+                throw VoicePipelineError.daveNotReady
+            }
         } else {
             encryptedPayload = plainPayload
+        }
+        guard daveMediaContextGeneration == mediaContextGeneration else {
+            throw VoicePipelineError.daveNotReady
         }
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
         try await transport.send(packet)
-        await noteFirstAudioFrameSent(generation: generation)
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
         self.rtp = rtp
         self.encryption = encryption
+        await noteFirstAudioFrameSent(generation: generation)
+        guard isCurrentConnection(generation) else {
+            throw VoicePipelineError.notConnected
+        }
     }
 
     private func finishSpeech(
         generation: UInt64,
+        operationReceipt: UInt64,
         gateway: any VoicePlaybackGateway,
         ssrc: UInt32
     ) async {
-        guard speakingGeneration == generation else { return }
+        guard speakingGeneration == generation,
+              speakingOperationReceipt == operationReceipt else { return }
         isSpeaking = false
         speakingGeneration = nil
+        speakingOperationReceipt = nil
         speakingStartedAt = nil
         didSendFirstAudioFrameForSpeech = false
         guard isCurrentConnection(generation) else { return }
-        try? await gateway.sendSpeaking(false, ssrc: ssrc)
+        try? await sendSpeakingUpdate(
+            false,
+            gateway: gateway,
+            ssrc: ssrc,
+            generation: generation
+        )
+    }
+
+    /// Queue a gateway speaking update after all earlier updates. The actual
+    /// gateway write is already deadline-bounded, but it cannot be issued
+    /// concurrently with a prior true/false update or Discord may observe
+    /// them in the opposite order.
+    private func sendSpeakingUpdate(
+        _ speaking: Bool,
+        gateway: any VoicePlaybackGateway,
+        ssrc: UInt32,
+        generation: UInt64
+    ) async throws {
+        let previous = speakingUpdateTail
+        let update = Task.detached { [weak self, previous, gateway] in
+            if let previous {
+                try await previous.value
+            }
+            guard let self,
+                  await self.isCurrentConnection(generation) else {
+                throw VoicePipelineError.notConnected
+            }
+            try Task.checkCancellation()
+            try await gateway.sendSpeaking(speaking, ssrc: ssrc)
+        }
+        speakingUpdateTail = update
+        try await update.value
     }
 
     private func noteFirstAudioFrameSent(generation: UInt64) async {
@@ -786,6 +1069,15 @@ actor VoicePlaybackService {
         }
         daveMediaRequired = true
         pendingDaveDowngradeTransitionId = nil
+        pendingDaveDowngradeExecuteReceived = false
+        // Do not clear Execute receipts here. An Execute callback can be
+        // queued just after SESSION_DESCRIPTION / Prepare Epoch but before
+        // this coordinator construction reaches its first await. The later
+        // transport-only Prepare handler needs that receipt to distinguish an
+        // already-received Execute from a genuinely missing one. Receipts are
+        // bounded above and reset only with the connection or a completed
+        // downgrade, which also prevents an old MLS context from leaking on.
+        daveMediaContextGeneration &+= 1
         let previousCoordinator = daveCoordinator
         daveCoordinator = nil
         await previousCoordinator?.reset()
@@ -852,6 +1144,8 @@ actor VoicePlaybackService {
             await daveLog("DAVE prepare transition (id \(transitionId)): call downgrading to transport-only encryption.")
             guard isCurrentConnection(generation) else { return }
             pendingDaveDowngradeTransitionId = transitionId
+            let receivedExecuteReceipt = receivedDaveExecuteTransitionReceipts[transitionId]
+            pendingDaveDowngradeExecuteReceived = receivedExecuteReceipt != nil
             guard let gateway else { return }
             do {
                 try await gateway.sendTransitionReady(transitionId: transitionId)
@@ -865,6 +1159,18 @@ actor VoicePlaybackService {
             }
             guard isCurrentConnection(generation) else { return }
             startDaveDowngradeTransitionDeadline(transitionId: transitionId, generation: generation)
+            // An out-of-order Execute can already have run before this
+            // Prepare reached the serialized tail. Its callback receipt is
+            // lower than the currently active Prepare receipt, so there will
+            // be no later handler left to complete the downgrade. Honor it
+            // only after Transition Ready was successfully sent.
+            if let receivedExecuteReceipt,
+               let activeReceipt = activeDaveGatewayEventReceipt,
+               receivedExecuteReceipt < activeReceipt {
+                await daveLog("DAVE downgrade Execute \(transitionId) arrived before its Prepare handler; applying it after transition-ready.")
+                await applyDaveDowngrade(transitionId: transitionId, generation: generation)
+                return
+            }
             await daveLog("DAVE downgrade prepared (id \(transitionId)); transition-ready sent, awaiting execute-transition.")
         } else {
             await failIfCurrent(
@@ -880,21 +1186,34 @@ actor VoicePlaybackService {
     private func applyDaveDowngrade(transitionId: UInt64, generation: UInt64) async {
         guard isCurrentConnection(generation) else { return }
         pendingDaveDowngradeTransitionId = nil
+        pendingDaveDowngradeExecuteReceived = false
+        receivedDaveExecuteTransitionReceipts.removeAll()
         daveDowngradeTransitionDeadlineTask?.cancel()
         daveDowngradeTransitionDeadlineTask = nil
         pendingDaveSoleMemberReset = false
         daveReadinessObservationTask?.cancel()
         daveReadinessObservationTask = nil
         let coordinator = daveCoordinator
+        daveMediaContextGeneration &+= 1
+        let downgradeMediaContextGeneration = daveMediaContextGeneration
         daveCoordinator = nil
         await coordinator?.reset()
         guard isCurrentConnection(generation) else { return }
+        // A newer DAVE callback can arm its gate while libdave is resetting
+        // the old coordinator. That callback is already queued behind this
+        // one, but its receipt-time gate is live now; never erase it and send
+        // transport-only media in the gap before the new MLS event runs.
+        guard daveMediaContextGeneration == downgradeMediaContextGeneration else {
+            await daveLog("DAVE downgrade \(transitionId) was superseded by a newer secure-media transition; preserving the newer media gate.")
+            return
+        }
         // The external sender belongs to the torn-down MLS group; Discord sends
         // a fresh one if the call later upgrades again.
         daveExternalSender = nil
         daveMediaRequired = false
         daveTransitionGatePending = false
-        daveTransitionGateTransitionId = nil
+        daveTransitionGateReceipt = nil
+        cancelDaveTransitionGateProgressWatchdog()
         await daveLog("DAVE downgrade executed (id \(transitionId)); media is transport-encrypted only until Discord re-upgrades the call.")
         guard isCurrentConnection(generation) else { return }
         if status != .connected {
@@ -983,9 +1302,8 @@ actor VoicePlaybackService {
                 await handleDaveGatewayResult(
                     result,
                     reason: "prepare epoch \(epoch)",
-                    transitionId: transitionId,
                     generation: generation
-            )
+                )
             await executePendingDaveSoleMemberResetIfPossible(generation: generation)
             guard isCurrentConnection(generation) else { return }
 
@@ -1003,7 +1321,6 @@ actor VoicePlaybackService {
                 await handleDaveGatewayResult(
                     senderResult,
                     reason: "prepare epoch \(epoch) (cached external sender)",
-                    transitionId: transitionId,
                     generation: generation
                 )
             }
@@ -1024,6 +1341,11 @@ actor VoicePlaybackService {
         guard isCurrentConnection(generation),
               pendingDaveSoleMemberReset,
               let coordinator = daveCoordinator else { return }
+        // Callbacks that arrive after this boundary represent a fresh DAVE
+        // transition and keep their own progress watchdog. The callbacks
+        // already queued up to this point are the validated sole-member flow;
+        // only after libdave consumes it may that flow wait indefinitely.
+        let resetValidationBoundaryReceipt = daveGatewayEventReceiptCounter
         let diagnostics = await coordinator.getDiagnostics()
         guard isCurrentConnection(generation), diagnostics.pendingEpoch == 1 else { return }
 
@@ -1038,10 +1360,13 @@ actor VoicePlaybackService {
             await handleDaveGatewayResult(
                 result,
                 reason: "sole-member reset",
-                transitionId: 0,
                 generation: generation
             )
             guard isCurrentConnection(generation) else { return }
+            if let progressReceipt = daveTransitionGateProgressReceipt,
+               progressReceipt <= resetValidationBoundaryReceipt {
+                cancelDaveTransitionGateProgressWatchdog()
+            }
             if status == .connecting {
                 // This is an authenticated protocol state, not a stalled
                 // handshake. Keep the voice socket alive and wait for Discord
@@ -1078,7 +1403,6 @@ actor VoicePlaybackService {
             await handleDaveGatewayResult(
                 result,
                 reason: "execute transition \(transitionId)",
-                transitionId: transitionId,
                 generation: generation
             )
         } catch {
@@ -1112,8 +1436,11 @@ actor VoicePlaybackService {
         generation: UInt64
     ) async {
         guard isCurrentConnection(generation), pendingDaveDowngradeTransitionId == transitionId else { return }
+        let detail = pendingDaveDowngradeExecuteReceived
+            ? "was received but was not applied before its processing deadline"
+            : "was not received before its deadline"
         await failIfCurrent(
-            "DAVE downgrade transition \(transitionId) was not executed before its deadline",
+            "DAVE downgrade transition \(transitionId) \(detail)",
             generation: generation
         )
     }
@@ -1202,7 +1529,6 @@ actor VoicePlaybackService {
             await handleDaveGatewayResult(
                 result,
                 reason: "commit \(transitionId)",
-                transitionId: transitionId,
                 generation: generation
             )
             if result.needsRecovery {
@@ -1238,7 +1564,6 @@ actor VoicePlaybackService {
             await handleDaveGatewayResult(
                 result,
                 reason: "welcome \(transitionId)",
-                transitionId: transitionId,
                 generation: generation
             )
             if result.needsRecovery {
@@ -1357,7 +1682,6 @@ actor VoicePlaybackService {
     private func handleDaveGatewayResult(
         _ result: DiscordDaveGatewayResult,
         reason: String,
-        transitionId: UInt64? = nil,
         generation: UInt64
     ) async {
         guard isCurrentConnection(generation) else { return }
@@ -1375,12 +1699,15 @@ actor VoicePlaybackService {
         }
 
         if daveTransitionGatePending {
-            guard daveTransitionGateTransitionId == transitionId else {
-                await verbose("DAVE \(reason) reported media ready for an older transition; retaining the newer media gate.")
+            guard let activeReceipt = activeDaveGatewayEventReceipt,
+                  let gateReceipt = daveTransitionGateReceipt,
+                  activeReceipt >= gateReceipt else {
+                await verbose("DAVE \(reason) reported media ready for an older queued event; retaining the newer media gate.")
                 return
             }
             daveTransitionGatePending = false
-            daveTransitionGateTransitionId = nil
+            daveTransitionGateReceipt = nil
+            cancelDaveTransitionGateProgressWatchdog()
         }
         daveReadinessObservationTask?.cancel()
         daveReadinessObservationTask = nil
@@ -1557,9 +1884,12 @@ actor VoicePlaybackService {
         daveCoordinator = nil
         daveMediaRequired = false
         daveTransitionGatePending = false
-        daveTransitionGateTransitionId = nil
+        daveTransitionGateReceipt = nil
+        cancelDaveTransitionGateProgressWatchdog()
         daveExternalSender = nil
         pendingDaveDowngradeTransitionId = nil
+        pendingDaveDowngradeExecuteReceived = false
+        receivedDaveExecuteTransitionReceipts.removeAll()
         pendingDaveSoleMemberReset = false
         connectStartedAt = nil
         lastDaveStepAt = nil
@@ -1597,6 +1927,7 @@ actor VoicePlaybackService {
         }
         continuation?.resume()
         startKeepalive(generation: generation)
+        scheduleNetworkPathRecoveryBudgetResetIfNeeded(generation: generation)
     }
 
     /// Discord UDP keepalive loop: every 5 s send an 8-byte datagram (a
@@ -1657,29 +1988,45 @@ actor VoicePlaybackService {
     }
 
     /// A route change can leave a UDP socket pinned to an obsolete interface,
-    /// even when no announcement is currently speaking. Rebuild once when a
-    /// materially different usable route appears so the next read does not
-    /// become a silent first probe. Cosmetic Network.framework changes (for
-    /// example constrained/expensive flags alone) deliberately do not churn
-    /// the voice session.
+    /// even when no announcement is currently speaking. `VoiceUDPTransport`
+    /// has already suppressed its initial observation and repeated equal
+    /// `NWPath` values; a later satisfied path can be a Wi-Fi roam or route
+    /// handoff that Network.framework cannot express as a different interface
+    /// type. Rebuild once before the next read becomes a silent probe, but
+    /// throttle detail-only bursts across the automatic reconnect boundary.
     private func handleVoiceNetworkPathChange(
         previous: VoiceNetworkPathSnapshot,
         current: VoiceNetworkPathSnapshot,
         generation: UInt64
     ) async {
         guard isCurrentConnection(generation), status == .connected else { return }
+        noteNetworkPathActivityForBudgetReset(generation: generation)
         guard current.status == .satisfied else {
             await debug("Voice network path became unavailable; waiting for a usable route before considering voice recovery.", generation: generation)
             return
         }
-        let changedInterfaces = previous.activeInterfaceTypes != current.activeInterfaceTypes
-        let recoveredUsableRoute = previous.status != .satisfied
-        guard changedInterfaces || recoveredUsableRoute else {
-            await debug("Voice network path detail changed without a route handoff; keeping the existing voice session.", generation: generation)
+        guard !pathRecoveryRequested else { return }
+        guard networkPathRecoveryBudgetRemaining > 0 else {
+            await debug(
+                "Voice network path changed after the proactive recovery budget was spent; retaining the fresh UDP session and relying on UDP health checks for any real delivery failure.",
+                generation: generation
+            )
             return
         }
-        guard !pathRecoveryRequested else { return }
+        let now = ContinuousClock().now
+        let recoveredFromUnavailablePath = previous.status != .satisfied
+        if !recoveredFromUnavailablePath,
+           let lastNetworkPathRecoveryAt,
+           now - lastNetworkPathRecoveryAt < networkPathRecoveryCooldown {
+            await debug(
+                "Voice network path changed again \(Self.format(now - lastNetworkPathRecoveryAt)) after recovery; keeping the fresh UDP session during the 20-second route-settle cooldown.",
+                generation: generation
+            )
+            return
+        }
         pathRecoveryRequested = true
+        lastNetworkPathRecoveryAt = now
+        networkPathRecoveryBudgetRemaining -= 1
         let previousInterfaces = previous.activeInterfaceTypes.map(\.rawValue).joined(separator: ",")
         let currentInterfaces = current.activeInterfaceTypes.map(\.rawValue).joined(separator: ",")
         await debug(
@@ -1687,6 +2034,49 @@ actor VoicePlaybackService {
             generation: generation
         )
         await failIfCurrent("voice network path changed", generation: generation)
+    }
+
+    /// Any subsequent path publication while the budget is spent extends the
+    /// settle window. This avoids restoring the one proactive rebuild while
+    /// Network.framework is still churning policy/address details.
+    private func noteNetworkPathActivityForBudgetReset(generation: UInt64) {
+        guard networkPathRecoveryBudgetRemaining < networkPathRecoveryBudget else { return }
+        scheduleNetworkPathRecoveryBudgetResetIfNeeded(generation: generation)
+    }
+
+    private func scheduleNetworkPathRecoveryBudgetResetIfNeeded(generation: UInt64) {
+        guard isCurrentConnection(generation),
+              status == .connected,
+              networkPathRecoveryBudgetRemaining < networkPathRecoveryBudget else { return }
+        networkPathRecoveryBudgetResetTask?.cancel()
+        networkPathRecoveryBudgetResetToken &+= 1
+        let token = networkPathRecoveryBudgetResetToken
+        let stabilityWindow = networkPathRecoveryBudgetStabilityWindow
+        networkPathRecoveryBudgetResetTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: stabilityWindow)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.restoreNetworkPathRecoveryBudget(
+                token: token,
+                generation: generation
+            )
+        }
+    }
+
+    private func restoreNetworkPathRecoveryBudget(token: UInt64, generation: UInt64) async {
+        guard token == networkPathRecoveryBudgetResetToken,
+              isCurrentConnection(generation),
+              status == .connected else { return }
+        networkPathRecoveryBudgetResetTask = nil
+        networkPathRecoveryBudgetRemaining = networkPathRecoveryBudget
+        lastNetworkPathRecoveryAt = nil
+        await debug(
+            "Voice network path stayed stable after recovery; restoring one proactive route-rebuild budget.",
+            generation: generation
+        )
     }
 
     // MARK: - Connection lifetime
@@ -1708,14 +2098,18 @@ actor VoicePlaybackService {
         cancelConnectionWorkers()
         isSpeaking = false
         speakingGeneration = nil
+        speakingOperationReceipt = nil
         speakingStartedAt = nil
         didSendFirstAudioFrameForSpeech = false
+        recoveredSpeechOperationReceipts.removeAll()
         awaitingVoiceResume = false
         keepaliveFailureCount = 0
         pathRecoveryRequested = false
     }
 
     private func cancelConnectionWorkers() {
+        speakingUpdateTail?.cancel()
+        speakingUpdateTail = nil
         gatewayConnectTask?.cancel()
         gatewayConnectTask = nil
         connectionTimeoutTask?.cancel()
@@ -1726,6 +2120,8 @@ actor VoicePlaybackService {
         voiceResumeConfirmationTask = nil
         daveEventTail?.cancel()
         daveEventTail = nil
+        activeDaveGatewayEventReceipt = nil
+        daveGatewayEventReceiptCounter = 0
         daveOutboxRetryTask?.cancel()
         daveOutboxRetryTask = nil
         daveOutboxRetryAttempts = 0
@@ -1733,6 +2129,10 @@ actor VoicePlaybackService {
         daveReadinessObservationTask = nil
         daveDowngradeTransitionDeadlineTask?.cancel()
         daveDowngradeTransitionDeadlineTask = nil
+        cancelDaveTransitionGateProgressWatchdog()
+        networkPathRecoveryBudgetResetTask?.cancel()
+        networkPathRecoveryBudgetResetTask = nil
+        networkPathRecoveryBudgetResetToken &+= 1
     }
 
     /// Queue one DAVE/MLS callback behind earlier callbacks from this voice
@@ -1740,16 +2140,104 @@ actor VoicePlaybackService {
     /// each operation still checks the generation before it touches state.
     private func enqueueDaveGatewayEvent(
         generation: UInt64,
+        gate: DaveMediaGateRequest = .none,
         _ operation: @escaping @Sendable (VoicePlaybackService) async -> Void
     ) {
         guard isCurrentConnection(generation) else { return }
+        daveGatewayEventReceiptCounter &+= 1
+        let receipt = daveGatewayEventReceiptCounter
+        let gateWasArmed: Bool
+        switch gate {
+        case .none:
+            gateWasArmed = false
+        case .prepareEpoch, .commitOrWelcome:
+            armDaveTransitionGate(receipt: receipt, generation: generation)
+            gateWasArmed = true
+        case .prepareTransition:
+            armDaveTransitionGate(receipt: receipt, generation: generation)
+            gateWasArmed = true
+        case .execute(let transitionId):
+            gateWasArmed = armDaveExecuteTransitionGate(
+                transitionId: transitionId,
+                receipt: receipt,
+                generation: generation
+            )
+        }
         let previous = daveEventTail
         let task = Task { [weak self] in
             _ = await previous?.result
             guard !Task.isCancelled, let self else { return }
-            await operation(self)
+            await self.runDaveGatewayEvent(
+                receipt: receipt,
+                generation: generation,
+                gateWasArmed: gateWasArmed,
+                operation: operation
+            )
         }
         daveEventTail = task
+    }
+
+    private func runDaveGatewayEvent(
+        receipt: UInt64,
+        generation: UInt64,
+        gateWasArmed: Bool,
+        operation: @escaping @Sendable (VoicePlaybackService) async -> Void
+    ) async {
+        guard isCurrentConnection(generation), !Task.isCancelled else { return }
+        if gateWasArmed {
+            // Reaching this point proves the serial tail advanced past any
+            // older callback. It is now safe to give this native operation its
+            // own bounded processing window; later receipt-time callbacks do
+            // not get to extend it until they make the same progress.
+            advanceDaveTransitionGateProgressWatchdog(
+                to: receipt,
+                generation: generation
+            )
+        }
+        activeDaveGatewayEventReceipt = receipt
+        await operation(self)
+        // A cancelled native MLS call can resume after a replacement voice
+        // connection has already reused the local receipt counter. Never let
+        // that old task clear the new connection's active gate owner.
+        guard isCurrentConnection(generation) else { return }
+        if activeDaveGatewayEventReceipt == receipt {
+            activeDaveGatewayEventReceipt = nil
+        }
+        advanceDaveTransitionGateProgressWatchdogAfterEvent(
+            completedReceipt: receipt,
+            generation: generation
+        )
+    }
+
+    /// Move the deadline only when a gated callback has actually reached the
+    /// serialized tail. Arrival order alone is intentionally insufficient.
+    private func advanceDaveTransitionGateProgressWatchdog(
+        to receipt: UInt64,
+        generation: UInt64
+    ) {
+        guard isCurrentConnection(generation),
+              daveTransitionGatePending,
+              daveTransitionGateProgressTask != nil else { return }
+        startDaveTransitionGateProgressWatchdog(receipt: receipt, generation: generation)
+    }
+
+    /// A completion is concrete serial-tail progress. If a newer gated receipt
+    /// was queued while this event was running, advance the deadline to that
+    /// successor before it starts; a stalled predecessor can never be hidden
+    /// simply by receiving more gateway callbacks.
+    private func advanceDaveTransitionGateProgressWatchdogAfterEvent(
+        completedReceipt: UInt64,
+        generation: UInt64
+    ) {
+        guard isCurrentConnection(generation),
+              daveTransitionGatePending,
+              daveTransitionGateProgressTask != nil,
+              let latestGateReceipt = daveTransitionGateReceipt,
+              latestGateReceipt > completedReceipt else { return }
+        startDaveTransitionGateProgressWatchdog(
+            receipt: latestGateReceipt,
+            generation: generation
+        )
     }
 
     private func isCurrentConnection(_ generation: UInt64) -> Bool {

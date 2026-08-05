@@ -125,6 +125,12 @@ actor VoiceAnnouncementService {
     private var queue: [Announcement] = []
     private var draining: Bool = false
     private var paused: Bool = false
+    /// Advances when a newer voice path tells the announcer to resume: either
+    /// DAVE media becomes ready or AppModel finishes an automatic rejoin. A
+    /// playback attempt from an older generation may finish with a stale
+    /// recoverable error, but must never put the fresh queue back into a
+    /// permanent pause.
+    private var recoveryGeneration: UInt64 = 0
     private var recent: [Announcement] = []
     private let recentLimit: Int = 25
     private let maxQueueDepth: Int = 20
@@ -200,6 +206,9 @@ actor VoiceAnnouncementService {
     var healthSnapshot: VoiceAnnouncerHealth { health }
 
     func setPaused(_ paused: Bool) async {
+        if !paused {
+            recoveryGeneration &+= 1
+        }
         self.paused = paused
         await publishHealth(phase: paused ? .paused : (queue.isEmpty ? .idle : .queued))
         if !paused, !queue.isEmpty, !draining {
@@ -212,8 +221,13 @@ actor VoiceAnnouncementService {
     /// finished), so reads paused on `daveNotReady` resume without waiting
     /// for a full reconnect.
     func resumeAfterMediaReady() async {
-        guard paused else { return }
-        await setPaused(false)
+        if paused {
+            await setPaused(false)
+        } else {
+            // Preserve a DAVE-ready signal that races a stale final retry
+            // before that retry has set paused = true.
+            recoveryGeneration &+= 1
+        }
     }
 
     func clearPending() async {
@@ -363,6 +377,7 @@ actor VoiceAnnouncementService {
                 }
             }
 
+            var recoveryGenerationAtPlaybackStart = recoveryGeneration
             do {
                 await publishHealth(
                     phase: .sending,
@@ -371,6 +386,7 @@ actor VoiceAnnouncementService {
                     lastBatchSize: current.batch.count
                 )
                 await onDebug?("Sending speech audio to Discord.")
+                recoveryGenerationAtPlaybackStart = recoveryGeneration
                 try await speakWithTimeout(current.audio)
                 await onDebug?("Finished Discord speech (\(current.speechText.count) chars, \(current.batch.count) message\(current.batch.count == 1 ? "" : "s")).")
                 for item in current.batch {
@@ -397,7 +413,12 @@ actor VoiceAnnouncementService {
                     }
                     await onQueueChange?(queue)
                 }
-                await handleDrainFailure(error, batch: current.batch, stage: .playback)
+                await handleDrainFailure(
+                    error,
+                    batch: current.batch,
+                    stage: .playback,
+                    recoveryGenerationAtPlaybackStart: recoveryGenerationAtPlaybackStart
+                )
                 continue
             }
 
@@ -425,7 +446,8 @@ actor VoiceAnnouncementService {
     private func handleDrainFailure(
         _ error: Error,
         batch: [Announcement],
-        stage: DrainFailureStage
+        stage: DrainFailureStage,
+        recoveryGenerationAtPlaybackStart: UInt64? = nil
     ) async {
         guard let first = batch.first else { return }
         if stage == .rendering, isRetryableRenderError(error) {
@@ -469,8 +491,24 @@ actor VoiceAnnouncementService {
             // refresh never completes.
             retryCounts[first.id] = nil
             requeue(batch)
+            // `speak` can return a stale daveNotReady after DAVE has already
+            // reported media-ready, or after a clean auto-rejoin has resumed
+            // the announcer. A newer recovery generation means this failure
+            // belongs to the old path. Set paused before the next suspension
+            // point too, so a later ready/rejoin callback resumes normally.
+            let recoveredDuringFinalAttempt = recoveryGenerationAtPlaybackStart
+                .map { $0 != recoveryGeneration } ?? false
+            paused = !recoveredDuringFinalAttempt
             await onQueueChange?(queue)
-            paused = true
+            if !paused {
+                await onDebug?("Discord speech recovered while its final secure-media retry completed; continuing queued reads.")
+                await publishHealth(
+                    phase: .queued,
+                    lastFailureAt: Date(),
+                    lastFailureReason: error.localizedDescription
+                )
+                return
+            }
             await onDebug?("Discord speech is waiting for secure media to finish refreshing; queued reads resume automatically.")
             await publishHealth(
                 phase: .recovering,
@@ -482,13 +520,28 @@ actor VoiceAnnouncementService {
         }
         if isReconnectablePlaybackError(error) {
             requeue(batch)
+            // A send started on the prior voice connection can finish after
+            // AppModel has already connected a replacement and called
+            // setPaused(false). Do not let that stale completion re-pause the
+            // newly recovered queue.
+            let recoveredDuringPlayback = recoveryGenerationAtPlaybackStart
+                .map { $0 != recoveryGeneration } ?? false
+            paused = !recoveredDuringPlayback
             await onQueueChange?(queue)
+            if !paused {
+                await onDebug?("Discord speech recovery completed while a stale playback failure returned; continuing queued reads.")
+                await publishHealth(
+                    phase: .queued,
+                    lastFailureAt: Date(),
+                    lastFailureReason: error.localizedDescription
+                )
+                return
+            }
             if case VoicePipelineError.playbackTimedOut = error {
                 await onDebug?("Discord speech playback exceeded its deadline; reconnecting the voice session before retrying the queued read.")
             } else {
                 await onDebug?("Discord speech paused while the voice connection recovers.")
             }
-            paused = true
             await publishHealth(
                 phase: .recovering,
                 retryStreak: health.retryStreak + 1,

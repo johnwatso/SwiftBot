@@ -265,6 +265,12 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 
 ## Session log
 
+### 2026-08-06 — Voice Announcer Race and Route Recovery Hardening
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Closed remaining silent-connected race windows: all voice WebSocket writes and UDP completion callbacks are bounded, cancellation-safe, and tear down a wedged one-shot transport; heartbeat nonces are registered before their write so immediate ACKs cannot create a false reconnect. DAVE Prepare/Execute/Commit/Welcome callbacks now fail-close media at receipt time, retain ordered ownership through native work and coordinator construction, preserve a newer gate during reset, and have a host-side progress deadline (while correctly allowing a validated ID-zero sole-member reset to remain media-paused). Encrypted frames revalidate their context after native awaits, and trailing silence persists RTP state per packet. Announcer recovery generations prevent stale DAVE or reconnectable failures from re-pausing a successfully rejoined queue. Speaking updates now have both per-utterance ownership and a serialized wire order, so an old `false` cannot mute a newer read. A full later `NWPath` change—including same-interface Wi-Fi roaming—rebuilds UDP once, with automatic-rejoin cooldown, a one-event route-settle budget, and stable-route rearming. Added deterministic regressions for DAVE ordering/progress, stale announcer recovery, speaking ordering, UDP completion loss, and route churn. |
+
 ### 2026-08-05 — Voice Announcer Connection-Lifetime Hardening
 
 | Commit | Summary |

@@ -41,6 +41,69 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         var count: Int { attempts }
     }
 
+    /// Emits five ordinary DAVE-not-ready failures, then holds the sixth
+    /// (final) retry open until the test injects a media-ready callback. The
+    /// held failure models a stale media send completing after DAVE has
+    /// already announced that its new ratchet is ready.
+    private actor FinalDaveRetryPlayback: AnnouncementPlayback {
+        private var attempts = 0
+        private var finalFailureContinuation: CheckedContinuation<Void, Never>?
+        private var waitingForFinalFailure = false
+
+        var isWaitingForFinalFailure: Bool { waitingForFinalFailure }
+
+        func speak(pcm wrapped: SendableAudioBuffer) async throws {
+            attempts += 1
+            if attempts <= 5 {
+                throw VoicePipelineError.daveNotReady
+            }
+            if attempts == 6 {
+                waitingForFinalFailure = true
+                await withCheckedContinuation { continuation in
+                    finalFailureContinuation = continuation
+                }
+                waitingForFinalFailure = false
+                throw VoicePipelineError.daveNotReady
+            }
+        }
+
+        func releaseFinalFailure() {
+            let continuation = finalFailureContinuation
+            finalFailureContinuation = nil
+            continuation?.resume()
+        }
+    }
+
+    /// Holds the first send open until a replacement voice session has
+    /// resumed, then returns a stale reconnectable error. The next send
+    /// succeeds, proving that the old error cannot re-pause the fresh queue.
+    private actor StaleReconnectablePlayback: AnnouncementPlayback {
+        private var attempts = 0
+        private var staleFailureContinuation: CheckedContinuation<Void, Never>?
+        private var waitingForStaleFailure = false
+
+        var isWaitingForStaleFailure: Bool { waitingForStaleFailure }
+        var speakCount: Int { attempts }
+
+        func speak(pcm wrapped: SendableAudioBuffer) async throws {
+            attempts += 1
+            if attempts == 1 {
+                waitingForStaleFailure = true
+                await withCheckedContinuation { continuation in
+                    staleFailureContinuation = continuation
+                }
+                waitingForStaleFailure = false
+                throw VoicePipelineError.notConnected
+            }
+        }
+
+        func releaseStaleFailure() {
+            let continuation = staleFailureContinuation
+            staleFailureContinuation = nil
+            continuation?.resume()
+        }
+    }
+
     private func makeAnnouncer(
         playback: FakeAnnouncementPlayback
     ) throws -> VoiceAnnouncementService {
@@ -113,6 +176,56 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         await waitUntil { await announcer.recentHistory.count == 1 }
         let pendingAfter = await announcer.pending
         XCTAssertTrue(pendingAfter.isEmpty)
+    }
+
+    func testMediaReadyDuringFinalDaveRetryDoesNotLeaveQueuePaused() async throws {
+        let playback = FinalDaveRetryPlayback()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(1),
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+
+        await announcer.enqueue("resume the final DAVE retry")
+        await waitUntil { await playback.isWaitingForFinalFailure }
+
+        // This deliberately arrives while `speak` is still in flight, before
+        // its stale daveNotReady reaches the final pause branch. Previously
+        // the callback saw paused == false and was dropped, leaving the batch
+        // paused forever once that failure completed.
+        await announcer.resumeAfterMediaReady()
+        await playback.releaseFinalFailure()
+
+        await waitUntil { await announcer.recentHistory.count == 1 }
+        let health = await announcer.healthSnapshot
+        let pending = await announcer.pending
+        XCTAssertFalse(health.isPaused)
+        XCTAssertTrue(pending.isEmpty)
+    }
+
+    func testAutoRejoinUnpauseOutrunsStaleReconnectableFailure() async throws {
+        let playback = StaleReconnectablePlayback()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+
+        await announcer.enqueue("keep reading after a fresh voice rejoin")
+        await waitUntil { await playback.isWaitingForStaleFailure }
+
+        // Model AppModel's .connecting -> .connected callbacks while a send
+        // from the old voice session is still completing.
+        await announcer.setPaused(true)
+        await announcer.setPaused(false)
+        await playback.releaseStaleFailure()
+
+        await waitUntil { await announcer.recentHistory.count == 1 }
+        let health = await announcer.healthSnapshot
+        let pending = await announcer.pending
+        let speaks = await playback.speakCount
+        XCTAssertFalse(health.isPaused)
+        XCTAssertTrue(pending.isEmpty)
+        XCTAssertEqual(speaks, 2)
     }
 
     func testReconnectableFailurePausesAndRequeues() async throws {

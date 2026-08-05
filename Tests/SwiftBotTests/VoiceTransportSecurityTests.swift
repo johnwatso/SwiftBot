@@ -3,6 +3,44 @@ import XCTest
 @testable import SwiftBot
 
 final class VoiceTransportSecurityTests: XCTestCase {
+    func testUDPCompletionDeadlineStopsTransportWhenNetworkNeverCompletesSend() async {
+        let transport = VoiceUDPTransport(
+            host: "127.0.0.1",
+            port: 9,
+            testingSendCompletionTimeout: .milliseconds(25),
+            testingSendImplementation: { _, _ in
+                // Deliberately never invoke the content-processed completion.
+                // This models the Network.framework wedge that previously
+                // held idle keepalive sends forever.
+            }
+        )
+
+        do {
+            try await transport.send(Data([0x01]))
+            XCTFail("a lost UDP completion must fail at its deadline")
+        } catch let error as VoicePipelineError {
+            guard case .timeout = error else {
+                return XCTFail("expected UDP send timeout, got \(error)")
+            }
+        } catch {
+            XCTFail("expected VoicePipelineError.timeout, got \(error)")
+        }
+
+        // The deadline is a transport failure, not merely a returned error:
+        // stopping the one-shot socket wakes any sibling send and lets the
+        // playback keepalive loop turn this into normal session recovery.
+        do {
+            try await transport.send(Data([0x02]))
+            XCTFail("the timed-out UDP transport must be stopped")
+        } catch let error as VoicePipelineError {
+            guard case .socketClosed = error else {
+                return XCTFail("expected stopped transport, got \(error)")
+            }
+        } catch {
+            XCTFail("expected VoicePipelineError.socketClosed, got \(error)")
+        }
+    }
+
     func testEncryptionModeSelectsAESWhenBothModesAreAdvertised() {
         let mode = VoiceEncryptionMode.select(from: [
             VoiceEncryptionMode.aeadXChaCha20Poly1305RtpSize.rawValue,
