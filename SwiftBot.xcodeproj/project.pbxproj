@@ -136,6 +136,7 @@
 		87D3271B72E415D0EAD0543A /* MeshPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6EA0FA1B56EED3848973E14 /* MeshPreferencesView.swift */; };
 		8AD16B5D17F230EBFF694EDB /* SwiftMinerDMRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A242BC711BB3261C9D007EF6 /* SwiftMinerDMRouterTests.swift */; };
 		8C3F7845C2B78E70DF2C261A /* VoiceSessionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */; };
+		8E1A62B386CB5E056D3BDB0C /* VoiceTransportSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */; };
 		8E6E28C2B707E23C0CCBC9C3 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A24C2F7C9DC277A106B278 /* PatchyViewModel.swift */; };
 		8E8CC1AC6BB66CCAB5888C5B /* VoicePresenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF153482C54BA20D5A78A35 /* VoicePresenceStore.swift */; };
 		905FCED0295F4BF9BA06D42D /* AutomationConflictDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA92A70C27956B55998CB8A5 /* AutomationConflictDetector.swift */; };
@@ -320,6 +321,7 @@
 		0CCBC1DDE03FADC929427456 /* MediaExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaExportCoordinator.swift; sourceTree = "<group>"; };
 		0E0E173784A375131974B77D /* WikiBridgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBridgeView.swift; sourceTree = "<group>"; };
 		0E94C07714D92AC1D7275E00 /* EmbedFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedFormatter.swift; sourceTree = "<group>"; };
+		1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTransportSecurityTests.swift; sourceTree = "<group>"; };
 		1218F2D3CD35139659133AD3 /* EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBus.swift; sourceTree = "<group>"; };
 		13186CAFC979304A004AE44D /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		13E0F76AF1F933F59A65CB21 /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
@@ -643,6 +645,7 @@
 				BF7D44134F71D0F9A7BD163F /* VoicePlaybackServiceTests.swift */,
 				371732DE4DCB38531E12670F /* VoiceRecoveryBackoffTests.swift */,
 				28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */,
+				1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */,
 				F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */,
 				29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */,
 				C5935F83A4161478DCD1AD04 /* WikiSyncTests.swift */,
@@ -1317,6 +1320,7 @@
 				306B8E871FB74E9DCB898A68 /* VoicePlaybackServiceTests.swift in Sources */,
 				A0E4B62E8D14100E3163AB9E /* VoiceRecoveryBackoffTests.swift in Sources */,
 				8C3F7845C2B78E70DF2C261A /* VoiceSessionStoreTests.swift in Sources */,
+				8E1A62B386CB5E056D3BDB0C /* VoiceTransportSecurityTests.swift in Sources */,
 				235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */,
 				B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */,
 				2019E7B6F12AB1E58C097C9B /* WikiSyncTests.swift in Sources */,
@@ -1761,7 +1765,7 @@
 			repositoryURL = "https://github.com/johnwatso/libdave-swift.git";
 			requirement = {
 				kind = exactVersion;
-				version = 1.3.1;
+				version = 2.0.1;
 			};
 		};
 		3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {

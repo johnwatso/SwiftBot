@@ -47,12 +47,22 @@ enum VoiceBinaryFrame {
     }
 }
 
-enum VoiceEncryptionMode: String {
+enum VoiceEncryptionMode: String, Sendable, CaseIterable {
     case aeadAes256GcmRtpSize = "aead_aes256_gcm_rtpsize"
     case aeadXChaCha20Poly1305RtpSize = "aead_xchacha20_poly1305_rtpsize"
 
+    /// Discord requires XChaCha20-Poly1305 support, but recommends AES-GCM
+    /// when the server advertises both modes. Keep this order client-owned;
+    /// trusting server order accidentally selected the slower fallback on
+    /// otherwise capable voice servers.
     static var preferred: [VoiceEncryptionMode] {
-        [.aeadAes256GcmRtpSize]
+        [.aeadAes256GcmRtpSize, .aeadXChaCha20Poly1305RtpSize]
+    }
+
+    /// Chooses only from modes advertised by the current voice server.
+    static func select(from advertisedModes: some Sequence<String>) -> VoiceEncryptionMode? {
+        let advertised = Set(advertisedModes)
+        return preferred.first { advertised.contains($0.rawValue) }
     }
 }
 
@@ -72,9 +82,15 @@ struct VoiceReadyInfo: Sendable, Equatable {
 }
 
 struct VoiceSessionKey: Sendable, Equatable {
+    static let secretKeyByteCount = 32
+
     let secretKey: Data
     let mode: VoiceEncryptionMode
     let daveProtocolVersion: UInt16?
+
+    var hasValidSecretKeyLength: Bool {
+        secretKey.count == Self.secretKeyByteCount
+    }
 }
 
 enum VoicePipelineError: LocalizedError {
@@ -82,6 +98,8 @@ enum VoicePipelineError: LocalizedError {
     case missingEncryptionMode
     case ipDiscoveryFailed(String)
     case unexpectedPayload(String)
+    case invalidTransportEncryption(String)
+    case transportNonceExhausted
     case socketClosed
     case opusInitFailed
     case audioFormatUnsupported
@@ -97,6 +115,8 @@ enum VoicePipelineError: LocalizedError {
         case .missingEncryptionMode: return "No supported encryption mode advertised by Discord"
         case .ipDiscoveryFailed(let reason): return "IP discovery failed: \(reason)"
         case .unexpectedPayload(let reason): return "Unexpected voice payload: \(reason)"
+        case .invalidTransportEncryption(let reason): return "Invalid voice transport encryption: \(reason)"
+        case .transportNonceExhausted: return "Voice transport nonce counter exhausted; reconnect before sending more audio"
         case .socketClosed: return "Voice socket closed"
         case .opusInitFailed: return "Opus encoder init failed"
         case .audioFormatUnsupported: return "Audio format unsupported"

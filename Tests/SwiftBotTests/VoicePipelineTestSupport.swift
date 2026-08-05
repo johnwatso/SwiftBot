@@ -54,15 +54,25 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
     private(set) var speakingUpdates: [Bool] = []
     private(set) var transitionReadyIds: [UInt64] = []
     private(set) var keyPackagesSent = 0
+    private(set) var keyPackagePayloads: [Data] = []
+    private(set) var commitWelcomePayloads: [Data] = []
+    private(set) var invalidCommitWelcomeIds: [UInt64] = []
     private var resumeError: Error?
+    /// Intentionally non-cooperative test switch. It models a socket connect
+    /// implementation that does not return promptly when cancellation is
+    /// requested, so lifecycle tests can verify that the public pipeline call
+    /// still resolves on disconnect.
+    private var connectBlocked = false
+    private var blockedConnectContinuations: [CheckedContinuation<Void, Never>] = []
 
     private var onReady: ((VoiceReadyInfo) async -> Void)?
     private var onSessionDescription: ((VoiceSessionKey) async -> Void)?
+    private var onProtocolError: ((String) async -> Void)?
     private var onClose: ((Int) async -> Void)?
     private var onDebug: ((String) async -> Void)?
     private var onClientsConnect: (([String]) async -> Void)?
     private var onClientDisconnect: ((String) async -> Void)?
-    private var onDavePrepareEpoch: ((UInt16, UInt64) async -> Void)?
+    private var onDavePrepareEpoch: ((UInt16, UInt64, UInt64) async -> Void)?
     private var onDavePrepareTransition: ((UInt16, UInt64) async -> Void)?
     private var onDaveExecuteTransition: ((UInt64) async -> Void)?
     private var onDaveMlsExternalSender: ((Data) async -> Void)?
@@ -76,8 +86,23 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
     }
 
     func setResumeError(_ error: Error?) { resumeError = error }
+    func setConnectBlocked(_ blocked: Bool) { connectBlocked = blocked }
 
-    func connect() async throws { connectCount += 1 }
+    func releaseBlockedConnects() {
+        let continuations = blockedConnectContinuations
+        blockedConnectContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func connect() async throws {
+        connectCount += 1
+        guard connectBlocked else { return }
+        await withCheckedContinuation { continuation in
+            blockedConnectContinuations.append(continuation)
+        }
+    }
     func disconnect() async { disconnectCount += 1 }
     func resume() async throws {
         resumeCount += 1
@@ -96,17 +121,27 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
         transitionReadyIds.append(transitionId)
     }
 
-    func sendMlsKeyPackage(_ package: Data) async throws { keyPackagesSent += 1 }
-    func sendMlsCommitWelcome(_ payload: Data) async throws {}
-    func sendInvalidCommitWelcome(transitionId: UInt64) async throws {}
+    func sendMlsKeyPackage(_ package: Data) async throws {
+        keyPackagesSent += 1
+        keyPackagePayloads.append(package)
+    }
+
+    func sendMlsCommitWelcome(_ payload: Data) async throws {
+        commitWelcomePayloads.append(payload)
+    }
+
+    func sendInvalidCommitWelcome(transitionId: UInt64) async throws {
+        invalidCommitWelcomeIds.append(transitionId)
+    }
 
     func setOnReady(_ handler: @escaping (VoiceReadyInfo) async -> Void) { onReady = handler }
     func setOnSessionDescription(_ handler: @escaping (VoiceSessionKey) async -> Void) { onSessionDescription = handler }
+    func setOnProtocolError(_ handler: @escaping (String) async -> Void) { onProtocolError = handler }
     func setOnClose(_ handler: @escaping (Int) async -> Void) { onClose = handler }
     func setOnDebug(_ handler: @escaping (String) async -> Void) { onDebug = handler }
     func setOnClientsConnect(_ handler: @escaping ([String]) async -> Void) { onClientsConnect = handler }
     func setOnClientDisconnect(_ handler: @escaping (String) async -> Void) { onClientDisconnect = handler }
-    func setOnDavePrepareEpoch(_ handler: @escaping (UInt16, UInt64) async -> Void) { onDavePrepareEpoch = handler }
+    func setOnDavePrepareEpoch(_ handler: @escaping (UInt16, UInt64, UInt64) async -> Void) { onDavePrepareEpoch = handler }
     func setOnDavePrepareTransition(_ handler: @escaping (UInt16, UInt64) async -> Void) { onDavePrepareTransition = handler }
     func setOnDaveExecuteTransition(_ handler: @escaping (UInt64) async -> Void) { onDaveExecuteTransition = handler }
     func setOnDaveMlsExternalSender(_ handler: @escaping (Data) async -> Void) { onDaveMlsExternalSender = handler }
@@ -135,6 +170,7 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
     }
 
     func emitClose(_ code: Int) async { await onClose?(code) }
+    func emitProtocolError(_ reason: String) async { await onProtocolError?(reason) }
     func emitResumed() async { await onResumed?() }
     func emitPrepareTransition(version: UInt16, transitionId: UInt64) async {
         await onDavePrepareTransition?(version, transitionId)
@@ -142,8 +178,20 @@ actor FakeVoiceGateway: VoicePlaybackGateway {
     func emitExecuteTransition(_ transitionId: UInt64) async {
         await onDaveExecuteTransition?(transitionId)
     }
-    func emitPrepareEpoch(version: UInt16, epoch: UInt64) async {
-        await onDavePrepareEpoch?(version, epoch)
+    func emitPrepareEpoch(version: UInt16, epoch: UInt64, transitionId: UInt64) async {
+        await onDavePrepareEpoch?(version, epoch, transitionId)
+    }
+    func emitMlsExternalSender(_ data: Data) async {
+        await onDaveMlsExternalSender?(data)
+    }
+    func emitMlsProposals(_ data: Data) async {
+        await onDaveMlsProposals?(data)
+    }
+    func emitMlsAnnounceCommit(_ data: Data, transitionId: UInt64) async {
+        await onDaveMlsAnnounceCommit?(data, transitionId)
+    }
+    func emitMlsWelcome(_ data: Data, transitionId: UInt64) async {
+        await onDaveMlsWelcome?(data, transitionId)
     }
 }
 
@@ -152,6 +200,23 @@ actor FakeVoiceTransport: VoiceMediaTransport {
     private(set) var started = false
     private(set) var stopped = false
     private(set) var sentPackets: [Data] = []
+    private(set) var blockedSendCount = 0
+    /// Like `FakeVoiceGateway.connectBlocked`, this deliberately ignores task
+    /// cancellation until the test releases it. It gives us a deterministic
+    /// way to exercise a stale speech send finishing after a replacement
+    /// connection is already active.
+    private var sendsBlocked = false
+    private var blockedSendContinuations: [CheckedContinuation<Void, Never>] = []
+
+    func setSendsBlocked(_ blocked: Bool) { sendsBlocked = blocked }
+
+    func releaseBlockedSends() {
+        let continuations = blockedSendContinuations
+        blockedSendContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
 
     func start() async throws { started = true }
     func stop() { stopped = true }
@@ -160,7 +225,51 @@ actor FakeVoiceTransport: VoiceMediaTransport {
         VoiceUDPTransport.DiscoveredAddress(ip: "198.51.100.4", port: 50_000)
     }
 
-    func send(_ data: Data) async throws { sentPackets.append(data) }
+    func send(_ data: Data) async throws {
+        if sendsBlocked {
+            blockedSendCount += 1
+            await withCheckedContinuation { continuation in
+                blockedSendContinuations.append(continuation)
+            }
+        }
+        sentPackets.append(data)
+    }
+}
+
+/// Thread-safe synchronous factory script for a sequence of reconnects.
+/// `VoicePlaybackService` factories are synchronous by design, so an actor
+/// cannot serve this role without changing production interfaces. The lock is
+/// confined to test setup and lets tests intentionally retain old gateway and
+/// transport instances for late-callback scenarios.
+final class SequencedVoicePipeline: @unchecked Sendable {
+    private let lock = NSLock()
+    private var gateways: [FakeVoiceGateway]
+    private var transports: [FakeVoiceTransport]
+    private var gatewayIndex = 0
+    private var transportIndex = 0
+
+    init(gateways: [FakeVoiceGateway], transports: [FakeVoiceTransport]) {
+        self.gateways = gateways
+        self.transports = transports
+    }
+
+    func makeGateway(_: URLSession, _: VoiceServerInfo) -> any VoicePlaybackGateway {
+        lock.lock()
+        defer { lock.unlock() }
+        precondition(gatewayIndex < gateways.count, "test requested more gateways than scripted")
+        let gateway = gateways[gatewayIndex]
+        gatewayIndex += 1
+        return gateway
+    }
+
+    func makeTransport(_: String, _: UInt16) -> any VoiceMediaTransport {
+        lock.lock()
+        defer { lock.unlock() }
+        precondition(transportIndex < transports.count, "test requested more transports than scripted")
+        let transport = transports[transportIndex]
+        transportIndex += 1
+        return transport
+    }
 }
 
 /// Records `speak` calls for announcer drain tests and can be switched to
