@@ -142,14 +142,36 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         let playback = FakeAnnouncementPlayback()
         let announcer = try makeAnnouncer(playback: playback)
 
+        // Queue everything before the drain starts. An idle queue now drains
+        // immediately (that is what removes ~450 ms from the first read), so
+        // coalescing is exercised the way it happens live: messages landing
+        // while an earlier read is already in flight.
+        await announcer.setPaused(true)
         await announcer.enqueue("alpha one")
         await announcer.enqueue("beta two")
         await announcer.enqueue("gamma three")
+        await announcer.setPaused(false)
 
         await waitUntil { await announcer.recentHistory.count == 3 }
 
         let speaks = await playback.speakCount
-        XCTAssertEqual(speaks, 1, "short messages inside the coalesce window must batch")
+        XCTAssertEqual(speaks, 1, "short messages queued together must batch into one utterance")
+    }
+
+    func testIdleQueueStartsReadingWithoutTheCoalesceDelay() async throws {
+        let playback = FakeAnnouncementPlayback()
+        let announcer = try makeAnnouncer(playback: playback)
+
+        let start = ContinuousClock().now
+        await announcer.enqueue("read me now")
+        await waitUntil { await playback.speakCount == 1 }
+
+        let elapsed = ContinuousClock().now - start
+        XCTAssertLessThan(
+            elapsed,
+            .milliseconds(300),
+            "a message arriving into an idle queue must not wait out the coalesce window"
+        )
     }
 
     func testProlongedDaveNotReadyPausesAndKeepsQueue() async throws {

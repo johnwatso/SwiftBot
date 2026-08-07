@@ -605,19 +605,17 @@ extension AppModel {
         // Optionally skip bot-authored messages.
         if activeConfig?.skipBots == true, event.isBot { return }
         guard let watcher = textChannelAnnouncer else { return }
-        let smartShortenWithAppleIntelligence = activeConfig?.smartShortenWithAppleIntelligence == true
-        let announcerAIService = aiService
-        let smartShortener: (@Sendable (String) async -> String?)? = smartShortenWithAppleIntelligence
-            ? { @Sendable [announcerAIService] text in
-                await announcerAIService.summarizeAnnouncerMessageWithAppleIntelligence(text)
-            }
-            : nil
+        // `smartShortenWithAppleIntelligence` is a legacy flag: the announcer no
+        // longer calls a model on the read path (an on-device rewrite costs
+        // 5-8 s, far longer than the read it would delay). Existing configs that
+        // enabled it still expect long messages to be read, so it keeps meaning
+        // "shorten instead of skip" — now via the deterministic caps.
+        let shortensLongMessages = activeConfig?.summariseLong == true
+            || activeConfig?.smartShortenWithAppleIntelligence == true
         let options = AnnouncerReadOptions(
             ignoreLinks: activeConfig?.ignoreLinks ?? true,
-            summariseLong: activeConfig?.summariseLong ?? false,
+            summariseLong: shortensLongMessages,
             keepShort: activeConfig?.keepShort ?? false,
-            smartShortenWithAppleIntelligence: smartShortenWithAppleIntelligence,
-            smartShortener: smartShortener,
             ignoreEmojiSpam: activeConfig?.ignoreEmojiSpam ?? false
         )
         let cachedDisplayName = await discordCache.userName(for: event.userID)

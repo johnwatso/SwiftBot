@@ -8,44 +8,32 @@ struct AnnouncerReadOptions: Sendable {
     var ignoreLinks: Bool = true
     var summariseLong: Bool = false
     var keepShort: Bool = false
-    var smartShortenWithAppleIntelligence: Bool = false
-    var smartShortener: (@Sendable (String) async -> String?)? = nil
     var ignoreEmojiSpam: Bool = false
-}
-
-private enum SmartShortenResultState: Sendable {
-    case pending
-    case complete(String?)
-}
-
-private actor SmartShortenResult {
-    private var current: SmartShortenResultState = .pending
-
-    func complete(_ value: String?) {
-        if case .pending = current {
-            current = .complete(value)
-        }
-    }
-
-    func state() -> SmartShortenResultState {
-        current
-    }
 }
 
 /// Watches a single text channel and enqueues each new message into a
 /// `VoiceAnnouncementService` to be spoken aloud. Applies the formatting and
 /// filtering rules:
 /// - Format: "Author: text"
-/// - Skip messages longer than 300 characters (or shorten them when the config
-///   opts into `summariseLong`)
+/// - Skip messages longer than `maxLength` (or trim them to a spoken cue when
+///   the config opts into `summariseLong`)
 /// - Optionally strip links, skip emoji spam, and keep announcements short
 /// - Skip pure link / attachment messages, but read the first embed title
 ///   when present.
 actor TextChannelAnnouncer {
     private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.announcer.text")
-    private static let maxLength = 300
+    /// ~1000 characters is roughly a minute of continuous speech. Ordinary
+    /// announcements read in full; only a pasted wall of text is trimmed, so
+    /// one message can't hold the channel for several minutes.
+    private static let maxLength = 1000
+    private static let summaryCap = 1000
+    /// `keepShort` is a deliberate opt-in to brief reads, so it keeps its own
+    /// much tighter cap.
     private static let shortCap = 160
-    private static let summaryCap = 220
+    /// Spoken so listeners can tell a trimmed read from a finished one — a
+    /// bare ellipsis is silent, which is what made truncation sound like the
+    /// announcer had cut out mid-sentence.
+    private static let truncationCue = ", message continues"
 
     private let announcer: VoiceAnnouncementService
     private var watchedChannelIDs: Set<String> = []
@@ -86,7 +74,7 @@ actor TextChannelAnnouncer {
         options: AnnouncerReadOptions = AnnouncerReadOptions()
     ) async {
         guard watchedChannelIDs.contains(event.channelID) else { return }
-        switch await speechDecision(
+        switch speechDecision(
             for: event, displayNameOverride: displayNameOverride,
             channelNames: channelNames, roleNames: roleNames, options: options
         ) {
@@ -111,7 +99,7 @@ actor TextChannelAnnouncer {
         channelNames: [String: String],
         roleNames: [String: String],
         options: AnnouncerReadOptions
-    ) async -> SpeechDecision {
+    ) -> SpeechDecision {
         var body: String
         switch readableBody(
             for: event, channelNames: channelNames, roleNames: roleNames, options: options
@@ -123,23 +111,19 @@ actor TextChannelAnnouncer {
         }
 
         // Length policy: messages over `maxLength` are skipped unless the config
-        // opts to shorten them; `keepShort` tightens the cap for everything. When
-        // smart shortening is enabled, Apple Intelligence gets a short chance to
-        // rewrite the message before the deterministic fallback caps apply.
-        if shouldSmartShorten(body, options: options),
-           let smartShortener = options.smartShortener,
-           let shortened = await Self.smartShorten(body, using: smartShortener),
-           shortened.count < body.count {
-            body = shortened
-        }
+        // opts to shorten them; `keepShort` tightens the cap for everything.
+        // Shortening is deterministic on purpose. An on-device Apple
+        // Intelligence rewrite of a message this size measures at 5-8 s on
+        // release hardware, which is far longer than the whole read should
+        // take, so nothing in this path is allowed to await a model.
         if body.count > Self.maxLength {
             guard options.summariseLong else {
                 return .skip(reason: "it is \(body.count) characters — over the \(Self.maxLength)-character reading cap. Enable \"Shorten long messages\" in the announcer configuration to read a shortened version.")
             }
-            body = Self.truncate(body, to: Self.summaryCap)
+            body = Self.truncateForSpeech(body, to: Self.summaryCap)
         }
         if options.keepShort, body.count > Self.shortCap {
-            body = Self.truncate(body, to: Self.shortCap)
+            body = Self.truncateForSpeech(body, to: Self.shortCap)
         }
 
         let override = displayNameOverride?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -151,12 +135,6 @@ actor TextChannelAnnouncer {
             "Someone"
         }
         return .speak("\(author): \(body)")
-    }
-
-    private func shouldSmartShorten(_ body: String, options: AnnouncerReadOptions) -> Bool {
-        guard options.smartShortenWithAppleIntelligence else { return false }
-        if options.keepShort, body.count > Self.shortCap { return true }
-        return body.count > Self.maxLength
     }
 
     private enum BodyOutcome {
@@ -223,47 +201,22 @@ actor TextChannelAnnouncer {
         return (mutable as String)
     }
 
-    /// Truncate at a word boundary and append an ellipsis.
-    private static func truncate(_ text: String, to limit: Int) -> String {
+    /// Truncate at a word boundary, ending with a cue that is actually spoken.
+    /// Trailing punctuation is dropped first so the cue doesn't read as
+    /// "…people are around., message continues".
+    private static func truncateForSpeech(_ text: String, to limit: Int) -> String {
         guard text.count > limit else { return text }
         let slice = String(text.prefix(limit))
+        var head = slice
         if let lastSpace = slice.lastIndex(of: " ") {
-            let head = String(slice[..<lastSpace]).trimmingCharacters(in: .whitespaces)
-            if !head.isEmpty { return head + "…" }
+            let candidate = String(slice[..<lastSpace]).trimmingCharacters(in: .whitespaces)
+            if !candidate.isEmpty { head = candidate }
         }
-        return slice.trimmingCharacters(in: .whitespaces) + "…"
-    }
-
-    private static func smartShorten(
-        _ text: String,
-        using shortener: @escaping @Sendable (String) async -> String?
-    ) async -> String? {
-        let result = SmartShortenResult()
-        let task = Task {
-            await result.complete(await shortener(text))
-        }
-        defer { task.cancel() }
-
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .milliseconds(900))
-        while clock.now < deadline {
-            switch await result.state() {
-            case .pending:
-                try? await Task.sleep(for: .milliseconds(25))
-            case let .complete(raw):
-                return cleanSmartShortenResult(raw, original: text)
-            }
-        }
-        return nil
-    }
-
-    private static func cleanSmartShortenResult(_ raw: String?, original text: String) -> String? {
-        guard let raw else { return nil }
-        let cleaned = raw
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty, cleaned.count < text.count else { return nil }
-        return truncate(cleaned, to: shortCap)
+        head = head
+            .trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ",.;:-–—…"))
+            .trimmingCharacters(in: .whitespaces)
+        return head + truncationCue
     }
 
     /// Heuristic: treat a message as emoji spam when it carries many
