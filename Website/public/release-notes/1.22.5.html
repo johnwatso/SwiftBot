@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.22.5 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
+    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
+    section.announcer { --accent: #7c3aed; }
+    section.presence { --accent: #0e7490; }
+    section.webui { --accent: #b45309; }
+    section.reliability { --accent: #15803d; }
+    section.release { --accent: #52606d; }
+    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+      .meta, .summary { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
+      code { background: rgba(159, 176, 194, 0.16); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.22.5</h1>
+    <p class="meta">Version 1.22.5 · Build 2026080715</p>
+    <p class="intro">The Announcer starts reading sooner, stops losing long messages, and finally leaves an empty channel. Plus an AI Bots page in the Web UI.</p>
+
+    <section class="announcer">
+      <h2><span class="badge" aria-hidden="true">🔊</span>Faster Reads, Nothing Silently Dropped</h2>
+      <p class="summary">Announcements used to take about six seconds to begin, and longer ones never arrived at all.</p>
+      <ul>
+        <li><strong>Reads begin sooner:</strong> A message arriving into an idle queue no longer waits out the batching window, and the fallback voice is resolved once instead of on every read — roughly 1.4 seconds off each announcement.</li>
+        <li><strong>Long messages are read, not discarded:</strong> The reading cap rises from 300 to 1000 characters, about a minute of speech. Anything over the old cap was previously skipped in silence, with no indication in Discord that it had been dropped.</li>
+        <li><strong>You can hear when a read was trimmed:</strong> Trimmed announcements now end with a spoken "message continues". The old ellipsis was never voiced, so a trimmed read sounded exactly like the bot cutting out mid-sentence.</li>
+        <li><strong>Smart shortening removed:</strong> The "Smart shorten with Apple Intelligence" toggle is gone. On-device rewriting of a typical announcement takes 5–8 seconds — far longer than the read it delayed — so it never completed within its deadline and only served to drop the message. Shortening is now instant and deterministic. Configs that had it enabled keep reading long messages, trimmed.</li>
+      </ul>
+    </section>
+
+    <section class="presence">
+      <h2><span class="badge" aria-hidden="true">👋</span>Until-Empty Actually Leaves</h2>
+      <p class="summary">Announcer configs set to "Until last person leaves" could stay parked in an empty channel indefinitely.</p>
+      <ul>
+        <li><strong>Other bots no longer hold the channel open:</strong> A music bot or second integration sitting in the channel counted as a person, so the last human could leave and SwiftBot would stay. Bots are now excluded — including SwiftBot itself.</li>
+        <li><strong>Moving out counts as leaving:</strong> If the last member switched to another voice channel rather than disconnecting, the emptiness check never ran. Channel-hopping now releases the bot the same way disconnecting does.</li>
+        <li><strong>Survives a reconnect:</strong> While the bot's own user ID was still being resolved after a reconnect, SwiftBot counted itself as a member and could never conclude the channel was empty.</li>
+      </ul>
+    </section>
+
+    <section class="webui">
+      <h2><span class="badge" aria-hidden="true">🤖</span>AI Bots in the Web UI</h2>
+      <p class="summary">The Apple Intelligence surface from the Mac app, available remotely.</p>
+      <ul>
+        <li><strong>Same controls, in the browser:</strong> Status, personality presets, reply rules, and capability tiles now mirror the native app.</li>
+        <li><strong>Conversation memory:</strong> Review stored conversations with their message counts, and clear memory per scope.</li>
+      </ul>
+    </section>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">🛡️</span>Voice Connection Hardening</h2>
+      <p class="summary">Continued work on the failure mode where the bot looks connected but nobody can hear it.</p>
+      <ul>
+        <li><strong>No silent connections:</strong> Voice WebSocket writes and UDP datagram completions are bounded, so a stalled network operation can no longer leave the bot connected and mute instead of reconnecting.</li>
+        <li><strong>Cleaner recovery:</strong> A stale playback failure from an old connection can no longer re-pause a queue that has already recovered, and speaking updates are ordered so an old "stopped speaking" cannot silence a newer read.</li>
+        <li><strong>Secure media transitions:</strong> DAVE fails closed at gateway receipt time and keeps ordered ownership through its native work, with a bounded watchdog on the transition path.</li>
+        <li><strong>Announcer health:</strong> Queue depth, current phase, and retry activity are surfaced so a stuck announcer is visible rather than inferred.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">🚢</span>Release Details</h2>
+      <p class="summary">Version metadata and regression coverage for this release.</p>
+      <ul>
+        <li>Updated <code>MARKETING_VERSION</code> to 1.22.5 and <code>CURRENT_PROJECT_VERSION</code> to 2026080715.</li>
+        <li>Added regression coverage for until-empty disconnects, immediate drain start, and long-message trimming.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
