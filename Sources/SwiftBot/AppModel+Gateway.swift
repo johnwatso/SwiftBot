@@ -1700,6 +1700,12 @@ extension AppModel {
                     displayName: displayName, channelName: next.channelName,
                     fromChannelName: previous.channelName)
             }
+            if allowPrimarySideEffects {
+                // A move empties the old channel just as a disconnect does.
+                // Without this, the last member hopping to another channel left
+                // the bot parked in an empty one indefinitely.
+                await handleUntilEmptyCheck(leftChannelId: previous.channelId, guildId: guildId)
+            }
         case .left(let previous, let startedAt):
             let elapsed = formatDuration(from: startedAt, to: now)
             stats.voiceLeaves += 1
