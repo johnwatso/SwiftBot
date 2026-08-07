@@ -5,6 +5,28 @@ import AppKit
 import AVFoundation
 import Darwin
 
+/// Web equivalents of the SF Symbol / SwiftUI tint the native personality
+/// tiles use. Lucide icon names and `getTintHex()` keys.
+private extension AppleIntelligencePersonality {
+    var webIcon: String {
+        switch self {
+        case .friendlyCasual: return "smile"
+        case .community: return "users"
+        case .technicalSupport: return "life-buoy"
+        case .professional: return "briefcase"
+        }
+    }
+
+    var webTint: String {
+        switch self {
+        case .friendlyCasual: return "green"
+        case .community: return "blue"
+        case .technicalSupport: return "indigo"
+        case .professional: return "teal"
+        }
+    }
+}
+
 func adminWebOAuthRedirectURL(baseURL rawBaseURL: String, redirectPath rawRedirectPath: String) -> String {
     var baseURL = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !baseURL.isEmpty else { return "" }
@@ -999,6 +1021,123 @@ extension AppModel {
         )
     }
 
+    /// Mirrors `AppleIntelligenceView` so the WebUI "AI Bots" page shows the
+    /// same status, personality presets, reply rules, memory and capabilities
+    /// as the native surface.
+    func adminWebAIBotsSnapshot() -> AdminWebAIBotsPayload {
+        let dmReplies = settings.localAIDMReplyEnabled
+        let guildReplies = settings.behavior.useAIInGuildChannels
+        let allowDMs = settings.behavior.allowDMs
+        let selected = AppleIntelligencePersonality.matching(prompt: settings.localAISystemPrompt)
+
+        let replyScope: String
+        if dmReplies && guildReplies {
+            replyScope = allowDMs ? "Mentions + DMs" : "Mentions + trusted DMs"
+        } else if dmReplies {
+            replyScope = "DMs Enabled"
+        } else if guildReplies {
+            replyScope = "Mentions Only"
+        } else {
+            replyScope = "Paused"
+        }
+
+        let repliesActive = dmReplies || guildReplies
+        let summariesActive = settings.patchy.sourceTargets.contains {
+            $0.isEnabled && $0.summarizeWithAppleIntelligence
+        }
+        let moderationActive = automationStore.rules.contains { $0.category == .moderation && $0.enabled }
+        let threadActive = memoryViewModel.totalMessages > 0
+        let online = appleIntelligenceOnline
+        func status(_ isActive: Bool) -> String {
+            if isActive { return "active" }
+            return online ? "ready" : "off"
+        }
+
+        return AdminWebAIBotsPayload(
+            online: online,
+            replyScope: replyScope,
+            dmRepliesEnabled: dmReplies,
+            guildMentionRepliesEnabled: guildReplies,
+            allowDMs: allowDMs,
+            systemPrompt: settings.localAISystemPrompt,
+            selectedPersonalityID: selected.rawValue,
+            isFailoverManagedNode: isFailoverManagedNode,
+            personalities: AppleIntelligencePersonality.allCases.map { personality in
+                AdminWebAIBotsPayload.Personality(
+                    id: personality.rawValue,
+                    title: personality.title,
+                    summary: personality.summaryValue,
+                    description: personality.description,
+                    preview: personality.preview,
+                    prompt: personality.prompt,
+                    icon: personality.webIcon,
+                    tint: personality.webTint,
+                    isSelected: personality == selected
+                )
+            },
+            capabilities: [
+                AdminWebAIBotsPayload.Capability(
+                    id: "replies",
+                    title: "Replies",
+                    description: "Answers DMs and mentions using the selected personality.",
+                    icon: "message-square",
+                    tint: "blue",
+                    status: status(repliesActive)
+                ),
+                AdminWebAIBotsPayload.Capability(
+                    id: "summaries",
+                    title: "Summaries",
+                    description: "Creates concise on-device summaries for long updates.",
+                    icon: "file-search",
+                    tint: "indigo",
+                    status: status(summariesActive)
+                ),
+                AdminWebAIBotsPayload.Capability(
+                    id: "moderation",
+                    title: "Moderation Assist",
+                    description: "Supports moderation rules that use generated context.",
+                    icon: "shield-check",
+                    tint: "orange",
+                    status: status(moderationActive)
+                ),
+                AdminWebAIBotsPayload.Capability(
+                    id: "threadCatchUp",
+                    title: "Thread Catch-up",
+                    description: "Uses remembered context to make replies less repetitive.",
+                    icon: "history",
+                    tint: "green",
+                    status: status(threadActive)
+                )
+            ],
+            memory: AdminWebAIBotsPayload.Memory(
+                totalMessages: memoryViewModel.totalMessages,
+                conversations: memoryViewModel.summaries.map { summary in
+                    AdminWebAIBotsPayload.Conversation(
+                        id: summary.id,
+                        scopeID: summary.scope.id,
+                        scopeType: summary.scope.type.rawValue,
+                        title: memoryViewModel.displayName(for: summary),
+                        messageCount: summary.messageCount
+                    )
+                }
+            )
+        )
+    }
+
+    func clearAdminWebAIMemory(_ patch: AdminWebAIMemoryClearPatch) async -> Bool {
+        let store = memoryViewModel.store
+        let scopeID = patch.scopeID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if scopeID.isEmpty {
+            await store.clearAll()
+        } else {
+            guard let rawType = patch.scopeType,
+                  let type = MemoryScopeType(rawValue: rawType) else { return false }
+            await store.clear(scope: MemoryScope(id: scopeID, type: type))
+        }
+        await memoryViewModel.reloadSummaries()
+        return true
+    }
+
     func adminWebWikiBridgeSnapshot() -> AdminWebWikiBridgePayload {
         AdminWebWikiBridgePayload(
             enabled: settings.wikiBot.isEnabled,
@@ -1714,6 +1853,28 @@ extension AppModel {
             runPatchyCheckNow: { [weak self] in
                 guard let model = self else { return false }
                 return await MainActor.run { model.runAdminWebPatchyCheckNow() }
+            },
+            aiBotsProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebAIBotsPayload(
+                        online: false,
+                        replyScope: "Paused",
+                        dmRepliesEnabled: false,
+                        guildMentionRepliesEnabled: false,
+                        allowDMs: false,
+                        systemPrompt: "",
+                        selectedPersonalityID: AppleIntelligencePersonality.friendlyCasual.rawValue,
+                        isFailoverManagedNode: false,
+                        personalities: [],
+                        capabilities: [],
+                        memory: .init(totalMessages: 0, conversations: [])
+                    )
+                }
+                return await MainActor.run { model.adminWebAIBotsSnapshot() }
+            },
+            clearAIMemory: { [weak self] patch in
+                guard let model = self else { return false }
+                return await model.clearAdminWebAIMemory(patch)
             },
             wikiBridgeProvider: { [weak self] in
                 guard let model = self else {

@@ -43,6 +43,30 @@ final class AdminWebCopyTests: XCTestCase {
         }
     }
 
+    func testAIBotsWebViewMirrorsNativeAppleIntelligenceSurface() throws {
+        let adminHTML = try XCTUnwrap(
+            Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "admin")
+        )
+        let html = try String(contentsOf: adminHTML, encoding: .utf8)
+
+        XCTAssertTrue(html.contains("/api/aibots"), "AI Bots view must read the dedicated snapshot endpoint")
+        XCTAssertTrue(html.contains("/api/aibots/memory/clear"), "Conversation memory must be clearable from the web")
+
+        // Section parity with AppleIntelligenceView.
+        for panel in ["Personality", "Reply Rules", "Conversation Memory", "Capabilities"] {
+            XCTAssertTrue(html.contains("</i> \(panel)</div>"), "AI Bots view is missing the \(panel) panel")
+        }
+
+        // Reply rule copy is authored natively and must not drift on the web.
+        for rule in ["Reply when mentioned", "Reply to DMs", "Allow DMs from anyone", "Ignore bot accounts"] {
+            XCTAssertTrue(html.contains(rule), "AI Bots view is missing the '\(rule)' reply rule")
+        }
+        XCTAssertFalse(
+            html.contains("Guild Mention Replies"),
+            "Stale WebUI-only reply rule copy should match the native Reply Rules section"
+        )
+    }
+
     func testAdminWebUIHasNoStaleLegacyViewReferences() throws {
         let adminHTML = try XCTUnwrap(
             Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "admin")

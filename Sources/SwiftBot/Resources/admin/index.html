@@ -1734,6 +1734,117 @@
       grid-column: 1 / -1;
     }
 
+    /* AI Bots — mirrors the native Apple Intelligence surface. */
+    #aibotsTop {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+
+    .ai-tile-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+
+    .ai-personality {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+      padding: 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--glass-stroke);
+      background: var(--glass-bottom);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .ai-personality:hover {
+      background: var(--glass-top);
+    }
+
+    .ai-personality-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ai-personality-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ai-personality-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .ai-personality-desc,
+    .ai-capability-desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .ai-personality-preview {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 8px;
+      border-radius: var(--radius-sm);
+      background: var(--glass-bottom);
+      border: 1px solid var(--glass-stroke);
+    }
+
+    .ai-capability {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--glass-stroke);
+      background: var(--glass-bottom);
+    }
+
+    .ai-capability-title {
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .ai-status-chip {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .ai-memory-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--glass-stroke);
+      background: var(--glass-bottom);
+    }
+
+    .ai-memory-row .ai-memory-name {
+      font-size: 13px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .mesh-map-panel {
       border-radius: var(--radius-xl);
       border: 1px solid var(--glass-stroke);
@@ -4722,6 +4833,7 @@
     let actionsData = null;
     let patchyData = null;
     let wikiBridgeData = null;
+    let aiBotsData = null;
     let mediaLibraryData = null;
     let sweepData = null;
     let announcerData = null;
@@ -5873,6 +5985,14 @@
       if (!response.ok) throw new Error('Lookup unavailable');
       const data = await response.json();
       wikiBridgeData = data;
+      return data;
+    }
+
+    async function loadAIBots() {
+      const response = await fetch('/api/aibots');
+      if (!response.ok) throw new Error('AI Bots unavailable');
+      const data = await response.json();
+      aiBotsData = data;
       return data;
     }
 
@@ -7124,7 +7244,7 @@
 
     async function saveConfigPatch(patch) {
       await postJSON('/api/config', patch);
-      await Promise.all([loadConfig(), loadOverview(), loadAnalytics(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData(), loadAnnouncer()]);
+      await Promise.all([loadConfig(), loadOverview(), loadAnalytics(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadAIBots(), loadMediaData(), loadAnnouncer()]);
       refreshCurrentView();
     }
 
@@ -8983,43 +9103,217 @@
       });
     }
 
+    function aiStatusChipHTML(status) {
+      const styles = {
+        active: { label: 'Active', color: 'var(--success)' },
+        ready: { label: 'Ready', color: 'var(--blue-a)' },
+        off: { label: 'Off', color: 'var(--muted)' }
+      };
+      const style = styles[status] || styles.off;
+      return `<span class="ai-status-chip" style="color:${style.color};background:color-mix(in srgb, ${style.color} 16%, transparent);">${style.label}</span>`;
+    }
+
+    function aiRuleRowHTML({ id, icon, tint, title, desc, enabled, disabled }) {
+      const hex = getTintHex(tint);
+      return `
+        <div class="setting-row">
+          <div class="left" style="flex-direction:row;align-items:center;gap:10px;">
+            <i class="lucide" data-lucide="${icon}" style="color:${enabled ? hex : 'var(--muted)'};width:16px;height:16px;flex:0 0 auto;"></i>
+            <div>
+              <div class="title">${escapeHTML(title)}</div>
+              <div class="desc">${escapeHTML(desc)}</div>
+            </div>
+          </div>
+          <label class="switch"><input id="${id}" type="checkbox" ${enabled ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+      `;
+    }
+
+    // Mirrors the native Apple Intelligence view: status cards, personality
+    // presets, reply rules, conversation memory and capability tiles.
     function renderAppleIntelligenceView() {
-      if (!dashboardConfig || !dashboardStatus || !dashboardOverview) return;
       const top = document.getElementById('aibotsTop');
       const panels = document.getElementById('aibotsPanels');
       if (!top || !panels) return;
-      const cfg = dashboardConfig.appleIntelligence;
-      const metrics = dashboardOverview.metrics || [];
-      const aiMetric = metrics.find(item => (item.title || '').toLowerCase().includes('ai'));
+      if (!aiBotsData) {
+        top.innerHTML = '';
+        panels.innerHTML = '<div class="placeholder">Loading Apple Intelligence…</div>';
+        return;
+      }
+
+      const data = aiBotsData;
+      const memory = data.memory || { totalMessages: 0, conversations: [] };
+      const conversations = memory.conversations || [];
+      const personalities = data.personalities || [];
+      const capabilities = data.capabilities || [];
+      const selected = personalities.find(item => item.isSelected) || null;
+      const readOnly = !!data.isFailoverManagedNode;
+      const disabledAttr = readOnly ? 'disabled' : '';
 
       top.innerHTML = `
         <div class="commands-toggle-card">
-          <span class="label">Engine</span>
-          <span class="value">Apple Intelligence</span>
-          <div class="command-desc">On-device, system model</div>
+          <span class="label">Apple Intelligence</span>
+          <span class="value" style="color:${data.online ? 'var(--success)' : 'var(--muted)'};">${data.online ? 'Online' : 'Offline'}</span>
+          <div class="command-desc">${data.online ? 'System model ready' : 'Unavailable on this Mac'}</div>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">Session</span>
-          <span class="value">${aiMetric?.value || 'Live'}</span>
-          <div class="command-desc">${dashboardStatus.botUsername}</div>
+          <span class="label">Conversation Memory</span>
+          <span class="value">${memory.totalMessages}</span>
+          <div class="command-desc">${conversations.length ? `${conversations.length} conversations` : 'No conversations yet'}</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Reply Scope</span>
+          <span class="value">${escapeHTML(data.replyScope || 'Paused')}</span>
+          <div class="command-desc">${data.allowDMs ? 'Open direct messages' : 'DMs limited by setting'}</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Personality</span>
+          <span class="value">${escapeHTML(selected ? selected.title : 'Custom')}</span>
+          <div class="command-desc">${escapeHTML(selected ? selected.summary : 'Custom personality prompt')}</div>
         </div>
       `;
 
+      const personalityTiles = personalities.map(item => {
+        const hex = getTintHex(item.tint);
+        const selectedStyle = item.isSelected ? `border-color:${hex}73;background:${hex}14;` : '';
+        return `
+          <button class="ai-personality" type="button" data-personality-id="${escapeHTML(item.id)}" ${disabledAttr} style="${selectedStyle}">
+            <div class="ai-personality-head">
+              <span class="ai-personality-icon" style="background:${hex}24;color:${hex};"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
+              <i class="lucide" data-lucide="${item.isSelected ? 'check-circle-2' : 'circle'}" style="color:${item.isSelected ? hex : 'var(--muted)'};width:16px;height:16px;"></i>
+            </div>
+            <div class="ai-personality-title">${escapeHTML(item.title)}</div>
+            <div class="ai-personality-desc">${escapeHTML(item.description)}</div>
+            <div class="ai-personality-preview">${escapeHTML(item.preview)}</div>
+          </button>
+        `;
+      }).join('');
+
+      const capabilityCards = capabilities.map(item => {
+        const hex = getTintHex(item.tint);
+        const dimmed = item.status === 'off';
+        return `
+          <div class="ai-capability">
+            <span class="ai-personality-icon" style="background:${dimmed ? 'var(--glass-top)' : `${hex}24`};color:${dimmed ? 'var(--muted)' : hex};flex:0 0 auto;"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:4px;">
+              <div class="ai-capability-title">${escapeHTML(item.title)}${aiStatusChipHTML(item.status)}</div>
+              <div class="ai-capability-desc">${escapeHTML(item.description)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const memoryRows = conversations.length
+        ? conversations.map(item => `
+            <div class="ai-memory-row">
+              <i class="lucide" data-lucide="message-square" style="color:${getTintHex('indigo')};width:16px;height:16px;flex:0 0 auto;"></i>
+              <div class="ai-memory-name" style="flex:1;">${escapeHTML(item.title)}</div>
+              <span class="ai-status-chip" style="color:var(--muted);background:var(--glass-bottom);">${item.messageCount}</span>
+              <button class="mini-btn ai-memory-clear" type="button" data-scope-id="${escapeHTML(item.scopeID)}" data-scope-type="${escapeHTML(item.scopeType)}" ${disabledAttr}>Clear</button>
+            </div>
+          `).join('')
+        : `<div class="placeholder">Memory is ready. Recent channels and direct messages appear here after Apple Intelligence replies.</div>`;
+
       panels.innerHTML = `
+        ${readOnly ? '<div class="placeholder full-span" style="grid-column:1 / -1;">Read-only on Failover nodes. Apple Intelligence settings sync from Primary.</div>' : ''}
+        <section class="settings-panel glass full-span">
+          <div class="panel-title"><i class="lucide" data-lucide="user-cog"></i> Personality</div>
+          <div class="ai-tile-grid">${personalityTiles}</div>
+        </section>
+
         <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Runtime</div>
-          <div class="setting-row"><div class="left"><div class="title">DM AI Replies</div><div class="desc">Automatically reply in direct messages.</div></div><label class="switch"><input id="aiDm" type="checkbox" ${cfg.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Guild Mention Replies</div><div class="desc">Reply when members mention the bot in a server.</div></div><label class="switch"><input id="aiGuild" type="checkbox" ${cfg.useAIInGuildChannels ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Allow DMs From Anyone</div><div class="desc">Allow direct messages from users who have not interacted with the bot.</div></div><label class="switch"><input id="aiAllowDMs" type="checkbox" ${cfg.allowDMs ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Personality Prompt</label><textarea id="aiPrompt" class="field-input" rows="5">${escapeHTML(cfg.localAISystemPrompt || '')}</textarea></div>
-          <button id="aiSavePrompt" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save Personality</button>
+          <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Reply Rules</div>
+          ${aiRuleRowHTML({
+            id: 'aiGuild',
+            icon: 'at-sign',
+            tint: 'blue',
+            title: 'Reply when mentioned',
+            desc: 'Answer direct mentions in server text channels.',
+            enabled: data.guildMentionRepliesEnabled,
+            disabled: readOnly
+          })}
+          ${aiRuleRowHTML({
+            id: 'aiDm',
+            icon: 'mail',
+            tint: 'teal',
+            title: 'Reply to DMs',
+            desc: 'Use Apple Intelligence for direct message conversations.',
+            enabled: data.dmRepliesEnabled,
+            disabled: readOnly
+          })}
+          ${aiRuleRowHTML({
+            id: 'aiAllowDMs',
+            icon: 'users',
+            tint: 'purple',
+            title: 'Allow DMs from anyone',
+            desc: 'Accept direct messages beyond known server context.',
+            enabled: data.allowDMs,
+            disabled: readOnly
+          })}
+          <div class="setting-row">
+            <div class="left" style="flex-direction:row;align-items:center;gap:10px;">
+              <i class="lucide" data-lucide="shield-check" style="color:${getTintHex('green')};width:16px;height:16px;flex:0 0 auto;"></i>
+              <div>
+                <div class="title">Ignore bot accounts</div>
+                <div class="desc">Always skips bot-authored messages to avoid reply loops.</div>
+              </div>
+            </div>
+            <span class="ai-status-chip" style="color:var(--success);background:color-mix(in srgb, var(--success) 16%, transparent);">Always On</span>
+          </div>
+        </section>
+
+        <section class="settings-panel glass">
+          <div class="panel-title"><i class="lucide" data-lucide="brain"></i> Conversation Memory</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <span class="ai-status-chip" style="color:var(--muted);background:var(--glass-bottom);">${memory.totalMessages} messages</span>
+            <span class="ai-status-chip" style="color:var(--muted);background:var(--glass-bottom);">${conversations.length} conversations</span>
+            <span style="flex:1;"></span>
+            <button id="aiMemoryClearAll" class="mini-btn" type="button" ${conversations.length && !readOnly ? '' : 'disabled'}><i class="lucide" data-lucide="trash-2"></i> Clear All</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">${memoryRows}</div>
+        </section>
+
+        <section class="settings-panel glass full-span">
+          <div class="panel-title"><i class="lucide" data-lucide="layout-grid"></i> Capabilities</div>
+          <div class="ai-tile-grid">${capabilityCards}</div>
+        </section>
+
+        <section class="settings-panel glass full-span">
+          <div class="panel-title"><i class="lucide" data-lucide="align-left"></i> Custom Prompt</div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Personality Prompt</label><textarea id="aiPrompt" class="field-input" rows="5" ${disabledAttr}>${escapeHTML(data.systemPrompt || '')}</textarea></div>
+          <button id="aiSavePrompt" class="mini-btn" type="button" ${disabledAttr}><i class="lucide" data-lucide="save"></i> Save Personality</button>
         </section>
       `;
 
-      panels.querySelector('#aiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
-      panels.querySelector('#aiGuild')?.addEventListener('change', e => saveConfigPatch({ useAIInGuildChannels: e.target.checked }));
-      panels.querySelector('#aiAllowDMs')?.addEventListener('change', e => saveConfigPatch({ allowDMs: e.target.checked }));
-      panels.querySelector('#aiSavePrompt')?.addEventListener('click', () => saveConfigPatch({ localAISystemPrompt: panels.querySelector('#aiPrompt')?.value || '' }));
+      if (!readOnly) {
+        panels.querySelectorAll('.ai-personality').forEach(button => {
+          button.addEventListener('click', () => {
+            const match = personalities.find(item => item.id === button.dataset.personalityId);
+            if (!match) return;
+            saveConfigPatch({ localAISystemPrompt: match.prompt });
+          });
+        });
+        panels.querySelector('#aiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+        panels.querySelector('#aiGuild')?.addEventListener('change', e => saveConfigPatch({ useAIInGuildChannels: e.target.checked }));
+        panels.querySelector('#aiAllowDMs')?.addEventListener('change', e => saveConfigPatch({ allowDMs: e.target.checked }));
+        panels.querySelector('#aiSavePrompt')?.addEventListener('click', () => saveConfigPatch({ localAISystemPrompt: panels.querySelector('#aiPrompt')?.value || '' }));
+        panels.querySelectorAll('.ai-memory-clear').forEach(button => {
+          button.addEventListener('click', async () => {
+            if (!confirm('Memory for this conversation will be permanently deleted.')) return;
+            await postJSON('/api/aibots/memory/clear', { scopeID: button.dataset.scopeId, scopeType: button.dataset.scopeType });
+            await loadAIBots();
+            renderAppleIntelligenceView();
+          });
+        });
+        panels.querySelector('#aiMemoryClearAll')?.addEventListener('click', async () => {
+          if (!confirm('All conversation memory will be permanently deleted.')) return;
+          await postJSON('/api/aibots/memory/clear', {});
+          await loadAIBots();
+          renderAppleIntelligenceView();
+        });
+      }
+
+      refreshIcons();
     }
 
     function renderActivityView() {
@@ -10372,11 +10666,14 @@
           break;
         case 'aibots':
           primaryRows = [
-            { label: 'Engine', value: 'Apple Intelligence' },
-            { label: 'DM Replies', value: config.appleIntelligence.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' }
+            { label: 'Apple Intelligence', value: aiBotsData ? (aiBotsData.online ? 'Online' : 'Offline') : '-' },
+            { label: 'Reply Scope', value: aiBotsData?.replyScope || '-' },
+            { label: 'DM Replies', value: config.appleIntelligence.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' },
+            { label: 'Mention Replies', value: config.appleIntelligence.useAIInGuildChannels ? 'Enabled' : 'Disabled' }
           ];
           secondaryRows = [
-            { label: 'Runs', value: 'On-device' }
+            { label: 'Runs', value: 'On-device' },
+            { label: 'Memory', value: String(aiBotsData?.memory?.totalMessages ?? 0) }
           ];
           break;
         case 'settings':
@@ -10701,6 +10998,10 @@
         voice.classList.add('hidden');
         section.classList.add('hidden');
         renderAppleIntelligenceView();
+        (async () => {
+          try { await loadAIBots(); } catch (e) { console.error(e); }
+          renderAppleIntelligenceView();
+        })();
         if (mobileSubtitle) mobileSubtitle.textContent = 'AI Bots';
         setMessage('', '');
       } else if (view === 'recordings') {
@@ -10821,7 +11122,7 @@
       
       loadOverviewLayout();
       showDashboard();
-      await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadMediaData(), loadAnnouncer()]);
+      await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadAIBots(), loadMediaData(), loadAnnouncer()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
       const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
