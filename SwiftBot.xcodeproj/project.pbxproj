@@ -134,6 +134,7 @@
 		855D91D6C8ED90D29D71508D /* AutomationTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94959B5C927F07D4B652B686 /* AutomationTemplates.swift */; };
 		86DE1B176292F7A9DB2488FA /* TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8C19725A4BF5A95D20716E /* TunnelManager.swift */; };
 		87D3271B72E415D0EAD0543A /* MeshPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6EA0FA1B56EED3848973E14 /* MeshPreferencesView.swift */; };
+		8A09CE9D59BF7F3078D87B48 /* VoiceUntilEmptyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 148146E9D6C2A1CABFEFF833 /* VoiceUntilEmptyTests.swift */; };
 		8AD16B5D17F230EBFF694EDB /* SwiftMinerDMRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A242BC711BB3261C9D007EF6 /* SwiftMinerDMRouterTests.swift */; };
 		8C3F7845C2B78E70DF2C261A /* VoiceSessionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */; };
 		8E1A62B386CB5E056D3BDB0C /* VoiceTransportSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */; };
@@ -325,6 +326,7 @@
 		1218F2D3CD35139659133AD3 /* EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBus.swift; sourceTree = "<group>"; };
 		13186CAFC979304A004AE44D /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		13E0F76AF1F933F59A65CB21 /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
+		148146E9D6C2A1CABFEFF833 /* VoiceUntilEmptyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceUntilEmptyTests.swift; sourceTree = "<group>"; };
 		14B156B46AB6BBE21F4C86E1 /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
 		15DCEE4759A584388ABAC846 /* DiscordMessageRESTClientDMTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordMessageRESTClientDMTests.swift; sourceTree = "<group>"; };
 		1709507FD08B81C2129D7753 /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
@@ -646,6 +648,7 @@
 				371732DE4DCB38531E12670F /* VoiceRecoveryBackoffTests.swift */,
 				28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */,
 				1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */,
+				148146E9D6C2A1CABFEFF833 /* VoiceUntilEmptyTests.swift */,
 				F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */,
 				29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */,
 				C5935F83A4161478DCD1AD04 /* WikiSyncTests.swift */,
@@ -1321,6 +1324,7 @@
 				A0E4B62E8D14100E3163AB9E /* VoiceRecoveryBackoffTests.swift in Sources */,
 				8C3F7845C2B78E70DF2C261A /* VoiceSessionStoreTests.swift in Sources */,
 				8E1A62B386CB5E056D3BDB0C /* VoiceTransportSecurityTests.swift in Sources */,
+				8A09CE9D59BF7F3078D87B48 /* VoiceUntilEmptyTests.swift in Sources */,
 				235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */,
 				B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */,
 				2019E7B6F12AB1E58C097C9B /* WikiSyncTests.swift in Sources */,
@@ -1357,7 +1361,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026073115;
+				CURRENT_PROJECT_VERSION = 2026080715;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1384,7 +1388,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.22.4;
+				MARKETING_VERSION = 1.22.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1595,7 +1599,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026073115;
+				CURRENT_PROJECT_VERSION = 2026080715;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1622,7 +1626,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.22.4;
+				MARKETING_VERSION = 1.22.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
