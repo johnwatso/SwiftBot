@@ -1308,9 +1308,10 @@ extension AppModel {
         voiceConnectionStatus.isConnected && voicePendingChannelID == channelID
     }
 
-    /// Called from the gateway whenever a member leaves a voice channel.
-    /// If the bot is connected with `untilEmpty` mode and the channel is now
-    /// empty (no non-bot members), disconnects automatically.
+    /// Called from the gateway whenever a member leaves a voice channel — by
+    /// disconnecting outright or by moving to a different one. If the bot is
+    /// connected with `untilEmpty` mode and the channel is now empty (no
+    /// non-bot members), disconnects automatically.
     func handleUntilEmptyCheck(leftChannelId: String, guildId: String) async {
         guard voiceConnectionStatus.isConnected,
               voicePendingChannelID == leftChannelId else { return }
@@ -1319,9 +1320,14 @@ extension AppModel {
             $0.voiceChannelID == leftChannelId && $0.enabled && $0.connectionMode == .untilEmpty
         }) else { return }
 
-        // Check whether any non-bot members remain in the channel
+        // No bot keeps the channel alive — not another integration, and not
+        // SwiftBot itself, which is sitting in the very channel it is deciding
+        // whether to leave. Checking only `botUserId` left the bot parked
+        // forever whenever any other bot was present, and whenever our own id
+        // hadn't been resolved yet.
+        let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
         let humanMembers = activeVoice.filter {
-            $0.channelId == leftChannelId && $0.userId != botUserId
+            $0.guildId == guildId && $0.channelId == leftChannelId && !botIDs.contains($0.userId)
         }
         guard humanMembers.isEmpty else { return }
 
