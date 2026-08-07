@@ -371,6 +371,66 @@ struct AdminWebSimpleOption: Codable {
     let name: String
 }
 
+// MARK: - AI Bots payloads
+
+/// Returned by GET /api/aibots. Mirrors the native Apple Intelligence
+/// surface so the WebUI can render the same status, personality presets,
+/// reply rules, conversation memory and capability tiles.
+struct AdminWebAIBotsPayload: Codable {
+    struct Personality: Codable {
+        let id: String
+        let title: String
+        let summary: String
+        let description: String
+        let preview: String
+        let prompt: String
+        let icon: String                              // lucide icon name
+        let tint: String                              // getTintHex() key
+        let isSelected: Bool
+    }
+
+    struct Capability: Codable {
+        let id: String
+        let title: String
+        let description: String
+        let icon: String
+        let tint: String
+        let status: String                            // "active" | "ready" | "off"
+    }
+
+    struct Conversation: Codable {
+        let id: String
+        let scopeID: String
+        let scopeType: String                         // MemoryScopeType raw value
+        let title: String
+        let messageCount: Int
+    }
+
+    struct Memory: Codable {
+        let totalMessages: Int
+        let conversations: [Conversation]
+    }
+
+    let online: Bool
+    let replyScope: String
+    let dmRepliesEnabled: Bool
+    let guildMentionRepliesEnabled: Bool
+    let allowDMs: Bool
+    let systemPrompt: String
+    let selectedPersonalityID: String
+    let isFailoverManagedNode: Bool
+    let personalities: [Personality]
+    let capabilities: [Capability]
+    let memory: Memory
+}
+
+/// Clears one conversation's memory, or every conversation when both
+/// fields are omitted.
+struct AdminWebAIMemoryClearPatch: Codable {
+    let scopeID: String?
+    let scopeType: String?
+}
+
 // MARK: - Automations / Moderation payloads
 
 /// Returned by GET /api/automations?category=... — everything the
@@ -798,6 +858,8 @@ actor AdminWebServer {
     private var sendPatchyTestTarget: (@Sendable (UUID) async -> Bool)?
     private var pullPatchyTarget: (@Sendable (UUID) async -> Bool)?
     private var runPatchyCheckNow: (@Sendable () async -> Bool)?
+    private var aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)?
+    private var clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)?
     private var wikiBridgeProvider: (@Sendable () async -> AdminWebWikiBridgePayload)?
     private var updateWikiBridgeState: (@Sendable (AdminWebWikiBridgeStatePatch) async -> Bool)?
     private var createWikiSource: (@Sendable () async -> WikiSource?)?
@@ -916,6 +978,8 @@ actor AdminWebServer {
         sendPatchyTestTarget: @escaping @Sendable (UUID) async -> Bool,
         pullPatchyTarget: @escaping @Sendable (UUID) async -> Bool,
         runPatchyCheckNow: @escaping @Sendable () async -> Bool,
+        aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)? = nil,
+        clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)? = nil,
         wikiBridgeProvider: @escaping @Sendable () async -> AdminWebWikiBridgePayload,
         updateWikiBridgeState: @escaping @Sendable (AdminWebWikiBridgeStatePatch) async -> Bool,
         createWikiSource: @escaping @Sendable () async -> WikiSource?,
@@ -997,6 +1061,8 @@ actor AdminWebServer {
         self.sendPatchyTestTarget = sendPatchyTestTarget
         self.pullPatchyTarget = pullPatchyTarget
         self.runPatchyCheckNow = runPatchyCheckNow
+        self.aiBotsProvider = aiBotsProvider
+        self.clearAIMemory = clearAIMemory
         self.wikiBridgeProvider = wikiBridgeProvider
         self.updateWikiBridgeState = updateWikiBridgeState
         self.createWikiSource = createWikiSource
@@ -2362,6 +2428,31 @@ actor AdminWebServer {
             }
             guard await dismissSweepSuggestion?(patch.suggestionID) == true else {
                 return jsonResponse(["error": "dismiss_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/aibots"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await aiBotsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "aibots_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/aibots/memory/clear"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAIMemoryClearPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await clearAIMemory?(patch) == true else {
+                return jsonResponse(["error": "clear_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
         case ("GET", "/api/wikibridge"):
