@@ -775,7 +775,6 @@ struct VoiceView: View {
         case .untilEmpty: flags.append("Until empty")
         }
         if config.keepShort { flags.append("Keep short") }
-        if config.smartShortenWithAppleIntelligence { flags.append("AI shorten") }
         if config.ignoreLinks { flags.append("No links") }
         if config.skipBots { flags.append("Skip bots") }
         return flags.isEmpty ? ["Manual"] : flags
@@ -877,8 +876,7 @@ struct VoiceView: View {
         case .fixed:      parts.append("\(config.connectionMinutes) min")
         case .untilEmpty: parts.append("until empty")
         }
-        if config.summariseLong { parts.append("summarises") }
-        if config.smartShortenWithAppleIntelligence { parts.append("AI shortens") }
+        if config.summariseLong || config.smartShortenWithAppleIntelligence { parts.append("summarises") }
         if config.ignoreLinks { parts.append("no links") }
         return parts.prefix(3).joined(separator: " · ")
     }
@@ -1398,11 +1396,10 @@ private struct AnnouncerConfigSheet: View {
                     Toggle("Skip bot messages", isOn: $config.skipBots)
                     Toggle("Ignore emoji spam", isOn: $config.ignoreEmojiSpam)
                     Toggle("Keep announcements short", isOn: $config.keepShort)
-                    Toggle("Smart shorten with Apple Intelligence", isOn: $config.smartShortenWithAppleIntelligence)
                 }
                 .toggleStyle(.checkbox)
 
-                Text("Messages over 300 characters are shortened instead of skipped. Smart shortening uses Apple Intelligence when available and falls back to the regular caps.")
+                Text("Messages over 1000 characters (about a minute of speech) are trimmed instead of skipped, ending with a spoken \"message continues\". \"Keep announcements short\" trims everything to 160 characters instead.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

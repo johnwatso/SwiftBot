@@ -57,7 +57,12 @@ struct VoiceAnnouncerHealth: Sendable, Equatable {
 }
 
 enum AnnouncerSpeechSanitizer {
-    static let maxCharacters = 360
+    /// A backstop for everything that reaches the queue — join/leave lines,
+    /// intros, direct enqueues — not a second opinion on the announcer's own
+    /// reading cap. Keep it above `TextChannelAnnouncer`'s limit plus the
+    /// author prefix and cue, or it silently re-trims reads that the announcer
+    /// already sized deliberately.
+    static let maxCharacters = 1100
 
     static func sanitized(_ raw: String) -> String? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -129,14 +134,21 @@ enum AnnouncerSpeechSanitizer {
         return result
     }
 
+    /// Ends with a cue that is actually spoken; a trailing ellipsis is silent,
+    /// so a trimmed read is indistinguishable from the announcer cutting out.
     private static func truncate(_ text: String, to limit: Int) -> String {
         guard text.count > limit else { return text }
         let slice = String(text.prefix(limit))
+        var head = slice
         if let lastSpace = slice.lastIndex(of: " ") {
-            let head = String(slice[..<lastSpace]).trimmingCharacters(in: .whitespaces)
-            if !head.isEmpty { return head + "..." }
+            let candidate = String(slice[..<lastSpace]).trimmingCharacters(in: .whitespaces)
+            if !candidate.isEmpty { head = candidate }
         }
-        return slice.trimmingCharacters(in: .whitespaces) + "..."
+        head = head
+            .trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ",.;:-–—…"))
+            .trimmingCharacters(in: .whitespaces)
+        return head + ", message continues"
     }
 }
 

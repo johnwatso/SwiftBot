@@ -118,6 +118,8 @@ actor VoiceAnnouncementService {
     private let speechRenderTimeout: Duration
     private let speechPlaybackTimeout: Duration
     private var voice: AVSpeechSynthesisVoice?
+    /// Lazily resolved fallback voice for a render the selected voice fails.
+    private var fallbackVoiceID: String?
     /// In-flight engine warm-up render; the drain loop awaits it before the
     /// first real render so the two never run concurrently.
     private var prewarmTask: Task<Void, Never>?
@@ -273,16 +275,22 @@ actor VoiceAnnouncementService {
         await onQueueChange?(queue)
         await publishHealth(phase: paused ? .paused : .queued, lastQueuedAt: Date())
         if !draining, !paused {
-            scheduleDrain()
+            // The coalesce window only pays for itself when there is something
+            // to coalesce with. A message arriving into an idle queue starts
+            // rendering immediately; anything that lands behind it still gets
+            // batched by `nextBatch` while this one plays.
+            scheduleDrain(immediately: queue.count == 1)
         }
     }
 
-    private func scheduleDrain() {
+    private func scheduleDrain(immediately: Bool = false) {
         guard drainStartTask == nil else { return }
-        let delay = coalesceDelay
+        let delay = immediately ? Duration.zero : coalesceDelay
         drainStartTask = Task { [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+            }
             await self?.beginScheduledDrain()
         }
     }
@@ -608,7 +616,7 @@ actor VoiceAnnouncementService {
 
     private func renderSpeechAudio(text: String) async throws -> SendableAudioBuffer {
         let selectedVoiceID = voice?.identifier
-        let fallbackVoiceID = VoiceTTSSource.preferredEnglishVoice()?.identifier
+        let fallbackVoiceID = cachedFallbackVoiceID()
         do {
             let rendered = try await renderWithTimeout(
                 text: text,
@@ -626,6 +634,17 @@ actor VoiceAnnouncementService {
             )
             return try AnnouncerAudioGuardrails.validateAndRepair(rendered.buffer)
         }
+    }
+
+    /// `AVSpeechSynthesisVoice.speechVoices()` enumerates every installed voice
+    /// (~190 on a stock machine, ~90 ms). That result only changes when the user
+    /// installs or removes a voice, so it must not sit on the render path — it
+    /// was being paid on every announcement purely to know the fallback.
+    private func cachedFallbackVoiceID() -> String? {
+        if let fallbackVoiceID { return fallbackVoiceID }
+        let resolved = VoiceTTSSource.preferredEnglishVoice()?.identifier
+        fallbackVoiceID = resolved
+        return resolved
     }
 
     private func renderWithTimeout(

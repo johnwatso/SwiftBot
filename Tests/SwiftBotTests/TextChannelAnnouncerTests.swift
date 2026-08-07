@@ -168,10 +168,10 @@ final class TextChannelAnnouncerTests: XCTestCase {
         XCTAssertTrue(texts.contains("Bob: Hello from channel 2"))
     }
 
-    /// A message over the 300-character reading cap is skipped when the
-    /// config doesn't shorten — but the skip must be visible in the debug
-    /// log with an actionable reason, and flipping `summariseLong` must get
-    /// the message read.
+    /// A message over the reading cap is skipped when the config doesn't
+    /// shorten — but the skip must be visible in the debug log with an
+    /// actionable reason, and flipping `summariseLong` must get the message
+    /// read, trimmed to a spoken cue.
     func testLongMessageSkipIsLoggedAndSummariseLongReadsIt() async throws {
         let playback = VoicePlaybackService()
         let announcer = try VoiceAnnouncementService(playback: playback)
@@ -185,7 +185,8 @@ final class TextChannelAnnouncerTests: XCTestCase {
             await logged.append(message)
         }
 
-        let longAnnouncement = Array(repeating: "community games kick off tonight at eight", count: 9)
+        // Comfortably over the 1000-character cap so the skip path is exercised.
+        let longAnnouncement = Array(repeating: "community games kick off tonight at eight", count: 30)
             .joined(separator: ", ")
         let event = GatewayMessageCreateEvent(
             rawMap: [:],
@@ -211,7 +212,12 @@ final class TextChannelAnnouncerTests: XCTestCase {
         await watcher.handle(event, options: AnnouncerReadOptions(summariseLong: true))
         let pendingAfterShorten = await announcer.pending
         XCTAssertEqual(pendingAfterShorten.count, 1, "with summariseLong on, the message must be read shortened")
-        XCTAssertTrue(pendingAfterShorten[0].text.hasPrefix("Alice: community games"))
+        let shortened = pendingAfterShorten[0].text
+        XCTAssertTrue(shortened.hasPrefix("Alice: community games"))
+        XCTAssertTrue(
+            shortened.hasSuffix(", message continues"),
+            "a trimmed read must end with a cue the listener can hear: \(shortened)"
+        )
     }
 
     private actor LockedMessageBox {
@@ -220,7 +226,7 @@ final class TextChannelAnnouncerTests: XCTestCase {
         func all() -> [String] { messages }
     }
 
-    func testTextChannelAnnouncerUsesSmartShortenerWhenAvailable() async throws {
+    func testTextChannelAnnouncerShortensLongMessagesWithoutBlocking() async throws {
         let playback = VoicePlaybackService()
         let announcer = try VoiceAnnouncementService(playback: playback)
         await announcer.setPaused(true)
@@ -244,20 +250,25 @@ final class TextChannelAnnouncerTests: XCTestCase {
             avatarHash: nil
         )
 
+        // Shortening must be synchronous: the read path is never allowed to
+        // await a model, so `handle` returns in well under the time even a
+        // warm on-device rewrite would take.
+        let start = ContinuousClock().now
         await watcher.handle(
             event,
-            options: AnnouncerReadOptions(
-                keepShort: true,
-                smartShortenWithAppleIntelligence: true,
-                smartShortener: { _ in "The build passed after removing the old DAVE retry timer." }
-            )
+            options: AnnouncerReadOptions(summariseLong: true, keepShort: true)
         )
+        let elapsed = ContinuousClock().now - start
 
+        XCTAssertLessThan(elapsed, .milliseconds(250), "shortening must not block the read")
         let pending = await announcer.pending
-        XCTAssertEqual(pending.map(\.text), ["Alice: The build passed after removing the old DAVE retry timer."])
+        let spoken = try XCTUnwrap(pending.first?.text)
+        XCTAssertTrue(spoken.hasPrefix("Alice: the build passed"))
+        XCTAssertTrue(spoken.hasSuffix(", message continues"))
+        XCTAssertLessThanOrEqual(spoken.count, 190, "keepShort trims to 160 plus the author and the cue")
     }
 
-    func testTextChannelAnnouncerFallsBackWhenSmartShortenerReturnsNil() async throws {
+    func testTextChannelAnnouncerReadsOverCapMessagesWhenShorteningIsOn() async throws {
         let playback = VoicePlaybackService()
         let announcer = try VoiceAnnouncementService(playback: playback)
         await announcer.setPaused(true)
@@ -265,7 +276,9 @@ final class TextChannelAnnouncerTests: XCTestCase {
         let watcher = TextChannelAnnouncer(announcer: announcer)
         await watcher.setWatchedChannel("channel-1")
 
-        let longMessage = Array(repeating: "this is a long noisy Discord message that should be kept short", count: 6)
+        // Over the 1000-character cap, so the summary cap does the trimming
+        // rather than `keepShort`.
+        let longMessage = Array(repeating: "this is a long noisy Discord message that should be kept short", count: 20)
             .joined(separator: " ")
         let event = GatewayMessageCreateEvent(
             rawMap: [:],
@@ -281,70 +294,14 @@ final class TextChannelAnnouncerTests: XCTestCase {
             avatarHash: nil
         )
 
-        await watcher.handle(
-            event,
-            options: AnnouncerReadOptions(
-                summariseLong: true,
-                keepShort: true,
-                smartShortenWithAppleIntelligence: true,
-                smartShortener: { _ in nil }
-            )
-        )
+        await watcher.handle(event, options: AnnouncerReadOptions(summariseLong: true))
 
         let pending = await announcer.pending
         let spoken = try XCTUnwrap(pending.first?.text)
-        XCTAssertTrue(spoken.hasPrefix("Alice: "))
-        XCTAssertTrue(spoken.hasSuffix("…"))
-        XCTAssertLessThanOrEqual(spoken.count, 170)
-    }
-
-    func testTextChannelAnnouncerTimesOutSlowSmartShortener() async throws {
-        let playback = VoicePlaybackService()
-        let announcer = try VoiceAnnouncementService(playback: playback)
-        await announcer.setPaused(true)
-
-        let watcher = TextChannelAnnouncer(announcer: announcer)
-        await watcher.setWatchedChannel("channel-1")
-
-        let longMessage = Array(repeating: "this message should not wait for a slow smart shortener", count: 6)
-            .joined(separator: " ")
-        let event = GatewayMessageCreateEvent(
-            rawMap: [:],
-            content: longMessage,
-            author: [:],
-            username: "Alice",
-            displayName: "Alice",
-            channelID: "channel-1",
-            userID: "user-1",
-            guildID: "guild-1",
-            messageID: "msg-1",
-            isBot: false,
-            avatarHash: nil
-        )
-
-        let start = Date()
-        await watcher.handle(
-            event,
-            options: AnnouncerReadOptions(
-                summariseLong: true,
-                keepShort: true,
-                smartShortenWithAppleIntelligence: true,
-                smartShortener: { _ in
-                    await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-                        DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
-                            continuation.resume(returning: "This arrived too late to be spoken.")
-                        }
-                    }
-                }
-            )
-        )
-
-        XCTAssertLessThan(Date().timeIntervalSince(start), 2.0)
-        let pending = await announcer.pending
-        let spoken = try XCTUnwrap(pending.first?.text)
-        XCTAssertTrue(spoken.hasPrefix("Alice: "))
-        XCTAssertTrue(spoken.hasSuffix("…"))
-        XCTAssertLessThanOrEqual(spoken.count, 170)
+        XCTAssertTrue(spoken.hasPrefix("Alice: this is a long noisy"))
+        XCTAssertTrue(spoken.hasSuffix(", message continues"))
+        XCTAssertGreaterThan(spoken.count, 900, "the cap must read far more than the old 220-character trim")
+        XCTAssertLessThanOrEqual(spoken.count, 1030)
     }
 
     @MainActor
