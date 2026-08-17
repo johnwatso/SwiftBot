@@ -6,65 +6,48 @@
   <title>SwiftBot 1.22.6 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
-    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
-    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    .intro { margin: 0 0 22px; color: #364152; }
-    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
-    section.recovery { --accent: #7c3aed; }
-    section.diagnostics { --accent: #0e7490; }
-    section.release { --accent: #52606d; }
-    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
-    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
-    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    ul { margin: 0; padding-left: 22px; }
-    li { margin: 0 0 8px; }
-    li:last-child { margin-bottom: 0; }
-    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1017; color: #edf2f7; }
-      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
-      .meta, .summary { color: #9fb0c2; }
-      .intro { color: #c8d3df; }
-      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
-      code { background: rgba(159, 176, 194, 0.16); }
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
     <h1>SwiftBot 1.22.6</h1>
-    <p class="meta">Version 1.22.6 · Build 2026081718</p>
-    <p class="intro">A focused Announcer reliability update: a voice recovery that gets stuck waiting for secure media now recovers itself, and the next diagnostic report will say exactly where the voice pipeline stopped.</p>
-
-    <section class="recovery">
-      <h2><span class="badge" aria-hidden="true">🔊</span>Stuck Voice Recovery Rejoins</h2>
-      <p class="summary">The bot could remain visibly connected but silently pause its announcement queue after a Discord DAVE media transition failed to finish.</p>
-      <ul>
-        <li><strong>Bounded recovery:</strong> If a queued Announcer remains paused while recovering for 60 seconds, SwiftBot now uses its normal clean voice rejoin instead of waiting indefinitely.</li>
-        <li><strong>Safe watchdog behaviour:</strong> A normally paused or empty Announcer is not treated as failed; the recovery escape hatch applies only when work is still waiting to be spoken.</li>
-      </ul>
-    </section>
-
-    <section class="diagnostics">
-      <h2><span class="badge" aria-hidden="true">🩺</span>Voice Diagnostics You Can Use</h2>
-      <p class="summary">Export Diagnostic Logs is now purpose-built for chasing the "connected but silent" failure mode.</p>
-      <ul>
-        <li><strong>More evidence:</strong> Exports include Announcer health, recent voice events, audio-frame timing, UDP keepalive history, voice resume state, and DAVE/MLS transition state.</li>
-        <li><strong>Visible export progress:</strong> A SwiftMiner-style, window-attached preparation sheet appears while the report is collected, redacted, and formatted before the save sheet opens.</li>
-        <li><strong>Safe to share:</strong> The report continues to scrub Discord tokens, mesh secrets, API keys, IDs, and email addresses.</li>
-      </ul>
-    </section>
-
-    <section class="release">
-      <h2><span class="badge" aria-hidden="true">🚢</span>Release Details</h2>
-      <p class="summary">Regression coverage accompanies the reliability fix.</p>
-      <ul>
-        <li>Updated <code>MARKETING_VERSION</code> to 1.22.6 and <code>CURRENT_PROJECT_VERSION</code> to 2026081718.</li>
-        <li>Added coverage for queued paused recoveries and confirmed that empty recoveries remain non-failing.</li>
-      </ul>
-    </section>
+    <p class="meta">Version 1.22.6</p>
+    <p>SwiftBot 1.22.6</p>
+<p>A focused Announcer reliability update: a voice recovery that gets stuck waiting for secure media now recovers itself, and the next diagnostic report will say exactly where the voice pipeline stopped.</p>
+<p>Stuck Voice Recovery Rejoins</p>
+<p>- If queued Announcer work remains paused while recovering for 60 seconds, perform the normal clean voice rejoin.<br>- Keep normally paused and empty Announcers out of the recovery escape hatch.</p>
+<p>Voice Diagnostics You Can Use</p>
+<p>- Export Announcer health, voice events, audio-frame timing, UDP keepalive history, voice resume, and DAVE/MLS state.<br>- Show a SwiftMiner-style preparation sheet before the save sheet.<br>- Keep exported diagnostics redacted.</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/7ff46e422d89dfe7ba86dc212353f23ab6bead52">7ff46e4</a></p>
   </main>
 </body>
 </html>
