@@ -75,7 +75,7 @@ enum SwiftBotLogRedactor {
 enum LogExporter {
 
     @MainActor
-    static func buildReport(from app: AppModel, generatedAt: Date = Date()) -> String {
+    static func buildReport(from app: AppModel, generatedAt: Date = Date()) async -> String {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
 
@@ -127,6 +127,58 @@ enum LogExporter {
         case .ok: out += "restHealth=ok\n"
         case .unknown: out += "restHealth=unknown\n"
         case let .error(code, msg): out += "restHealth=error(\(code), \(SwiftBotLogRedactor.redact(msg)))\n"
+        }
+        out += "\n"
+
+        // Voice diagnostics are kept separately from the general system log,
+        // which can otherwise be dominated by gateway reconnect entries and
+        // hide the transition that made an announcer go silent.
+        let voiceHealth = app.announcerHealth
+        out += "=== Voice Announcer ===\n"
+        out += "connectionStatus=\(app.voiceConnectionStatus.displayLabel)\n"
+        out += "phase=\(voiceHealth.phase.rawValue)\n"
+        out += "queueDepth=\(voiceHealth.queueDepth)\n"
+        out += "retryStreak=\(voiceHealth.retryStreak)\n"
+        out += "lastQueuedAt=\(voiceHealth.lastQueuedAt.map { iso.string(from: $0) } ?? "-")\n"
+        out += "lastSpokenAt=\(voiceHealth.lastSpokenAt.map { iso.string(from: $0) } ?? "-")\n"
+        out += "lastFailureAt=\(voiceHealth.lastFailureAt.map { iso.string(from: $0) } ?? "-")\n"
+        out += "lastFailureReason=\(SwiftBotLogRedactor.redact(voiceHealth.lastFailureReason ?? "-"))\n"
+        out += "\n"
+
+        let transportDiagnostics: VoicePlaybackService.DiagnosticsSnapshot? = if let playback = app.voicePlaybackServiceStorage {
+            await playback.diagnosticsSnapshot()
+        } else {
+            nil
+        }
+        out += "=== Voice Transport ===\n"
+        if let transportDiagnostics {
+            let stagedTransitions = transportDiagnostics.davePendingTransitionIds
+                .map(String.init)
+                .joined(separator: ",")
+            out += "status=\(transportDiagnostics.status)\n"
+            out += "connectionGeneration=\(transportDiagnostics.connectionGeneration)\n"
+            out += "lastFailureGeneration=\(transportDiagnostics.lastFailureGeneration.map(String.init) ?? "-")\n"
+            out += "lastFailureReason=\(SwiftBotLogRedactor.redact(transportDiagnostics.lastFailureReason ?? "-"))\n"
+            out += "gateway=\(transportDiagnostics.hasGateway) transport=\(transportDiagnostics.hasTransport) encryption=\(transportDiagnostics.hasEncryption) opus=\(transportDiagnostics.hasOpusEncoder) ssrc=\(transportDiagnostics.hasSSRC)\n"
+            out += "isSpeaking=\(transportDiagnostics.isSpeaking) speakingElapsedSeconds=\(transportDiagnostics.speakingElapsedSeconds.map { String(format: "%.2f", $0) } ?? "-") firstAudioFrameSent=\(transportDiagnostics.didSendFirstAudioFrame)\n"
+            out += "lastAudioFrameSentAt=\(transportDiagnostics.lastAudioFrameSentAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "keepaliveCounter=\(transportDiagnostics.keepaliveCounter) failures=\(transportDiagnostics.keepaliveFailures)\n"
+            out += "lastKeepaliveAttemptAt=\(transportDiagnostics.lastKeepaliveAttemptAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "lastKeepaliveSuccessAt=\(transportDiagnostics.lastKeepaliveSuccessAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "lastKeepaliveFailureAt=\(transportDiagnostics.lastKeepaliveFailureAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "lastKeepaliveFailureReason=\(SwiftBotLogRedactor.redact(transportDiagnostics.lastKeepaliveFailureReason ?? "-"))\n"
+            out += "awaitingVoiceResume=\(transportDiagnostics.awaitingVoiceResume) resumeAttemptsRemaining=\(transportDiagnostics.voiceResumeAttemptsRemaining)\n"
+            out += "pathRecoveryRequested=\(transportDiagnostics.pathRecoveryRequested) pathRecoveryBudgetRemaining=\(transportDiagnostics.networkPathRecoveryBudgetRemaining)\n"
+            out += "daveRequired=\(transportDiagnostics.daveMediaRequired) daveGatePending=\(transportDiagnostics.daveTransitionGatePending) daveMediaContextGeneration=\(transportDiagnostics.daveMediaContextGeneration)\n"
+            out += "daveDowngradeTransitionId=\(transportDiagnostics.pendingDaveDowngradeTransitionId.map(String.init) ?? "-") daveSoleMemberReset=\(transportDiagnostics.pendingDaveSoleMemberReset)\n"
+            out += "daveSessionGeneration=\(transportDiagnostics.daveSessionGeneration.map(String.init) ?? "-") protocolVersion=\(transportDiagnostics.daveProtocolVersion.map(String.init) ?? "-") handshake=\(transportDiagnostics.daveHandshakeState ?? "-") mediaReady=\(transportDiagnostics.daveMediaReady.map(String.init) ?? "-")\n"
+            out += "daveAppliedTransitions=\(transportDiagnostics.daveAppliedTransitionCount.map(String.init) ?? "-") pendingEpoch=\(transportDiagnostics.davePendingEpoch.map(String.init) ?? "-") pendingTransition=\(transportDiagnostics.davePendingTransitionId.map(String.init) ?? "-") activeTransition=\(transportDiagnostics.daveActiveTransitionId.map(String.init) ?? "-")\n"
+            out += "daveStagedTransitions=\(stagedTransitions.isEmpty ? "-" : stagedTransitions) pendingOutboundActions=\(transportDiagnostics.davePendingOutboundActionCount.map(String.init) ?? "-") lastRecoveryAction=\(transportDiagnostics.daveLastRecoveryAction ?? "-")\n"
+            out += "daveLastTransitionAt=\(transportDiagnostics.daveLastTransitionAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "daveEncryptSuccesses=\(transportDiagnostics.daveEncryptionSuccessCount.map(String.init) ?? "-") failures=\(transportDiagnostics.daveEncryptionFailureCount.map(String.init) ?? "-")\n"
+            out += "daveLastMlsError=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastMlsError ?? "-"))\n"
+        } else {
+            out += "state=not initialized\n"
         }
         out += "\n"
 
@@ -211,6 +263,16 @@ enum LogExporter {
                 out += "\(ts)  \(status)  \(SwiftBotLogRedactor.redact(c.user)) · \(SwiftBotLogRedactor.redact(c.server)) · \(SwiftBotLogRedactor.redact(c.channel)) · route=\(c.executionRoute) on=\(c.executionNode) · \(SwiftBotLogRedactor.redact(c.command))\n"
             }
         }
+
+        out += "\n-- Voice Log (most recent 50) --\n"
+        let voiceEntries = app.voiceLog.prefix(50)
+        if voiceEntries.isEmpty {
+            out += "(none)\n"
+        } else {
+            for entry in voiceEntries {
+                out += "[\(iso.string(from: entry.time))] \(SwiftBotLogRedactor.redact(entry.description))\n"
+            }
+        }
         out += "\n-- System Log (most recent 500 lines) --\n"
         let lines = app.logs.lines.suffix(500)
         if lines.isEmpty {
@@ -224,20 +286,28 @@ enum LogExporter {
         return out
     }
 
+    /// Presents SwiftMiner's export flow: first a small, window-attached progress
+    /// sheet while potentially slow diagnostics are gathered, then a save sheet.
     @MainActor
-    static func presentSavePanel(app: AppModel) {
+    static func presentSavePanel(app: AppModel) async {
+        let progressSheet = presentProgressSheet()
+        defer { dismiss(progressSheet) }
+
+        // Give AppKit a chance to display feedback before awaiting actor-backed
+        // voice/DAVE diagnostics and redacting a potentially large activity log.
+        await Task.yield()
         let generatedAt = Date()
-        let report = buildReport(from: app, generatedAt: generatedAt)
+        let report = await buildReport(from: app, generatedAt: generatedAt)
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = defaultFilename(for: generatedAt)
         panel.title = "Export Diagnostic Logs"
-        panel.message = "Save a redacted SwiftBot diagnostic report. Discord tokens, mesh secrets, API keys, snowflakes, and emails are scrubbed."
+        panel.message = "Save a redacted SwiftBot diagnostic report you can attach to a GitHub issue."
         panel.canCreateDirectories = true
         panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard await present(panel) == .OK, let url = panel.url else { return }
 
         do {
             try report.write(to: url, atomically: true, encoding: .utf8)
@@ -251,6 +321,86 @@ enum LogExporter {
         }
     }
 
+    /// A save panel started from a SwiftUI command needs a window-attached sheet
+    /// on current macOS releases. `runModal()` can return without presenting in
+    /// that context, which made exporting look like a no-op.
+    @MainActor
+    private static func present(_ panel: NSSavePanel) async -> NSApplication.ModalResponse {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+            return panel.runModal()
+        }
+
+        return await withCheckedContinuation { continuation in
+            panel.beginSheetModal(for: window) { response in
+                continuation.resume(returning: response)
+            }
+        }
+    }
+
+    private struct ProgressSheet {
+        let panel: NSPanel
+        let parentWindow: NSWindow?
+        let symbolCycler: DiagnosticsSymbolCycler
+    }
+
+    /// Displays immediately while the report is snapshotted, redacted, and
+    /// formatted, avoiding an export action that appears to have been ignored.
+    @MainActor
+    private static func presentProgressSheet() -> ProgressSheet {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 154),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Export Diagnostic Logs"
+        panel.isReleasedWhenClosed = false
+        panel.isMovable = false
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+
+        let content = NSView(frame: panel.contentView?.bounds ?? .zero)
+
+        let symbolCycler = DiagnosticsSymbolCycler(frame: NSRect(x: 27, y: 71, width: 30, height: 30))
+        content.addSubview(symbolCycler)
+
+        let title = NSTextField(labelWithString: "Preparing diagnostics…")
+        title.font = .systemFont(ofSize: 16, weight: .semibold)
+        title.frame = NSRect(x: 74, y: 90, width: 272, height: 22)
+        content.addSubview(title)
+
+        let detail = NSTextField(wrappingLabelWithString: "Collecting announcer, Discord voice, and activity data. This can take a moment for a large log.")
+        detail.font = .systemFont(ofSize: 13)
+        detail.textColor = .secondaryLabelColor
+        detail.maximumNumberOfLines = 2
+        detail.frame = NSRect(x: 74, y: 42, width: 272, height: 40)
+        content.addSubview(detail)
+
+        panel.contentView = content
+        symbolCycler.start()
+
+        if let parentWindow = NSApp.keyWindow ?? NSApp.mainWindow {
+            parentWindow.beginSheet(panel)
+            return ProgressSheet(panel: panel, parentWindow: parentWindow, symbolCycler: symbolCycler)
+        }
+
+        panel.center()
+        panel.level = .floating
+        panel.makeKeyAndOrderFront(nil)
+        return ProgressSheet(panel: panel, parentWindow: nil, symbolCycler: symbolCycler)
+    }
+
+    @MainActor
+    private static func dismiss(_ progressSheet: ProgressSheet) {
+        progressSheet.symbolCycler.stop()
+        if let parentWindow = progressSheet.parentWindow {
+            parentWindow.endSheet(progressSheet.panel)
+        } else {
+            progressSheet.panel.orderOut(nil)
+        }
+    }
+
     static func defaultFilename(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -258,4 +408,59 @@ enum LogExporter {
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return "SwiftBot-logs-\(formatter.string(from: date)).txt"
     }
+}
+
+/// Cycles through relevant symbols while diagnostics are prepared, providing
+/// the same visible activity cue as SwiftMiner's diagnostics export sheet.
+private final class DiagnosticsSymbolCycler: NSImageView {
+    private let symbols: [(name: String, color: NSColor)] = [
+        ("speaker.wave.2.fill", .systemBlue),
+        ("waveform", .systemPurple),
+        ("antenna.radiowaves.left.and.right", .systemIndigo),
+        ("text.bubble.fill", .systemTeal)
+    ]
+    private var symbolIndex = 0
+    private var timer: Timer?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        imageScaling = .scaleProportionallyUpOrDown
+        setAccessibilityLabel("Preparing diagnostics")
+        updateSymbol()
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func start() {
+        guard timer == nil else { return }
+
+        let timer = Timer(
+            timeInterval: 0.65,
+            target: self,
+            selector: #selector(advanceSymbol),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc private func advanceSymbol() {
+        symbolIndex = (symbolIndex + 1) % symbols.count
+        updateSymbol()
+    }
+
+    private func updateSymbol() {
+        let symbol = symbols[symbolIndex]
+        contentTintColor = symbol.color
+        image = NSImage(systemSymbolName: symbol.name, accessibilityDescription: "Preparing diagnostics")
+    }
+
 }

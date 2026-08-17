@@ -40,17 +40,28 @@ struct VoiceAnnouncerHealth: Sendable, Equatable {
     var isDraining: Bool = false
 
     func isStalled(now: Date = Date(), threshold: TimeInterval = 60) -> Bool {
-        guard !isPaused else { return false }
         switch phase {
         case .rendering, .sending:
+            guard !isPaused else { return false }
             guard let activeStartedAt else { return false }
             return now.timeIntervalSince(activeStartedAt) >= threshold
         case .queued:
+            guard !isPaused else { return false }
             guard queueDepth > 0, let lastQueuedAt else { return false }
             return now.timeIntervalSince(lastQueuedAt) >= threshold
         case .failed:
             return true
-        case .idle, .paused, .recovering:
+        case .recovering:
+            // A short DAVE media re-key is expected, but a recovery with
+            // queued reads must be bounded. Previously this state was
+            // considered healthy forever. Recovery deliberately pauses the
+            // queue, so `isPaused` must not suppress this check; otherwise a
+            // lost media-ready callback leaves the bot connected but silent.
+            guard queueDepth > 0 else { return false }
+            let recoveryStartedAt = lastFailureAt ?? lastRecoveryAt ?? lastQueuedAt
+            guard let recoveryStartedAt else { return false }
+            return now.timeIntervalSince(recoveryStartedAt) >= threshold
+        case .idle, .paused:
             return false
         }
     }

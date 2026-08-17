@@ -195,7 +195,9 @@ struct SwiftBotApp: App {
             // redacted diagnostic report for issue reports / debugging.
             CommandGroup(after: .help) {
                 Button("Export Diagnostic Logs…") {
-                    LogExporter.presentSavePanel(app: appModel)
+                    Task {
+                        await LogExporter.presentSavePanel(app: appModel)
+                    }
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
             }

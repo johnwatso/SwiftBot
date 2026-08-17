@@ -11,6 +11,55 @@ import libdave_swift
 actor VoicePlaybackService {
     private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.playback")
 
+    /// Redacted, export-safe state for investigating an announcer that appears
+    /// connected but is not delivering audio. It intentionally contains no
+    /// endpoint, token, key material, or audio content.
+    struct DiagnosticsSnapshot: Sendable {
+        let status: String
+        let connectionGeneration: UInt64
+        let lastFailureGeneration: UInt64?
+        let lastFailureReason: String?
+        let hasGateway: Bool
+        let hasTransport: Bool
+        let hasEncryption: Bool
+        let hasOpusEncoder: Bool
+        let hasSSRC: Bool
+        let isSpeaking: Bool
+        let speakingElapsedSeconds: Double?
+        let didSendFirstAudioFrame: Bool
+        let lastAudioFrameSentAt: Date?
+        let keepaliveCounter: UInt32
+        let keepaliveFailures: Int
+        let lastKeepaliveAttemptAt: Date?
+        let lastKeepaliveSuccessAt: Date?
+        let lastKeepaliveFailureAt: Date?
+        let lastKeepaliveFailureReason: String?
+        let awaitingVoiceResume: Bool
+        let voiceResumeAttemptsRemaining: Int
+        let pathRecoveryRequested: Bool
+        let networkPathRecoveryBudgetRemaining: Int
+        let daveMediaRequired: Bool
+        let daveTransitionGatePending: Bool
+        let daveMediaContextGeneration: UInt64
+        let pendingDaveDowngradeTransitionId: UInt64?
+        let pendingDaveSoleMemberReset: Bool
+        let daveSessionGeneration: UInt64?
+        let daveProtocolVersion: UInt16?
+        let daveHandshakeState: String?
+        let daveMediaReady: Bool?
+        let daveAppliedTransitionCount: UInt64?
+        let davePendingEpoch: UInt64?
+        let davePendingTransitionId: UInt64?
+        let daveActiveTransitionId: UInt64?
+        let davePendingTransitionIds: [UInt64]
+        let davePendingOutboundActionCount: Int?
+        let daveLastRecoveryAction: String?
+        let daveLastMlsError: String?
+        let daveLastTransitionAt: Date?
+        let daveEncryptionSuccessCount: UInt64?
+        let daveEncryptionFailureCount: UInt64?
+    }
+
     enum Status: Sendable, Equatable {
         case idle
         case connecting
@@ -183,6 +232,11 @@ actor VoicePlaybackService {
     private var keepaliveTask: Task<Void, Never>?
     private var keepaliveCounter: UInt32 = 0
     private var keepaliveFailureCount: Int = 0
+    private var lastKeepaliveAttemptAt: Date?
+    private var lastKeepaliveSuccessAt: Date?
+    private var lastKeepaliveFailureAt: Date?
+    private var lastKeepaliveFailureReason: String?
+    private var lastAudioFrameSentAt: Date?
     /// A path monitor can report several details for one route handoff. Once a
     /// usable new route has requested recovery, ignore the rest until the next
     /// connection generation owns a fresh UDP transport.
@@ -457,6 +511,58 @@ actor VoicePlaybackService {
             return await coordinator.getDiagnostics()
         }
         return nil
+    }
+
+    func diagnosticsSnapshot() async -> DiagnosticsSnapshot {
+        let dave = await daveCoordinator?.getDiagnostics()
+        let speakingElapsedSeconds = speakingStartedAt.map { start in
+            Self.durationSeconds(ContinuousClock().now - start)
+        }
+        return DiagnosticsSnapshot(
+            status: label(for: status),
+            connectionGeneration: connectionGeneration,
+            lastFailureGeneration: lastFailureGeneration,
+            lastFailureReason: lastFailureReason,
+            hasGateway: gateway != nil,
+            hasTransport: transport != nil,
+            hasEncryption: encryption != nil,
+            hasOpusEncoder: opus != nil,
+            hasSSRC: ssrc != nil,
+            isSpeaking: isSpeaking,
+            speakingElapsedSeconds: speakingElapsedSeconds,
+            didSendFirstAudioFrame: didSendFirstAudioFrameForSpeech,
+            lastAudioFrameSentAt: lastAudioFrameSentAt,
+            keepaliveCounter: keepaliveCounter,
+            keepaliveFailures: keepaliveFailureCount,
+            lastKeepaliveAttemptAt: lastKeepaliveAttemptAt,
+            lastKeepaliveSuccessAt: lastKeepaliveSuccessAt,
+            lastKeepaliveFailureAt: lastKeepaliveFailureAt,
+            lastKeepaliveFailureReason: lastKeepaliveFailureReason,
+            awaitingVoiceResume: awaitingVoiceResume,
+            voiceResumeAttemptsRemaining: voiceResumeAttemptsRemaining,
+            pathRecoveryRequested: pathRecoveryRequested,
+            networkPathRecoveryBudgetRemaining: networkPathRecoveryBudgetRemaining,
+            daveMediaRequired: daveMediaRequired,
+            daveTransitionGatePending: daveTransitionGatePending,
+            daveMediaContextGeneration: daveMediaContextGeneration,
+            pendingDaveDowngradeTransitionId: pendingDaveDowngradeTransitionId,
+            pendingDaveSoleMemberReset: pendingDaveSoleMemberReset,
+            daveSessionGeneration: dave?.sessionGeneration,
+            daveProtocolVersion: dave?.protocolVersion,
+            daveHandshakeState: dave?.handshakeState.rawValue,
+            daveMediaReady: dave?.mediaReady,
+            daveAppliedTransitionCount: dave?.appliedTransitionCount,
+            davePendingEpoch: dave?.pendingEpoch,
+            davePendingTransitionId: dave?.pendingTransitionId,
+            daveActiveTransitionId: dave?.activeTransitionId,
+            davePendingTransitionIds: dave?.pendingTransitionIds ?? [],
+            davePendingOutboundActionCount: dave?.pendingOutboundActionCount,
+            daveLastRecoveryAction: dave?.lastRecoveryAction?.rawValue,
+            daveLastMlsError: dave?.lastMlsError,
+            daveLastTransitionAt: dave?.lastTransitionTimestamp,
+            daveEncryptionSuccessCount: dave?.encryptionStats?.encryptSuccessCount,
+            daveEncryptionFailureCount: dave?.encryptionStats?.encryptFailureCount
+        )
     }
 
     /// The libdave coordinator is the single source of truth for DAVE media
@@ -875,6 +981,7 @@ actor VoicePlaybackService {
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
+        lastAudioFrameSentAt = Date()
         self.rtp = rtp
         self.encryption = encryption
         await noteFirstAudioFrameSent(generation: generation)
@@ -1968,8 +2075,12 @@ actor VoicePlaybackService {
         packet[2] = UInt8((counter >> 16) & 0xff)
         packet[3] = UInt8((counter >> 24) & 0xff)
         keepaliveCounter &+= 1
+        lastKeepaliveAttemptAt = Date()
         try await transport.send(packet)
-        return isCurrentConnection(generation)
+        guard isCurrentConnection(generation) else { return false }
+        lastKeepaliveSuccessAt = Date()
+        lastKeepaliveFailureReason = nil
+        return true
     }
 
     private func resetKeepaliveFailureCount(generation: UInt64) {
@@ -1980,6 +2091,8 @@ actor VoicePlaybackService {
     private func handleKeepaliveFailure(_ error: Error, generation: UInt64) async {
         guard isCurrentConnection(generation), status == .connected else { return }
         keepaliveFailureCount += 1
+        lastKeepaliveFailureAt = Date()
+        lastKeepaliveFailureReason = error.localizedDescription
         await debug("Voice UDP keepalive failed (\(keepaliveFailureCount)/2): \(error.localizedDescription)")
         guard isCurrentConnection(generation) else { return }
         if keepaliveFailureCount >= 2 {
@@ -2087,6 +2200,11 @@ actor VoicePlaybackService {
     private func beginConnection() -> UInt64 {
         connectionGeneration &+= 1
         cancelConnectionWorkers()
+        lastKeepaliveAttemptAt = nil
+        lastKeepaliveSuccessAt = nil
+        lastKeepaliveFailureAt = nil
+        lastKeepaliveFailureReason = nil
+        lastAudioFrameSentAt = nil
         return connectionGeneration
     }
 
@@ -2332,9 +2450,13 @@ actor VoicePlaybackService {
     }
 
     private static func format(_ duration: Duration) -> String {
-        let seconds = Double(duration.components.seconds)
-            + Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
+        let seconds = durationSeconds(duration)
         return String(format: "%.1fs", seconds)
+    }
+
+    private static func durationSeconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds)
+            + Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
     }
 
     /// Time since the current connect attempt began, e.g. "2.1s", for timing the
