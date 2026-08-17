@@ -2,6 +2,25 @@ import XCTest
 @testable import SwiftBot
 
 final class VoiceRecoveryBackoffTests: XCTestCase {
+    func testQueuedRecoveryBecomesStalledAfterThreshold() {
+        var health = VoiceAnnouncerHealth()
+        health.phase = .recovering
+        health.queueDepth = 1
+        health.isPaused = true
+        health.lastFailureAt = Date(timeIntervalSinceReferenceDate: 100)
+
+        XCTAssertFalse(health.isStalled(now: Date(timeIntervalSinceReferenceDate: 159), threshold: 60))
+        XCTAssertTrue(health.isStalled(now: Date(timeIntervalSinceReferenceDate: 160), threshold: 60))
+    }
+
+    func testEmptyRecoveryDoesNotTriggerAReconnect() {
+        var health = VoiceAnnouncerHealth()
+        health.phase = .recovering
+        health.lastRecoveryAt = Date(timeIntervalSinceReferenceDate: 100)
+
+        XCTAssertFalse(health.isStalled(now: Date(timeIntervalSinceReferenceDate: 1_000), threshold: 60))
+    }
+
     func testAttemptsFollowScheduleThenExhaust() {
         var backoff = VoiceRecoveryBackoff(schedule: [.seconds(1), .seconds(2), .seconds(3)])
 

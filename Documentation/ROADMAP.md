@@ -7,6 +7,14 @@
 
 > **Convention:** `~~strikethrough~~` = done, removed by design, or YAGNI-deferred. Plain `[ ]` = genuinely open. `[ ] (blocked: …)` = open but waiting on something external.
 
+## Recent Engineering Log
+
+### 2026-08-17 — Announcer stuck-recovery escape hatch
+
+- [x] Bound queued DAVE/media recovery: if the announcer remains paused in recovery for 60 seconds, its existing health watchdog now initiates the normal clean voice rejoin instead of leaving it silently connected forever.
+- [x] Added voice pipeline state, latest 50 voice events, UDP keepalive history, live transport ownership, voice-resume state, and DAVE/MLS transition diagnostics to exported diagnostics, so voice failures are no longer hidden by noisy main-gateway reconnect logs.
+- [x] Ported SwiftMiner's window-attached export progress sheet, so diagnostics visibly prepare before the save sheet appears.
+
 ---
 
 ## Overview
