@@ -491,6 +491,46 @@ final class TextChannelAnnouncerTests: XCTestCase {
     }
 
     @MainActor
+    func testUIReconnectPreparationPrefersFirstEnabledAnnouncerConfig() async throws {
+        let app = AppModel()
+        app.settings.voice.voiceChannelID = "voice-2"
+        app.settings.voice.announcerConfigs = [
+            AnnouncerVoiceChannelConfig(
+                id: "config-1",
+                name: "Primary",
+                voiceChannelID: "voice-1",
+                voiceChannelName: "Primary",
+                textChannels: ["text-1"]
+            ),
+            AnnouncerVoiceChannelConfig(
+                id: "config-2",
+                name: "Secondary",
+                voiceChannelID: "voice-2",
+                voiceChannelName: "Secondary",
+                textChannels: ["text-2"]
+            )
+        ]
+        app.availableVoiceChannelsByServer = [
+            "guild-1": [
+                GuildVoiceChannel(id: "voice-1", name: "Primary"),
+                GuildVoiceChannel(id: "voice-2", name: "Secondary")
+            ]
+        ]
+        app.availableTextChannelsByServer = [
+            "guild-1": [
+                GuildTextChannel(id: "text-1", name: "announcements"),
+                GuildTextChannel(id: "text-2", name: "backup")
+            ]
+        ]
+
+        let target = await app.prepareAnnouncerConfigForUIReconnect(persist: false)
+
+        XCTAssertEqual(target?.guildID, "guild-1")
+        XCTAssertEqual(target?.channelID, "voice-1")
+        XCTAssertEqual(app.settings.voice.voiceChannelID, "voice-1")
+    }
+
+    @MainActor
     func testPreservedVoiceDisconnectKeepsAnnouncerFeedArmed() async throws {
         let app = AppModel()
 

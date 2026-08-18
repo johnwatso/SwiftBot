@@ -305,6 +305,11 @@ final class AppModel: ObservableObject {
     var voiceSettingsFinalSaveTask: Task<Void, Never>?
     var voiceRecovery = VoiceRecoveryBackoff()
     var voiceDisconnectPreservesAnnouncerSession: Bool = false
+    /// A Discord-side removal emits our VOICE_STATE_UPDATE before the old
+    /// voice socket closes. Ignore that one expected stale close while the
+    /// controlled background rejoin is waiting to start, rather than spending
+    /// a second recovery attempt on the same disconnect.
+    var voiceRecoveryAwaitingExternalDisconnectClosure = false
     /// Identifies the most recent connectVoice attempt so a stale handshake
     /// timeout can't fail a newer attempt that superseded it.
     var voiceConnectAttemptToken: UUID = UUID()

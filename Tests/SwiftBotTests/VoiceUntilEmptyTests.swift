@@ -83,6 +83,23 @@ final class VoiceUntilEmptyTests: XCTestCase {
     }
 
     @MainActor
+    func testIntroducesHumanWhoJoinsAnActiveAnnouncerChannel() async throws {
+        let app = makeConnectedApp()
+        let announcer = try XCTUnwrap(app.voiceAnnouncementService)
+        await announcer.setPaused(true)
+
+        await app.announceMemberVoiceJoin(
+            userID: "max",
+            displayName: "Max",
+            channelID: "voice-1",
+            guildID: "guild-1"
+        )
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Max has joined."])
+    }
+
+    @MainActor
     func testIgnoresMembersOfAnotherChannel() async throws {
         let app = makeConnectedApp()
         app.activeVoice = [presence("swiftbot-self"), presence("alice", channelId: "voice-2")]
@@ -93,5 +110,34 @@ final class VoiceUntilEmptyTests: XCTestCase {
             app.voiceConnectionStatus.isConnected,
             "someone in a different channel must not hold the announcer in this one"
         )
+    }
+
+    @MainActor
+    func testExternalDiscordDisconnectStartsOneControlledRecovery() async throws {
+        let app = makeConnectedApp()
+        app.status = .running
+
+        let event = GatewayVoiceStateUpdateEvent(
+            rawMap: ["channel_id": .null],
+            guildID: "guild-1",
+            userID: "swiftbot-self",
+            channelID: nil
+        )
+        await app.observeSelfVoiceStateUpdate(event)
+
+        XCTAssertTrue(app.voiceRecovery.inProgress)
+        XCTAssertEqual(app.voiceRecovery.attemptsMade, 1)
+        XCTAssertTrue(app.voiceRecoveryAwaitingExternalDisconnectClosure)
+        XCTAssertEqual(
+            app.voiceConnectionStatus,
+            .recovering("Rejoining after voice drop…")
+        )
+        XCTAssertTrue(app.voiceLog.contains {
+            $0.description.contains("Discord reported that SwiftBot was disconnected")
+        })
+
+        // Let the scheduled recovery exit through its ordinary offline guard;
+        // do not let this unit test attempt a real Discord connection.
+        app.status = .stopped
     }
 }

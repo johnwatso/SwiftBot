@@ -1677,7 +1677,18 @@ extension AppModel {
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: next.channelId))
                 await handleAnnouncerPresenceChange(channelId: next.channelId, guildId: guildId)
-                await handleAutoJoin(channelId: next.channelId, guildId: guildId, triggeringUserId: userId)
+                await announceMemberVoiceJoin(
+                    userID: userId,
+                    displayName: displayName,
+                    channelID: next.channelId,
+                    guildID: guildId
+                )
+                await handleAutoJoin(
+                    channelId: next.channelId,
+                    guildId: guildId,
+                    triggeringUserId: userId,
+                    triggeringDisplayName: displayName
+                )
             }
         case .moved(let previous, let next, let startedAt):
             let elapsed = formatDuration(from: startedAt, to: now)

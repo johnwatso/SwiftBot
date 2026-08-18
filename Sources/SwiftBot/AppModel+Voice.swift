@@ -149,6 +149,7 @@ extension AppModel {
         recovering: Bool = false,
         userInitiated: Bool = false
     ) async {
+        voiceRecoveryAwaitingExternalDisconnectClosure = false
         if !userInitiated, shouldSuppressAutomaticAnnouncerConnection(guildID: guildID, channelID: channelID) {
             return
         }
@@ -276,6 +277,7 @@ extension AppModel {
         }
 
         if !preserveAnnouncerSession {
+            voiceRecoveryAwaitingExternalDisconnectClosure = false
             cancelVoiceRecovery()
             emptyChannelDisconnectTask?.cancel()
             emptyChannelDisconnectTask = nil
@@ -741,21 +743,24 @@ extension AppModel {
             let cached = settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
             return cached.isEmpty ? nil : cached
         }()
-        // Leave acknowledgement: our own state update with no channel means
-        // Discord registered the disconnect — a waiting rejoin can proceed
-        // immediately instead of sleeping out its fallback timer.
-        if voiceLeaveAckState == .pending,
-           let expectedBotUserId, event.userID == expectedBotUserId {
-            let channelIsNull: Bool
-            switch event.rawMap["channel_id"] {
-            case .null, .none:
-                channelIsNull = true
-            default:
-                channelIsNull = false
-            }
-            if channelIsNull {
+        let channelIsNull: Bool
+        switch event.rawMap["channel_id"] {
+        case .null, .none:
+            channelIsNull = true
+        default:
+            channelIsNull = false
+        }
+        if let expectedBotUserId, event.userID == expectedBotUserId, channelIsNull {
+            // A null channel for our own bot is Discord's authoritative record
+            // that it has left. During our own clean rejoin it is simply the
+            // leave acknowledgement; otherwise it was a moderator/user-side
+            // disconnect and needs its own controlled recovery path.
+            if voiceLeaveAckState == .pending {
                 noteVoiceLeaveAck()
+            } else {
+                await handleExternalVoiceDisconnect(guildID: event.guildID)
             }
+            return
         }
         guard event.guildID == voicePendingGuildID else {
             if voicePendingGuildID != nil {
@@ -789,6 +794,47 @@ extension AppModel {
                 time: Date(),
                 description: "Voice state update for bot arrived without a session id."
             ))
+        }
+    }
+
+    /// Handle a Discord-side removal (for example, right-click → Disconnect)
+    /// before the old voice WebSocket produces its expected 4014 close. This
+    /// prevents that close from being counted as a second failed rejoin and
+    /// leaves a precise, exportable record of why recovery began.
+    private func handleExternalVoiceDisconnect(guildID: String) async {
+        guard guildID == voicePendingGuildID,
+              let channelID = voicePendingChannelID,
+              !channelID.isEmpty else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Discord confirmed SwiftBot is disconnected from voice, but no active Announcer session matched the event."
+            ))
+            return
+        }
+        guard voiceConnectionStatus.isConnected || voiceConnectionStatus.isWaitingForConnectionData else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Discord confirmed SwiftBot left voice channel \(channelID) while a local disconnect was already in progress."
+            ))
+            return
+        }
+
+        let reason = "Discord reported that SwiftBot was disconnected from voice by a server-side action"
+        cancelVoiceRecovery()
+        voiceRecovery.reset()
+        voiceRecoveryAwaitingExternalDisconnectClosure = true
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "\(reason); starting one controlled background rejoin."
+        ))
+        if let announcer = voiceAnnouncementServiceStorage {
+            await announcer.markRecovering(reason)
+        }
+        guard scheduleVoiceAutoRecovery(reason: reason) else {
+            voiceRecoveryAwaitingExternalDisconnectClosure = false
+            voiceConnectionStatus = .failed(reason)
+            deactivateAnnouncerSession()
+            return
         }
     }
 
@@ -921,6 +967,7 @@ extension AppModel {
         case .connected:
             voiceConnectionStatus = .connected
             finishVoiceRecoveryIfNeeded(success: true)
+            announcerRecoveryCircuitBreaker.reset()
             if let announcer = voiceAnnouncementServiceStorage {
                 await announcer.setPaused(false)
             }
@@ -935,6 +982,14 @@ extension AppModel {
             }
         case .failed(let reason):
             voicePipelineSessionID = nil
+            if voiceRecoveryAwaitingExternalDisconnectClosure {
+                voiceRecoveryAwaitingExternalDisconnectClosure = false
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Observed the expected stale voice socket close after Discord disconnected SwiftBot; the scheduled background rejoin remains in control."
+                ))
+                return
+            }
             // Surface unexpected drops (e.g. a voice gateway WS close after we
             // were connected) in the activity log. Without this the announcer
             // silently stops reading — messages are dropped by the
@@ -1000,6 +1055,7 @@ extension AppModel {
 
     private func performVoiceAutoRecovery(guildID: String, channelID: String, reason: String) async {
         guard voiceRecovery.inProgress else { return }
+        voiceRecoveryAwaitingExternalDisconnectClosure = false
         guard status == .running else {
             let message = "Voice auto-rejoin stopped because the bot is offline."
             addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
@@ -1062,7 +1118,7 @@ extension AppModel {
         voiceRecovery.cancel()
     }
 
-    private func setManualAnnouncerHold(guildID: String, channelID: String, source: String) {
+    func setManualAnnouncerHold(guildID: String, channelID: String, source: String) {
         let hold = AnnouncerManualHold(
             guildID: guildID,
             voiceChannelID: channelID,
@@ -1249,7 +1305,12 @@ extension AppModel {
     /// Called from the gateway whenever a member joins a voice channel.
     /// Checks whether any enabled config with `autoJoin == true` matches the
     /// channel and, if so, connects and arms the relevant disconnect strategy.
-    func handleAutoJoin(channelId: String, guildId: String, triggeringUserId: String) async {
+    func handleAutoJoin(
+        channelId: String,
+        guildId: String,
+        triggeringUserId: String,
+        triggeringDisplayName: String
+    ) async {
         // Never auto-join because of the bot's own presence update
         guard triggeringUserId != botUserId else { return }
         // Only act when the bot is online but not already in a voice channel
@@ -1272,7 +1333,7 @@ extension AppModel {
             return
         }
         await connectVoice(guildID: guildId, channelID: channelId)
-        scheduleVoiceJoinIntro(channelID: channelId)
+        scheduleVoiceJoinIntro(channelID: channelId, text: "\(triggeringDisplayName) has joined.")
 
         // Arm disconnect strategy
         autoDisconnectTask?.cancel()
@@ -1361,12 +1422,16 @@ extension AppModel {
     }
 
     private func preferredAnnouncerReconnectTarget() -> (config: AnnouncerVoiceChannelConfig, guildID: String)? {
-        let configuredVoiceChannelID = settings.voice.voiceChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
         let enabledConfigs = settings.voice.announcerConfigs.filter {
             $0.enabled && !$0.voiceChannelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        let config = enabledConfigs.first(where: { $0.voiceChannelID == configuredVoiceChannelID }) ?? enabledConfigs.first
+        // Announcer owns one voice pipeline, so its configured list is an
+        // ordered set of alternatives rather than simultaneous sessions. The
+        // first enabled entry is the predictable default for startup and the
+        // UI reconnect control. Explicit /announce joins and live recovery
+        // deliberately retain their current channel instead.
+        let config = enabledConfigs.first
         guard let config, let guildID = guildID(forAnnouncerVoiceChannelID: config.voiceChannelID) else {
             return nil
         }
@@ -1523,6 +1588,32 @@ extension AppModel {
 
     private func isVoiceConnected(to channelID: String) -> Bool {
         voiceConnectionStatus.isConnected && voicePendingChannelID == channelID
+    }
+
+    /// Announces a human arrival only when Announcer is already live in that
+    /// exact configured channel. The arrival which triggers an automatic join
+    /// is scheduled by `handleAutoJoin` and spoken once the media path is live.
+    func announceMemberVoiceJoin(
+        userID: String,
+        displayName: String,
+        channelID: String,
+        guildID: String
+    ) async {
+        let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
+        guard !botIDs.contains(userID),
+              voicePendingGuildID == guildID,
+              isVoiceConnected(to: channelID),
+              settings.voice.announcerConfigs.contains(where: {
+                  $0.enabled && $0.voiceChannelID == channelID
+              })
+        else { return }
+
+        let announcement = "\(displayName) has joined."
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Announcer introducing \(displayName) in the active voice channel."
+        ))
+        await speakAnnouncement(announcement)
     }
 
     /// Re-evaluate the optional presence-aware Announcer mode after any voice

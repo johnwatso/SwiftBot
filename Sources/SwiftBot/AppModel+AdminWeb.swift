@@ -1676,7 +1676,18 @@ extension AppModel {
                         preferredVoiceIdentifier: "",
                         textChannelSourceEnabled: false,
                         autoConnect: false,
-                        installedVoices: []
+                        installedVoices: [],
+                        liveState: AdminWebAnnouncerLiveState(
+                            isConnected: false,
+                            connectionLabel: "Disconnected",
+                            phaseLabel: VoiceAnnouncerPhase.idle.displayLabel,
+                            listening: "Not listening",
+                            monitoredFeeds: "No feeds configured",
+                            queueDepth: 0,
+                            queueLabel: "No queued announcements",
+                            manualHold: nil,
+                            recovery: nil
+                        )
                     )
                 }
                 return await MainActor.run {
@@ -1726,7 +1737,8 @@ extension AppModel {
                         preferredVoiceIdentifier: model.settings.voice.preferredVoiceIdentifier,
                         textChannelSourceEnabled: model.settings.voice.textChannelSourceEnabled,
                         autoConnect: model.settings.voice.autoConnect,
-                        installedVoices: installedVoices
+                        installedVoices: installedVoices,
+                        liveState: model.adminWebAnnouncerLiveState()
                     )
                 }
             },
@@ -1801,6 +1813,10 @@ extension AppModel {
                     await watcher.setWatchedChannels(channelIDs)
                 }
                 return true
+            },
+            disconnectAnnouncer: { [weak self] in
+                guard let model = self else { return false }
+                return await model.adminWebDisconnectAnnouncer()
             },
             patchyProvider: { [weak self] in
                 guard let model = self else {
@@ -3146,3 +3162,85 @@ extension AppModel {
                 sweepService.dismissSuggestion(suggestion)
             }
             }
+
+// MARK: - Announcer live state
+
+extension AppModel {
+    /// Mirrors the native Announcer tab's "Current State" panel for the WebUI.
+    /// Kept in sync with `VoiceView`'s equivalent computed properties.
+    @MainActor
+    func adminWebAnnouncerLiveState() -> AdminWebAnnouncerLiveState {
+        let configs = settings.voice.announcerConfigs
+        let activeConfig: AnnouncerVoiceChannelConfig? = {
+            if !settings.voice.voiceChannelID.isEmpty,
+               let match = configs.first(where: { $0.voiceChannelID == settings.voice.voiceChannelID }) {
+                return match
+            }
+            return configs.first(where: \.enabled) ?? configs.first
+        }()
+
+        let channelName: String = {
+            if let config = activeConfig,
+               !config.voiceChannelName.isEmpty,
+               config.voiceChannelName != "—" {
+                return config.voiceChannelName
+            }
+            return "None"
+        }()
+
+        let isConnected = voiceConnectionStatus.isConnected
+        let listening: String = {
+            guard isConnected else { return "Not listening" }
+            return channelName == "None" ? "Connected" : "Listening in \(channelName)"
+        }()
+
+        let monitoredFeeds: String = {
+            guard let config = activeConfig else { return "No feeds configured" }
+            var labels = config.textChannels.map { "#\($0)" }
+            if config.readVoiceChannelChat {
+                let name = config.voiceChannelName == "—" ? "voice chat" : config.voiceChannelName
+                labels.insert("#\(name)", at: 0)
+            }
+            if labels.isEmpty { return "No feeds" }
+            if labels.count <= 3 { return labels.joined(separator: ", ") }
+            return "\(labels.prefix(2).joined(separator: ", ")) +\(labels.count - 2) more"
+        }()
+
+        let depth = announcerHealth.queueDepth
+        let queueLabel = depth == 0
+            ? "No queued announcements"
+            : "\(depth) announcement\(depth == 1 ? "" : "s") waiting"
+
+        return AdminWebAnnouncerLiveState(
+            isConnected: isConnected,
+            connectionLabel: voiceConnectionStatus.displayLabel,
+            phaseLabel: announcerHealth.phase.displayLabel,
+            listening: listening,
+            monitoredFeeds: monitoredFeeds,
+            queueDepth: depth,
+            queueLabel: queueLabel,
+            manualHold: announcerManualHoldStatusText,
+            recovery: announcerRecoveryCircuitBreakerStatusText
+        )
+    }
+}
+
+// MARK: - Announcer disconnect
+
+extension AppModel {
+    /// Web equivalent of `/announce disconnect`: arms the same one-hour manual
+    /// hold before leaving, so automatic joins and recovery don't immediately
+    /// undo an operator's explicit disconnect.
+    @MainActor
+    func adminWebDisconnectAnnouncer() async -> Bool {
+        guard voiceConnectionStatus.isConnected else { return false }
+
+        let guildID = settings.voice.guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let channelID = settings.voice.voiceChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !guildID.isEmpty, !channelID.isEmpty else { return false }
+
+        setManualAnnouncerHold(guildID: guildID, channelID: channelID, source: "the admin web UI")
+        await disconnectVoice()
+        return true
+    }
+}

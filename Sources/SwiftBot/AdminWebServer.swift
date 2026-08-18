@@ -568,6 +568,23 @@ struct AdminWebWikiSourceIDPatch: Codable {
     let sourceID: UUID
 }
 
+/// Read-only mirror of the native Announcer tab's "Current State" panel.
+///
+/// `guildID` / `voiceChannelID` / `watchedTextChannelID` on the parent payload
+/// are live session state that `activateAnnouncerConfig` rewrites on every
+/// connect, so the web surfaces them here as status rather than as settings.
+struct AdminWebAnnouncerLiveState: Codable {
+    let isConnected: Bool
+    let connectionLabel: String
+    let phaseLabel: String
+    let listening: String
+    let monitoredFeeds: String
+    let queueDepth: Int
+    let queueLabel: String
+    let manualHold: String?
+    let recovery: String?
+}
+
 struct AdminWebAnnouncerPayload: Codable {
     let configs: [AnnouncerVoiceChannelConfig]
     let servers: [AdminWebSimpleOption]
@@ -582,6 +599,7 @@ struct AdminWebAnnouncerPayload: Codable {
     /// Voices installed on this Mac (id = AVSpeechSynthesisVoice identifier),
     /// offered as a dropdown in the per-rule editor.
     let installedVoices: [AdminWebSimpleOption]
+    let liveState: AdminWebAnnouncerLiveState
 }
 
 struct AdminWebAnnouncerConfigUpsertPatch: Codable {
@@ -849,6 +867,7 @@ actor AdminWebServer {
     private var deleteAnnouncerConfig: (@Sendable (String) async -> Bool)?
     private var toggleAnnouncerConfig: (@Sendable (String, Bool) async -> Bool)?
     private var updateAnnouncerSettings: (@Sendable (AdminWebAnnouncerSettingsPatch) async -> Bool)?
+    private var disconnectAnnouncer: (@Sendable () async -> Bool)?
     private var patchyProvider: (@Sendable () async -> AdminWebPatchyPayload)?
     private var updatePatchyState: (@Sendable (AdminWebPatchyStatePatch) async -> Bool)?
     private var createPatchyTarget: (@Sendable () async -> PatchySourceTarget?)?
@@ -969,6 +988,7 @@ actor AdminWebServer {
         deleteAnnouncerConfig: @escaping @Sendable (String) async -> Bool,
         toggleAnnouncerConfig: @escaping @Sendable (String, Bool) async -> Bool,
         updateAnnouncerSettings: @escaping @Sendable (AdminWebAnnouncerSettingsPatch) async -> Bool,
+        disconnectAnnouncer: @escaping @Sendable () async -> Bool,
         patchyProvider: @escaping @Sendable () async -> AdminWebPatchyPayload,
         updatePatchyState: @escaping @Sendable (AdminWebPatchyStatePatch) async -> Bool,
         createPatchyTarget: @escaping @Sendable () async -> PatchySourceTarget?,
@@ -1052,6 +1072,7 @@ actor AdminWebServer {
         self.deleteAnnouncerConfig = deleteAnnouncerConfig
         self.toggleAnnouncerConfig = toggleAnnouncerConfig
         self.updateAnnouncerSettings = updateAnnouncerSettings
+        self.disconnectAnnouncer = disconnectAnnouncer
         self.patchyProvider = patchyProvider
         self.updatePatchyState = updatePatchyState
         self.createPatchyTarget = createPatchyTarget
@@ -2062,6 +2083,22 @@ actor AdminWebServer {
                 return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
             }
             audit(source: "webui", actor: actorLabel(session), action: "announcer.settings.update", detail: "Updated global announcer settings")
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/announcer/disconnect"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard await disconnectAnnouncer?() == true else {
+                return jsonResponse(["error": "not_connected"], status: "400 Bad Request")
+            }
+            audit(source: "webui", actor: actorLabel(session), action: "announcer.disconnect", detail: "Disconnected the active announcer")
             return jsonResponse(["ok": true])
 
         case ("GET", "/api/welcome-flow"):

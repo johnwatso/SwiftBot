@@ -2586,9 +2586,15 @@
     .modal {
       width: min(520px, 95vw);
       max-height: 90vh;
-      overflow: auto;
+      display: flex;
+      flex-direction: column;
       border-radius: var(--radius-xl);
-      padding: 24px;
+      padding: 22px 24px;
+      /* Lift the sheet off the scrim — the shared .glass shadow is tuned for
+         in-page cards and reads flat against a dimmed backdrop. */
+      box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.28),
+        0 2px 8px rgba(0, 0, 0, 0.12);
       transform: translateY(12px) scale(0.98);
       transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -2601,25 +2607,41 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--glass-stroke);
     }
 
     .modal-title {
       font-size: 18px;
       font-weight: 700;
       letter-spacing: -0.02em;
+      color: var(--cv-text-strong);
     }
 
     .modal-body {
       display: grid;
       gap: 16px;
+      overflow-y: auto;
+      min-height: 0;
+      flex: 1;
+      /* Room for the focus ring on controls flush against the scroll edge. */
+      margin: 0 -4px;
+      padding: 0 4px;
+    }
+
+    .modal-header,
+    .modal-footer {
+      flex: none;
     }
 
     .modal-footer {
       display: flex;
       justify-content: flex-end;
       gap: 10px;
-      margin-top: 24px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--glass-stroke);
     }
 
     /* ============================================================
@@ -2686,7 +2708,8 @@
        without leaving white-on-white surfaces. Dark is the default; Light
        overrides come below via [data-theme="light"] and a prefers-color-scheme
        fallback for the "auto" case. */
-    #appShell {
+    #appShell,
+    #modalOverlay {
       position: relative;
       /* Surface tokens */
       --cv-shell-bg: #0a0c14;
@@ -2718,7 +2741,6 @@
       --cv-sidebar-active-border: rgba(255, 255, 255, 0.075);
       --cv-sidebar-accent: #64d2ff;
 
-      background: var(--cv-shell-bg);
       --text: rgba(255, 255, 255, 0.94);
       --muted: rgba(255, 255, 255, 0.62);
       --icon-color: rgba(255, 255, 255, 0.88);
@@ -2728,10 +2750,21 @@
       color: var(--text);
     }
 
+    /* Shell-only paint — the overlay keeps its own scrim. */
+    #appShell {
+      background: var(--cv-shell-bg);
+    }
+
+    /* The overlay is fixed-position; `position: relative` above must not win. */
+    #modalOverlay {
+      position: fixed;
+    }
+
     /* Light-theme overrides for the Canvas shell. Applied for explicit
        [data-theme="light"] and for the "auto" case (via the
        prefers-color-scheme block below). */
-    html[data-theme="light"] #appShell {
+    html[data-theme="light"] #appShell,
+    html[data-theme="light"] #modalOverlay {
       --cv-shell-bg: #f4f5f7;
       --cv-glass-bg: rgba(255, 255, 255, 0.78);
       --cv-sidebar-bg: rgba(255, 255, 255, 0.82);
@@ -2764,7 +2797,8 @@
       --glass-stroke: var(--cv-border);
     }
     @media (prefers-color-scheme: light) {
-      html:not([data-theme]) #appShell {
+      html:not([data-theme]) #appShell,
+      html:not([data-theme]) #modalOverlay {
         --cv-shell-bg: #f4f5f7;
         --cv-glass-bg: rgba(255, 255, 255, 0.78);
         --cv-sidebar-bg: rgba(255, 255, 255, 0.82);
@@ -3164,7 +3198,8 @@
     }
 
     /* Buttons — primary / secondary tuned to Canvas blues */
-    #appShell .primary-action {
+    #appShell .primary-action,
+    #modalOverlay .primary-action {
       background: linear-gradient(180deg, #2563eb, #1d4ed8);
       color: #fff;
       border: 0;
@@ -3175,11 +3210,15 @@
       box-shadow: 0 10px 20px -8px rgba(37, 99, 235, 0.45);
       transition: transform 0.15s ease, background 0.2s ease;
     }
-    #appShell .primary-action:hover { background: linear-gradient(180deg, #3b82f6, #2563eb); }
-    #appShell .primary-action:active { transform: scale(0.97); }
+    #appShell .primary-action:hover,
+    #modalOverlay .primary-action:hover { background: linear-gradient(180deg, #3b82f6, #2563eb); }
+    #appShell .primary-action:active,
+    #modalOverlay .primary-action:active { transform: scale(0.97); }
 
     #appShell .secondary-action,
-    #appShell .mini-btn {
+    #appShell .mini-btn,
+    #modalOverlay .secondary-action,
+    #modalOverlay .mini-btn {
       background: var(--cv-surface-1);
       border: 1px solid var(--cv-border-softer);
       color: var(--cv-text-body);
@@ -3189,7 +3228,9 @@
       transition: background 0.2s ease;
     }
     #appShell .secondary-action:hover,
-    #appShell .mini-btn:hover { background: var(--cv-surface-1-strong); }
+    #appShell .mini-btn:hover,
+    #modalOverlay .secondary-action:hover,
+    #modalOverlay .mini-btn:hover { background: var(--cv-surface-1-strong); }
 
     /* Panel titles inside overview/diagnostics cards */
     #appShell .panel-title {
@@ -3794,27 +3835,35 @@
     .automation-rule-actions { display: flex; align-items: center; gap: 8px; }
 
     /* Editor modal — wider than default */
-    .automation-editor-modal .modal-content {
-      max-width: 760px; width: 90vw;
+    .automation-editor-modal .modal {
+      width: min(760px, 92vw);
     }
     .automation-editor-section {
-      margin-top: 16px;
-      padding: 16px;
+      margin-top: 14px;
+      padding: 16px 18px;
       border-radius: 12px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: var(--cv-surface-3);
+      border: 1px solid var(--cv-border);
     }
+    .automation-editor-section:first-child { margin-top: 0; }
     .automation-editor-section h3 {
-      font-size: 13px; font-weight: 600;
-      margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
-      color: var(--cv-text-strong);
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      margin: 0 0 14px; padding-bottom: 10px;
+      display: flex; align-items: center; gap: 7px;
+      border-bottom: 1px solid var(--cv-border-soft);
+      color: var(--cv-text-muted);
+    }
+    .automation-editor-section h3 .lucide {
+      width: 13px; height: 13px;
     }
     .automation-editor-row {
       display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px;
     }
     .automation-editor-row > label {
-      width: 110px; font-size: 13px; color: var(--muted);
-      padding-top: 6px; flex: none;
+      width: 116px; font-size: 12px; font-weight: 500;
+      color: var(--cv-text-muted);
+      padding-top: 7px; flex: none;
     }
     .automation-editor-row > .field-input,
     .automation-editor-row > .field-select,
@@ -3823,6 +3872,130 @@
     }
     .automation-editor-row > .auto-ai-prompt-field {
       flex: 1; min-width: 0; position: relative;
+    }
+
+    /* Announcer config editor — mirrors the native Announcer sheet's rows. */
+    .ac-toggle {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 7px 9px; margin: 0 -9px 2px; border-radius: 8px;
+      cursor: pointer; transition: background 120ms ease;
+    }
+    .ac-toggle:hover { background: var(--cv-surface-2); }
+    .ac-toggle > input { margin-top: 1px; flex: none; }
+    .ac-toggle-indented {
+      margin-left: 13px; padding-left: 16px;
+      border-left: 2px solid var(--cv-border);
+    }
+    .ac-toggle-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .ac-toggle-title {
+      font-size: 13px; font-weight: 500; line-height: 1.3;
+      color: var(--cv-text-strong);
+    }
+    .ac-toggle-desc {
+      font-size: 11.5px; line-height: 1.45; color: var(--cv-text-muted);
+    }
+    .ac-divider {
+      height: 1px; margin: 15px -18px 14px;
+      background: var(--cv-border-soft);
+    }
+    .ac-note {
+      font-size: 11.5px; line-height: 1.5; color: var(--cv-text-muted);
+      margin-top: 10px; padding: 9px 11px;
+      background: var(--cv-surface-2);
+      border-radius: 7px;
+    }
+    .ac-field-label {
+      display: block; font-size: 12px; font-weight: 500;
+      color: var(--cv-text-muted); margin-bottom: 8px;
+    }
+    /* Text-channel picker: chips for what's selected, combobox to add more. */
+    .ac-chips {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+    }
+    .ac-chips-empty { font-size: 11.5px; color: var(--cv-text-muted); }
+    .ac-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 4px 3px 9px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 500;
+      color: var(--cv-text-body);
+      background: var(--cv-surface-1);
+      border: 1px solid var(--cv-border-softer);
+    }
+    .ac-chip-remove {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%;
+      background: transparent; color: var(--cv-text-muted); cursor: pointer;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .ac-chip-remove:hover { background: var(--cv-surface-1-strong); color: var(--cv-text-strong); }
+    .ac-chip-remove .lucide { width: 11px; height: 11px; }
+
+    .ac-combo { position: relative; display: flex; align-items: center; }
+    .ac-combo > .lucide {
+      position: absolute; left: 10px; width: 13px; height: 13px;
+      color: var(--cv-text-muted); pointer-events: none;
+    }
+    .ac-combo-input {
+      width: 100%; padding: 8px 11px 8px 30px;
+      font-size: 12.5px; color: var(--cv-text-body);
+      background: var(--cv-surface-2);
+      border: 1px solid var(--cv-border); border-radius: 8px;
+      outline: none; transition: border-color 120ms ease;
+    }
+    .ac-combo-input::placeholder { color: var(--cv-text-subtle); }
+    .ac-combo-input:focus { border-color: var(--cv-border-hover); }
+
+    .ac-combo-list {
+      margin-top: 5px; max-height: 190px; overflow-y: auto;
+      padding: 5px; border-radius: 8px;
+      background: var(--cv-surface-2);
+      border: 1px solid var(--cv-border);
+    }
+    .ac-combo-option {
+      padding: 6px 9px; border-radius: 6px; cursor: pointer;
+      font-size: 12px; color: var(--cv-text-body);
+    }
+    .ac-combo-option.is-active { background: var(--cv-surface-1-strong); }
+    .ac-combo-empty,
+    .ac-combo-more {
+      padding: 7px 9px; font-size: 11.5px; color: var(--cv-text-muted);
+    }
+    .ac-combo-more { border-top: 1px solid var(--cv-border-soft); margin-top: 4px; }
+
+    /* Announcer live state — mirrors the native "Current State" panel. */
+    .ac-state-head {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    }
+    .ac-state-icon {
+      width: 34px; height: 34px; border-radius: 50%; flex: none;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ac-state-icon .lucide { width: 17px; height: 17px; }
+    .ac-state-title { font-size: 15px; font-weight: 600; color: var(--cv-text-strong); }
+    .ac-state-phase { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .ac-state-rows { display: grid; gap: 6px; }
+    .ac-state-row {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 10px; border-radius: 8px;
+      background: rgba(255,255,255,0.025);
+      font-size: 12px;
+    }
+    .ac-state-row .lucide {
+      width: 13px; height: 13px; flex: none; color: var(--muted);
+    }
+    .ac-state-label { color: var(--muted); flex: none; }
+    .ac-state-value {
+      margin-left: auto; text-align: right; font-weight: 500;
+      color: var(--cv-text-strong); min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ac-queue-badge {
+      font-size: 10px; font-weight: 700; flex: none;
+      padding: 3px 9px; border-radius: 999px;
+      color: var(--muted); background: rgba(255,255,255,0.05);
+    }
+    .ac-queue-badge.is-busy {
+      color: #a855f7; background: rgba(168,85,247,0.12);
     }
     .auto-ai-prompt-label {
       display: flex; align-items: center; gap: 5px;
@@ -4029,6 +4202,15 @@
     #appShell .analytics-panel {
       border-radius: 8px;
       box-shadow: none;
+    }
+
+    /* The compact 8px above applies to every .glass surface, but the Announcer's
+       stat cards are .commands-toggle-card (14px), so its config cards read
+       squarer than the row directly above them. Match them to the stat cards.
+       Same specificity as the rule above, so this has to stay after it. */
+    #announcerConfigsList .automation-rule-card,
+    #appShell #announcerLiveState {
+      border-radius: var(--radius-md);
     }
     #appShell .stats-grid {
       grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
@@ -4634,6 +4816,8 @@
 
           <div id="announcerTop" class="stats-grid" style="margin-top: 10px;"></div>
 
+          <div class="glass" id="announcerLiveState" style="margin-top: 14px; padding: 16px;"></div>
+
           <div class="diagnostics-panels" style="grid-template-columns: 1fr; margin-top: 14px;">
             <div>
               <div class="section-mini-title" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
@@ -5094,15 +5278,19 @@
       if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
     }
 
-    function showModal(title, content, footer) {
+    function showModal(title, content, footer, options) {
       document.getElementById('modalTitle').textContent = title;
       document.getElementById('modalBody').innerHTML = content;
       document.getElementById('modalFooter').innerHTML = footer || '';
-      document.getElementById('modalOverlay').classList.add('active');
+      const overlay = document.getElementById('modalOverlay');
+      overlay.classList.toggle('automation-editor-modal', !!options?.wide);
+      overlay.classList.add('active');
     }
 
     function hideModal() {
-      document.getElementById('modalOverlay').classList.remove('active');
+      const overlay = document.getElementById('modalOverlay');
+      overlay.classList.remove('active');
+      overlay.classList.remove('automation-editor-modal');
     }
 
     function setMessage(text, kind) {
@@ -6325,8 +6513,7 @@
         <button id="automationEditorValidate" class="secondary-action" type="button" style="margin-right:auto;"><i class="lucide" data-lucide="check-circle-2"></i> Validate Rule</button>
         <span id="automationValidationFeedback" style="margin-right:12px; font-size:14px; display:flex; align-items:center; gap:4px;"></span>
         <button id="automationEditorSave" class="primary-action" type="button">${isNew ? 'Create' : 'Save'}</button>
-      `);
-      document.querySelector('.modal-overlay')?.classList.add('automation-editor-modal');
+      `, { wide: true });
       renderAutomationEditorBody();
       document.getElementById('automationEditorSave')?.addEventListener('click', saveAutomationFromEditor);
       document.getElementById('automationEditorValidate')?.addEventListener('click', async () => {
@@ -8025,14 +8212,9 @@
           <span class="value">${uniqueWatchedTextChannels}</span>
           <div class="command-desc">Distinct text sources</div>
         </div>
-        <div class="commands-toggle-card">
-          <span class="label">Default Announcer</span>
-          <span class="value">${announcerData.autoConnect ? 'Auto-connect' : 'Manual'}</span>
-          <button id="announcerGlobalSettings" class="mini-btn" type="button">Configure</button>
-        </div>
       `;
 
-      top.querySelector('#announcerGlobalSettings')?.addEventListener('click', openAnnouncerGlobalSettings);
+      renderAnnouncerLiveState();
 
       // Render cards
       if (announcerData.configs.length === 0) {
@@ -8059,7 +8241,7 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                   <span style="font-weight:600;font-size:14px;color:var(--cv-text-strong);">${escapeHTML(config.name)}</span>
                   <span style="color:var(--muted);font-size:11px;">•</span>
-                  <span style="color:var(--muted);font-size:12px;font-weight:500;"><i class="lucide" data-lucide="${escapeHTML(config.symbol)}" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:3px;color:${tintColor};"></i>${escapeHTML(config.voiceChannelName)}</span>
+                  <span style="color:var(--muted);font-size:12px;font-weight:500;"><i class="lucide" data-lucide="${announcerSymbolLucide(config.symbol)}" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:3px;color:${tintColor};"></i>${escapeHTML(config.voiceChannelName)}</span>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center;">
                   ${channelPills || '<span style="font-size:11px;color:var(--muted);">No text channels watched</span>'}
@@ -8105,39 +8287,79 @@
       refreshIcons();
     }
 
-    function openAnnouncerGlobalSettings() {
-      const settings = announcerData;
-      const serverOptions = (settings.servers || []).map(server => `<option value="${escapeHTML(server.id)}" ${server.id === settings.guildID ? 'selected' : ''}>${escapeHTML(server.name)}</option>`).join('');
-      const selectedServer = settings.guildID || settings.servers?.[0]?.id || '';
-      const textOptions = (settings.textChannelsByServer?.[selectedServer] || []).map(channel => `<option value="${escapeHTML(channel.id)}" ${channel.id === settings.watchedTextChannelID ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('');
-      const voiceOptions = (settings.voiceChannelsByServer?.[selectedServer] || []).map(channel => `<option value="${escapeHTML(channel.id)}" ${channel.id === settings.voiceChannelID ? 'selected' : ''}>${escapeHTML(channel.name)}</option>`).join('');
-      showModal('Default Announcer', `
-        <div class="automation-editor-section">
-          <div class="automation-editor-row"><label>Server</label><select id="agGuild" class="field-select"><option value="">— Select a server —</option>${serverOptions}</select></div>
-          <div class="automation-editor-row"><label>Voice Channel</label><select id="agVoice" class="field-select"><option value="">— None —</option>${voiceOptions}</select></div>
-          <div class="automation-editor-row"><label>Text Channel</label><select id="agText" class="field-select"><option value="">— None —</option>${textOptions}</select></div>
-          <div class="automation-editor-row"><label>Read Text Source</label><input id="agTextEnabled" type="checkbox" ${settings.textChannelSourceEnabled ? 'checked' : ''}></div>
-          <div class="automation-editor-row"><label>Auto-connect at bot start</label><input id="agAutoConnect" type="checkbox" ${settings.autoConnect ? 'checked' : ''}></div>
-        </div>`, `
-        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
-        <button id="announcerGlobalSave" class="primary-action" type="button">Save</button>
-      `);
-      document.getElementById('announcerGlobalSave')?.addEventListener('click', async () => {
+    // Read-only mirror of the native Announcer tab's "Current State" panel.
+    //
+    // This replaces the old "Default Announcer" editor. Server / voice channel /
+    // text channel / read-text-source are live session state that the app
+    // rewrites on every announcer connect (see activateAnnouncerConfig), so
+    // presenting them as editable settings was misleading — they are shown here
+    // as status instead. Auto-connect, the one durable preference, stays a
+    // toggle on the stats card above.
+    function renderAnnouncerLiveState() {
+      const node = document.getElementById('announcerLiveState');
+      if (!node || !announcerData) return;
+
+      const state = announcerData.liveState;
+      if (!state) {
+        node.innerHTML = '<div class="placeholder">Live announcer state is unavailable.</div>';
+        return;
+      }
+
+      const tone = state.isConnected ? '#10b981' : 'var(--muted)';
+      const statusIcon = state.isConnected ? 'circle-check' : 'circle-pause';
+
+      const row = (icon, label, value) => `
+        <div class="ac-state-row">
+          <i class="lucide" data-lucide="${icon}"></i>
+          <span class="ac-state-label">${escapeHTML(label)}</span>
+          <span class="ac-state-value">${escapeHTML(value)}</span>
+        </div>
+      `;
+
+      const rows = [
+        row('volume-2', 'Listening', state.listening),
+        row('message-square', 'Monitored feeds', state.monitoredFeeds),
+        row(state.queueDepth === 0 ? 'circle-check' : 'clock', 'Next announcement', state.queueLabel)
+      ];
+      if (state.manualHold) rows.push(row('pause-circle', 'Manual hold', state.manualHold));
+      if (state.recovery) rows.push(row('shield', 'Recovery', state.recovery));
+
+      const queueBadge = state.queueDepth === 0
+        ? '<span class="ac-queue-badge">Queue clear</span>'
+        : `<span class="ac-queue-badge is-busy">${state.queueDepth} queued</span>`;
+
+      node.innerHTML = `
+        <div class="ac-state-head">
+          <div class="ac-state-icon" style="color:${tone};background:${state.isConnected ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)'};">
+            <i class="lucide" data-lucide="${statusIcon}"></i>
+          </div>
+          <div style="min-width:0;">
+            <div class="ac-state-title">${escapeHTML(state.connectionLabel)}</div>
+            <div class="ac-state-phase">${escapeHTML(state.phaseLabel)}</div>
+          </div>
+          <span style="flex:1;"></span>
+          ${queueBadge}
+          ${state.isConnected ? '<button id="announcerDisconnect" class="mini-btn" type="button" style="color:#f87171;"><i class="lucide" data-lucide="phone-off"></i> Disconnect</button>' : ''}
+        </div>
+        <div class="ac-state-rows">${rows.join('')}</div>
+      `;
+
+      // Mirrors `/announce disconnect`: leaves the channel and arms the same
+      // one-hour hold, so auto-join and recovery don't pull the bot straight
+      // back in.
+      document.getElementById('announcerDisconnect')?.addEventListener('click', async () => {
+        if (!confirm('Disconnect the announcer? Automatic joins and recovery pause for one hour.')) return;
         try {
-          await postJSON('/api/announcer/settings', {
-            guildID: document.getElementById('agGuild')?.value || '',
-            voiceChannelID: document.getElementById('agVoice')?.value || '',
-            watchedTextChannelID: document.getElementById('agText')?.value || '',
-            textChannelSourceEnabled: !!document.getElementById('agTextEnabled')?.checked,
-            autoConnect: !!document.getElementById('agAutoConnect')?.checked
-          });
+          await postJSON('/api/announcer/disconnect', {});
+          setMessage('Announcer disconnected. Automatic joins paused for one hour.', 'success');
           await loadAnnouncer();
           renderAnnouncerView();
-          hideModal();
         } catch (error) {
-          setMessage(error.message || 'Could not save announcer settings.', 'error');
+          setMessage(error.message || 'Could not disconnect the announcer.', 'error');
         }
       });
+
+      if (window.lucide?.createIcons) window.lucide.createIcons();
     }
 
     function getTintHex(tint) {
@@ -8153,14 +8375,51 @@
       }
     }
 
+    // Icon options for an announcer config.
+    //
+    // `config.symbol` is shared with the native macOS Announcer sheet, which
+    // renders it with `Image(systemName:)`, so the stored value must be an SF
+    // Symbol name. Lucide is only the web rendering of that same value.
+    const ANNOUNCER_SYMBOLS = [
+      { sf: 'speaker.wave.2.bubble.fill', lucide: 'volume-2', label: 'Speaker (Default)' },
+      { sf: 'mic.fill', lucide: 'mic', label: 'Microphone' },
+      { sf: 'message.fill', lucide: 'message-square', label: 'Chat Square' },
+      { sf: 'bubble.left.fill', lucide: 'message-circle', label: 'Chat Circle' },
+      { sf: 'bell.fill', lucide: 'bell', label: 'Bell Notification' },
+      { sf: 'antenna.radiowaves.left.and.right', lucide: 'radio', label: 'Radio Broadcast' },
+      { sf: 'hifispeaker.fill', lucide: 'speaker', label: 'Classic Speaker' }
+    ];
+
+    // Normalises to the SF Symbol name, tolerating configs saved by older
+    // builds of this page that stored the Lucide name instead.
+    function announcerSymbolSF(symbol) {
+      const match = ANNOUNCER_SYMBOLS.find(s => s.sf === symbol || s.lucide === symbol);
+      return match ? match.sf : ANNOUNCER_SYMBOLS[0].sf;
+    }
+
+    function announcerSymbolLucide(symbol) {
+      const match = ANNOUNCER_SYMBOLS.find(s => s.sf === symbol || s.lucide === symbol);
+      return match ? match.lucide : ANNOUNCER_SYMBOLS[0].lucide;
+    }
+
+    const ANNOUNCER_CONNECTION_MINUTES = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+    const ANNOUNCER_GRACE_SECONDS = [5, 15, 30, 60, 120];
+
+    function announcerMinutesLabel(minutes) {
+      if (minutes < 60) return `${minutes} min`;
+      const hours = minutes / 60;
+      return `${hours % 1 === 0 ? hours : hours.toFixed(1)} hr${hours > 1 ? 's' : ''}`;
+    }
+
     function openAnnouncerConfigEditor(configId) {
       let isNew = !configId;
+      // Defaults mirror AnnouncerVoiceChannelConfig's Swift defaults.
       let config = isNew ? {
         id: autoNewID(),
         name: 'New Voice Channel',
         voiceChannelID: '',
         voiceChannelName: '—',
-        symbol: 'volume-2',
+        symbol: 'speaker.wave.2.bubble.fill',
         tint: 'purple',
         autoJoin: false,
         introduceOnManualJoin: false,
@@ -8174,9 +8433,11 @@
         keepShort: false,
         smartShortenWithAppleIntelligence: false,
         ignoreEmojiSpam: false,
+        suppressRepeatedSpeakerNames: true,
         preferredVoiceIdentifier: '',
         connectionMode: 'fixed',
         connectionMinutes: 20,
+        emptyChannelGraceSeconds: 30,
         textChannels: [],
         enabled: true
       } : JSON.parse(JSON.stringify(announcerData.configs.find(c => c.id === configId)));
@@ -8185,43 +8446,14 @@
       showModal(title, '<div id="announcerEditorBody"></div>', `
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
         <button id="announcerEditorSave" class="primary-action" type="button">Save</button>
-      `);
+      `, { wide: true });
 
       renderAnnouncerEditor(config);
 
       document.getElementById('announcerEditorSave').onclick = async () => {
-        // Collect updated values from form
-        config.name = document.getElementById('acName').value.trim() || 'Voice Channel';
-        const vcSelect = document.getElementById('acVoiceChannel');
-        config.voiceChannelID = vcSelect.value;
-        config.voiceChannelName = vcSelect.options[vcSelect.selectedIndex]?.text || '—';
-        config.symbol = document.getElementById('acSymbol').value;
-        config.tint = document.getElementById('acTint').value;
-        config.preferredVoiceIdentifier = document.getElementById('acPreferredVoice').value;
-        config.autoJoin = document.getElementById('acAutoJoin').checked;
-        config.introduceOnManualJoin = document.getElementById('acIntroduceOnManualJoin').checked;
-        config.autoJoinOnStream = document.getElementById('acAutoJoinOnStream').checked;
-        config.introduceOnStreamJoin = document.getElementById('acIntroduceOnStreamJoin').checked;
-        config.readVoiceChannelChat = document.getElementById('acReadVoiceChat').checked;
-        config.ignoreWebhooks = document.getElementById('acIgnoreWebhooks').checked;
-        config.skipBots = document.getElementById('acSkipBots').checked;
-        config.ignoreLinks = document.getElementById('acIgnoreLinks').checked;
-        config.summariseLong = document.getElementById('acSummariseLong').checked;
-        config.keepShort = document.getElementById('acKeepShort').checked;
-        config.smartShortenWithAppleIntelligence = document.getElementById('acSmartShorten').checked;
-        config.ignoreEmojiSpam = document.getElementById('acIgnoreEmojiSpam').checked;
-        config.connectionMode = document.getElementById('acConnectionMode').value;
-        config.connectionMinutes = parseInt(document.getElementById('acConnectionMinutes').value) || 20;
-        config.enabled = document.getElementById('acEnabled').checked;
+        readAnnouncerEditorInto(config);
+        if (!config.name) config.name = 'Voice Channel';
 
-        // Gather checked text channels
-        const checked = [];
-        document.querySelectorAll('.ac-text-channel-cb:checked').forEach(cb => {
-          checked.push(cb.value);
-        });
-        config.textChannels = checked;
-
-        // POST upsert
         const success = await postJSON('/api/announcer/config/upsert', { config });
         if (success) {
           await loadAnnouncer();
@@ -8233,142 +8465,370 @@
       };
     }
 
+    // Pulls every field currently in the DOM back into `config`. Rows that are
+    // conditionally hidden (stream intro, duration vs grace) are simply absent,
+    // so their existing value is left untouched.
+    function readAnnouncerEditorInto(config) {
+      const value = (id) => document.getElementById(id);
+      const checkbox = (id, key) => { const el = value(id); if (el) config[key] = el.checked; };
+
+      const nameEl = value('acName');
+      if (nameEl) config.name = nameEl.value.trim();
+
+      const vcSelect = value('acVoiceChannel');
+      if (vcSelect) {
+        config.voiceChannelID = vcSelect.value;
+        const picked = vcSelect.options[vcSelect.selectedIndex];
+        config.voiceChannelName = vcSelect.value
+          ? (picked?.dataset.channelName || picked?.text || '—')
+          : '—';
+      }
+
+      const symbolEl = value('acSymbol');
+      if (symbolEl) config.symbol = symbolEl.value;
+      const tintEl = value('acTint');
+      if (tintEl) config.tint = tintEl.value;
+      const voiceEl = value('acPreferredVoice');
+      if (voiceEl) config.preferredVoiceIdentifier = voiceEl.value;
+
+      checkbox('acEnabled', 'enabled');
+      checkbox('acAutoJoin', 'autoJoin');
+      checkbox('acIntroduceOnManualJoin', 'introduceOnManualJoin');
+      checkbox('acAutoJoinOnStream', 'autoJoinOnStream');
+      checkbox('acIntroduceOnStreamJoin', 'introduceOnStreamJoin');
+      checkbox('acReadVoiceChat', 'readVoiceChannelChat');
+      checkbox('acIgnoreWebhooks', 'ignoreWebhooks');
+      checkbox('acSummariseLong', 'summariseLong');
+      checkbox('acIgnoreLinks', 'ignoreLinks');
+      checkbox('acSkipBots', 'skipBots');
+      checkbox('acIgnoreEmojiSpam', 'ignoreEmojiSpam');
+      checkbox('acKeepShort', 'keepShort');
+      checkbox('acSuppressRepeatedNames', 'suppressRepeatedSpeakerNames');
+      checkbox('acSmartShorten', 'smartShortenWithAppleIntelligence');
+
+      const modeEl = value('acConnectionMode');
+      if (modeEl) config.connectionMode = modeEl.value;
+      const minutesEl = value('acConnectionMinutes');
+      if (minutesEl) config.connectionMinutes = parseInt(minutesEl.value, 10) || 20;
+      const graceEl = value('acEmptyGrace');
+      if (graceEl) config.emptyChannelGraceSeconds = parseInt(graceEl.value, 10) || 30;
+
+      return config;
+    }
+
+    // Text-channel picker: selected channels as removable chips plus a
+    // type-to-filter combobox. A server can have hundreds of text channels, so
+    // this never renders them all at once — only the matches for what's typed.
+    const AC_CHANNEL_RESULT_LIMIT = 50;
+
+    function mountAnnouncerChannelPicker(config, serverId) {
+      const root = document.getElementById('acChannelPicker');
+      if (!root) return;
+
+      if (!serverId) {
+        root.innerHTML = '<div class="ac-note" style="margin:0;">Select a voice channel first to load text channels.</div>';
+        return;
+      }
+
+      const available = announcerData.textChannelsByServer[serverId] || [];
+      if (available.length === 0) {
+        root.innerHTML = '<div class="ac-note" style="margin:0;">No text channels found for this server.</div>';
+        return;
+      }
+
+      root.innerHTML = `
+        <div id="acChannelChips" class="ac-chips"></div>
+        <div class="ac-combo">
+          <i class="lucide" data-lucide="search"></i>
+          <input id="acChannelSearch" class="ac-combo-input" type="text" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="acChannelOptions"
+                 placeholder="Search channels to add…">
+        </div>
+        <div id="acChannelOptions" class="ac-combo-list" role="listbox" hidden></div>
+      `;
+
+      const chipsNode = document.getElementById('acChannelChips');
+      const input = document.getElementById('acChannelSearch');
+      const listNode = document.getElementById('acChannelOptions');
+      let activeIndex = -1;
+      let matches = [];
+
+      function renderChips() {
+        if (config.textChannels.length === 0) {
+          chipsNode.innerHTML = '<span class="ac-chips-empty">No channels yet — the announcer will only read voice channel chat.</span>';
+          return;
+        }
+        chipsNode.innerHTML = config.textChannels.map(name => `
+          <span class="ac-chip">
+            #${escapeHTML(name)}
+            <button type="button" class="ac-chip-remove" data-channel="${escapeHTML(name)}" aria-label="Remove #${escapeHTML(name)}">
+              <i class="lucide" data-lucide="x"></i>
+            </button>
+          </span>
+        `).join('');
+        chipsNode.querySelectorAll('.ac-chip-remove').forEach(btn => {
+          btn.addEventListener('click', () => {
+            config.textChannels = config.textChannels.filter(c => c !== btn.dataset.channel);
+            renderChips();
+            renderOptions();
+            refreshIcons();
+          });
+        });
+      }
+
+      function renderOptions() {
+        const query = input.value.trim().replace(/^#/, '').toLowerCase();
+        matches = available
+          .filter(ch => !config.textChannels.includes(ch.name))
+          .filter(ch => !query || ch.name.toLowerCase().includes(query));
+
+        if (matches.length === 0) {
+          listNode.innerHTML = `<div class="ac-combo-empty">${query ? 'No channels match' : 'All channels added'}</div>`;
+          activeIndex = -1;
+          return;
+        }
+
+        const shown = matches.slice(0, AC_CHANNEL_RESULT_LIMIT);
+        if (activeIndex >= shown.length) activeIndex = shown.length - 1;
+
+        listNode.innerHTML = shown.map((ch, i) => `
+          <div class="ac-combo-option${i === activeIndex ? ' is-active' : ''}" role="option"
+               aria-selected="${i === activeIndex}" data-index="${i}">#${escapeHTML(ch.name)}</div>
+        `).join('') + (matches.length > shown.length
+          ? `<div class="ac-combo-more">${matches.length - shown.length} more — keep typing to narrow</div>`
+          : '');
+
+        listNode.querySelectorAll('.ac-combo-option').forEach(node => {
+          // mousedown fires before the input's blur, so the click isn't lost.
+          node.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            addChannel(shown[Number(node.dataset.index)]);
+          });
+          node.addEventListener('mouseenter', () => {
+            activeIndex = Number(node.dataset.index);
+            listNode.querySelectorAll('.ac-combo-option').forEach(o => o.classList.remove('is-active'));
+            node.classList.add('is-active');
+          });
+        });
+      }
+
+      function addChannel(channel) {
+        if (!channel || config.textChannels.includes(channel.name)) return;
+        config.textChannels.push(channel.name);
+        input.value = '';
+        activeIndex = -1;
+        renderChips();
+        renderOptions();
+        refreshIcons();
+        input.focus();
+      }
+
+      function openList() {
+        listNode.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        renderOptions();
+      }
+
+      function closeList() {
+        listNode.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        activeIndex = -1;
+      }
+
+      input.addEventListener('focus', openList);
+      input.addEventListener('input', () => { activeIndex = -1; openList(); });
+      input.addEventListener('blur', () => setTimeout(closeList, 120));
+
+      input.addEventListener('keydown', (event) => {
+        const shownCount = Math.min(matches.length, AC_CHANNEL_RESULT_LIMIT);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          if (listNode.hidden) { openList(); return; }
+          if (shownCount === 0) return;
+          activeIndex = event.key === 'ArrowDown'
+            ? (activeIndex + 1) % shownCount
+            : (activeIndex <= 0 ? shownCount - 1 : activeIndex - 1);
+          renderOptions();
+          listNode.querySelector('.ac-combo-option.is-active')?.scrollIntoView({ block: 'nearest' });
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          if (listNode.hidden || shownCount === 0) return;
+          addChannel(matches[activeIndex >= 0 ? activeIndex : 0]);
+        } else if (event.key === 'Escape') {
+          if (!listNode.hidden) { event.stopPropagation(); closeList(); }
+        } else if (event.key === 'Backspace' && input.value === '' && config.textChannels.length > 0) {
+          config.textChannels.pop();
+          renderChips();
+          renderOptions();
+          refreshIcons();
+        }
+      });
+
+      renderChips();
+    }
+
     function renderAnnouncerEditor(config) {
       const root = document.getElementById('announcerEditorBody');
       if (!root) return;
+
+      // Re-render in place when a choice changes what other fields are shown,
+      // matching how the native sheet reveals and swaps rows.
+      const rerender = () => {
+        readAnnouncerEditorInto(config);
+        renderAnnouncerEditor(config);
+      };
 
       const allVoiceChannels = [];
       Object.entries(announcerData.voiceChannelsByServer).forEach(([serverId, channels]) => {
         const serverName = announcerData.servers.find(s => s.id === serverId)?.name || 'Server';
         channels.forEach(ch => {
-          allVoiceChannels.push({ id: ch.id, name: `${serverName} — #${ch.name}` });
+          // `label` disambiguates in the dropdown; `name` is what gets stored,
+          // matching the bare channel name the native sheet writes.
+          allVoiceChannels.push({ id: ch.id, name: ch.name, label: `${serverName} — #${ch.name}` });
         });
       });
 
-      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label>${html}</div>`;
+      const channelLabel = (config.voiceChannelName && config.voiceChannelName !== '—')
+        ? escapeHTML(config.voiceChannelName)
+        : 'this channel';
 
-      const vcSelectHTML = `
-        <select id="acVoiceChannel" class="field-select">
-          <option value="">— Pick a voice channel —</option>
-          ${allVoiceChannels.map(vc => `<option value="${vc.id}" ${vc.id === config.voiceChannelID ? 'selected' : ''}>${escapeHTML(vc.name)}</option>`).join('')}
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label><div style="flex:1;min-width:0;">${html}</div></div>`;
+
+      // Checkbox + title + explanation, mirroring the native sheet's toggle rows.
+      const toggle = (id, key, title, description, indented) => `
+        <label class="ac-toggle${indented ? ' ac-toggle-indented' : ''}">
+          <input id="${id}" type="checkbox" ${config[key] ? 'checked' : ''}>
+          <span class="ac-toggle-text">
+            <span class="ac-toggle-title">${title}</span>
+            ${description ? `<span class="ac-toggle-desc">${description}</span>` : ''}
+          </span>
+        </label>
+      `;
+
+      const section = (icon, title, body) => `
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="${icon}"></i> ${title}</h3>
+          ${body}
+        </div>
+      `;
+
+      const select = (id, options, selected) => `
+        <select id="${id}" class="field-select">
+          ${options.map(o => `<option value="${escapeHTML(String(o.value))}" ${String(o.value) === String(selected) ? 'selected' : ''}>${escapeHTML(o.label)}</option>`).join('')}
         </select>
       `;
 
-      const symbolSelectHTML = `
-        <select id="acSymbol" class="field-select">
-          <option value="volume-2" ${config.symbol === 'volume-2' ? 'selected' : ''}>Speaker (Default)</option>
-          <option value="mic" ${config.symbol === 'mic' ? 'selected' : ''}>Microphone</option>
-          <option value="message-square" ${config.symbol === 'message-square' ? 'selected' : ''}>Chat Square</option>
-          <option value="message-circle" ${config.symbol === 'message-circle' ? 'selected' : ''}>Chat Circle</option>
-          <option value="bell" ${config.symbol === 'bell' ? 'selected' : ''}>Bell Notification</option>
-          <option value="radio" ${config.symbol === 'radio' ? 'selected' : ''}>Radio Broadcast</option>
-          <option value="speaker" ${config.symbol === 'speaker' ? 'selected' : ''}>Classic Speaker</option>
-        </select>
-      `;
+      // MARK: Identity
 
-      const tintSelectHTML = `
-        <select id="acTint" class="field-select">
-          <option value="purple" ${config.tint === 'purple' ? 'selected' : ''}>Purple</option>
-          <option value="blue" ${config.tint === 'blue' ? 'selected' : ''}>Blue</option>
-          <option value="orange" ${config.tint === 'orange' ? 'selected' : ''}>Orange</option>
-          <option value="teal" ${config.tint === 'teal' ? 'selected' : ''}>Teal</option>
-          <option value="pink" ${config.tint === 'pink' ? 'selected' : ''}>Pink</option>
-          <option value="green" ${config.tint === 'green' ? 'selected' : ''}>Green</option>
-          <option value="indigo" ${config.tint === 'indigo' ? 'selected' : ''}>Indigo</option>
-        </select>
-      `;
-
-      const voiceSelectHTML = `
-        <select id="acPreferredVoice" class="field-select">
-          <option value="">Auto (best English voice)</option>
-          ${(announcerData.installedVoices || []).map(v => `<option value="${escapeHTML(v.id)}" ${v.id === config.preferredVoiceIdentifier ? 'selected' : ''}>${escapeHTML(v.name)}</option>`).join('')}
-        </select>
-      `;
-
-      const connectionModeHTML = `
-        <select id="acConnectionMode" class="field-select">
-          <option value="fixed" ${config.connectionMode === 'fixed' ? 'selected' : ''}>Fixed time</option>
-          <option value="untilEmpty" ${config.connectionMode === 'untilEmpty' ? 'selected' : ''}>Until last person leaves</option>
-        </select>
-      `;
-
-      const connectionMinutesHTML = `
-        <select id="acConnectionMinutes" class="field-select">
-          <option value="5" ${config.connectionMinutes === 5 ? 'selected' : ''}>5 min</option>
-          <option value="10" ${config.connectionMinutes === 10 ? 'selected' : ''}>10 min</option>
-          <option value="15" ${config.connectionMinutes === 15 ? 'selected' : ''}>15 min</option>
-          <option value="20" ${config.connectionMinutes === 20 ? 'selected' : ''}>20 min</option>
-          <option value="30" ${config.connectionMinutes === 30 ? 'selected' : ''}>30 min</option>
-          <option value="45" ${config.connectionMinutes === 45 ? 'selected' : ''}>45 min</option>
-          <option value="60" ${config.connectionMinutes === 60 ? 'selected' : ''}>1 hr</option>
-          <option value="90" ${config.connectionMinutes === 90 ? 'selected' : ''}>1.5 hrs</option>
-          <option value="120" ${config.connectionMinutes === 120 ? 'selected' : ''}>2 hrs</option>
-        </select>
-      `;
-
-      function updateEditorTextChannels() {
-        const vcId = document.getElementById('acVoiceChannel').value;
-        let serverId = '';
-        Object.entries(announcerData.voiceChannelsByServer).forEach(([sId, channels]) => {
-          if (channels.some(ch => ch.id === vcId)) {
-            serverId = sId;
-          }
-        });
-
-        const listNode = document.getElementById('acTextChannelsList');
-        if (!listNode) return;
-
-        if (!serverId) {
-          listNode.innerHTML = '<div class="placeholder" style="font-size:11px;color:var(--muted);text-align:center;padding:12px;">Select a voice channel first to load text channels.</div>';
-          return;
-        }
-
-        const textChannels = announcerData.textChannelsByServer[serverId] || [];
-        if (textChannels.length === 0) {
-          listNode.innerHTML = '<div class="placeholder" style="font-size:11px;color:var(--muted);text-align:center;padding:12px;">No text channels found for this server.</div>';
-          return;
-        }
-
-        listNode.innerHTML = textChannels.map(ch => {
-          const isChecked = config.textChannels.includes(ch.name);
-          return `
-            <label class="ac-text-channel-item" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;">
-              <input class="ac-text-channel-cb" type="checkbox" value="${escapeHTML(ch.name)}" ${isChecked ? 'checked' : ''}>
-              <span>#${escapeHTML(ch.name)}</span>
-            </label>
-          `;
-        }).join('');
-      }
-
-      let html = 
+      const identitySection = section('tag', 'Identity',
         row('Enabled', `<input id="acEnabled" type="checkbox" ${config.enabled ? 'checked' : ''}>`) +
         row('Name', `<input id="acName" class="field-input" value="${escapeHTML(config.name || '')}" placeholder="e.g. Lounge Announcer">`) +
-        row('Voice Channel', vcSelectHTML) +
-        row('Icon', symbolSelectHTML) +
-        row('Tint Color', tintSelectHTML) +
-        row('Reading Voice', voiceSelectHTML) +
-        row('Auto-join', `<input id="acAutoJoin" type="checkbox" ${config.autoJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Join automatically when a user enters voice</span>`) +
-        row('Manual intro', `<input id="acIntroduceOnManualJoin" type="checkbox" ${config.introduceOnManualJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Say a short intro after /announce join</span>`) +
-        row('Join on Go Live', `<input id="acAutoJoinOnStream" type="checkbox" ${config.autoJoinOnStream ? 'checked' : ''}>`) +
-        row('Stream intro', `<input id="acIntroduceOnStreamJoin" type="checkbox" ${config.introduceOnStreamJoin ? 'checked' : ''}>`) +
-        row('Read Text-in-Voice', `<input id="acReadVoiceChat" type="checkbox" ${config.readVoiceChannelChat ? 'checked' : ''}>`) +
-        row('Ignore webhooks', `<input id="acIgnoreWebhooks" type="checkbox" ${config.ignoreWebhooks ? 'checked' : ''}>`) +
-        row('Skip bot messages', `<input id="acSkipBots" type="checkbox" ${config.skipBots ? 'checked' : ''}>`) +
-        row('Ignore links', `<input id="acIgnoreLinks" type="checkbox" ${config.ignoreLinks ? 'checked' : ''}>`) +
-        row('Shorten long messages', `<input id="acSummariseLong" type="checkbox" ${config.summariseLong ? 'checked' : ''}>`) +
-        row('Keep announcements short', `<input id="acKeepShort" type="checkbox" ${config.keepShort ? 'checked' : ''}>`) +
-        row('Use Apple Intelligence to shorten', `<input id="acSmartShorten" type="checkbox" ${config.smartShortenWithAppleIntelligence ? 'checked' : ''}>`) +
-        row('Ignore emoji spam', `<input id="acIgnoreEmojiSpam" type="checkbox" ${config.ignoreEmojiSpam ? 'checked' : ''}>`) +
-        row('Connection Mode', connectionModeHTML) +
-        row('Fixed Stay Duration', connectionMinutesHTML) +
-        row('Reads Text Channels', `<div id="acTextChannelsList" style="max-height: 150px; overflow-y: auto; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--cv-border); border-radius: 6px;"></div>`);
+        row('Icon', select('acSymbol', ANNOUNCER_SYMBOLS.map(s => ({ value: s.sf, label: s.label })), announcerSymbolSF(config.symbol))) +
+        row('Tint', select('acTint', ['purple', 'blue', 'orange', 'teal', 'pink', 'green', 'indigo'].map(t => ({ value: t, label: t[0].toUpperCase() + t.slice(1) })), config.tint))
+      );
 
-      root.innerHTML = `<div class="automation-editor-section" style="padding: 10px 0;">${html}</div>`;
+      // MARK: Voice Channel
 
-      const vcSelect = document.getElementById('acVoiceChannel');
-      vcSelect.addEventListener('change', updateEditorTextChannels);
+      const voiceChannelBody = allVoiceChannels.length === 0
+        ? '<div class="ac-note">No voice channels found. Connect the bot to Discord first.</div>'
+        : row('Voice Channel', `
+            <select id="acVoiceChannel" class="field-select">
+              <option value="">— Pick a voice channel —</option>
+              ${allVoiceChannels.map(vc => `<option value="${escapeHTML(vc.id)}" data-channel-name="${escapeHTML(vc.name)}" ${vc.id === config.voiceChannelID ? 'selected' : ''}>${escapeHTML(vc.label)}</option>`).join('')}
+            </select>
+          `) +
+          row('Reading Voice', select(
+            'acPreferredVoice',
+            [{ value: '', label: 'Auto (best English voice)' }].concat((announcerData.installedVoices || []).map(v => ({ value: v.id, label: v.name }))),
+            config.preferredVoiceIdentifier
+          )) +
+          '<div class="ac-note">Falls back to the global announcement voice when set to Auto.</div>';
 
-      updateEditorTextChannels();
+      const voiceChannelSection = section('volume-2', 'Voice Channel', voiceChannelBody);
+
+      // MARK: Connection
+
+      const durationRow = config.connectionMode === 'fixed'
+        ? row('Duration', select('acConnectionMinutes', ANNOUNCER_CONNECTION_MINUTES.map(m => ({ value: m, label: announcerMinutesLabel(m) })), config.connectionMinutes))
+        : row('Empty-channel grace', select('acEmptyGrace', ANNOUNCER_GRACE_SECONDS.map(s => ({ value: s, label: `${s} sec` })), config.emptyChannelGraceSeconds));
+
+      const durationNote = config.connectionMode === 'fixed'
+        ? `SwiftBot leaves after ${config.connectionMinutes} minutes of reading, even if users are still present.`
+        : `SwiftBot pauses reads as soon as the room is empty, then leaves if nobody returns within ${config.emptyChannelGraceSeconds} seconds.`;
+
+      const connectionSection = section('zap', 'Connection',
+        toggle('acAutoJoin', 'autoJoin', 'Auto-join when someone enters',
+          `SwiftBot joins ${channelLabel} automatically whenever a member enters.`) +
+        toggle('acIntroduceOnManualJoin', 'introduceOnManualJoin', 'Introduce on /announce join',
+          'SwiftBot says a short intro when someone starts this announcer manually.') +
+        toggle('acAutoJoinOnStream', 'autoJoinOnStream', 'Auto-join when someone goes live',
+          `SwiftBot joins ${channelLabel} automatically when a member starts a Go Live stream there.`) +
+        (config.autoJoinOnStream
+          ? toggle('acIntroduceOnStreamJoin', 'introduceOnStreamJoin', 'Announce on stream join',
+              'SwiftBot says &ldquo;I&rsquo;ll read notifications during the stream.&rdquo; when it joins for a stream.', true)
+          : '') +
+        '<div class="ac-divider"></div>' +
+        row('Stay connected', select('acConnectionMode', [
+          { value: 'fixed', label: 'Fixed time' },
+          { value: 'untilEmpty', label: 'Until last person leaves' }
+        ], config.connectionMode)) +
+        durationRow +
+        `<div class="ac-note">${durationNote}</div>`
+      );
+
+      // MARK: Reads From
+
+      const readsFromSection = section('message-square', 'Reads From',
+        toggle('acReadVoiceChat', 'readVoiceChannelChat', 'Read voice channel chat',
+          "Reads the voice channel's built-in text chat — the chat viewers see beside a Go Live stream.") +
+        toggle('acIgnoreWebhooks', 'ignoreWebhooks', 'Only read server members',
+          'Skips messages posted by webhooks and integrations, so only real server members are read aloud.') +
+        '<div class="ac-divider"></div>' +
+        '<label class="ac-field-label">Text channels</label>' +
+        '<div id="acChannelPicker"></div>'
+      );
+
+      // MARK: Behaviour
+
+      const behaviourSection = section('sliders-horizontal', 'Behaviour',
+        toggle('acSummariseLong', 'summariseLong', 'Shorten long messages', '') +
+        toggle('acIgnoreLinks', 'ignoreLinks', 'Ignore links', '') +
+        toggle('acSkipBots', 'skipBots', 'Skip bot messages', '') +
+        toggle('acIgnoreEmojiSpam', 'ignoreEmojiSpam', 'Ignore emoji spam', '') +
+        toggle('acKeepShort', 'keepShort', 'Keep announcements short', '') +
+        toggle('acSuppressRepeatedNames', 'suppressRepeatedSpeakerNames', 'Skip repeated speaker names', '') +
+        toggle('acSmartShorten', 'smartShortenWithAppleIntelligence', 'Use Apple Intelligence to shorten',
+          'Rewrites long or noisy messages into one short spoken sentence on-device, falling back to the length caps below when unavailable.') +
+        '<div class="ac-note">Repeated messages from the same person omit their name for two minutes, until somebody else speaks. ' +
+        'Messages over 1000 characters are trimmed instead of skipped, ending with a spoken &ldquo;message continues&rdquo;. ' +
+        '&ldquo;Keep announcements short&rdquo; trims everything to 160 characters instead.</div>'
+      );
+
+      root.innerHTML = identitySection + voiceChannelSection + connectionSection + readsFromSection + behaviourSection;
+
+      // Text channels for the selected voice channel's server.
+      let serverId = '';
+      Object.entries(announcerData.voiceChannelsByServer).forEach(([sId, channels]) => {
+        if (channels.some(ch => ch.id === config.voiceChannelID)) serverId = sId;
+      });
+      mountAnnouncerChannelPicker(config, serverId);
+
+      // Only these inputs change which rows are visible or what the notes say.
+      ['acAutoJoinOnStream', 'acConnectionMode', 'acConnectionMinutes', 'acEmptyGrace', 'acSymbol']
+        .forEach(id => document.getElementById(id)?.addEventListener('change', rerender));
+
+      document.getElementById('acVoiceChannel')?.addEventListener('change', () => {
+        readAnnouncerEditorInto(config);
+        // Name an untouched config after the channel it reads, as the native sheet does.
+        if (!config.name || config.name === 'New Voice Channel') {
+          if (config.voiceChannelName && config.voiceChannelName !== '—') {
+            config.name = config.voiceChannelName;
+          }
+        }
+        renderAnnouncerEditor(config);
+      });
+
+      if (window.lucide?.createIcons) window.lucide.createIcons();
     }
 
     function renderPatchyView() {

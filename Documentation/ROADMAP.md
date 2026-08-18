@@ -9,6 +9,15 @@
 
 ## Recent Engineering Log
 
+### 2026-08-19 — Announcer DAVE transition and external-disconnect recovery
+
+- [x] Accept Discord's epoch-1 DAVE Prepare Epoch form that omits `transition_id` for a zero-ID sole-member reset, allowing the documented follow-up transition to establish its fail-closed MLS state instead of classifying the voice session as malformed.
+- [x] Interpret SwiftBot's own null voice state as a Discord-side disconnect when it was not requested locally; log it explicitly and run one controlled background recovery without double-counting the old voice socket's expected close as another failed attempt.
+- [x] Simplified each channel's Announcer editor to its saved Voice Channel, Connection, Reads From, and Behaviour controls; removed the local-only Advanced and Testing panels and the non-persisted join/leave checkboxes.
+- [x] Made Announcer voice introductions real: when a human joins an already-active configured Announcer channel, SwiftBot now speaks “Name has joined,” logs the action, and ignores bot arrivals. When that arrival triggers an automatic join, the same introduction is queued until the media path is ready.
+- [x] Reorganised the Announcer page into summary, Current State, Voice Channel Configurations, a combined responsive Announcement section, and full-width Recent Activity—preserving each existing control while removing the lower 2×2 card grid.
+- [x] Clarified Announcer's one-session model: startup and the UI reconnect control now select the first enabled voice-channel configuration, while explicit `/announce join` and in-flight recovery remain on their deliberately chosen channel. The Current Voice Channel metric shows a channel only for a live connection.
+
 ### 2026-08-18 — Announcer operator controls and quiet-presence hardening
 
 - [x] Added `/announce disconnect`, which leaves the caller's configured Announcer channel and persists a one-hour manual hold. Automatic startup, event-driven joins, and recovery stay suppressed until the hold expires; `/announce join` or `/announce rejoin` clears it immediately.

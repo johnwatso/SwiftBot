@@ -137,9 +137,21 @@ final class VoiceTransportSecurityTests: XCTestCase {
 
         let epoch = try JSONDecoder().decode(VoiceGatewayPrepareEpoch.self, from: data)
 
-        XCTAssertEqual(epoch.data.transitionID.value, UInt64.max)
+        XCTAssertEqual(epoch.data.transitionID?.value, UInt64.max)
         XCTAssertEqual(epoch.data.protocolVersion.value, 1)
         XCTAssertEqual(epoch.data.epoch.value, 2)
+    }
+
+    func testDavePrepareEpochAcceptsDiscordSoleMemberPayloadWithoutTransitionID() throws {
+        let data = Data("""
+        {"op":24,"seq":8,"d":{"protocol_version":1,"epoch":1}}
+        """.utf8)
+
+        let epoch = try JSONDecoder().decode(VoiceGatewayPrepareEpoch.self, from: data)
+
+        XCTAssertNil(epoch.data.transitionID)
+        XCTAssertEqual(epoch.data.protocolVersion.value, 1)
+        XCTAssertEqual(epoch.data.epoch.value, 1)
     }
 
     func testExactTransitionIDRejectsFractionalAndOutOfRangeValues() {

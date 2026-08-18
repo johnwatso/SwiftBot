@@ -520,11 +520,28 @@ actor VoiceGatewayConnection {
 
         case .davePrepareEpoch:
             guard let payload = await decodePayload(VoiceGatewayPrepareEpoch.self, from: data, opcode: .davePrepareEpoch, generation: generation) else { return }
+            // Discord's zero-ID sole-member reset omits `transition_id` from
+            // Op 24 and follows with Op 21 / transition 0. Do not reject that
+            // valid leave-the-bot-alone transition before the follow-up can
+            // establish its safe, fail-closed MLS state.
+            let transitionID: UInt64
+            if let suppliedTransitionID = payload.data.transitionID?.value {
+                transitionID = suppliedTransitionID
+            } else if payload.data.epoch.value == 1 {
+                transitionID = 0
+                await debug("DAVE Prepare Epoch omitted transition id for epoch 1; treating it as the zero-ID sole-member reset.")
+            } else {
+                await protocolError(
+                    "DAVE Prepare Epoch omitted a transition id for retained epoch \(payload.data.epoch.value)",
+                    generation: generation
+                )
+                return
+            }
             guard generation == socketGeneration else { return }
             await onDavePrepareEpoch?(
                 payload.data.protocolVersion.value,
                 payload.data.epoch.value,
-                payload.data.transitionID.value
+                transitionID
             )
 
         case .heartbeatAck:
@@ -953,7 +970,9 @@ struct VoiceGatewayPrepareEpoch: Decodable {
     struct Body: Decodable {
         let protocolVersion: VoiceExactUInt16
         let epoch: VoiceExactUInt64
-        let transitionID: VoiceExactUInt64
+        /// Discord omits this field for the zero-ID sole-member reset (an
+        /// epoch-1 Prepare Epoch followed by Prepare Transition 0).
+        let transitionID: VoiceExactUInt64?
 
         enum CodingKeys: String, CodingKey {
             case protocolVersion = "protocol_version"
