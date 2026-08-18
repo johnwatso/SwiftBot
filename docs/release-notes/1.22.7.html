@@ -6,73 +6,50 @@
   <title>SwiftBot 1.22.7 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
-    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
-    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    .intro { margin: 0 0 22px; color: #364152; }
-    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
-    section.continuity { --accent: #0e7490; }
-    section.reliability { --accent: #7c3aed; }
-    section.diagnostics { --accent: #b45309; }
-    section.release { --accent: #52606d; }
-    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
-    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
-    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    ul { margin: 0; padding-left: 22px; }
-    li { margin: 0 0 8px; }
-    li:last-child { margin-bottom: 0; }
-    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1017; color: #edf2f7; }
-      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
-      .meta, .summary { color: #9fb0c2; }
-      .intro { color: #c8d3df; }
-      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
-      code { background: rgba(159, 176, 194, 0.16); }
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
     <h1>SwiftBot 1.22.7</h1>
-    <p class="meta">Version 1.22.7 · Build 2026081814</p>
-    <p class="intro">This hotfix keeps the Announcer in the room through ordinary Discord gateway reconnects, so listeners do not get a distracting leave-and-rejoin notification.</p>
-
-    <section class="continuity">
-      <h2><span class="badge" aria-hidden="true">🔄</span>Quiet Background Reconnects</h2>
-      <p class="summary">A brief main Discord gateway drop used to make SwiftBot identify as a new session, which could interrupt the Announcer's voice membership.</p>
-      <ul>
-        <li><strong>Gateway sessions now resume:</strong> SwiftBot uses Discord's session-resume protocol after a transient drop, preserving the existing voice state rather than leaving and joining the channel again.</li>
-        <li><strong>No unnecessary Discord ding:</strong> Players should no longer hear the bot's leave/rejoin notification during a normal reconnect.</li>
-        <li><strong>Safe fallback:</strong> If Discord rejects the old session, SwiftBot falls back to a fresh connection as required.</li>
-      </ul>
-    </section>
-
-    <section class="reliability">
-      <h2><span class="badge" aria-hidden="true">🔊</span>Announcer Recovery Stays Intact</h2>
-      <p class="summary">Voice handshakes can be replayed while Discord is stabilising after a reconnect.</p>
-      <ul>
-        <li><strong>Duplicate handshakes are harmless:</strong> A replay for the already-active voice session no longer tears down speech with a busy-pipeline error.</li>
-        <li><strong>Fresh handshakes recover cleanly:</strong> If Discord sends genuinely new voice credentials while an old pipeline is still winding down, SwiftBot uses its normal controlled rejoin instead of failing the Announcer.</li>
-      </ul>
-    </section>
-
-    <section class="diagnostics">
-      <h2><span class="badge" aria-hidden="true">🩺</span>Reconnect Evidence in Exports</h2>
-      <p class="summary">The next report will identify a reconnect instead of merely showing that one happened.</p>
-      <ul>
-        <li>Diagnostic exports retain the latest 20 main-gateway reconnect causes, close codes, generations, and retry delays.</li>
-      </ul>
-    </section>
-
-    <section class="release">
-      <h2><span class="badge" aria-hidden="true">🚢</span>Release Details</h2>
-      <ul>
-        <li>Updated <code>MARKETING_VERSION</code> to 1.22.7 and <code>CURRENT_PROJECT_VERSION</code> to 2026081814.</li>
-        <li>Added regression coverage proving a reconnect resumes the prior Discord session rather than identifying again.</li>
-      </ul>
-    </section>
+    <p class="meta">Version 1.22.7</p>
+    <p>SwiftBot 1.22.7</p>
+<p>This hotfix keeps the Announcer in the room through ordinary Discord gateway reconnects, so listeners do not get a distracting leave-and-rejoin notification.</p>
+<p>Quiet Background Reconnects</p>
+<p>- Resume Discord gateway sessions after transient drops, preserving the existing voice state rather than leaving and joining again.<br>- Fall back to a fresh connection only when Discord rejects the old session.</p>
+<p>Announcer Recovery Stays Intact</p>
+<p>- Ignore duplicate handshakes for the active voice session.<br>- Route genuinely new credentials racing an old pipeline through the controlled clean-rejoin flow.</p>
+<p>Reconnect Evidence in Exports</p>
+<p>- Retain the latest 20 main-gateway reconnect causes, close codes, generations, and retry delays.</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/a27e09f0746df24b196f0ee28970c6bfcaad5716">a27e09f</a></p>
   </main>
 </body>
 </html>
