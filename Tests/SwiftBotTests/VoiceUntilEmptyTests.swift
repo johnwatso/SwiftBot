@@ -20,6 +20,7 @@ final class VoiceUntilEmptyTests: XCTestCase {
                 voiceChannelID: "voice-1",
                 voiceChannelName: "General",
                 connectionMode: .untilEmpty,
+                emptyChannelGraceSeconds: 0,
                 textChannels: ["text-1"]
             )
         ]

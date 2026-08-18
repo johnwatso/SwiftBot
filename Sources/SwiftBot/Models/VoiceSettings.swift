@@ -35,6 +35,23 @@ enum AnnouncerConnectionMode: String, CaseIterable, Codable, Hashable {
     }
 }
 
+/// A user-requested quiet period for one Announcer voice channel. This lives
+/// in settings so an app restart cannot accidentally undo an explicit
+/// `/announce disconnect` request.
+struct AnnouncerManualHold: Codable, Hashable, Sendable {
+    var guildID: String
+    var voiceChannelID: String
+    var expiresAt: Date
+
+    func isActive(now: Date = Date()) -> Bool {
+        now < expiresAt
+    }
+
+    func remainingSeconds(now: Date = Date()) -> Int {
+        max(0, Int(expiresAt.timeIntervalSince(now).rounded(.up)))
+    }
+}
+
 // MARK: - Attribution style
 
 /// How a spoken message credits its author.
@@ -89,11 +106,17 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
     var smartShortenWithAppleIntelligence: Bool = false
     /// Skip messages that are mostly emoji.
     var ignoreEmojiSpam: Bool               = false
+    /// Avoid repeating one person's name for every read in a solo stretch.
+    /// The name returns after another person speaks or two minutes of quiet.
+    var suppressRepeatedSpeakerNames: Bool  = true
     /// Per-rule TTS voice (AVSpeechSynthesisVoice identifier). Empty falls back
     /// to the global preferred voice, then the best available English voice.
     var preferredVoiceIdentifier: String    = ""
     var connectionMode: AnnouncerConnectionMode = .fixed
     var connectionMinutes: Int              = 20
+    /// When using Until last person leaves, wait briefly for a member to come
+    /// back before leaving. Reads are paused during this quiet grace period.
+    var emptyChannelGraceSeconds: Int       = 30
     var textChannels: [String]              = []
     var enabled: Bool                       = true
 
@@ -116,9 +139,11 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         keepShort: Bool = false,
         smartShortenWithAppleIntelligence: Bool = false,
         ignoreEmojiSpam: Bool = false,
+        suppressRepeatedSpeakerNames: Bool = true,
         preferredVoiceIdentifier: String = "",
         connectionMode: AnnouncerConnectionMode = .fixed,
         connectionMinutes: Int = 20,
+        emptyChannelGraceSeconds: Int = 30,
         textChannels: [String] = [],
         enabled: Bool = true
     ) {
@@ -140,9 +165,11 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         self.keepShort = keepShort
         self.smartShortenWithAppleIntelligence = smartShortenWithAppleIntelligence
         self.ignoreEmojiSpam = ignoreEmojiSpam
+        self.suppressRepeatedSpeakerNames = suppressRepeatedSpeakerNames
         self.preferredVoiceIdentifier = preferredVoiceIdentifier
         self.connectionMode = connectionMode
         self.connectionMinutes = connectionMinutes
+        self.emptyChannelGraceSeconds = emptyChannelGraceSeconds
         self.textChannels = textChannels
         self.enabled = enabled
     }
@@ -166,9 +193,11 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         case keepShort
         case smartShortenWithAppleIntelligence
         case ignoreEmojiSpam
+        case suppressRepeatedSpeakerNames
         case preferredVoiceIdentifier
         case connectionMode
         case connectionMinutes
+        case emptyChannelGraceSeconds
         case textChannels
         case enabled
     }
@@ -193,9 +222,11 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         keepShort = try container.decodeIfPresent(Bool.self, forKey: .keepShort) ?? false
         smartShortenWithAppleIntelligence = try container.decodeIfPresent(Bool.self, forKey: .smartShortenWithAppleIntelligence) ?? false
         ignoreEmojiSpam = try container.decodeIfPresent(Bool.self, forKey: .ignoreEmojiSpam) ?? false
+        suppressRepeatedSpeakerNames = try container.decodeIfPresent(Bool.self, forKey: .suppressRepeatedSpeakerNames) ?? true
         preferredVoiceIdentifier = try container.decodeIfPresent(String.self, forKey: .preferredVoiceIdentifier) ?? ""
         connectionMode = try container.decodeIfPresent(AnnouncerConnectionMode.self, forKey: .connectionMode) ?? .fixed
         connectionMinutes = try container.decodeIfPresent(Int.self, forKey: .connectionMinutes) ?? 20
+        emptyChannelGraceSeconds = try container.decodeIfPresent(Int.self, forKey: .emptyChannelGraceSeconds) ?? 30
         textChannels = try container.decodeIfPresent([String].self, forKey: .textChannels) ?? []
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
     }
@@ -229,6 +260,10 @@ struct VoiceSettings: Codable, Hashable {
     /// Per-voice-channel announcer configurations created in the Announcer tab.
     var announcerConfigs: [AnnouncerVoiceChannelConfig] = []
 
+    /// Suppresses automatic joins and recovery for one explicitly disconnected
+    /// Announcer until the time expires or a user manually joins/rejoins it.
+    var manualAnnouncerHold: AnnouncerManualHold?
+
     init() {}
 
     enum CodingKeys: String, CodingKey {
@@ -239,6 +274,7 @@ struct VoiceSettings: Codable, Hashable {
         case textChannelSourceEnabled
         case autoConnect
         case announcerConfigs
+        case manualAnnouncerHold
     }
 
     init(from decoder: Decoder) throws {
@@ -250,5 +286,6 @@ struct VoiceSettings: Codable, Hashable {
         textChannelSourceEnabled = try container.decodeIfPresent(Bool.self, forKey: .textChannelSourceEnabled) ?? false
         autoConnect = try container.decodeIfPresent(Bool.self, forKey: .autoConnect) ?? false
         announcerConfigs = try container.decodeIfPresent([AnnouncerVoiceChannelConfig].self, forKey: .announcerConfigs) ?? []
+        manualAnnouncerHold = try container.decodeIfPresent(AnnouncerManualHold.self, forKey: .manualAnnouncerHold)
     }
 }

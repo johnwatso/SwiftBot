@@ -198,9 +198,9 @@ struct CommandCatalog {
             CommandEntry(
                 name: "announce",
                 aliases: [],
-                usage: "/announce [join|rejoin]",
-                description: "Joins the caller's configured Announcer voice channel and reads its text feed aloud. Use rejoin to force a clean disconnect/reconnect if the voice connection is stuck.",
-                examples: ["/announce join", "/announce rejoin"],
+                usage: "/announce [join|rejoin|disconnect]",
+                description: "Joins the caller's configured Announcer voice channel and reads its text feed aloud. Use rejoin to force a clean reconnect if the voice connection is stuck, or disconnect to pause automatic joins and recovery for one hour.",
+                examples: ["/announce join", "/announce rejoin", "/announce disconnect"],
                 category: .general,
                 isAdminOnly: false
             ),

@@ -157,6 +157,9 @@ extension AppModel {
                     if action == "rejoin" {
                         return await self.handleAnnounceRejoinSlash(raw: raw)
                     }
+                    if action == "disconnect" {
+                        return await self.handleAnnounceDisconnectSlash(raw: raw)
+                    }
                     return await self.handleAnnounceJoinSlash(raw: raw)
                 },
                 randomTeamsCommand: { [weak self] teamCount, maxSize, raw in

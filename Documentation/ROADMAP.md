@@ -9,6 +9,14 @@
 
 ## Recent Engineering Log
 
+### 2026-08-18 — Announcer operator controls and quiet-presence hardening
+
+- [x] Added `/announce disconnect`, which leaves the caller's configured Announcer channel and persists a one-hour manual hold. Automatic startup, event-driven joins, and recovery stay suppressed until the hold expires; `/announce join` or `/announce rejoin` clears it immediately.
+- [x] Made the existing bounded voice recovery visible as a five-minute circuit breaker after its retry budget is exhausted, with its reason, retry count, and timing included in diagnostic exports.
+- [x] Expanded the quiet health watchdog to validate the complete media path, UDP keepalive failures, and stalled active speech rather than trusting a connected WebSocket alone.
+- [x] Updated Until last person leaves to pause speech immediately when the room empties, then disconnect after a configurable 5–120 second grace period (30 seconds by default). A returning human cancels the leave and resumes reads.
+- [x] Added default-on repeated-speaker suppression: the first message identifies the author, then subsequent consecutive reads omit the name for up to two minutes. A different speaker, a new Announcer session, or a two-minute quiet gap restores attribution.
+
 ### 2026-08-18 — Replay-safe voice handshakes
 
 - [x] Treat a replayed Discord voice handshake for the active session as idempotent, and route a genuinely new handshake that races an old active pipeline through the existing clean-rejoin flow instead of failing the Announcer with a busy-pipeline error.

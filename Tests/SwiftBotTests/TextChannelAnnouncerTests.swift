@@ -168,6 +168,43 @@ final class TextChannelAnnouncerTests: XCTestCase {
         XCTAssertTrue(texts.contains("Bob: Hello from channel 2"))
     }
 
+    func testTextChannelAnnouncerSkipsRepeatedSpeakerNameUntilTwoMinuteGap() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+        await announcer.setPaused(true)
+        let watcher = TextChannelAnnouncer(announcer: announcer)
+        await watcher.setWatchedChannel("channel-1")
+
+        func message(id: String, userID: String, name: String, content: String) -> GatewayMessageCreateEvent {
+            GatewayMessageCreateEvent(
+                rawMap: [:],
+                content: content,
+                author: [:],
+                username: name,
+                displayName: name,
+                channelID: "channel-1",
+                userID: userID,
+                guildID: "guild-1",
+                messageID: id,
+                isBot: false,
+                avatarHash: nil
+            )
+        }
+
+        let start = Date(timeIntervalSinceReferenceDate: 10_000)
+        await watcher.handle(message(id: "1", userID: "john", name: "John", content: "Big Ted"), now: start)
+        await watcher.handle(message(id: "2", userID: "john", name: "John", content: "is online"), now: start.addingTimeInterval(30))
+        await watcher.handle(message(id: "3", userID: "alex", name: "Alex", content: "hello"), now: start.addingTimeInterval(40))
+        await watcher.handle(message(id: "4", userID: "john", name: "John", content: "welcome"), now: start.addingTimeInterval(50))
+        await watcher.handle(message(id: "5", userID: "john", name: "John", content: "back again"), now: start.addingTimeInterval(171))
+
+        let spoken = await announcer.pending.map(\.text)
+        XCTAssertEqual(
+            spoken,
+            ["John: Big Ted", "is online", "Alex: hello", "John: welcome", "John: back again"]
+        )
+    }
+
     /// A message over the reading cap is skipped when the config doesn't
     /// shorten — but the skip must be visible in the debug log with an
     /// actionable reason, and flipping `summariseLong` must get the message

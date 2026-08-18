@@ -164,7 +164,7 @@ struct VoiceView: View {
             Button {
                 Task {
                     if app.voiceConnectionStatus.isConnected {
-                        await app.disconnectVoice()
+                        await app.manuallyDisconnectAnnouncerFromUI()
                     } else {
                         await app.reconnectAnnouncerVoiceFromUI()
                     }
@@ -187,7 +187,7 @@ struct VoiceView: View {
                     Label("Reconnect", systemImage: "arrow.clockwise")
                 }
                 Button {
-                    Task { await app.disconnectVoice() }
+                    Task { await app.manuallyDisconnectAnnouncerFromUI() }
                 } label: {
                     Label("Disconnect", systemImage: "phone.down.fill")
                 }
@@ -559,6 +559,12 @@ struct VoiceView: View {
                         label: "Next announcement",
                         value: queueStateText
                     )
+                    if let hold = app.announcerManualHoldStatusText {
+                        currentStateRow(symbol: "pause.circle.fill", label: "Manual hold", value: hold)
+                    }
+                    if let breaker = app.announcerRecoveryCircuitBreakerStatusText {
+                        currentStateRow(symbol: "shield.lefthalf.filled", label: "Recovery", value: breaker)
+                    }
                 }
 
                 HStack {
@@ -1298,11 +1304,25 @@ private struct AnnouncerConfigSheet: View {
                             .labelsHidden()
                             .fixedSize()
                         }
+                    } else {
+                        HStack {
+                            Text("Empty-channel grace")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Picker("", selection: $config.emptyChannelGraceSeconds) {
+                                ForEach([5, 15, 30, 60, 120], id: \.self) { seconds in
+                                    Text("\(seconds) sec").tag(seconds)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                        }
                     }
 
                     Text(config.connectionMode == .fixed
                          ? "SwiftBot leaves after \(config.connectionMinutes) minutes of reading, even if users are still present."
-                         : "SwiftBot stays until the last member leaves the voice channel.")
+                         : "SwiftBot pauses reads as soon as the room is empty, then leaves if nobody returns within \(config.emptyChannelGraceSeconds) seconds.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1396,10 +1416,11 @@ private struct AnnouncerConfigSheet: View {
                     Toggle("Skip bot messages", isOn: $config.skipBots)
                     Toggle("Ignore emoji spam", isOn: $config.ignoreEmojiSpam)
                     Toggle("Keep announcements short", isOn: $config.keepShort)
+                    Toggle("Skip repeated speaker names", isOn: $config.suppressRepeatedSpeakerNames)
                 }
                 .toggleStyle(.checkbox)
 
-                Text("Messages over 1000 characters (about a minute of speech) are trimmed instead of skipped, ending with a spoken \"message continues\". \"Keep announcements short\" trims everything to 160 characters instead.")
+                Text("Repeated messages from the same person omit their name for two minutes, until somebody else speaks. Messages over 1000 characters are trimmed instead of skipped, ending with a spoken \"message continues\". \"Keep announcements short\" trims everything to 160 characters instead.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

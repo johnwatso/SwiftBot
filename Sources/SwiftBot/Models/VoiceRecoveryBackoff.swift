@@ -57,3 +57,37 @@ struct VoiceRecoveryBackoff: Sendable, Equatable {
         inProgress = false
     }
 }
+
+/// A short, explicit cool-off after the bounded recovery budget is exhausted.
+/// It stops independent auto-join triggers from immediately rebuilding the
+/// same flapping voice session. A manual join or rejoin always clears it.
+struct AnnouncerRecoveryCircuitBreaker: Sendable, Equatable {
+    private(set) var openedAt: Date?
+    private(set) var resumesAt: Date?
+    private(set) var reason: String?
+    private(set) var exhaustedAttempts: Int = 0
+
+    var isOpen: Bool {
+        guard let resumesAt else { return false }
+        return Date() < resumesAt
+    }
+
+    mutating func trip(reason: String, attempts: Int, now: Date = Date(), cooldown: TimeInterval = 5 * 60) {
+        openedAt = now
+        resumesAt = now.addingTimeInterval(cooldown)
+        self.reason = reason
+        exhaustedAttempts = attempts
+    }
+
+    mutating func reset() {
+        openedAt = nil
+        resumesAt = nil
+        reason = nil
+        exhaustedAttempts = 0
+    }
+
+    func remainingSeconds(now: Date = Date()) -> Int {
+        guard let resumesAt else { return 0 }
+        return max(0, Int(resumesAt.timeIntervalSince(now).rounded(.up)))
+    }
+}

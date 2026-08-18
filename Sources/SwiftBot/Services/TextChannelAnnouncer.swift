@@ -9,6 +9,11 @@ struct AnnouncerReadOptions: Sendable {
     var summariseLong: Bool = false
     var keepShort: Bool = false
     var ignoreEmojiSpam: Bool = false
+    /// Say a speaker's name once, then omit it for consecutive reads from that
+    /// same person until another speaker takes over or the conversation goes
+    /// quiet for the configured interval.
+    var suppressRepeatedSpeakerNames: Bool = true
+    var repeatedSpeakerNameTimeout: TimeInterval = 120
 }
 
 /// Watches a single text channel and enqueues each new message into a
@@ -41,6 +46,8 @@ actor TextChannelAnnouncer {
     /// emoji spam, link-only, …). Without this, a filtered message and a
     /// broken announcer look identical from the outside.
     private var onDebug: (@Sendable (String) async -> Void)?
+    private var lastSpokenAuthorID: String?
+    private var lastSpokenAuthorAt: Date?
 
     init(announcer: VoiceAnnouncementService) {
         self.announcer = announcer
@@ -62,6 +69,11 @@ actor TextChannelAnnouncer {
         watchedChannelIDs = Set(channelIDs)
     }
 
+    func resetSpeakerAttribution() {
+        lastSpokenAuthorID = nil
+        lastSpokenAuthorAt = nil
+    }
+
     var watchedChannels: Set<String> { watchedChannelIDs }
 
     /// Hook to call from `GatewayEventDispatcher.onMessageCreate`. `channelNames`
@@ -71,14 +83,22 @@ actor TextChannelAnnouncer {
         displayNameOverride: String? = nil,
         channelNames: [String: String] = [:],
         roleNames: [String: String] = [:],
-        options: AnnouncerReadOptions = AnnouncerReadOptions()
+        options: AnnouncerReadOptions = AnnouncerReadOptions(),
+        now: Date = Date()
     ) async {
         guard watchedChannelIDs.contains(event.channelID) else { return }
         switch speechDecision(
             for: event, displayNameOverride: displayNameOverride,
             channelNames: channelNames, roleNames: roleNames, options: options
         ) {
-        case .speak(let spoken):
+        case let .speak(body, author, authorID):
+            let spoken = formatAnnouncement(
+                body: body,
+                author: author,
+                authorID: authorID,
+                options: options,
+                now: now
+            )
             await announcer.enqueue(spoken)
         case .skip(let reason):
             let author = event.displayName.isEmpty ? "someone" : event.displayName
@@ -89,7 +109,7 @@ actor TextChannelAnnouncer {
     // MARK: - Formatting
 
     private enum SpeechDecision {
-        case speak(String)
+        case speak(body: String, author: String, authorID: String)
         case skip(reason: String)
     }
 
@@ -134,7 +154,28 @@ actor TextChannelAnnouncer {
         } else {
             "Someone"
         }
-        return .speak("\(author): \(body)")
+        let authorID = event.userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .speak(body: body, author: author, authorID: authorID.isEmpty ? author : authorID)
+    }
+
+    private func formatAnnouncement(
+        body: String,
+        author: String,
+        authorID: String,
+        options: AnnouncerReadOptions,
+        now: Date
+    ) -> String {
+        defer {
+            lastSpokenAuthorID = authorID
+            lastSpokenAuthorAt = now
+        }
+        guard options.suppressRepeatedSpeakerNames,
+              lastSpokenAuthorID == authorID,
+              let lastSpokenAuthorAt,
+              now.timeIntervalSince(lastSpokenAuthorAt) < options.repeatedSpeakerNameTimeout else {
+            return "\(author): \(body)"
+        }
+        return body
     }
 
     private enum BodyOutcome {

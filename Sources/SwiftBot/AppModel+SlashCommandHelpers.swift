@@ -59,10 +59,11 @@ extension AppModel {
             ["name": "timestamp", "description": "Convert a natural-language time into a Discord timestamp", "type": 1, "options": [
                 ["type": 3, "name": "when", "description": "e.g. 6pm, 6pm friday, 6:15 friday the 13th, in 2 hours", "required": true]
             ]],
-            ["name": "announce", "description": "Join or rejoin your configured Announcer voice channel", "type": 1, "options": [
-                ["type": 3, "name": "action", "description": "join | rejoin", "required": false, "choices": [
+            ["name": "announce", "description": "Control your configured Announcer voice channel", "type": 1, "options": [
+                ["type": 3, "name": "action", "description": "join | rejoin | disconnect", "required": false, "choices": [
                     ["name": "join", "value": "join"],
-                    ["name": "rejoin", "value": "rejoin"]
+                    ["name": "rejoin", "value": "rejoin"],
+                    ["name": "disconnect (pause auto-reconnect for 1 hour)", "value": "disconnect"]
                 ]]
             ]],
             ["name": "sweep", "description": "Run, preview, or pause Sweep rules", "type": 1, "options": [

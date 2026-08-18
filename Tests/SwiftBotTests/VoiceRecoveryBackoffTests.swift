@@ -69,4 +69,21 @@ final class VoiceRecoveryBackoffTests: XCTestCase {
         XCTAssertFalse(backoff.inProgress)
         XCTAssertEqual(backoff.beginAttempt(), .seconds(1))
     }
+
+    func testCircuitBreakerOpensThenResetsForManualRecovery() {
+        var breaker = AnnouncerRecoveryCircuitBreaker()
+        let now = Date(timeIntervalSinceReferenceDate: 1_000)
+
+        breaker.trip(reason: "voice recovery exhausted", attempts: 3, now: now, cooldown: 300)
+
+        XCTAssertEqual(breaker.exhaustedAttempts, 3)
+        XCTAssertEqual(breaker.reason, "voice recovery exhausted")
+        XCTAssertEqual(breaker.remainingSeconds(now: now), 300)
+        XCTAssertEqual(breaker.remainingSeconds(now: now.addingTimeInterval(301)), 0)
+
+        breaker.reset()
+        XCTAssertEqual(breaker.exhaustedAttempts, 0)
+        XCTAssertNil(breaker.reason)
+        XCTAssertEqual(breaker.remainingSeconds(now: now), 0)
+    }
 }

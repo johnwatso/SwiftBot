@@ -1676,6 +1676,7 @@ extension AppModel {
             }
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: next.channelId))
+                await handleAnnouncerPresenceChange(channelId: next.channelId, guildId: guildId)
                 await handleAutoJoin(channelId: next.channelId, guildId: guildId, triggeringUserId: userId)
             }
         case .moved(let previous, let next, let startedAt):
@@ -1705,6 +1706,7 @@ extension AppModel {
                 // Without this, the last member hopping to another channel left
                 // the bot parked in an empty one indefinitely.
                 await handleUntilEmptyCheck(leftChannelId: previous.channelId, guildId: guildId)
+                await handleAnnouncerPresenceChange(channelId: next.channelId, guildId: guildId)
             }
         case .left(let previous, let startedAt):
             let elapsed = formatDuration(from: startedAt, to: now)

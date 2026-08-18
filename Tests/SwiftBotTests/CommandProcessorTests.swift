@@ -242,7 +242,7 @@ final class CommandProcessorTests: XCTestCase {
         )
 
         XCTAssertEqual(response.embeds?.first?["title"] as? String, "Announcer")
-        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join` or `/announce rejoin`.")
+        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join`, `/announce rejoin`, or `/announce disconnect`.")
     }
 
     func testPrefixRandomTeamsParsesTeamCountAndMaxSize() async {
@@ -381,6 +381,38 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(result.message, "Join a configured voice channel first, then run `/announce join` again.")
     }
 
+    @MainActor
+    func testAnnounceDisconnectArmsOneHourManualHold() async {
+        let app = AppModel()
+        app.settings.voice.announcerConfigs = [
+            AnnouncerVoiceChannelConfig(
+                id: "config-1",
+                name: "General",
+                voiceChannelID: "voice-1",
+                voiceChannelName: "General",
+                textChannels: ["general"]
+            )
+        ]
+        app.activeVoice = [
+            VoiceMemberPresence(
+                id: "guild-1-user-9",
+                userId: "user-9",
+                username: "Taylor",
+                guildId: "guild-1",
+                channelId: "voice-1",
+                channelName: "General",
+                joinedAt: Date()
+            )
+        ]
+
+        let result = await app.handleAnnounceDisconnectSlash(raw: announceRaw(userID: "user-9", guildID: "guild-1"))
+
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(app.manualAnnouncerHold?.guildID, "guild-1")
+        XCTAssertEqual(app.manualAnnouncerHold?.voiceChannelID, "voice-1")
+        XCTAssertGreaterThan(app.manualAnnouncerHold?.remainingSeconds() ?? 0, 3_500)
+    }
+
     func testRandomTeamsUsesCallersCurrentVoiceChannelAndMaxSize() async {
         let app = AppModel()
         await app.replaceVoicePresence([
@@ -420,6 +452,7 @@ final class CommandProcessorTests: XCTestCase {
 
         XCTAssertFalse(config.introduceOnManualJoin)
         XCTAssertTrue(config.autoJoin)
+        XCTAssertTrue(config.suppressRepeatedSpeakerNames)
     }
 
     func testAnnouncerVoiceChannelConfigDecodesManualIntroEnabled() throws {
@@ -434,6 +467,29 @@ final class CommandProcessorTests: XCTestCase {
         let config = try JSONDecoder().decode(AnnouncerVoiceChannelConfig.self, from: Data(json.utf8))
 
         XCTAssertTrue(config.introduceOnManualJoin)
+    }
+
+    func testVoiceSettingsDecodesManualHoldAndEmptyChannelGrace() throws {
+        let json = """
+        {
+          "announcerConfigs": [{
+            "id": "config-1",
+            "name": "General",
+            "emptyChannelGraceSeconds": 60
+          }],
+          "manualAnnouncerHold": {
+            "guildID": "guild-1",
+            "voiceChannelID": "voice-1",
+            "expiresAt": 12345
+          }
+        }
+        """
+
+        let settings = try JSONDecoder().decode(VoiceSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.announcerConfigs.first?.emptyChannelGraceSeconds, 60)
+        XCTAssertEqual(settings.manualAnnouncerHold?.guildID, "guild-1")
+        XCTAssertEqual(settings.manualAnnouncerHold?.voiceChannelID, "voice-1")
     }
 
     func testFormattedWikiResponseIncludesDetectedFieldsWithoutSummary() {

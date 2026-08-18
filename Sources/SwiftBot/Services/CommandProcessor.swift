@@ -306,8 +306,8 @@ final class CommandProcessor {
             return embed(title: "Sweep", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "announce":
             let action = Self.slashOptionString(named: "action", in: data) ?? "join"
-            guard action == "join" || action == "rejoin" else {
-                return embed(title: "Announcer", description: "Usage: `/announce join` or `/announce rejoin`.", color: 15_790_767)
+            guard action == "join" || action == "rejoin" || action == "disconnect" else {
+                return embed(title: "Announcer", description: "Usage: `/announce join`, `/announce rejoin`, or `/announce disconnect`.", color: 15_790_767)
             }
             let result = await dependencies.announceCommand(action, context.rawLikeMessage)
             return embed(title: "Announcer", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)

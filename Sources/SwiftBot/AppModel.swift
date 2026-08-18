@@ -91,6 +91,8 @@ final class AppModel: ObservableObject {
     @Published var announcerHealth = VoiceAnnouncerHealth()
     var lastSpokenDate: Date = Date()
     var autoDisconnectTask: Task<Void, Never>?
+    var emptyChannelDisconnectTask: Task<Void, Never>?
+    @Published var announcerRecoveryCircuitBreaker = AnnouncerRecoveryCircuitBreaker()
     /// Member keys ("guildID-userID") currently known to be Go Live streaming,
     /// used to detect the false→true stream-start edge in VOICE_STATE_UPDATE.
     var streamingMemberKeys: Set<String> = []

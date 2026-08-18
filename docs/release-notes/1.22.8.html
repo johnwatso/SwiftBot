@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.22.8 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
+    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
+    section.control { --accent: #0e7490; }
+    section.reliability { --accent: #7c3aed; }
+    section.diagnostics { --accent: #b45309; }
+    section.release { --accent: #52606d; }
+    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+      .meta, .summary { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
+      code { background: rgba(159, 176, 194, 0.16); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.22.8</h1>
+    <p class="meta">Version 1.22.8 · Build 2026081816</p>
+    <p class="intro">This Announcer reliability update gives operators a dependable quiet switch, makes an empty room a deliberate exit, and keeps spoken messages natural during solo conversations.</p>
+
+    <section class="control">
+      <h2><span class="badge" aria-hidden="true">⏸️</span>Announcer Controls That Stick</h2>
+      <p class="summary">A deliberate disconnect should not be undone by an automatic recovery a few moments later.</p>
+      <ul>
+        <li><strong><code>/announce disconnect</code>:</strong> leaves the caller’s configured Announcer channel and pauses automatic startup, auto-join, stream-join, and recovery for one hour.</li>
+        <li><strong>Resume on demand:</strong> <code>/announce join</code>, <code>/announce rejoin</code>, and the Announcer reconnect control clear the hold immediately.</li>
+        <li><strong>Empty room behaviour:</strong> Until last person leaves now pauses reads immediately, waits a configurable 5–120 seconds (30 seconds by default), then leaves if nobody returns.</li>
+      </ul>
+    </section>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">🛡️</span>Quieter, More Deliberate Recovery</h2>
+      <p class="summary">SwiftBot now distinguishes a recoverable blip from a voice session that needs time to settle.</p>
+      <ul>
+        <li><strong>Recovery circuit breaker:</strong> after its bounded retry budget is exhausted, the Announcer waits five minutes instead of cycling through new automatic joins.</li>
+        <li><strong>Real media-path health checks:</strong> the watchdog verifies media components, UDP keepalives, and active audio delivery—not merely that a WebSocket remains open.</li>
+        <li><strong>Natural solo reads:</strong> the first message identifies its author, then repeated messages from the same person omit the name for two minutes. A different speaker or a quiet gap restores attribution.</li>
+      </ul>
+    </section>
+
+    <section class="diagnostics">
+      <h2><span class="badge" aria-hidden="true">🩺</span>Better Evidence When Something Does Go Wrong</h2>
+      <p class="summary">The Announcer UI and exported diagnostics now explain why it is quiet, recovering, or intentionally waiting.</p>
+      <ul>
+        <li>Exports include the manual-hold state and the recovery circuit breaker’s reason, retry count, and timing.</li>
+        <li>The Announcer status view shows an active manual hold or recovery cool-off rather than looking silently disconnected.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">🚢</span>Release Details</h2>
+      <ul>
+        <li>Updated <code>MARKETING_VERSION</code> to 1.22.8 and <code>CURRENT_PROJECT_VERSION</code> to 2026081816.</li>
+        <li>Added regression coverage for manual holds, the recovery breaker, empty-channel behavior, and two-minute repeated-speaker suppression.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

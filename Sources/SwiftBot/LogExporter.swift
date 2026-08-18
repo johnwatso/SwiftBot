@@ -141,11 +141,21 @@ enum LogExporter {
         // which can otherwise be dominated by gateway reconnect entries and
         // hide the transition that made an announcer go silent.
         let voiceHealth = app.announcerHealth
+        let manualHold = app.manualAnnouncerHold
+        let breaker = app.announcerRecoveryCircuitBreaker
         out += "=== Voice Announcer ===\n"
         out += "connectionStatus=\(app.voiceConnectionStatus.displayLabel)\n"
         out += "phase=\(voiceHealth.phase.rawValue)\n"
         out += "queueDepth=\(voiceHealth.queueDepth)\n"
         out += "retryStreak=\(voiceHealth.retryStreak)\n"
+        if let manualHold {
+            out += "manualHold=true expiresAt=\(iso.string(from: manualHold.expiresAt)) remainingSeconds=\(manualHold.remainingSeconds())\n"
+        } else {
+            out += "manualHold=false\n"
+        }
+        out += "recoveryCircuitBreakerOpen=\(breaker.isOpen) exhaustedAttempts=\(breaker.exhaustedAttempts)\n"
+        out += "recoveryCircuitBreakerOpenedAt=\(breaker.openedAt.map { iso.string(from: $0) } ?? "-") resumesAt=\(breaker.resumesAt.map { iso.string(from: $0) } ?? "-")\n"
+        out += "recoveryCircuitBreakerReason=\(SwiftBotLogRedactor.redact(breaker.reason ?? "-"))\n"
         out += "lastQueuedAt=\(voiceHealth.lastQueuedAt.map { iso.string(from: $0) } ?? "-")\n"
         out += "lastSpokenAt=\(voiceHealth.lastSpokenAt.map { iso.string(from: $0) } ?? "-")\n"
         out += "lastFailureAt=\(voiceHealth.lastFailureAt.map { iso.string(from: $0) } ?? "-")\n"

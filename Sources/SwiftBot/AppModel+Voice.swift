@@ -93,6 +93,23 @@ extension AppModel {
         await voicePlaybackService.getDaveDiagnostics()
     }
 
+    var manualAnnouncerHold: AnnouncerManualHold? {
+        guard let hold = settings.voice.manualAnnouncerHold, hold.isActive() else { return nil }
+        return hold
+    }
+
+    var announcerManualHoldStatusText: String? {
+        guard let hold = manualAnnouncerHold else { return nil }
+        let minutes = max(1, Int((Double(hold.remainingSeconds()) / 60).rounded(.up)))
+        return "Automatic reconnect paused for \(minutes) min"
+    }
+
+    var announcerRecoveryCircuitBreakerStatusText: String? {
+        guard announcerRecoveryCircuitBreaker.isOpen else { return nil }
+        let minutes = max(1, Int((Double(announcerRecoveryCircuitBreaker.remainingSeconds()) / 60).rounded(.up)))
+        return "Recovery cool-off: \(minutes) min"
+    }
+
     func setVoiceGuildForAnnouncer(_ guildID: String) {
         settings.voice.guildID = guildID
         if settings.voice.voiceChannelID.isEmpty == false {
@@ -123,13 +140,24 @@ extension AppModel {
             deactivateAnnouncerSession()
             return
         }
-        await connectVoice(guildID: guildID, channelID: channelID)
+        await connectVoice(guildID: guildID, channelID: channelID, userInitiated: true)
     }
 
-    func connectVoice(guildID: String, channelID: String, recovering: Bool = false) async {
+    func connectVoice(
+        guildID: String,
+        channelID: String,
+        recovering: Bool = false,
+        userInitiated: Bool = false
+    ) async {
+        if !userInitiated, shouldSuppressAutomaticAnnouncerConnection(guildID: guildID, channelID: channelID) {
+            return
+        }
         if !recovering {
             cancelVoiceRecovery()
             voiceRecovery.reset()
+            if userInitiated {
+                announcerRecoveryCircuitBreaker.reset()
+            }
         }
         // The main gateway has to be live before voice can negotiate.
         guard status == .running else {
@@ -249,6 +277,8 @@ extension AppModel {
 
         if !preserveAnnouncerSession {
             cancelVoiceRecovery()
+            emptyChannelDisconnectTask?.cancel()
+            emptyChannelDisconnectTask = nil
             // A deliberate disconnect must not be undone by a later
             // channel-cache sync re-firing the startup auto-connect.
             voiceAutoConnectArmed = false
@@ -453,6 +483,9 @@ extension AppModel {
             return
         }
 
+        clearManualAnnouncerHold(guildID: target.guildID, channelID: target.channelID, source: "the Announcer reconnect control")
+        announcerRecoveryCircuitBreaker.reset()
+
         if let announcer = voiceAnnouncementServiceStorage {
             await announcer.markRecovering("manual voice reconnect")
         }
@@ -463,7 +496,18 @@ extension AppModel {
         beginWaitingForVoiceLeaveAck()
         await disconnectVoice(preserveAnnouncerSession: true)
         await waitForVoiceLeaveAck()
-        await connectVoice(guildID: target.guildID, channelID: target.channelID, recovering: true)
+        await connectVoice(guildID: target.guildID, channelID: target.channelID, recovering: true, userInitiated: true)
+    }
+
+    /// The local UI equivalent of `/announce disconnect`: it is an explicit
+    /// request to keep the Announcer quiet, not merely a transport teardown.
+    func manuallyDisconnectAnnouncerFromUI() async {
+        let guildID = voicePendingGuildID ?? settings.voice.guildID
+        let channelID = voicePendingChannelID ?? settings.voice.voiceChannelID
+        if !guildID.isEmpty, !channelID.isEmpty {
+            setManualAnnouncerHold(guildID: guildID, channelID: channelID, source: "the Announcer disconnect control")
+        }
+        await disconnectVoice()
     }
 
     @discardableResult
@@ -513,6 +557,10 @@ extension AppModel {
             // Channel lists may not include the configured channel yet; the
             // next cache sync retries.
             guard let target = await self.prepareAnnouncerConfigForUIReconnect(logFailures: false) else { return }
+            guard !self.shouldSuppressAutomaticAnnouncerConnection(guildID: target.guildID, channelID: target.channelID) else {
+                self.voiceAutoConnectArmed = false
+                return
+            }
             self.voiceAutoConnectArmed = false
             self.addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
@@ -533,6 +581,30 @@ extension AppModel {
     /// `rejoin` tears the session down first so the reconnect always runs.
     func handleAnnounceRejoinSlash(raw: [String: DiscordJSON]) async -> (ok: Bool, message: String) {
         await connectAnnouncerFromSlash(raw: raw, rejoin: true)
+    }
+
+    /// `/announce disconnect` — leave the caller's configured Announcer and
+    /// suppress all automatic connection paths for one hour. A later manual
+    /// `/announce join` or `/announce rejoin` clears the hold immediately.
+    func handleAnnounceDisconnectSlash(raw: [String: DiscordJSON]) async -> (ok: Bool, message: String) {
+        guard let guildID = guildId(from: raw), !guildID.isEmpty else {
+            return (false, "Use `/announce disconnect` in a server channel.")
+        }
+        guard let userID = authorId(from: raw), !userID.isEmpty else {
+            return (false, "I couldn't identify who ran `/announce disconnect`.")
+        }
+        guard let presence = activeVoice.first(where: { $0.guildId == guildID && $0.userId == userID }) else {
+            return (false, "Join the configured Announcer voice channel before using `/announce disconnect`.")
+        }
+        guard let config = settings.voice.announcerConfigs.first(where: {
+            $0.enabled && $0.voiceChannelID == presence.channelId
+        }) else {
+            return (false, "No enabled Announcer configuration matches your current voice channel.")
+        }
+
+        setManualAnnouncerHold(guildID: guildID, channelID: config.voiceChannelID, source: "`/announce disconnect`")
+        await disconnectVoice()
+        return (true, "Disconnected from \(config.voiceChannelName). Automatic joins and recovery are paused for one hour; `/announce join` or `/announce rejoin` resumes now.")
     }
 
     /// Shared implementation for `/announce join` and `/announce rejoin`.
@@ -559,6 +631,9 @@ extension AppModel {
             return (false, "No enabled Announcer configuration matches your current voice channel.")
         }
 
+        clearManualAnnouncerHold(guildID: guildID, channelID: config.voiceChannelID, source: "`/announce \(verb)`")
+        announcerRecoveryCircuitBreaker.reset()
+
         // For rejoin, tear down any existing session first so the connect below
         // isn't skipped by connectVoice's "already connected/connecting" guard.
         // Waiting for Discord's leave ack avoids the re-join being ignored as
@@ -573,7 +648,7 @@ extension AppModel {
             return (false, "The Announcer configuration for \(config.voiceChannelName) needs at least one readable text channel.")
         }
 
-        await connectVoice(guildID: guildID, channelID: config.voiceChannelID)
+        await connectVoice(guildID: guildID, channelID: config.voiceChannelID, userInitiated: true)
         if case let .failed(reason) = voiceConnectionStatus {
             return (false, reason)
         }
@@ -618,7 +693,8 @@ extension AppModel {
             ignoreLinks: activeConfig?.ignoreLinks ?? true,
             summariseLong: shortensLongMessages,
             keepShort: activeConfig?.keepShort ?? false,
-            ignoreEmojiSpam: activeConfig?.ignoreEmojiSpam ?? false
+            ignoreEmojiSpam: activeConfig?.ignoreEmojiSpam ?? false,
+            suppressRepeatedSpeakerNames: activeConfig?.suppressRepeatedSpeakerNames ?? true
         )
         let cachedDisplayName = await discordCache.userName(for: event.userID)
         await watcher.handle(
@@ -900,6 +976,7 @@ extension AppModel {
     private func scheduleVoiceAutoRecovery(reason: String) -> Bool {
         let guildID = voicePendingGuildID ?? settings.voice.guildID
         let channelID = voicePendingChannelID ?? settings.voice.voiceChannelID
+        guard !shouldSuppressAutomaticAnnouncerConnection(guildID: guildID, channelID: channelID) else { return false }
         guard status == .running, !guildID.isEmpty, !channelID.isEmpty else { return false }
         guard let delay = voiceRecovery.beginAttempt() else { return false }
 
@@ -968,9 +1045,13 @@ extension AppModel {
         if scheduleVoiceAutoRecovery(reason: "the previous rejoin attempt failed") {
             return true
         }
+        announcerRecoveryCircuitBreaker.trip(
+            reason: "voice recovery exhausted after \(voiceRecovery.attemptsMade) attempts",
+            attempts: voiceRecovery.attemptsMade
+        )
         addVoiceLogEntry(VoiceEventLogEntry(
             time: Date(),
-            description: "Voice auto-rejoin failed with no attempts remaining; announcer session was stopped."
+            description: "Voice auto-rejoin failed with no attempts remaining; recovery circuit breaker is open for 5 minutes and the announcer session was stopped."
         ))
         return false
     }
@@ -979,6 +1060,59 @@ extension AppModel {
         voiceRecoveryTask?.cancel()
         voiceRecoveryTask = nil
         voiceRecovery.cancel()
+    }
+
+    private func setManualAnnouncerHold(guildID: String, channelID: String, source: String) {
+        let hold = AnnouncerManualHold(
+            guildID: guildID,
+            voiceChannelID: channelID,
+            expiresAt: Date().addingTimeInterval(60 * 60)
+        )
+        settings.voice.manualAnnouncerHold = hold
+        voiceAutoConnectArmed = false
+        cancelVoiceRecovery()
+        announcerRecoveryCircuitBreaker.reset()
+        persistSettingsIfPossible()
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Announcer manual hold armed by \(source) for \(channelID), expires at \(hold.expiresAt.formatted(date: .omitted, time: .shortened))."
+        ))
+    }
+
+    private func clearManualAnnouncerHold(guildID: String, channelID: String, source: String) {
+        guard let hold = settings.voice.manualAnnouncerHold,
+              hold.guildID == guildID,
+              hold.voiceChannelID == channelID else { return }
+        settings.voice.manualAnnouncerHold = nil
+        persistSettingsIfPossible()
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Announcer manual hold cleared by \(source)."
+        ))
+    }
+
+    /// Returns true when a user explicitly asked this Announcer to remain
+    /// quiet, or when its bounded recovery budget has just been exhausted.
+    /// Every automatic entry point calls this before activating a config.
+    private func shouldSuppressAutomaticAnnouncerConnection(guildID: String, channelID: String) -> Bool {
+        if let hold = settings.voice.manualAnnouncerHold,
+           hold.guildID == guildID,
+           hold.voiceChannelID == channelID,
+           hold.isActive() {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Automatic Announcer connection suppressed by manual hold (\(hold.remainingSeconds()) seconds remaining)."
+            ))
+            return true
+        }
+        if announcerRecoveryCircuitBreaker.isOpen {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Automatic Announcer connection suppressed by recovery circuit breaker (\(announcerRecoveryCircuitBreaker.remainingSeconds()) seconds remaining)."
+            ))
+            return true
+        }
+        return false
     }
 
     private func startAnnouncerHealthWatchdog() {
@@ -999,10 +1133,38 @@ extension AppModel {
 
     private func evaluateAnnouncerHealthWatchdog() async {
         guard voiceConnectionStatus.isConnected else { return }
-        guard announcerHealth.isStalled(threshold: 60) else { return }
         guard let announcer = voiceAnnouncementServiceStorage else { return }
 
-        let reason = "announcer health watchdog: \(announcerHealth.phase.displayLabel.lowercased()) for too long"
+        if announcerHealth.isStalled(threshold: 60) {
+            let reason = "announcer health watchdog: \(announcerHealth.phase.displayLabel.lowercased()) for too long"
+            await announcer.markRecovering(reason)
+            _ = scheduleVoiceAutoRecovery(reason: reason)
+            return
+        }
+
+        // A connected WebSocket alone is not proof that the Announcer can
+        // speak. Check the complete media path and the paced audio/keepalive
+        // signals without producing any audible probe packet.
+        let diagnostics = await voicePlaybackService.diagnosticsSnapshot()
+        let mediaPathReady = diagnostics.hasGateway && diagnostics.hasTransport &&
+            diagnostics.hasEncryption && diagnostics.hasOpusEncoder && diagnostics.hasSSRC
+        let audioHasGoneSilentWhileSpeaking: Bool = {
+            guard diagnostics.isSpeaking,
+                  let lastAudio = diagnostics.lastAudioFrameSentAt else { return diagnostics.isSpeaking }
+            return Date().timeIntervalSince(lastAudio) >= 15
+        }()
+        let reason: String?
+        if !mediaPathReady {
+            reason = "announcer health probe: connected state is missing a required media component"
+        } else if diagnostics.keepaliveFailures >= 3 {
+            reason = "announcer health probe: \(diagnostics.keepaliveFailures) consecutive UDP keepalive failures"
+        } else if audioHasGoneSilentWhileSpeaking {
+            reason = "announcer health probe: speech is active but no audio frame was sent for 15 seconds"
+        } else {
+            reason = nil
+        }
+        guard let reason else { return }
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: reason))
         await announcer.markRecovering(reason)
         _ = scheduleVoiceAutoRecovery(reason: reason)
     }
@@ -1092,6 +1254,7 @@ extension AppModel {
         guard triggeringUserId != botUserId else { return }
         // Only act when the bot is online but not already in a voice channel
         guard status == .running, !voiceConnectionStatus.isConnected else { return }
+        guard !shouldSuppressAutomaticAnnouncerConnection(guildID: guildId, channelID: channelId) else { return }
 
         guard let config = settings.voice.announcerConfigs.first(where: {
             $0.autoJoin && $0.voiceChannelID == channelId && $0.enabled
@@ -1153,6 +1316,7 @@ extension AppModel {
         guard triggeringUserId != botUserId else { return }
         // Only act when the bot is online but not already in a voice channel.
         guard status == .running, !voiceConnectionStatus.isConnected else { return }
+        guard !shouldSuppressAutomaticAnnouncerConnection(guildID: guildId, channelID: channelId) else { return }
 
         guard let config = settings.voice.announcerConfigs.first(where: {
             $0.autoJoinOnStream && $0.voiceChannelID == channelId && $0.enabled
@@ -1245,6 +1409,7 @@ extension AppModel {
             scheduleVoiceSettingsFinalSave()
         }
         if let watcher = textChannelAnnouncer {
+            await watcher.resetSpeakerAttribution()
             var allWatchedIDs = channelIDs
             if config.readVoiceChannelChat, !config.voiceChannelID.isEmpty {
                 allWatchedIDs.append(config.voiceChannelID)
@@ -1307,7 +1472,10 @@ extension AppModel {
             persistSettingsIfPossible()
         }
         if let watcher = textChannelAnnouncerStorage {
-            Task { await watcher.setWatchedChannel(nil) }
+            Task {
+                await watcher.resetSpeakerAttribution()
+                await watcher.setWatchedChannel(nil)
+            }
         }
     }
 
@@ -1357,35 +1525,73 @@ extension AppModel {
         voiceConnectionStatus.isConnected && voicePendingChannelID == channelID
     }
 
-    /// Called from the gateway whenever a member leaves a voice channel — by
-    /// disconnecting outright or by moving to a different one. If the bot is
-    /// connected with `untilEmpty` mode and the channel is now empty (no
-    /// non-bot members), disconnects automatically.
-    func handleUntilEmptyCheck(leftChannelId: String, guildId: String) async {
+    /// Re-evaluate the optional presence-aware Announcer mode after any voice
+    /// presence change. When the last human leaves, reads pause immediately and
+    /// a short grace period avoids needless leave/rejoin churn for a brief hop.
+    func handleAnnouncerPresenceChange(channelId: String, guildId: String) async {
         guard voiceConnectionStatus.isConnected,
-              voicePendingChannelID == leftChannelId else { return }
+              voicePendingChannelID == channelId else { return }
 
         guard let config = settings.voice.announcerConfigs.first(where: {
-            $0.voiceChannelID == leftChannelId && $0.enabled && $0.connectionMode == .untilEmpty
+            $0.voiceChannelID == channelId && $0.enabled && $0.connectionMode == .untilEmpty
         }) else { return }
 
-        // No bot keeps the channel alive — not another integration, and not
-        // SwiftBot itself, which is sitting in the very channel it is deciding
-        // whether to leave. Checking only `botUserId` left the bot parked
-        // forever whenever any other bot was present, and whenever our own id
-        // hadn't been resolved yet.
         let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
         let humanMembers = activeVoice.filter {
-            $0.guildId == guildId && $0.channelId == leftChannelId && !botIDs.contains($0.userId)
+            $0.guildId == guildId && $0.channelId == channelId && !botIDs.contains($0.userId)
         }
-        guard humanMembers.isEmpty else { return }
+        guard humanMembers.isEmpty else {
+            if emptyChannelDisconnectTask != nil {
+                emptyChannelDisconnectTask?.cancel()
+                emptyChannelDisconnectTask = nil
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Human member returned to \"\(config.name)\" during the empty-channel grace period; Announcer reads resumed."
+                ))
+                if let announcer = voiceAnnouncementServiceStorage {
+                    await announcer.setPaused(false)
+                }
+            }
+            return
+        }
 
-        await autoDisconnect(reason: "All members left \"\(config.name)\" — disconnecting (until-empty mode).")
+        guard emptyChannelDisconnectTask == nil else { return }
+        let graceSeconds = min(120, max(0, config.emptyChannelGraceSeconds))
+        if graceSeconds == 0 {
+            await autoDisconnect(reason: "No human members remain in \"\(config.name)\"; disconnecting immediately (empty-channel grace disabled).")
+            return
+        }
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "No human members remain in \"\(config.name)\"; pausing reads and waiting \(graceSeconds) seconds before disconnecting."
+        ))
+        if let announcer = voiceAnnouncementServiceStorage {
+            await announcer.setPaused(true)
+        }
+        emptyChannelDisconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Double(graceSeconds)))
+            guard !Task.isCancelled, let self else { return }
+            self.emptyChannelDisconnectTask = nil
+            let botIDs = self.knownBotUserIds.union(self.botUserId.map { [$0] } ?? [])
+            let stillEmpty = self.activeVoice.allSatisfy {
+                $0.guildId != guildId || $0.channelId != channelId || botIDs.contains($0.userId)
+            }
+            guard stillEmpty, self.voiceConnectionStatus.isConnected,
+                  self.voicePendingChannelID == channelId else { return }
+            await self.autoDisconnect(reason: "No members returned to \"\(config.name)\" during the \(graceSeconds)-second empty-channel grace period.")
+        }
+    }
+
+    /// Compatibility entry point for the leave/move dispatcher.
+    func handleUntilEmptyCheck(leftChannelId: String, guildId: String) async {
+        await handleAnnouncerPresenceChange(channelId: leftChannelId, guildId: guildId)
     }
 
     private func autoDisconnect(reason: String) async {
         autoDisconnectTask?.cancel()
         autoDisconnectTask = nil
+        emptyChannelDisconnectTask?.cancel()
+        emptyChannelDisconnectTask = nil
         addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: reason))
         await disconnectVoice()
     }
