@@ -1,5 +1,13 @@
 import Foundation
 
+struct GatewayReconnectDiagnostic {
+    let at: Date
+    let generation: Int
+    let delaySeconds: Int
+    let closeCode: Int?
+    let reason: String
+}
+
 struct ConnectionDiagnostics {
     static let gatewayHeartbeatWarningThresholdMs = 750
     static let gatewayHeartbeatCriticalThresholdMs = 1_500
@@ -19,6 +27,7 @@ struct ConnectionDiagnostics {
     var lastTestMessage: String = ""
     /// Last non-normal WebSocket close code from Discord (e.g. 4004, 4014). Nil = no abnormal close.
     var lastGatewayCloseCode: Int?
+    private(set) var recentGatewayReconnects: [GatewayReconnectDiagnostic] = []
 
     mutating func recordHeartbeatLatency(_ latencyMs: Int) {
         heartbeatLatencySamplesMs.append(latencyMs)
@@ -26,6 +35,13 @@ struct ConnectionDiagnostics {
             heartbeatLatencySamplesMs.removeFirst(heartbeatLatencySamplesMs.count - Self.heartbeatSampleLimit)
         }
         heartbeatLatencyMs = Self.median(of: heartbeatLatencySamplesMs)
+    }
+
+    mutating func recordGatewayReconnect(_ diagnostic: GatewayReconnectDiagnostic) {
+        recentGatewayReconnects.append(diagnostic)
+        if recentGatewayReconnects.count > 20 {
+            recentGatewayReconnects.removeFirst(recentGatewayReconnects.count - 20)
+        }
     }
 
     static func isGatewayHeartbeatWarning(_ latencyMs: Int?) -> Bool {

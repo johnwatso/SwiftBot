@@ -97,6 +97,18 @@ final class VoicePlaybackServiceTests: XCTestCase {
         XCTAssertFalse(stopped)
     }
 
+    func testRepeatedConnectForSameActiveServerIsIgnored() async throws {
+        let (playback, gateway, _) = makePipeline()
+        try await connect(playback, gateway)
+
+        try await playback.connect(server: gateway.server)
+
+        let status = await playback.currentStatus
+        let connects = await gateway.connectCount
+        XCTAssertEqual(status, .connected)
+        XCTAssertEqual(connects, 1, "replayed credentials must not reopen an active voice WebSocket")
+    }
+
     func testSpeakSendsFramesOverTransport() async throws {
         let (playback, gateway, transport) = makePipeline()
         try await connect(playback, gateway)

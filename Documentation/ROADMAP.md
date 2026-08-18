@@ -9,6 +9,11 @@
 
 ## Recent Engineering Log
 
+### 2026-08-18 — Replay-safe voice handshakes
+
+- [x] Treat a replayed Discord voice handshake for the active session as idempotent, and route a genuinely new handshake that races an old active pipeline through the existing clean-rejoin flow instead of failing the Announcer with a busy-pipeline error.
+- [x] Preserve the last 20 main-gateway reconnect causes, close codes, generations, and backoff delays in the activity log and diagnostic export, so a repeat gateway drop can be tied to its source rather than inferred from a transient status label.
+
 ### 2026-08-17 — Announcer stuck-recovery escape hatch
 
 - [x] Bound queued DAVE/media recovery: if the announcer remains paused in recovery for 60 seconds, its existing health watchdog now initiates the normal clean voice rejoin instead of leaving it silently connected forever.

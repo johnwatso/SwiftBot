@@ -2,6 +2,14 @@ import Foundation
 import OSLog
 
 actor DiscordGatewayConnection {
+    struct ReconnectDiagnostic: Sendable, Equatable {
+        let at: Date
+        let generation: Int
+        let delaySeconds: Int
+        let closeCode: Int?
+        let reason: String
+    }
+
     protocol Socket: AnyObject, Sendable {
         var closeCode: URLSessionWebSocketTask.CloseCode { get }
         func resume()
@@ -44,11 +52,16 @@ actor DiscordGatewayConnection {
     private var reconnectAttempts = 0
     private var userInitiatedDisconnect = false
     private var connectionGeneration = 0
+    /// Set only for a replacement socket that can preserve the prior Discord
+    /// session. A successful RESUME keeps the bot's voice state intact, so
+    /// users do not see a leave/join notification during a brief WS drop.
+    private var resumeOnHelloGeneration: Int?
 
     private var onPayload: ((GatewayPayload) async -> Void)?
     private var onConnectionState: ((BotStatus) async -> Void)?
     private var onHeartbeatLatency: ((Int) async -> Void)?
     private var onGatewayClose: ((Int) async -> Void)?
+    private var onReconnectDiagnostic: ((ReconnectDiagnostic) async -> Void)?
 
     init(
         session: URLSession,
@@ -76,6 +89,10 @@ actor DiscordGatewayConnection {
         onGatewayClose = handler
     }
 
+    func setOnReconnectDiagnostic(_ handler: @escaping (ReconnectDiagnostic) async -> Void) {
+        onReconnectDiagnostic = handler
+    }
+
     func connect(token: String) async {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -89,6 +106,9 @@ actor DiscordGatewayConnection {
         reconnectTask = nil
         reconnectAttempts = 0
         botToken = normalizedToken
+        sequence = nil
+        sessionId = nil
+        resumeOnHelloGeneration = nil
         Self.logger.info("Gateway connect initiated")
         await openGatewayConnection(token: normalizedToken, isReconnect: false)
     }
@@ -110,6 +130,7 @@ actor DiscordGatewayConnection {
         botToken = nil
         sequence = nil
         sessionId = nil
+        resumeOnHelloGeneration = nil
         await onConnectionState?(.stopped)
     }
 
@@ -169,7 +190,10 @@ actor DiscordGatewayConnection {
                     await onGatewayClose?(closeRawValue)
                 }
                 if generation == connectionGeneration {
-                    await scheduleReconnect(reason: "Gateway receive failed: \(error.localizedDescription)")
+                    await scheduleReconnect(
+                        reason: "Gateway receive failed: \(error.localizedDescription)",
+                        closeCode: closeRawValue > 0 ? closeRawValue : nil
+                    )
                 } else {
                     Self.logger.debug("Old receive loop error ignored (generation \(generation) != current \(self.connectionGeneration))")
                 }
@@ -194,15 +218,32 @@ actor DiscordGatewayConnection {
             reconnectTask?.cancel()
             _ = await reconnectTask?.value
             reconnectTask = nil
-            await identify(token: token)
+            if resumeOnHelloGeneration == generation,
+               let sessionId,
+               let sequence {
+                let didSendResume = await resume(token: token, sessionId: sessionId, sequence: sequence)
+                if !didSendResume {
+                    await scheduleReconnect(reason: "Gateway RESUME send failed")
+                    return
+                }
+            } else {
+                await identify(token: token)
+                await onConnectionState?(.running)
+            }
             await startHeartbeat()
-            await onConnectionState?(.running)
         case 1:
             await sendHeartbeat()
         case 7:
             await scheduleReconnect(reason: "Gateway requested reconnect (op 7)")
         case 9:
+            // Discord rejected the resumable session. The next IDENTIFY must
+            // be fresh; retaining its sequence/session ID would make every
+            // following reconnect retry the same invalid resume.
+            resumeOnHelloGeneration = nil
+            sequence = nil
+            sessionId = nil
             await identify(token: token)
+            await onConnectionState?(.running)
         case 11:
             if let sent = heartbeatSentAt {
                 let latencyMs = max(
@@ -213,13 +254,20 @@ actor DiscordGatewayConnection {
                 await onHeartbeatLatency?(latencyMs)
             }
         default:
-            break
+            if payload.t == "RESUMED" {
+                resumeOnHelloGeneration = nil
+                reconnectAttempts = 0
+                await onConnectionState?(.running)
+            }
         }
     }
 
     private func openGatewayConnection(token: String, isReconnect: Bool) async {
         connectionGeneration += 1
         let generation = connectionGeneration
+        resumeOnHelloGeneration = isReconnect && sessionId != nil && sequence != nil
+            ? generation
+            : nil
 
         Self.logger.info("Opening gateway connection (generation \(generation), reconnect: \(isReconnect))")
 
@@ -253,7 +301,7 @@ actor DiscordGatewayConnection {
         }
     }
 
-    private func scheduleReconnect(reason: String) async {
+    private func scheduleReconnect(reason: String, closeCode: Int? = nil) async {
         guard !userInitiatedDisconnect else { return }
         guard reconnectTask == nil else { return }
         guard let token = botToken, !token.isEmpty else { return }
@@ -262,6 +310,13 @@ actor DiscordGatewayConnection {
         let delaySeconds = min(30, 1 << min(reconnectAttempts, 5))
         let generation = connectionGeneration
         await onConnectionState?(.reconnecting)
+        await onReconnectDiagnostic?(ReconnectDiagnostic(
+            at: dependencies.dateProvider(),
+            generation: generation,
+            delaySeconds: delaySeconds,
+            closeCode: closeCode,
+            reason: reason
+        ))
 
         Self.logger.info("Scheduling reconnect in \(delaySeconds)s (generation \(generation), reason: \(reason))")
 
@@ -325,6 +380,18 @@ actor DiscordGatewayConnection {
             "presence": presence
         ]
         _ = await sendRaw(["op": 2, "d": identify])
+    }
+
+    @discardableResult
+    private func resume(token: String, sessionId: String, sequence: Int) async -> Bool {
+        await sendRaw([
+            "op": 6,
+            "d": [
+                "token": token,
+                "session_id": sessionId,
+                "seq": sequence
+            ]
+        ])
     }
 
     @discardableResult

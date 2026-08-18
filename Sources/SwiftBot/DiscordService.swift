@@ -92,6 +92,9 @@ actor DiscordService {
     var onHeartbeatLatency: (@Sendable (Int) async -> Void)?
     /// Called when the WebSocket closes with a non-normal code; value is the close code integer.
     var onGatewayClose: (@Sendable (Int) async -> Void)?
+    /// Captures why the gateway scheduled an automatic reconnect so callers
+    /// can distinguish a Discord close from a local transport failure.
+    var onReconnectDiagnostic: (@Sendable (DiscordGatewayConnection.ReconnectDiagnostic) async -> Void)?
 
     func setOnPayload(_ handler: @escaping @Sendable (GatewayPayload) async -> Void) {
         onPayload = handler
@@ -109,6 +112,12 @@ actor DiscordService {
         onGatewayClose = handler
     }
 
+    func setOnReconnectDiagnostic(
+        _ handler: @escaping @Sendable (DiscordGatewayConnection.ReconnectDiagnostic) async -> Void
+    ) {
+        onReconnectDiagnostic = handler
+    }
+
     private func ensureGatewayCallbacksConfigured() async {
         guard !gatewayCallbacksConfigured else { return }
 
@@ -124,6 +133,9 @@ actor DiscordService {
         }
         await gatewayConnection.setOnGatewayClose { [weak self] code in
             await self?.onGatewayClose?(code)
+        }
+        await gatewayConnection.setOnReconnectDiagnostic { [weak self] diagnostic in
+            await self?.onReconnectDiagnostic?(diagnostic)
         }
         gatewayCallbacksConfigured = true
     }

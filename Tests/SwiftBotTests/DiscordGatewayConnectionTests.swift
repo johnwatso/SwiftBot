@@ -124,6 +124,44 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         await connection.disconnect()
     }
 
+    func testReconnectResumesGatewaySessionWithoutASecondIdentify() async {
+        let initialSocket = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                .success(#"{"op":0,"s":42,"t":"READY","d":{"session_id":"session-1"}}"#),
+                .failure(SocketFailure.disconnected)
+            ]
+        )
+        let resumedSocket = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                .success(#"{"op":0,"s":43,"t":"RESUMED","d":{}}"#)
+            ]
+        )
+        let factory = SocketFactoryQueue(sockets: [initialSocket, resumedSocket])
+        let recorder = EventRecorder()
+        let connection = makeConnection(factory: factory, sleep: { _ in })
+
+        await connection.setOnConnectionState { state in
+            await recorder.record(state: state)
+        }
+        await connection.connect(token: "bot-token")
+
+        let resumed = await waitUntil {
+            let sent = await resumedSocket.sentTexts()
+            let states = await recorder.states()
+            return sent.contains(where: { $0.contains("\"op\":6") })
+                && states.last == .running
+        }
+
+        XCTAssertTrue(resumed)
+        let sent = await resumedSocket.sentTexts()
+        XCTAssertTrue(sent.contains(where: { $0.contains("\"op\":6") && $0.contains("session-1") }))
+        XCTAssertFalse(sent.contains(where: { $0.contains("\"op\":2") }), "a resumable reconnect must not re-identify")
+
+        await connection.disconnect()
+    }
+
     private func makeConnection(
         factory: SocketFactoryQueue,
         dateProvider: @escaping @Sendable () -> Date = { Date() },

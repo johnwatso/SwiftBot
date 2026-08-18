@@ -293,6 +293,10 @@ final class AppModel: ObservableObject {
     /// under. Used to reject credentials left over from a previous session
     /// (the classic close-code-4006 cause) before opening the voice pipeline.
     var voiceCredentialsSessionID: String?
+    /// Session currently owning (or negotiating) the playback pipeline. This
+    /// suppresses duplicate VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE pairs
+    /// that Discord can replay while the main gateway is reconnecting.
+    var voicePipelineSessionID: String?
     var voiceRecoveryTask: Task<Void, Never>?
     var voiceAutoConnectTask: Task<Void, Never>?
     var announcerHealthWatchdogTask: Task<Void, Never>?
@@ -1185,6 +1189,24 @@ final class AppModel: ObservableObject {
         await service.setOnGatewayClose { [weak self] code in
             await MainActor.run {
                 self?.connectionDiagnostics.lastGatewayCloseCode = code
+            }
+        }
+
+        await service.setOnReconnectDiagnostic { [weak self] diagnostic in
+            await MainActor.run {
+                guard let self else { return }
+                let entry = GatewayReconnectDiagnostic(
+                    at: diagnostic.at,
+                    generation: diagnostic.generation,
+                    delaySeconds: diagnostic.delaySeconds,
+                    closeCode: diagnostic.closeCode,
+                    reason: diagnostic.reason
+                )
+                self.connectionDiagnostics.recordGatewayReconnect(entry)
+                let close = diagnostic.closeCode.map(String.init) ?? "-"
+                self.logs.append(
+                    "Gateway reconnect scheduled in \(diagnostic.delaySeconds)s (generation \(diagnostic.generation), close \(close)): \(diagnostic.reason)"
+                )
             }
         }
 

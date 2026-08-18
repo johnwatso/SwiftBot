@@ -123,6 +123,13 @@ enum LogExporter {
         out += "lastGatewayCloseCode=\(cd.lastGatewayCloseCode.map(String.init) ?? "-")\n"
         out += "lastTestMessage=\(cd.lastTestMessage.isEmpty ? "-" : SwiftBotLogRedactor.redact(cd.lastTestMessage))\n"
         out += "lastTestAt=\(cd.lastTestAt.map { iso.string(from: $0) } ?? "-")\n"
+        out += "recentGatewayReconnects=\(cd.recentGatewayReconnects.count)\n"
+        for reconnect in cd.recentGatewayReconnects {
+            let closeCode = reconnect.closeCode.map(String.init) ?? "-"
+            let reason = SwiftBotLogRedactor.redact(reconnect.reason)
+            out += "gatewayReconnect at=\(iso.string(from: reconnect.at)) generation=\(reconnect.generation)"
+            out += " delaySeconds=\(reconnect.delaySeconds) closeCode=\(closeCode) reason=\(reason)\n"
+        }
         switch cd.restHealth {
         case .ok: out += "restHealth=ok\n"
         case .unknown: out += "restHealth=unknown\n"

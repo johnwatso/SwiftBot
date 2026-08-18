@@ -161,6 +161,7 @@ extension AppModel {
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
         voiceCredentialsSessionID = nil
+        voicePipelineSessionID = nil
         let attemptToken = UUID()
         voiceConnectAttemptToken = attemptToken
         voiceJoinRequestedAt = ContinuousClock().now
@@ -269,6 +270,7 @@ extension AppModel {
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
         voiceCredentialsSessionID = nil
+        voicePipelineSessionID = nil
         if preserveAnnouncerSession {
             voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
         } else {
@@ -741,6 +743,40 @@ extension AppModel {
             token: token,
             endpoint: endpoint
         )
+
+        let pipelineStatus = await voicePlaybackService.currentStatus
+        if voicePipelineSessionID == sessionID {
+            switch pipelineStatus {
+            case .connecting, .connected:
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Ignored duplicate Discord voice handshake for the active session."
+                ))
+                return
+            case .idle, .disconnecting, .failed:
+                voicePipelineSessionID = nil
+            }
+        }
+
+        switch pipelineStatus {
+        case .idle, .failed:
+            break
+        case .disconnecting:
+            // A clean recovery already owns the teardown. Its subsequent
+            // VOICE_STATE_UPDATE will start the next handshake.
+            return
+        case .connecting, .connected:
+            // Discord may replay a fresh handshake during a main-gateway
+            // reconnect before the old voice WebSocket's 4014 close reaches
+            // us. Never let that second handshake mark a healthy pipeline as
+            // failed; route it through the normal leave-ack/rejoin funnel.
+            let reason = "Discord issued a new voice handshake while the previous pipeline was still active"
+            addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "\(reason); scheduling a clean rejoin."))
+            _ = scheduleVoiceAutoRecovery(reason: reason)
+            return
+        }
+
+        voicePipelineSessionID = sessionID
         addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice websocket pipeline starting."))
         do {
             try await voicePlaybackService.connect(server: info)
@@ -757,10 +793,21 @@ extension AppModel {
             logVoiceConnectedTiming()
             deliverPendingVoiceJoinIntroIfReady()
         } catch {
+            if voicePipelineSessionID == sessionID {
+                voicePipelineSessionID = nil
+            }
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
                 description: "Voice pipeline connect failed: \(error.localizedDescription)"
             ))
+            if let pipelineError = error as? VoicePipelineError,
+               case let .unexpectedPayload(reason) = pipelineError,
+               reason.hasPrefix("voice connect requested while the pipeline is") {
+                let recoveryReason = "voice pipeline was still active when Discord replayed its handshake"
+                addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "\(recoveryReason); scheduling a clean rejoin."))
+                _ = scheduleVoiceAutoRecovery(reason: recoveryReason)
+                return
+            }
             // connect() usually throws only after publishing a .failed status,
             // in which case handleVoicePlaybackStatus already ran the
             // retry/teardown funnel. The exception is the busy-pipeline guard,
@@ -781,6 +828,7 @@ extension AppModel {
     private func handleVoicePlaybackStatus(_ status: VoicePlaybackService.Status) async {
         switch status {
         case .idle:
+            voicePipelineSessionID = nil
             if voiceRecovery.inProgress || voiceDisconnectPreservesAnnouncerSession {
                 voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
                 return
@@ -810,6 +858,7 @@ extension AppModel {
                 voiceConnectionStatus = .disconnecting
             }
         case .failed(let reason):
+            voicePipelineSessionID = nil
             // Surface unexpected drops (e.g. a voice gateway WS close after we
             // were connected) in the activity log. Without this the announcer
             // silently stops reading — messages are dropped by the

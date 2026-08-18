@@ -320,6 +320,13 @@ actor VoicePlaybackService {
         switch status {
         case .idle, .failed:
             break
+        case .connected where gateway?.server == server:
+            // Discord can replay VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE
+            // after a main-gateway reconnect. The exact same credentials
+            // already own a usable voice pipeline, so treating that replay as
+            // a second connect would incorrectly take the announcer offline.
+            await debug("Ignoring duplicate voice connect for the active session.")
+            return
         case .connecting, .connected, .disconnecting:
             // Returning "success" here without a pipeline is how a phantom
             // Connected state happens when two connect paths race — surface
