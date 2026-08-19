@@ -148,6 +148,24 @@ enum LogExporter {
         out += "phase=\(voiceHealth.phase.rawValue)\n"
         out += "queueDepth=\(voiceHealth.queueDepth)\n"
         out += "retryStreak=\(voiceHealth.retryStreak)\n"
+        let activeConfig = app.settings.voice.announcerConfigs.first {
+            $0.voiceChannelID == app.voicePendingChannelID
+        }
+        let activeConfigEnabled = activeConfig.map { String($0.enabled) } ?? "-"
+        out += "pendingGuildID=\(SwiftBotLogRedactor.redact(app.voicePendingGuildID ?? "-"))\n"
+        out += "pendingChannelID=\(SwiftBotLogRedactor.redact(app.voicePendingChannelID ?? "-"))\n"
+        out += "activeConfiguration=\(SwiftBotLogRedactor.redact(activeConfig?.name ?? "-")) enabled=\(activeConfigEnabled)\n"
+        out += "lastVoiceStateAt=\(app.lastVoiceStateAt.map { iso.string(from: $0) } ?? "-")\n"
+        out += "lastVoiceStateSummary=\(SwiftBotLogRedactor.redact(app.lastVoiceStateSummary))\n"
+        let recoveryDelays = app.voiceRecovery.schedule.map { duration in
+            let components = duration.components
+            let seconds = Double(components.seconds)
+                + Double(components.attoseconds) / 1_000_000_000_000_000_000
+            return String(format: "%.2fs", seconds)
+        }.joined(separator: ",")
+        out += "voiceRecoveryInProgress=\(app.voiceRecovery.inProgress) attempts=\(app.voiceRecovery.attemptsMade)/\(app.voiceRecovery.attemptsAllowed) schedule=\(recoveryDelays)\n"
+        out += "voiceLeaveAckState=\(app.voiceLeaveAckState) preserveAnnouncerSession=\(app.voiceDisconnectPreservesAnnouncerSession) awaitingExternalDisconnectClosure=\(app.voiceRecoveryAwaitingExternalDisconnectClosure)\n"
+        out += "pendingJoinIntroduction=\(app.pendingVoiceJoinIntro != nil)\n"
         if let manualHold {
             out += "manualHold=true expiresAt=\(iso.string(from: manualHold.expiresAt)) remainingSeconds=\(manualHold.remainingSeconds())\n"
         } else {
@@ -281,8 +299,8 @@ enum LogExporter {
             }
         }
 
-        out += "\n-- Voice Log (most recent 50) --\n"
-        let voiceEntries = app.voiceLog.prefix(50)
+        out += "\n-- Voice Log (most recent 200) --\n"
+        let voiceEntries = app.voiceLog.prefix(200)
         if voiceEntries.isEmpty {
             out += "(none)\n"
         } else {
@@ -303,24 +321,115 @@ enum LogExporter {
         return out
     }
 
+    /// Builds a compact, redacted report for diagnosing Announcer failures.
+    /// It deliberately derives its payload from the full report so new voice
+    /// fields and redaction rules cannot diverge between the two export paths.
+    @MainActor
+    static func buildAnnouncerReport(from app: AppModel, generatedAt: Date = Date()) async -> String {
+        let fullReport = await buildReport(from: app, generatedAt: generatedAt)
+        guard let header = reportSlice(
+            in: fullReport,
+            from: "=== SwiftBot Diagnostic Report ===\\n",
+            upTo: "=== Bot Runtime ===\\n"
+        ), let voice = reportSlice(
+            in: fullReport,
+            from: "=== Voice Announcer ===\\n",
+            upTo: "=== SwiftMesh ===\\n"
+        ), let voiceLog = reportSlice(
+            in: fullReport,
+            from: "-- Voice Log (most recent 200) --\\n",
+            upTo: "-- System Log (most recent 500 lines) --\\n"
+        ) else {
+            return fullReport
+        }
+
+        var out = header.replacingOccurrences(
+            of: "=== SwiftBot Diagnostic Report ===",
+            with: "=== SwiftBot Announcer Diagnostic Report ==="
+        )
+        out += "\\n"
+        out += voice
+        out += "\\n"
+        out += voiceLog
+        return out
+    }
+
+    private static func reportSlice(in report: String, from start: String, upTo end: String) -> String? {
+        guard let startRange = report.range(of: start),
+              let endRange = report.range(of: end, range: startRange.upperBound..<report.endIndex) else {
+            return nil
+        }
+        return String(report[startRange.lowerBound..<endRange.lowerBound])
+    }
+
     /// Presents SwiftMiner's export flow: first a small, window-attached progress
     /// sheet while potentially slow diagnostics are gathered, then a save sheet.
     @MainActor
     static func presentSavePanel(app: AppModel) async {
-        let progressSheet = presentProgressSheet()
+        await presentSavePanel(app: app, export: .full)
+    }
+
+    /// Saves a smaller, Announcer-only diagnostic bundle for sharing directly
+    /// after a silent stop or unexpected voice disconnect.
+    @MainActor
+    static func presentAnnouncerSavePanel(app: AppModel) async {
+        await presentSavePanel(app: app, export: .announcer)
+    }
+
+    private enum DiagnosticExport {
+        case full
+        case announcer
+
+        var filename: (Date) -> String {
+            switch self {
+            case .full: { LogExporter.defaultFilename(for: $0) }
+            case .announcer: { LogExporter.defaultAnnouncerFilename(for: $0) }
+            }
+        }
+
+        var panelTitle: String {
+            switch self {
+            case .full: "Export Diagnostic Logs"
+            case .announcer: "Export Announcer Diagnostics"
+            }
+        }
+
+        var panelMessage: String {
+            switch self {
+            case .full: "Save a redacted SwiftBot diagnostic report you can attach to a GitHub issue."
+            case .announcer: "Save a focused, redacted Announcer report to help investigate voice issues."
+            }
+        }
+
+        var progressDetail: String {
+            switch self {
+            case .full: "Collecting Announcer, Discord voice, and activity data. This can take a moment for a large log."
+            case .announcer: "Collecting Announcer state, Discord voice transport health, and the recent voice flight recorder."
+            }
+        }
+    }
+
+    @MainActor
+    private static func presentSavePanel(app: AppModel, export: DiagnosticExport) async {
+        let progressSheet = presentProgressSheet(title: export.panelTitle, detail: export.progressDetail)
         defer { dismiss(progressSheet) }
 
         // Give AppKit a chance to display feedback before awaiting actor-backed
         // voice/DAVE diagnostics and redacting a potentially large activity log.
         await Task.yield()
         let generatedAt = Date()
-        let report = await buildReport(from: app, generatedAt: generatedAt)
+        let report = switch export {
+        case .full:
+            await buildReport(from: app, generatedAt: generatedAt)
+        case .announcer:
+            await buildAnnouncerReport(from: app, generatedAt: generatedAt)
+        }
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
-        panel.nameFieldStringValue = defaultFilename(for: generatedAt)
-        panel.title = "Export Diagnostic Logs"
-        panel.message = "Save a redacted SwiftBot diagnostic report you can attach to a GitHub issue."
+        panel.nameFieldStringValue = export.filename(generatedAt)
+        panel.title = export.panelTitle
+        panel.message = export.panelMessage
         panel.canCreateDirectories = true
         panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
 
@@ -332,7 +441,7 @@ enum LogExporter {
         } catch {
             let alert = NSAlert()
             alert.alertStyle = .warning
-            alert.messageText = "Couldn't save diagnostic logs"
+            alert.messageText = "Couldn't save diagnostics"
             alert.informativeText = error.localizedDescription
             alert.runModal()
         }
@@ -363,14 +472,14 @@ enum LogExporter {
     /// Displays immediately while the report is snapshotted, redacted, and
     /// formatted, avoiding an export action that appears to have been ignored.
     @MainActor
-    private static func presentProgressSheet() -> ProgressSheet {
+    private static func presentProgressSheet(title: String, detail: String) -> ProgressSheet {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 154),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
-        panel.title = "Export Diagnostic Logs"
+        panel.title = title
         panel.isReleasedWhenClosed = false
         panel.isMovable = false
         panel.standardWindowButton(.closeButton)?.isHidden = true
@@ -382,17 +491,17 @@ enum LogExporter {
         let symbolCycler = DiagnosticsSymbolCycler(frame: NSRect(x: 27, y: 71, width: 30, height: 30))
         content.addSubview(symbolCycler)
 
-        let title = NSTextField(labelWithString: "Preparing diagnostics…")
-        title.font = .systemFont(ofSize: 16, weight: .semibold)
-        title.frame = NSRect(x: 74, y: 90, width: 272, height: 22)
-        content.addSubview(title)
+        let titleLabel = NSTextField(labelWithString: "Preparing diagnostics…")
+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.frame = NSRect(x: 74, y: 90, width: 272, height: 22)
+        content.addSubview(titleLabel)
 
-        let detail = NSTextField(wrappingLabelWithString: "Collecting announcer, Discord voice, and activity data. This can take a moment for a large log.")
-        detail.font = .systemFont(ofSize: 13)
-        detail.textColor = .secondaryLabelColor
-        detail.maximumNumberOfLines = 2
-        detail.frame = NSRect(x: 74, y: 42, width: 272, height: 40)
-        content.addSubview(detail)
+        let detailLabel = NSTextField(wrappingLabelWithString: detail)
+        detailLabel.font = .systemFont(ofSize: 13)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.maximumNumberOfLines = 2
+        detailLabel.frame = NSRect(x: 74, y: 42, width: 272, height: 40)
+        content.addSubview(detailLabel)
 
         panel.contentView = content
         symbolCycler.start()
@@ -424,6 +533,14 @@ enum LogExporter {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return "SwiftBot-logs-\(formatter.string(from: date)).txt"
+    }
+
+    static func defaultAnnouncerFilename(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        return "SwiftBot-announcer-diagnostics-\(formatter.string(from: date)).txt"
     }
 }
 

@@ -200,6 +200,13 @@ struct SwiftBotApp: App {
                     }
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Button("Export Announcer Diagnostics…") {
+                    Task {
+                        await LogExporter.presentAnnouncerSavePanel(app: appModel)
+                    }
+                }
+                .keyboardShortcut("e", modifiers: [.command, .option, .shift])
             }
         }
 

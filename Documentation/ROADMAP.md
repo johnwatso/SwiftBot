@@ -17,6 +17,8 @@
 - [x] Made Announcer voice introductions real: when a human joins an already-active configured Announcer channel, SwiftBot now speaks “Name has joined,” logs the action, and ignores bot arrivals. When that arrival triggers an automatic join, the same introduction is queued until the media path is ready.
 - [x] Reorganised the Announcer page into summary, Current State, Voice Channel Configurations, a combined responsive Announcement section, and full-width Recent Activity—preserving each existing control while removing the lower 2×2 card grid.
 - [x] Clarified Announcer's one-session model: startup and the UI reconnect control now select the first enabled voice-channel configuration, while explicit `/announce join` and in-flight recovery remain on their deliberately chosen channel. The Current Voice Channel metric shows a channel only for a live connection.
+- [x] Expanded exported Announcer diagnostics into a higher-signal flight recorder: all 200 retained voice events plus the active target, last voice-state observation, recovery budget, leave-ack ownership, preservation flags, and queued join-introduction state.
+- [x] Added a dedicated Help menu export for a compact, redacted Announcer diagnostic bundle containing only the Announcer state, voice transport/DAVE health, and 200-event voice flight recorder.
 
 ### 2026-08-18 — Announcer operator controls and quiet-presence hardening
 

@@ -456,13 +456,9 @@ struct VoiceView: View {
 
     private var announcementVoiceContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Voice", systemImage: "speaker.wave.3.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
             voiceSettingsPanel
 
-            Text("Automatically selects the best available voice. Ryan Piper is used when available, otherwise SwiftBot chooses the best installed English voice.")
+            Text("Ryan Piper is preferred when available; otherwise SwiftBot chooses the best installed English speaker.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -470,7 +466,7 @@ struct VoiceView: View {
             Button {
                 app.speakLocallyPreview("SwiftBot will read Discord messages using \(preferredVoiceDisplayName).")
             } label: {
-                Label("Hear Voice", systemImage: "play.circle")
+                Label("Hear Sample", systemImage: "play.circle")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -924,7 +920,7 @@ struct VoiceView: View {
     private var voiceSettingsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom, spacing: 8) {
-                pickerField(label: "Voice", symbol: "speaker.wave.3.fill", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
+                pickerField(label: "Speaker", symbol: "speaker.wave.3.fill", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
                     Task { await app.setPreferredAnnouncerVoice(newValue) }
                 }
 
