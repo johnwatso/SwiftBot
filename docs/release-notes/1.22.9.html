@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot 1.22.9 - Release Notes</title>
+  <title>Point the 1.22.9 release notes at the release commit - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -39,19 +39,11 @@
 </head>
 <body>
   <main>
-    <h1>SwiftBot 1.22.9</h1>
+    <h1>Point the 1.22.9 release notes at the release commit</h1>
     <p class="meta">Version 1.22.9</p>
-    <p>SwiftBot 1.22.9</p>
-<p>This release is about telling the truth. Two subsystems had learned to report a healthy result while quietly sitting on a stale one, and both are now honest about what they actually know.</p>
-<p>An Honest Overview Dashboard</p>
-<p>- The Operational Status header no longer sticks on &ldquo;Action Required.&rdquo; A close code from a socket SwiftBot had retired itself was being attributed to the live connection, so one routine reconnect pinned the dashboard to a critical state for the rest of the session.<br>- Close code 1001 is no longer treated as a fault. It means &ldquo;going away&rdquo; &mdash; what Discord sends when it cycles a gateway host, and what SwiftBot sends when it replaces its own socket.<br>- Resumed sessions clear the last close code. Most reconnects resume rather than re-identify, so a transient close previously stayed on screen until the bot was restarted.<br>- Only close codes an operator can act on (4004, 4010&ndash;4014) now raise a critical alert, and each names its actual remedy instead of a blanket &ldquo;check token, intents, and permissions.&rdquo;</p>
-<p>Patchy Stops Trusting a Stale Sitemap</p>
-<p>- AMD's sitemap routinely lags the live release notes by weeks and skips releases outright. A fetch that settled for whatever it offered was indistinguishable from a genuine &ldquo;no new driver&rdquo; result.<br>- The sitemap is now a floor, not the answer: the scan walks release months backwards from today until it finds a live release, tolerating AMD's skipped patch numbers rather than stopping at the first gap.<br>- Probes are HEAD requests with a per-fetch cap, 404s are treated as answers instead of being retried under further User-Agents, and a page already verified while probing is reused rather than downloaded twice.<br>- Update sources can now attach non-fatal diagnostics to a result, and Patchy writes them to its log on cycles, pulls, and test sends, so scraping decay is visible before it becomes silently missed releases.</p>
-<p>Voice Encryption</p>
-<p>- Upgraded libdave-swift to 3.0.0, adopting its structured diagnostic events and export-safe post-mortem traces while keeping the acknowledged Discord gateway outbox contract.<br>- Exports now carry the external sender state, MLS roster members Discord never announced in the voice session, structured failure classifications, and the recent event trace.<br>- Persisted DAVE identities are purged when the bot account is signed out or switched, so a new account never inherits the previous one's MLS state.</p>
-<p>Release Details</p>
-<p>- Updated MARKETING_VERSION to 1.22.9 and CURRENT_PROJECT_VERSION to 2026082108.<br>- Added regression coverage for gateway close-code classification and for clean closes not being reported as faults.<br>- Restored three test files that existed on disk but had never been added to the test target; the suite now runs 385 tests.<br>- The DAVE 3.0.0 upgrade ships without a disposable-channel rehearsal of the MLS transition path, which cannot be exercised offline. The widened diagnostics above exist to make the first live join legible if it misbehaves.</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/679e655c2ed94cbcd6fad3c9d5f8def633bc6d40">679e655</a></p>
+    <p>Point the 1.22.9 release notes at the release commit</p>
+<p>Co-Authored-By: Claude Opus 5 &lt;noreply@anthropic.com&gt;</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/2a62df2173e892794915bd3900069fe6d6bd632e">2a62df2</a></p>
   </main>
 </body>
 </html>
