@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Point the 1.22.9 release notes at the release commit - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.22.10</h1>
+    <p class="meta">Version 1.22.10</p>
+    <p>SwiftBot 1.22.10</p>
+<p>A focused Announcer audio fix: speech that came out stretched and distorted, and a class of synthesizer whose output merged as pure silence.</p>
+<p>Speech That Sounds Like Speech</p>
+<p>- A synthesizer that changes its output format partway through an utterance is no longer merged as though it had not. The merge kept only the first chunk&rsquo;s format, so the whole render was resampled at the wrong ratio and played back stretched, pitched, and distorted. Mismatched chunks are now reconciled to the established format before they are collected.<br>- The synthesizer&rsquo;s output format is logged once per render, and any mid-render change is logged loudly, so a recurrence is provable rather than inferred.</p>
+<p>Two Further Defects in the Same Merge</p>
+<p>- The merge indexed by the destination buffer&rsquo;s layout without checking that a chunk matched it or that it fit, so a differing channel count could write past the allocation.<br>- An Int16 synthesizer matched no copy path at all &mdash; float-to-float and int16-to-float existed, int16-to-int16 did not &mdash; so its render merged as silence.</p>
+<p>Release Details</p>
+<p>- Updated MARKETING_VERSION to 1.22.10 and CURRENT_PROJECT_VERSION to 2026082110.<br>- Added regression coverage for the merge, including a mid-render sample-rate change; the suite is 387 tests.</p>
+  </main>
+</body>
+</html>
