@@ -9,11 +9,17 @@
 
 ## Recent Engineering Log
 
+### 2026-08-21 — Gateway close-code accuracy and release hygiene
+
+- [x] Stopped a socket SwiftBot retired itself from pinning its "going away" close code to the dashboard, which held the Overview header on "Action Required" indefinitely and advised a token/intents check while the gateway was healthy. Close codes are now reported only for the live connection generation, RESUMED clears them alongside READY, and only the codes an operator can act on (4004, 4010-4014) raise critical severity.
+- [x] Treated AMD's sitemap as a floor rather than an answer: the scan walks release months backwards until it finds a live release, so a sitemap lagging weeks behind no longer passes off a stale driver as a healthy "no new release" result. Sources can now attach non-fatal diagnostics that Patchy writes to its log, making scraping decay visible before it becomes silently missed releases.
+- [x] Wrote three test files back into the test target — `LogExporterTests`, `StorageIsolationTests`, and `VoiceTTSSourceTests` existed on disk but had never been added to the generated project, so they had never run. The suite is 385 tests with them included.
+
 ### 2026-08-19 — libdave-swift 3.0.0
 
 - [x] Upgraded the DAVE dependency to 3.0.0, retained the acknowledged Discord gateway outbox contract, and adopted structured libdave diagnostic events plus export-safe post-mortem traces.
 - [x] Surface MLS roster members missing from Discord's announced voice session, include structured failure classifications in diagnostics, and purge persisted DAVE identities when the bot account is signed out or switched.
-- [ ] Before deployment, validate a real join, re-key, and two-way audio in a disposable non-production Discord voice channel; the MLS transition path cannot be covered end-to-end offline.
+- [x] Shipped without the disposable-channel rehearsal by explicit operator decision: the MLS transition path cannot be covered end-to-end offline, so 1.22.9 carries it untested and the first live join is the real verification. The widened DAVE diagnostics and post-mortem traces exist to make that join legible if it fails.
 
 ### 2026-08-19 — Announcer DAVE transition and external-disconnect recovery
 
