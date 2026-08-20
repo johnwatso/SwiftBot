@@ -35,13 +35,20 @@ public struct DriverUpdateItem: UpdateItem, Sendable {
     public let embedJSON: String
     public let rawDebug: String
 
+    /// Non-fatal warnings raised while resolving this item, such as a vendor
+    /// index that has gone stale or a page whose layout no longer parses.
+    /// Surfaced in the Patchy log so scraping decay is visible before it turns
+    /// into silently missed releases.
+    public let diagnostics: [String]
+
     public init(
         sourceKey: String,
         identifier: String,
         version: String,
         releaseNotes: ReleaseNotes,
         embedJSON: String,
-        rawDebug: String
+        rawDebug: String,
+        diagnostics: [String] = []
     ) {
         self.sourceKey = sourceKey
         self.identifier = identifier
@@ -49,6 +56,7 @@ public struct DriverUpdateItem: UpdateItem, Sendable {
         self.releaseNotes = releaseNotes
         self.embedJSON = embedJSON
         self.rawDebug = rawDebug
+        self.diagnostics = diagnostics
     }
 }
 

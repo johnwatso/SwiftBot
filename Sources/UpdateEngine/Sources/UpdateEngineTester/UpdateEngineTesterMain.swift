@@ -156,6 +156,15 @@ struct UpdateEngineTesterMain {
             print("Version:    \(item.version)")
             print("Result:     \(resultLabel(checkResult))")
 
+            if let driverItem = item as? DriverUpdateItem {
+                print("Title:      \(driverItem.releaseNotes.title)")
+                print("Date:       \(driverItem.releaseNotes.date)")
+                print("Sections:   \(driverItem.releaseNotes.sections.map { "\($0.title) (\($0.bullets.count))" }.joined(separator: ", "))")
+                for note in driverItem.diagnostics {
+                    print("Warning:    \(note)")
+                }
+            }
+
             if config.save {
                 try await checker.save(item: item, for: cacheKey)
                 print("Saved:      yes (\(storeURL.path))")

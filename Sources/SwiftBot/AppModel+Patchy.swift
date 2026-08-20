@@ -232,6 +232,7 @@ extension AppModel {
                 }
                 let source = try PatchyRuntime.makeSource(from: target)
                 let item = try await source.fetchLatest()
+                logPatchyItemDiagnostics(item, context: "Test send [\(target.source.rawValue)]")
                 let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
                 let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                 let delivery = await sendPatchyNotificationDetailed(
@@ -282,6 +283,7 @@ extension AppModel {
                 }
                 let source = try PatchyRuntime.makeSource(from: target)
                 let item = try await source.fetchLatest()
+                logPatchyItemDiagnostics(item, context: "Pull [\(target.source.rawValue)]")
                 let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
 
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -391,6 +393,7 @@ extension AppModel {
                 resolveSteamNameIfNeeded(for: referenceTarget)
                 let source = try PatchyRuntime.makeSource(from: referenceTarget)
                 let item = try await source.fetchLatest()
+                logPatchyItemDiagnostics(item, context: "Patchy cycle [\(referenceTarget.source.rawValue)]")
                 let mapped: PatchyFetchResult
                 if let driverItem = item as? DriverUpdateItem {
                     let newestVersion = driverItem.version.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1008,6 +1011,16 @@ extension AppModel {
                 return "Failed to send (HTTP \(statusCode)). Details: \(trimmedBody)"
             }
             return "Failed to send (HTTP \(statusCode)). Check Patchy logs for details."
+        }
+    }
+
+    /// Scrapers degrade quietly: an upstream index goes stale or a page stops
+    /// parsing, and the fetch still "succeeds" — just pinned to an old release.
+    /// Any warning a source raises about that is written to the Patchy log.
+    func logPatchyItemDiagnostics(_ item: any UpdateItem, context: String) {
+        guard let driverItem = item as? DriverUpdateItem else { return }
+        for note in driverItem.diagnostics where !note.isEmpty {
+            appendPatchyLog("\(context) warning: \(note)")
         }
     }
 

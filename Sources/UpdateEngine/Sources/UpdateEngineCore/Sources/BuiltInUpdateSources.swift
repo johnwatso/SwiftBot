@@ -47,7 +47,8 @@ public struct AMDUpdateSource: UpdateSource, Sendable {
             version: info.releaseNotes.version,
             releaseNotes: info.releaseNotes,
             embedJSON: info.embedJSON,
-            rawDebug: info.rawDebug
+            rawDebug: info.rawDebug,
+            diagnostics: info.discoveryNotes
         )
     }
 }

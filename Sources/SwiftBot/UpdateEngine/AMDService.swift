@@ -10,17 +10,51 @@ public struct AMDService: Sendable {
         public let rawDebug: String
         public let releaseIdentifier: String
 
+        /// Non-fatal notes about how this release was discovered. AMD's sitemap
+        /// regularly lags weeks behind the live release notes, so a fetch that
+        /// quietly settles for a stale entry has to say so rather than looking
+        /// like a healthy "no new driver" result.
+        public let discoveryNotes: [String]
+
         public init(
             releaseNotes: ReleaseNotes,
             embedJSON: String,
             rawDebug: String,
-            releaseIdentifier: String
+            releaseIdentifier: String,
+            discoveryNotes: [String] = []
         ) {
             self.releaseNotes = releaseNotes
             self.embedJSON = embedJSON
             self.rawDebug = rawDebug
             self.releaseIdentifier = releaseIdentifier
+            self.discoveryNotes = discoveryNotes
         }
+    }
+
+    /// How far back the month scan may reach when the sitemap has gone stale.
+    private static let maxLookbackMonths = 12
+    /// Lookback used when the sitemap is unavailable entirely.
+    private static let bootstrapLookbackMonths = 3
+    /// Highest patch number probed within a release month. AMD has shipped
+    /// 26-6-4, and skips numbers along the way (26-6-3 never existed), so the
+    /// scan has to tolerate gaps rather than stop at the first miss.
+    private static let maxPatchNumber = 6
+    /// Consecutive misses within one month before that month is abandoned.
+    /// Two is enough to step over a single skipped patch number.
+    private static let patchMissTolerance = 2
+    /// Upper bound on existence probes per fetch, so a bad day upstream cannot
+    /// turn into a request storm against AMD.
+    private static let maxProbesPerFetch = 40
+    /// A sitemap entry older than this, with nothing newer found by probing,
+    /// is reported as a warning instead of being passed off as healthy.
+    private static let stalenessWarningDays = 45.0
+
+    private struct ReleaseDiscovery {
+        let entry: SitemapEntry
+        /// Set when the page was already downloaded and verified while probing,
+        /// so the caller does not pull the same ~160 KB page twice.
+        let releaseHTML: String?
+        let notes: [String]
     }
 
     private let session: URLSession
@@ -55,27 +89,48 @@ public struct AMDService: Sendable {
 
     private func fetchLatestDriverUncoordinated() async throws -> DriverInfo {
         let sitemapResult = await fetchSitemapEntries()
-        let latestEntry = try await discoverLatestReleaseEntry(
+        let discovery = try await discoverLatestRelease(
             sitemapEntries: sitemapResult.entries,
             fallbackError: sitemapResult.error
         )
+        let latestEntry = discovery.entry
 
-        let (releaseData, _) = try await fetchData(url: latestEntry.url, timeoutInterval: 20)
+        let rawReleaseHTML: String
+        if let prefetched = discovery.releaseHTML {
+            rawReleaseHTML = prefetched
+        } else {
+            let (releaseData, _) = try await fetchData(url: latestEntry.url, timeoutInterval: 20)
+            rawReleaseHTML = String(data: releaseData, encoding: .utf8) ?? ""
+        }
 
-        let rawReleaseHTML = String(data: releaseData, encoding: .utf8) ?? ""
         let cleanedReleaseHTML = removeScriptAndStyleBlocks(rawReleaseHTML)
 
-        let detectedVersion = firstCapture(
-            pattern: #"Adrenalin Edition\s*([0-9]+(?:\.[0-9]+)+)\s*Release Notes"#,
-            in: cleanedReleaseHTML
-        )
+        var notes = discovery.notes
+        let urlVersion = latestEntry.version.replacingOccurrences(of: "-", with: ".")
+        let detectedVersion = detectReleaseVersion(in: cleanedReleaseHTML)
 
-        let version = detectedVersion ?? latestEntry.version.replacingOccurrences(of: "-", with: ".")
-        let releaseDate = extractReleaseDate(from: cleanedReleaseHTML, fallback: latestEntry.lastModified)
+        if let detectedVersion {
+            if detectedVersion != urlVersion {
+                notes.append("Release page reports \(detectedVersion) but its URL says \(urlVersion); trusting the page.")
+            }
+        } else {
+            notes.append("Could not read a version from the release page, so the URL token \(urlVersion) was used. AMD may have changed the page layout.")
+        }
+
+        let version = detectedVersion ?? urlVersion
+        let releaseDate = extractReleaseDate(
+            from: cleanedReleaseHTML,
+            structuredHTML: rawReleaseHTML,
+            fallback: latestEntry.lastModified
+        )
         let sections = parseSummarySections(from: cleanedReleaseHTML)
 
+        if sections.allSatisfy({ $0.bullets.isEmpty }) {
+            notes.append("Release page produced no readable sections. AMD may have changed the page layout.")
+        }
+
         let releaseNotes = ReleaseNotes(
-            title: "AMD Software: Adrenalin Edition \(version) Release Notes",
+            title: releaseTitle(from: cleanedReleaseHTML, version: version),
             author: "AMD Radeon Drivers",
             url: latestEntry.url.absoluteString,
             version: version,
@@ -86,6 +141,9 @@ public struct AMDService: Sendable {
         )
 
         let debugRaw = """
+        AMD discovery:
+        \(notes.isEmpty ? "resolved cleanly" : notes.joined(separator: "\n"))
+
         AMD sitemap XML:
         \(sitemapResult.rawSitemap)
 
@@ -97,7 +155,8 @@ public struct AMDService: Sendable {
             releaseNotes: releaseNotes,
             embedJSON: formatter.format(releaseNotes: releaseNotes),
             rawDebug: debugRaw,
-            releaseIdentifier: "amd:\(version)"
+            releaseIdentifier: "amd:\(version)",
+            discoveryNotes: notes
         )
     }
 
@@ -115,28 +174,165 @@ public struct AMDService: Sendable {
         }
     }
 
-    private func discoverLatestReleaseEntry(
+    /// Resolves the newest live Adrenalin release.
+    ///
+    /// The sitemap is treated as a floor, not as the answer: it routinely lags
+    /// the live release notes by weeks and skips releases outright, so the scan
+    /// walks months backwards from today until it either finds a release or
+    /// reaches the sitemap's newest entry.
+    private func discoverLatestRelease(
         sitemapEntries: [SitemapEntry],
         fallbackError: Error?
-    ) async throws -> SitemapEntry {
-        if let latestSitemapEntry = sitemapEntries.max(by: { compareSitemapEntries($0, $1) < 0 }) {
-            return await resolveLatestReleaseEntry(from: latestSitemapEntry)
+    ) async throws -> ReleaseDiscovery {
+        var budget = Self.maxProbesPerFetch
+        var trace: [String] = []
+
+        let sitemapEntry = sitemapEntries.max(by: { compareSitemapEntries($0, $1) < 0 })
+        let floorVersion = sitemapEntry.flatMap { parseSitemapVersion($0.version) }
+
+        if let hit = await scanForNewestRelease(
+            floorVersion: floorVersion,
+            fallbackLastModified: sitemapEntry?.lastModified ?? now(),
+            budget: &budget,
+            trace: &trace
+        ) {
+            var notes: [String] = []
+            if let sitemapEntry, sitemapEntry.version != hit.entry.version {
+                notes.append("Found \(hit.entry.version) by probing; AMD's sitemap still lists \(sitemapEntry.version) as newest.")
+            }
+            return ReleaseDiscovery(entry: hit.entry, releaseHTML: hit.html, notes: notes)
         }
 
-        let bootstrapped = await discoverLatestReleaseFromRecentCandidates()
-        if let entry = bootstrapped.entry {
-            return entry
+        guard let sitemapEntry else {
+            if let fallbackError {
+                throw enrich(error: fallbackError, trace: mergeTrace(from: fallbackError, additionalTrace: trace))
+            }
+
+            if !trace.isEmpty {
+                throw enrich(error: AMDServiceError.noReleaseNotesFound, trace: trace.joined(separator: "\n"))
+            }
+
+            throw AMDServiceError.noReleaseNotesFound
         }
 
-        if let fallbackError {
-            throw enrich(error: fallbackError, trace: mergeTrace(from: fallbackError, additionalTrace: bootstrapped.trace))
+        var notes: [String] = []
+        let ageInDays = now().timeIntervalSince(sitemapEntry.lastModified) / 86_400
+        if ageInDays > Self.stalenessWarningDays {
+            notes.append(String(
+                format: "Nothing newer than %@ was found and AMD's sitemap entry for it is %.0f days old. AMD may have changed its release-notes URLs.",
+                sitemapEntry.version,
+                ageInDays
+            ))
+        }
+        if budget <= 0 {
+            notes.append("Probe budget exhausted before the month scan finished; the result may not be the newest release.")
+        }
+        if trace.contains(where: { $0.contains("AMD is blocking") }) {
+            notes.append("AMD rate-limited the release-notes probes, so a newer driver may exist but be unreachable right now.")
         }
 
-        if !bootstrapped.trace.isEmpty {
-            throw enrich(error: AMDServiceError.noReleaseNotesFound, trace: bootstrapped.trace.joined(separator: "\n"))
+        return ReleaseDiscovery(entry: sitemapEntry, releaseHTML: nil, notes: notes)
+    }
+
+    /// Walks months newest-first so the first release found is the newest one.
+    private func scanForNewestRelease(
+        floorVersion: [Int]?,
+        fallbackLastModified: Date,
+        budget: inout Int,
+        trace: inout [String]
+    ) async -> (entry: SitemapEntry, html: String)? {
+        let anchor = currentReleaseMonthAnchor()
+        let anchorIndex = monthIndex(year: anchor.0, month: anchor.1)
+
+        let floorIndex: Int
+        if let floorVersion {
+            floorIndex = max(
+                monthIndex(year: floorVersion[0], month: floorVersion[1]),
+                anchorIndex - Self.maxLookbackMonths
+            )
+        } else {
+            floorIndex = anchorIndex - Self.bootstrapLookbackMonths
         }
 
-        throw AMDServiceError.noReleaseNotesFound
+        guard floorIndex <= anchorIndex else {
+            return nil
+        }
+
+        for index in stride(from: anchorIndex, through: floorIndex, by: -1) {
+            // Only the sitemap's own month is bounded from below: everything
+            // above it is unexplored, so patch numbering restarts at 1.
+            let lowestPatch: Int
+            if let floorVersion, index == monthIndex(year: floorVersion[0], month: floorVersion[1]) {
+                lowestPatch = floorVersion[2] + 1
+            } else {
+                lowestPatch = 1
+            }
+
+            if let hit = await scanMonth(
+                index: index,
+                lowestPatch: lowestPatch,
+                fallbackLastModified: fallbackLastModified,
+                budget: &budget,
+                trace: &trace
+            ) {
+                return hit
+            }
+
+            if budget <= 0 {
+                break
+            }
+        }
+
+        return nil
+    }
+
+    /// Probes one release month upwards and returns its highest live patch.
+    private func scanMonth(
+        index: Int,
+        lowestPatch: Int,
+        fallbackLastModified: Date,
+        budget: inout Int,
+        trace: inout [String]
+    ) async -> (entry: SitemapEntry, html: String)? {
+        guard lowestPatch <= Self.maxPatchNumber else {
+            return nil
+        }
+
+        let (year, month) = monthComponents(index)
+        var best: (entry: SitemapEntry, html: String)?
+        var consecutiveMisses = 0
+
+        for patch in lowestPatch...Self.maxPatchNumber {
+            guard budget > 0 else {
+                break
+            }
+            budget -= 1
+
+            if let hit = await probeRelease(
+                version: "\(year)-\(month)-\(patch)",
+                fallbackLastModified: fallbackLastModified,
+                trace: &trace
+            ) {
+                best = hit
+                consecutiveMisses = 0
+                continue
+            }
+
+            consecutiveMisses += 1
+            if consecutiveMisses >= Self.patchMissTolerance {
+                break
+            }
+        }
+
+        return best
+    }
+
+    private func monthIndex(year: Int, month: Int) -> Int {
+        year * 12 + (month - 1)
+    }
+
+    private func monthComponents(_ index: Int) -> (year: Int, month: Int) {
+        (index / 12, index % 12 + 1)
     }
 
     private func mergeTrace(from error: Error, additionalTrace: [String]) -> String {
@@ -185,6 +381,9 @@ public struct AMDService: Sendable {
             } catch {
                 attempts.append("attempt \(index + 1): \(profile.label) \(url.absoluteString) -> \(describe(error: error))")
                 lastError = error
+                if isDefinitiveFailure(error) {
+                    break
+                }
             }
         }
 
@@ -241,6 +440,22 @@ public struct AMDService: Sendable {
 
         var seen: Set<String> = []
         return profiles.filter { seen.insert("\($0.label)|\($0.userAgent)|\($0.headers.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&"))").inserted }
+    }
+
+    /// A 404 is an answer, not a transport problem. Retrying it under two more
+    /// User-Agents tripled the request count for every candidate that does not
+    /// exist, which is most of them during a month scan.
+    private func isDefinitiveFailure(_ error: Error) -> Bool {
+        // Callers see this either raw, from inside the profile loop, or already
+        // wrapped by `enrich(error:trace:)` on the way out.
+        let statusCode: Int?
+        if case AMDServiceError.httpError(let code) = error {
+            statusCode = code
+        } else {
+            statusCode = (error as NSError).userInfo["statusCode"] as? Int
+        }
+
+        return statusCode == 404 || statusCode == 410
     }
 
     private func describe(error: Error) -> String {
@@ -343,188 +558,111 @@ public struct AMDService: Sendable {
         }
     }
 
-    private func resolveLatestReleaseEntry(from sitemapEntry: SitemapEntry) async -> SitemapEntry {
-        guard let baseVersion = parseSitemapVersion(sitemapEntry.version) else {
-            return sitemapEntry
-        }
-
-        var trace: [String] = []
-        for candidateVersion in candidateVersionTokens(after: baseVersion) {
-            if let candidate = await probeReleaseEntry(
-                version: candidateVersion,
-                fallbackLastModified: sitemapEntry.lastModified,
-                trace: &trace
-            ) {
-                return candidate
-            }
-        }
-
-        return sitemapEntry
-    }
-
-    private func discoverLatestReleaseFromRecentCandidates() async -> (entry: SitemapEntry?, trace: [String]) {
-        var trace: [String] = []
-        for candidateVersion in recentCandidateVersionTokens() {
-            if let candidate = await probeReleaseEntry(
-                version: candidateVersion,
-                fallbackLastModified: now(),
-                trace: &trace
-            ) {
-                return (candidate, trace)
-            }
-        }
-
-        return (nil, trace)
-    }
-
-    private func recentCandidateVersionTokens() -> [String] {
-        let calendar = Calendar(identifier: .gregorian)
-        let anchorDate = now()
-        let preferredPatches = [1, 0, 2, 3]
-        var candidates: [(year: Int, month: Int, patch: Int)] = []
-
-        for monthOffset in 0..<2 {
-            guard let date = calendar.date(byAdding: .month, value: -monthOffset, to: anchorDate) else {
-                continue
-            }
-
-            let components = calendar.dateComponents([.year, .month], from: date)
-            guard let year = components.year, let month = components.month else {
-                continue
-            }
-
-            for patch in preferredPatches {
-                candidates.append((year: year % 100, month: month, patch: patch))
-            }
-        }
-
-        candidates.sort { lhs, rhs in
-            if lhs.year != rhs.year {
-                return lhs.year > rhs.year
-            }
-            if lhs.month != rhs.month {
-                return lhs.month > rhs.month
-            }
-            return lhs.patch > rhs.patch
-        }
-
-        return candidates.map { "\($0.year)-\($0.month)-\($0.patch)" }
-    }
-
-    private func candidateVersionTokens(after baseVersion: [Int]) -> [String] {
-        let preferredPatches = [1, 0, 2, 3]
-        var candidates: [(year: Int, month: Int, patch: Int)] = []
-        let currentMonthAnchor = currentReleaseMonthAnchor()
-
-        for monthOffset in 0...2 {
-            let (year, month) = addMonthOffset(
-                year: baseVersion[0],
-                month: baseVersion[1],
-                offset: monthOffset
-            )
-            guard isCandidateMonth((year, month), notAfter: currentMonthAnchor) else {
-                continue
-            }
-            let candidatePatches = monthOffset == 0
-                ? preferredPatches.filter { $0 > baseVersion[2] }
-                : preferredPatches
-            for patch in candidatePatches {
-                candidates.append((year: year, month: month, patch: patch))
-            }
-        }
-
-        candidates.sort { lhs, rhs in
-            if lhs.year != rhs.year {
-                return lhs.year > rhs.year
-            }
-            if lhs.month != rhs.month {
-                return lhs.month > rhs.month
-            }
-            return lhs.patch > rhs.patch
-        }
-
-        return candidates.map { "\($0.year)-\($0.month)-\($0.patch)" }
-    }
-
     private func currentReleaseMonthAnchor() -> (Int, Int) {
         let calendar = Calendar(identifier: .gregorian)
         let components = calendar.dateComponents([.year, .month], from: now())
         return ((components.year ?? 2000) % 100, components.month ?? 1)
     }
 
-    private func isCandidateMonth(_ lhs: (Int, Int), notAfter rhs: (Int, Int)) -> Bool {
-        if lhs.0 != rhs.0 {
-            return lhs.0 < rhs.0
-        }
-        return lhs.1 <= rhs.1
-    }
-
-    private func addMonthOffset(year: Int, month: Int, offset: Int) -> (Int, Int) {
-        let totalMonths = year * 12 + (month - 1) + offset
-        let nextYear = totalMonths / 12
-        let nextMonth = totalMonths % 12 + 1
-        return (nextYear, nextMonth)
-    }
-
-    private func probeReleaseEntry(
+    /// Existence probe for one release. A missing release is by far the common
+    /// case, so it is answered with a HEAD; only a live URL costs a full page
+    /// download, and that page is handed back so the caller need not refetch it.
+    private func probeRelease(
         version: String,
         fallbackLastModified: Date,
         trace: inout [String]
-    ) async -> SitemapEntry? {
-        for url in releaseNoteURLs(for: version) {
-            let probe = await probeReleaseURL(at: url, version: version)
-            trace.append(contentsOf: probe.trace)
-            if probe.exists {
-                return SitemapEntry(url: url, version: version, lastModified: fallbackLastModified)
-            }
+    ) async -> (entry: SitemapEntry, html: String)? {
+        guard let url = releaseNoteURL(for: version) else {
+            return nil
         }
 
-        return nil
-    }
-
-    private func probeReleaseURL(at url: URL, version: String) async -> (exists: Bool, trace: [String]) {
         do {
-            let (data, _) = try await fetchData(url: url, timeoutInterval: 8)
-            let html = String(data: data, encoding: .utf8) ?? ""
-            if isReleasePage(html, matching: version) {
-                return (true, ["candidate \(version): \(url.absoluteString) -> matched release page"])
-            }
-            return (false, ["candidate \(version): \(url.absoluteString) -> page did not match release version"])
+            _ = try await fetchData(url: url, method: "HEAD", timeoutInterval: 8)
         } catch {
-            let ns = error as NSError
-            if let debug = ns.userInfo["amdDebugTrace"] as? String, !debug.isEmpty {
-                return (
-                    false,
-                    debug.components(separatedBy: .newlines)
-                        .filter { !$0.isEmpty }
-                        .map { "candidate \(version): \($0)" }
-                )
+            trace.append(contentsOf: probeTrace(version: version, url: url, error: error))
+            // Only a hard 404 settles it. Anything else — a CDN that stops
+            // answering HEAD, a transient 5xx — is inconclusive, so fall
+            // through to a GET rather than declaring the release missing.
+            if isDefinitiveFailure(error) {
+                return nil
             }
-            return (false, ["candidate \(version): \(url.absoluteString) -> \(describe(error: error))"])
+        }
+
+        do {
+            let (data, _) = try await fetchData(url: url, timeoutInterval: 20)
+            let html = String(data: data, encoding: .utf8) ?? ""
+            guard isReleasePage(html, matching: version) else {
+                trace.append("candidate \(version): \(url.absoluteString) -> page did not match release version")
+                return nil
+            }
+
+            trace.append("candidate \(version): \(url.absoluteString) -> matched release page")
+            return (SitemapEntry(url: url, version: version, lastModified: fallbackLastModified), html)
+        } catch {
+            trace.append(contentsOf: probeTrace(version: version, url: url, error: error))
+            return nil
         }
     }
 
-    private func releaseNoteURLs(for version: String) -> [URL] {
-        let upperVersion = version.uppercased()
-        let lowerVersion = version.lowercased()
-        let rawURLs = [
-            "https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-\(upperVersion).html",
-            "https://www.amd.com/en/support/kb/release-notes/rn-rad-win-\(lowerVersion)",
-            "https://www.amd.com/en/support/kb/release-notes/rn-rad-win-\(lowerVersion).html"
-        ]
+    private func probeTrace(version: String, url: URL, error: Error) -> [String] {
+        let ns = error as NSError
+        if let debug = ns.userInfo["amdDebugTrace"] as? String, !debug.isEmpty {
+            return debug.components(separatedBy: .newlines)
+                .filter { !$0.isEmpty }
+                .map { "candidate \(version): \($0)" }
+        }
+        return ["candidate \(version): \(url.absoluteString) -> \(describe(error: error))"]
+    }
 
-        return rawURLs.compactMap(URL.init(string:))
+    /// The canonical article URL. The older `support/kb/release-notes/...`
+    /// forms now 301 to the generic drivers page, so probing them cost two
+    /// extra requests per candidate and could pass a soft 404 off as a hit.
+    private func releaseNoteURL(for version: String) -> URL? {
+        URL(string: "https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-\(version.uppercased()).html")
     }
 
     private func isReleasePage(_ html: String, matching version: String) -> Bool {
-        let articleNumber = "Article Number: RN-RAD-WIN-\(version)"
-        let dottedVersion = version.replacingOccurrences(of: "-", with: ".")
-        let releaseTitle = "AMD Software: Adrenalin Edition \(dottedVersion) Release Notes"
-        let cleaned = cleanHTML(html, preserveNewlines: true)
-        let folded = cleaned.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        let folded = fold(cleanHTML(html, preserveNewlines: true))
+        if folded.contains(fold("Article Number: RN-RAD-WIN-\(version)")) {
+            return true
+        }
 
-        return folded.contains(articleNumber.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")))
-            || folded.contains(releaseTitle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")))
+        return detectReleaseVersion(inFoldedText: folded) == version.replacingOccurrences(of: "-", with: ".")
+    }
+
+    /// AMD renames this heading periodically — it currently reads
+    /// "AMD Software: Adrenalin Edition 26.8.1 Driver Release Notes" where it
+    /// once omitted "Driver" — so the version is matched between the two stable
+    /// phrases instead of against a pinned full title.
+    private func detectReleaseVersion(in html: String) -> String? {
+        detectReleaseVersion(inFoldedText: fold(cleanHTML(html, preserveNewlines: true)))
+    }
+
+    private func detectReleaseVersion(inFoldedText text: String) -> String? {
+        firstCapture(
+            pattern: #"adrenalin edition\s+([0-9]+(?:\.[0-9]+)+)(?:\s+[a-z0-9.]+){0,3}\s+release notes"#,
+            in: text
+        )
+    }
+
+    /// Prefers the page's own heading so a renamed title is reported as AMD
+    /// writes it, falling back to the constructed form if it looks wrong.
+    private func releaseTitle(from html: String, version: String) -> String {
+        let fallback = "AMD Software: Adrenalin Edition \(version) Release Notes"
+        guard let heading = firstCapture(pattern: #"(?is)<h1[^>]*>(.*?)</h1>"#, in: html) else {
+            return fallback
+        }
+
+        let text = cleanHTML(heading, preserveNewlines: false)
+        guard text.contains(version), text.count <= 120 else {
+            return fallback
+        }
+
+        return text
+    }
+
+    private func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
 
     private func compareSitemapEntries(_ lhs: SitemapEntry, _ rhs: SitemapEntry) -> Int {
@@ -542,27 +680,55 @@ public struct AMDService: Sendable {
         return parts.count == 3 ? parts : nil
     }
 
-    private func extractReleaseDate(from html: String, fallback: Date) -> String {
-        if let published = firstCapture(pattern: #"\"datePublished\"\s*:\s*\"([^\"]+)\""#, in: html),
+    /// `structuredHTML` is the unstripped page: AMD publishes `datePublished`
+    /// inside a JSON-LD `<script>` block, which script removal deletes.
+    private func extractReleaseDate(from html: String, structuredHTML: String, fallback: Date) -> String {
+        // The date AMD prints on the page wins. It is a plain calendar date, so
+        // unlike the machine-readable timestamps below it cannot slide a day
+        // when the bot happens to run in a far-eastern timezone.
+        let cleaned = cleanHTML(html, preserveNewlines: true)
+        if let visibleDate = firstCapture(
+            pattern: #"(?is)Last\s+Updated\s*:\s*([A-Za-z]+\s+\d{1,2}\s*(?:st|nd|rd|th)?\s*,?\s*\d{4})"#,
+            in: cleaned
+        ),
+           let parsed = parseVisibleReleaseDate(visibleDate) {
+            return formatDate(parsed, in: TimeZone(secondsFromGMT: 0))
+        }
+
+        if let published = firstCapture(pattern: #"\"datePublished\"\s*:\s*\"([^\"]+)\""#, in: structuredHTML),
            let parsed = parseISODate(published) {
-            return formatDate(parsed)
+            return formatDate(parsed, in: timeZone(fromOffsetIn: published))
         }
 
         if let updated = firstCapture(pattern: #"(?is)<meta\s+property=\"og:updated_time\"\s+content=\"([^\"]+)\""#, in: html),
            let parsed = parseDateWithZoneOffset(updated) {
-            return formatDate(parsed)
+            return formatDate(parsed, in: timeZone(fromOffsetIn: updated))
         }
 
-        let cleaned = cleanHTML(html, preserveNewlines: true)
-        if let visibleDate = firstCapture(
-            pattern: #"(?is)Last\s+Updated:\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4})"#,
-            in: cleaned
-        ),
-           let parsed = parseVisibleReleaseDate(visibleDate) {
-            return formatDate(parsed)
+        return formatDate(fallback, in: nil)
+    }
+
+    /// Renders a timestamp in the zone it was published in, so an evening
+    /// release in California is not announced as the following day.
+    private func timeZone(fromOffsetIn timestamp: String) -> TimeZone? {
+        if timestamp.hasSuffix("Z") {
+            return TimeZone(secondsFromGMT: 0)
         }
 
-        return formatDate(fallback)
+        guard let regex = try? NSRegularExpression(pattern: #"([+-])(\d{2}):?(\d{2})$"#),
+              let match = regex.firstMatch(in: timestamp, range: NSRange(timestamp.startIndex..<timestamp.endIndex, in: timestamp)),
+              match.numberOfRanges == 4,
+              let signRange = Range(match.range(at: 1), in: timestamp),
+              let hourRange = Range(match.range(at: 2), in: timestamp),
+              let minuteRange = Range(match.range(at: 3), in: timestamp),
+              let hours = Int(timestamp[hourRange]),
+              let minutes = Int(timestamp[minuteRange])
+        else {
+            return nil
+        }
+
+        let sign = timestamp[signRange] == "-" ? -1 : 1
+        return TimeZone(secondsFromGMT: sign * (hours * 3600 + minutes * 60))
     }
 
     private func parseSummarySections(from html: String) -> [ReleaseSection] {
@@ -922,14 +1088,21 @@ public struct AMDService: Sendable {
     }
 
     private func parseVisibleReleaseDate(_ value: String) -> Date? {
-        let normalized = value.replacingOccurrences(
-            of: #"(\d{1,2})(st|nd|rd|th)"#,
+        // AMD wraps the ordinal suffix in its own tag ("August 20<sup>th</sup>,
+        // 2026"), so once tags are stripped the suffix and the comma arrive
+        // surrounded by stray spaces.
+        var normalized = value.replacingOccurrences(
+            of: #"(\d{1,2})\s*(?:st|nd|rd|th)\b"#,
             with: "$1",
-            options: .regularExpression
+            options: [.regularExpression, .caseInsensitive]
         )
+        normalized = normalized.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        normalized = normalized.replacingOccurrences(of: #"\s+,"#, with: ",", options: .regularExpression)
+        normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "MMMM d, yyyy"
 
         if let parsed = formatter.date(from: normalized) {
@@ -940,9 +1113,12 @@ public struct AMDService: Sendable {
         return formatter.date(from: normalized)
     }
 
-    private func formatDate(_ date: Date) -> String {
+    private func formatDate(_ date: Date, in timeZone: TimeZone?) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        if let timeZone {
+            formatter.timeZone = timeZone
+        }
         formatter.dateFormat = "MMMM dd, yyyy"
         return formatter.string(from: date)
     }
