@@ -239,7 +239,9 @@ private final class SpeechRenderSession {
 
 /// Accumulates partial PCM buffers from `AVSpeechSynthesizer.write` and
 /// resamples them to the target format on completion.
-private final class SynthesisCollector {
+final class SynthesisCollector {
+    private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.tts")
+
     private let targetFormat: AVAudioFormat
     /// Cleared once it has run. `AVSpeechSynthesizer` holds its buffer
     /// callback — and therefore this collector — so anything left in here
@@ -247,6 +249,9 @@ private final class SynthesisCollector {
     private var completion: ((Result<AVAudioPCMBuffer, Error>) -> Void)?
     private var sourceFormat: AVAudioFormat?
     private var collected: [AVAudioPCMBuffer] = []
+    /// Set when a chunk could not be reconciled with the established source
+    /// format. The render fails loudly instead of returning mangled audio.
+    private var failure: Error?
     private var finished = false
     private let lock = NSLock()
 
@@ -267,8 +272,26 @@ private final class SynthesisCollector {
             finishLocked()
             return
         }
-        if sourceFormat == nil { sourceFormat = pcm.format }
-        collected.append(pcm)
+        if sourceFormat == nil {
+            sourceFormat = pcm.format
+            Self.logger.info("Synthesizer output format: \(pcm.format, privacy: .public)")
+        }
+        guard let sourceFormat else { return }
+        if pcm.format == sourceFormat {
+            collected.append(pcm)
+            return
+        }
+        // A synthesizer that changes format mid-utterance used to be merged as
+        // though it had not: the merge kept the first chunk's format, so the
+        // whole render was resampled at the wrong ratio and came out stretched
+        // and distorted. Reconcile the chunk instead, and say so.
+        Self.logger.error("Synthesizer changed output format mid-render: \(sourceFormat, privacy: .public) -> \(pcm.format, privacy: .public); converting the chunk to keep the merge coherent.")
+        do {
+            collected.append(try convert(pcm, to: sourceFormat))
+        } catch {
+            failure = error
+            finishLocked()
+        }
     }
 
     private func finishLocked() {
@@ -280,6 +303,10 @@ private final class SynthesisCollector {
             self.sourceFormat = nil
         }
         guard let completion else { return }
+        if let failure {
+            completion(.failure(failure))
+            return
+        }
         guard let sourceFormat = sourceFormat, !collected.isEmpty else {
             completion(.failure(VoicePipelineError.audioFormatUnsupported))
             return
@@ -293,7 +320,11 @@ private final class SynthesisCollector {
         merged.frameLength = totalFrames
         var offset: AVAudioFrameCount = 0
         for chunk in collected {
-            copyFrames(chunk, into: merged, atOffset: offset)
+            guard copyFrames(chunk, into: merged, atOffset: offset) else {
+                Self.logger.error("Refusing to merge a synthesized chunk that does not fit the render buffer.")
+                completion(.failure(VoicePipelineError.audioFormatUnsupported))
+                return
+            }
             offset += chunk.frameLength
         }
 
@@ -305,10 +336,22 @@ private final class SynthesisCollector {
         }
     }
 
-    private func copyFrames(_ source: AVAudioPCMBuffer, into destination: AVAudioPCMBuffer, atOffset offset: AVAudioFrameCount) {
+    /// Appends one synthesized chunk into the merge buffer. Returns false if the
+    /// chunk cannot be placed safely; the copies below index by the destination's
+    /// own layout, so anything but an exact format match — or a chunk that runs
+    /// past the allocation — would write out of bounds.
+    private func copyFrames(
+        _ source: AVAudioPCMBuffer,
+        into destination: AVAudioPCMBuffer,
+        atOffset offset: AVAudioFrameCount
+    ) -> Bool {
+        guard source.format == destination.format,
+              offset + source.frameLength <= destination.frameCapacity else {
+            return false
+        }
         let frames = Int(source.frameLength)
+        let channels = Int(source.format.channelCount)
         if let srcF = source.floatChannelData, let dstF = destination.floatChannelData {
-            let channels = Int(source.format.channelCount)
             if source.format.isInterleaved {
                 let s = srcF[0]
                 let d = dstF[0]
@@ -321,16 +364,25 @@ private final class SynthesisCollector {
                     for i in 0..<frames { d[Int(offset) + i] = s[i] }
                 }
             }
-        } else if let srcI = source.int16ChannelData, let dstF = destination.floatChannelData {
-            // Float dest, Int16 source: shouldn't happen because dest matches source format,
-            // but guard anyway.
-            let channels = Int(source.format.channelCount)
-            for c in 0..<channels {
-                let s = srcI[c]
-                let d = dstF[c]
-                for i in 0..<frames { d[Int(offset) + i] = Float(s[i]) / 32768.0 }
+        } else if let srcI = source.int16ChannelData, let dstI = destination.int16ChannelData {
+            // An Int16 synthesizer previously matched no branch here at all, so
+            // its render merged as silence.
+            if source.format.isInterleaved {
+                let s = srcI[0]
+                let d = dstI[0]
+                let off = Int(offset) * channels
+                for i in 0..<(frames * channels) { d[off + i] = s[i] }
+            } else {
+                for c in 0..<channels {
+                    let s = srcI[c]
+                    let d = dstI[c]
+                    for i in 0..<frames { d[Int(offset) + i] = s[i] }
+                }
             }
+        } else {
+            return false
         }
+        return true
     }
 
     private func convert(_ source: AVAudioPCMBuffer, to targetFormat: AVAudioFormat) throws -> AVAudioPCMBuffer {

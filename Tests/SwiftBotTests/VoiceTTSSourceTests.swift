@@ -129,4 +129,67 @@ final class VoiceTTSSourceTests: XCTestCase {
         }
         return result == KERN_SUCCESS ? info.phys_footprint : 0
     }
+
+    // MARK: - Synthesis merge
+
+    private func buffer(
+        sampleRate: Double,
+        channels: AVAudioChannelCount,
+        interleaved: Bool = true,
+        frames: AVAudioFrameCount,
+        value: Float
+    ) throws -> AVAudioPCMBuffer {
+        let format = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: channels,
+            interleaved: interleaved
+        ))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        let data = try XCTUnwrap(buffer.floatChannelData)
+        for i in 0..<Int(frames) * Int(channels) { data[0][i] = value }
+        return buffer
+    }
+
+    private func merge(_ chunks: [AVAudioPCMBuffer]) throws -> Result<AVAudioPCMBuffer, Error> {
+        let target = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 48_000,
+            channels: 2,
+            interleaved: true
+        ))
+        var result: Result<AVAudioPCMBuffer, Error>?
+        let collector = SynthesisCollector(targetFormat: target) { result = $0 }
+        for chunk in chunks { collector.append(chunk) }
+        collector.append(try buffer(sampleRate: 48_000, channels: 2, frames: 0, value: 0))
+        return try XCTUnwrap(result)
+    }
+
+    /// A synthesizer that changes rate mid-utterance used to have its chunks
+    /// concatenated under the first chunk's format, so the whole render was
+    /// resampled at the wrong ratio and played back stretched and distorted.
+    func testChunksThatChangeSampleRateMidRenderAreReconciled() throws {
+        let first = try buffer(sampleRate: 22_050, channels: 1, frames: 2_205, value: 0.5)
+        let second = try buffer(sampleRate: 48_000, channels: 1, frames: 4_800, value: 0.5)
+
+        let merged = try merge([first, second]).get()
+
+        XCTAssertEqual(merged.format.sampleRate, 48_000)
+        XCTAssertEqual(merged.format.channelCount, 2)
+        // 0.1s at 22.05k reconciled to 48k, plus 0.1s already at 48k: ~0.2s.
+        let seconds = Double(merged.frameLength) / merged.format.sampleRate
+        XCTAssertEqual(seconds, 0.2, accuracy: 0.02)
+    }
+
+    func testUniformChunksMergeToTheExpectedDuration() throws {
+        let chunks = try (0..<3).map { _ in
+            try buffer(sampleRate: 48_000, channels: 1, frames: 4_800, value: 0.25)
+        }
+
+        let merged = try merge(chunks).get()
+
+        let seconds = Double(merged.frameLength) / merged.format.sampleRate
+        XCTAssertEqual(seconds, 0.3, accuracy: 0.02)
+    }
 }
