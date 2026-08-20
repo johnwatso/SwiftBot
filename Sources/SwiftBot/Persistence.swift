@@ -14,7 +14,27 @@ enum SwiftBotStorage {
     static let voiceSessionHistoryFileName = "voice-session-history.json"
     static let analyticsRuntimeFileName = "analytics-runtime.json"
 
+    /// The test bundle is hosted by `SwiftBot.app` itself, so without this the
+    /// suite reads and writes the same `settings.json`, caches and session
+    /// history as the real bot: any test that builds an `AppModel` can, and
+    /// did, overwrite a live configuration. Tests get a throwaway directory
+    /// per process instead.
+    private static let isRunningUnderXCTest: Bool =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+
+    /// Resolved once so every store in a test process shares one directory —
+    /// a fresh directory per call would break anything that writes and then
+    /// reads its own state back.
+    private static let testFolderURL: URL = {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftBotTests-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }()
+
     static func folderURL() -> URL {
+        if isRunningUnderXCTest { return testFolderURL }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let folder = appSupport.appendingPathComponent(appFolderName, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

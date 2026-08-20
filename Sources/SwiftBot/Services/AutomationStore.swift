@@ -24,13 +24,11 @@ final class AutomationStore {
         self.fileURL = fileURL ?? Self.defaultFileURL()
     }
 
+    /// Via `SwiftBotStorage` rather than resolving Application Support again:
+    /// a second copy of the path silently opts this store out of the test
+    /// redirection there, and back onto the live automations file.
     static func defaultFileURL() -> URL {
-        let fm = FileManager.default
-        let base = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let dir = base.appendingPathComponent("SwiftBot", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("automations.json")
+        SwiftBotStorage.folderURL().appendingPathComponent("automations.json")
     }
 
     // MARK: - Load / Save
