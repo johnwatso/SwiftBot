@@ -172,7 +172,9 @@ struct OverviewView: View {
     }
 
     private var operationalHealth: OperationalStatusMetric.State {
-        if status == .reconnecting || app.connectionDiagnostics.lastGatewayCloseCode != nil || failedCommandsToday >= 5 {
+        if status == .reconnecting
+            || ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(app.connectionDiagnostics.lastGatewayCloseCode)
+            || failedCommandsToday >= 5 {
             return .critical
         }
         if status == .connecting
@@ -350,11 +352,12 @@ struct OverviewView: View {
         }
 
         if let closeCode = app.connectionDiagnostics.lastGatewayCloseCode {
+            let needsAction = ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(closeCode)
             items.append(AttentionItem(
                 id: "gateway-close",
-                title: "Discord gateway closed",
-                detail: "Last abnormal close code: \(closeCode). Check token, intents, and permissions.",
-                severity: .critical
+                title: needsAction ? "Discord rejected the gateway connection" : "Discord gateway closed",
+                detail: "Close code \(closeCode). \(ConnectionDiagnostics.gatewayCloseRemedy(for: closeCode))",
+                severity: needsAction ? .critical : .warning
             ))
         }
 

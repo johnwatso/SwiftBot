@@ -40,6 +40,11 @@ actor DiscordGatewayConnection {
     private let gatewayURL: URL
     private let dependencies: Dependencies
 
+    /// Codes for a socket that ended cleanly: 1000 is a normal close, and 1001
+    /// ("going away") is what Discord sends whenever it cycles a gateway host.
+    /// Neither says anything is wrong with this bot.
+    private static let cleanCloseCodes: Set<Int> = [1000, 1001]
+
     private var socket: (any Socket)?
     private var heartbeatTask: Task<Void, Never>?
     private var heartbeatSentAt: Date?
@@ -186,10 +191,14 @@ actor DiscordGatewayConnection {
                 await onPayload?(payload)
             } catch {
                 let closeRawValue = socket.closeCode.rawValue
-                if closeRawValue != 1000, closeRawValue > 0 {
-                    await onGatewayClose?(closeRawValue)
-                }
                 if generation == connectionGeneration {
+                    // Only a live socket's close says anything about the bot's health.
+                    // A stale generation is a socket we replaced ourselves, and it always
+                    // reports "going away" — surfacing that pinned the dashboard to
+                    // "Action Required" for the rest of the process lifetime.
+                    if closeRawValue > 0, !Self.cleanCloseCodes.contains(closeRawValue) {
+                        await onGatewayClose?(closeRawValue)
+                    }
                     await scheduleReconnect(
                         reason: "Gateway receive failed: \(error.localizedDescription)",
                         closeCode: closeRawValue > 0 ? closeRawValue : nil

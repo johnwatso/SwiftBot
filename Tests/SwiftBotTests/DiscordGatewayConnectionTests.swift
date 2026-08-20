@@ -124,6 +124,36 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         await connection.disconnect()
     }
 
+    func testGoingAwayCloseReconnectsWithoutFlaggingAnAbnormalClose() async {
+        let failingSocket = FakeGatewaySocket(
+            scriptedResults: [.failure(SocketFailure.disconnected)],
+            closeCodeOnFailure: .goingAway
+        )
+        let replacementSocket = FakeGatewaySocket()
+        let factory = SocketFactoryQueue(sockets: [failingSocket, replacementSocket])
+        let recorder = EventRecorder()
+        let connection = makeConnection(
+            factory: factory,
+            sleep: { _ in }
+        )
+
+        await connection.setOnGatewayClose { code in
+            await recorder.record(closeCode: code)
+        }
+
+        await connection.connect(token: "bot-token")
+
+        let reconnected = await waitUntil {
+            await factory.createdCount() == 2
+        }
+
+        XCTAssertTrue(reconnected)
+        let closeCodes = await recorder.closeCodes()
+        XCTAssertTrue(closeCodes.isEmpty, "1001 is Discord cycling a host, not a fault to report")
+
+        await connection.disconnect()
+    }
+
     func testReconnectResumesGatewaySessionWithoutASecondIdentify() async {
         let initialSocket = FakeGatewaySocket(
             scriptedResults: [

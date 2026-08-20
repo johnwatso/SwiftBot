@@ -25,7 +25,8 @@ struct ConnectionDiagnostics {
     var rateLimitRemaining: Int?
     var lastTestAt: Date?
     var lastTestMessage: String = ""
-    /// Last non-normal WebSocket close code from Discord (e.g. 4004, 4014). Nil = no abnormal close.
+    /// Last close code that outlived the connection it came from, cleared once the
+    /// session is healthy again (READY or RESUMED). Nil = nothing to report.
     var lastGatewayCloseCode: Int?
     private(set) var recentGatewayReconnects: [GatewayReconnectDiagnostic] = []
 
@@ -41,6 +42,26 @@ struct ConnectionDiagnostics {
         recentGatewayReconnects.append(diagnostic)
         if recentGatewayReconnects.count > 20 {
             recentGatewayReconnects.removeFirst(recentGatewayReconnects.count - 20)
+        }
+    }
+
+    /// Discord close codes that never fix themselves on reconnect: the token, the
+    /// intents, or the shard/API configuration has to change before the bot can
+    /// connect again. Everything else is a transient drop the reconnect handles.
+    static let unrecoverableGatewayCloseCodes: Set<Int> = [4004, 4010, 4011, 4012, 4013, 4014]
+
+    static func isUnrecoverableGatewayCloseCode(_ code: Int?) -> Bool {
+        code.map { unrecoverableGatewayCloseCodes.contains($0) } == true
+    }
+
+    static func gatewayCloseRemedy(for code: Int) -> String {
+        switch code {
+        case 4004: return "Discord rejected the bot token. Re-enter it in Settings."
+        case 4010, 4011: return "The shard configuration is invalid for this application."
+        case 4012: return "This gateway API version is no longer supported."
+        case 4013: return "The configured gateway intents are not valid."
+        case 4014: return "Enable the privileged intents for this app in the Discord developer portal."
+        default: return "The connection dropped and SwiftBot reconnected automatically."
         }
     }
 

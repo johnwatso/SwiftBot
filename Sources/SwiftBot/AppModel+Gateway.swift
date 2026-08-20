@@ -53,6 +53,12 @@ extension AppModel {
     private func recordGatewayEvent(named eventName: String) {
         gatewayEventCount += 1
         lastGatewayEventName = eventName
+        // READY clears the close code in handleReadyDispatch, but most reconnects
+        // resume the old session instead and never emit one. Without this a single
+        // transient close stayed on the dashboard until the bot was restarted.
+        if eventName == "RESUMED" {
+            connectionDiagnostics.lastGatewayCloseCode = nil
+        }
     }
 
     private func handleVoiceStateUpdateDispatch(_ event: GatewayVoiceStateUpdateEvent) async {
