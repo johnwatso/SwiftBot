@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import libdave_swift
 
 extension AppModel {
 
@@ -321,6 +322,11 @@ extension AppModel {
     }
 
     private func applyBotIdentity(from validation: DiscordService.TokenValidationResult) {
+        let previousUserID = botUserId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextUserID = validation.userId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let previousUserID, let nextUserID, previousUserID != nextUserID {
+            purgeDaveIdentity(for: previousUserID, reason: "Discord bot account switched")
+        }
         if let userId = validation.userId, !userId.isEmpty {
             botUserId = userId
         }
@@ -450,10 +456,16 @@ extension AppModel {
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
+        let daveIdentityUserID = botUserId
+            ?? settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !daveIdentityUserID.isEmpty {
+            purgeDaveIdentity(for: daveIdentityUserID, reason: "Discord bot account signed out")
+        }
         botUserId = nil
         botUsername = "OnlineBot"
         botDiscriminator = nil
         botAvatarHash = nil
+        settings.cachedBotIdentity = CachedBotIdentity()
         Task { await pluginManager.removeAll() }
         Task { await cluster.stopAll() }
         status = .stopped
@@ -464,6 +476,17 @@ extension AppModel {
         resolvedClientID = nil
         lastTokenValidationResult = nil
         logs.append("API key cleared. Please enter a new token to reconnect.")
+    }
+
+    private func purgeDaveIdentity(for userID: String, reason: String) {
+        let authSessionId = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !authSessionId.isEmpty else { return }
+        do {
+            let purged = try DavePersistedIdentityStore.purge(authSessionId: authSessionId)
+            logs.append("[INFO] \(reason): purged \(purged) persisted DAVE identity file(s).")
+        } catch {
+            logs.append("[WARN] \(reason): could not purge persisted DAVE identity: \(error.localizedDescription)")
+        }
     }
 
     /// Returns the app to the initial onboarding/setup screen.

@@ -41,7 +41,7 @@ packages:
     url: https://github.com/johnwatso/libdave-swift.git
     # Keep this pin centralized: release a new libdave tag, change this one
     # value, then regenerate the project with `xcodegen`.
-    exactVersion: 2.0.1
+    exactVersion: 3.0.0
 
 targets:
   SwiftBot:

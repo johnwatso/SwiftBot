@@ -29,6 +29,7 @@
 		11E6E52E41D8F3196BD933F7 /* GatewayEventDispatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00EB7C7EB0264A293D5F097 /* GatewayEventDispatcherTests.swift */; };
 		12DF9B6154580191B21A8ABD /* CertificateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */; };
 		145D84D6516814F33DF25F40 /* CommandProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */; };
+		16882893D707E35D14590F57 /* StorageIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B6B49FA18802E05DBE3D1E /* StorageIsolationTests.swift */; };
 		1702075E35E0AE27103CE46B /* VoiceEncryption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87CF1C132AFA60D6B6D721FF /* VoiceEncryption.swift */; };
 		182E9D59AEF88878CADADA25 /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B0A239115555D736293C45 /* AppModel+Gateway.swift */; };
 		199A673F0A5398671620E5C2 /* DiscordPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0106453740296F8C83BCDA66 /* DiscordPreferencesView.swift */; };
@@ -90,6 +91,7 @@
 		4ACA9E40E51496EC3904579B /* NVIDIAService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB851EA01C7571AFA4E6081 /* NVIDIAService.swift */; };
 		4B2FE6B6D0C4645E1BE62C81 /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD7CC99C87BE90F546F28D9 /* VoiceView.swift */; };
 		4BC03BCBAC8C86BFD5EC81DF /* MusicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F55B75F302A6FF7106C7B75 /* MusicModels.swift */; };
+		4EF788CC92E5E105279A48F4 /* LogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0646686CA089EF890C0FBD0 /* LogExporterTests.swift */; };
 		50F39AB4A62F7B4E0D6E2DE7 /* VoiceSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78C1AB0E1ED82D0D481F2F30 /* VoiceSessionStore.swift */; };
 		519AF8052EAE1BBB9678479A /* AuditAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB78B938253E057434118ED /* AuditAnalyzer.swift */; };
 		51FC641B63294EAAA2CEDFE5 /* AutomationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7C274E28751870FD01AFBC /* AutomationsView.swift */; };
@@ -184,6 +186,7 @@
 		B5F43EC19118C250A8D4811F /* AppModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDDC72A9183AEDBAD42FEE8 /* AppModelTypes.swift */; };
 		B7582E801C0D291241F3FFF7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2B026EFC9AE62F7E5F97EF75 /* Assets.xcassets */; };
 		BB8C25DB9DA191781CA1DB06 /* VoiceGatewayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 644FEDFBBBEBE707A807AC79 /* VoiceGatewayConnection.swift */; };
+		BC754CF03E39AE254AD6DD1A /* VoiceTTSSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AAD2A2914383C1B1C89D5CD /* VoiceTTSSourceTests.swift */; };
 		BCF032218277AED8BE52A820 /* SwiftMinerLinkWarningDismissTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6A9414610F28A00389D53E /* SwiftMinerLinkWarningDismissTests.swift */; };
 		BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */; };
 		BD64632310BA8934F5467656 /* SwiftMinerDMStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6021CBD3F4619EC59B0A894 /* SwiftMinerDMStateTests.swift */; };
@@ -316,6 +319,7 @@
 		07D4EF03CA9AE99CE2824D81 /* MediaLibraryIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibraryIndexer.swift; sourceTree = "<group>"; };
 		094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationModerationPrecedenceTests.swift; sourceTree = "<group>"; };
 		09EE37E36F0475419C59B5F2 /* RecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsView.swift; sourceTree = "<group>"; };
+		0AAD2A2914383C1B1C89D5CD /* VoiceTTSSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTTSSourceTests.swift; sourceTree = "<group>"; };
 		0AF61F92781C7140D8BDF91C /* AppModel+DiscordParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordParsers.swift"; sourceTree = "<group>"; };
 		0BF9712AF4197B5F8E2433DF /* VoiceAnnouncementServiceDrainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAnnouncementServiceDrainTests.swift; sourceTree = "<group>"; };
 		0C654453B8C0EDE901C01798 /* VoiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettings.swift; sourceTree = "<group>"; };
@@ -436,6 +440,7 @@
 		82266A5BF1F54F34EDC49019 /* DiscordCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordCache.swift; sourceTree = "<group>"; };
 		830E8722A4F9F7E669258BD6 /* MusicLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLookupService.swift; sourceTree = "<group>"; };
 		8450C4A48DC007496BAAD5D6 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
+		84B6B49FA18802E05DBE3D1E /* StorageIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageIsolationTests.swift; sourceTree = "<group>"; };
 		8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordAIServiceTests.swift; sourceTree = "<group>"; };
 		87AC4E5BF73C4C6BC7DF7E4B /* UserTimezonesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserTimezonesView.swift; sourceTree = "<group>"; };
 		87CF1C132AFA60D6B6D721FF /* VoiceEncryption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEncryption.swift; sourceTree = "<group>"; };
@@ -477,6 +482,7 @@
 		AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandProcessorTests.swift; sourceTree = "<group>"; };
 		ADDBE745C4836C8F28F219B2 /* PatchyValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyValidationTests.swift; sourceTree = "<group>"; };
 		AFC42B5CD69860CFA1209239 /* RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPI.swift; sourceTree = "<group>"; };
+		B0646686CA089EF890C0FBD0 /* LogExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporterTests.swift; sourceTree = "<group>"; };
 		B12C60C9598DFFD24EC20790 /* CacheKeyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheKeyBuilder.swift; sourceTree = "<group>"; };
 		B6EA0FA1B56EED3848973E14 /* MeshPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPreferencesView.swift; sourceTree = "<group>"; };
 		BBFC222EC44A39A8E25D9BFB /* AppleIntelligenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligenceView.swift; sourceTree = "<group>"; };
@@ -624,6 +630,7 @@
 				3C6322EA38D64C533EA2EEF0 /* HelpEngineTests.swift */,
 				BE9FE00589063B8C88332906 /* HLSPackagerTests.swift */,
 				91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */,
+				B0646686CA089EF890C0FBD0 /* LogExporterTests.swift */,
 				1D3C0B8AE7836B532CA6850D /* MeshConfigMutationTests.swift */,
 				966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */,
 				4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */,
@@ -632,6 +639,7 @@
 				5EEA13B9D547F7655192DC80 /* MusicLinkDetectorTests.swift */,
 				EDCE98B0A1EEFDAEC5B73641 /* PatchySwiftMinerCampaignRouterTests.swift */,
 				ADDBE745C4836C8F28F219B2 /* PatchyValidationTests.swift */,
+				84B6B49FA18802E05DBE3D1E /* StorageIsolationTests.swift */,
 				76ACAC822C262D849FDCBFBD /* SweepWeeklyMVPAnnouncementTests.swift */,
 				A242BC711BB3261C9D007EF6 /* SwiftMinerDMRouterTests.swift */,
 				4D7439BDA54C341126F5A30C /* SwiftMinerDMSenderTests.swift */,
@@ -648,6 +656,7 @@
 				371732DE4DCB38531E12670F /* VoiceRecoveryBackoffTests.swift */,
 				28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */,
 				1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */,
+				0AAD2A2914383C1B1C89D5CD /* VoiceTTSSourceTests.swift */,
 				148146E9D6C2A1CABFEFF833 /* VoiceUntilEmptyTests.swift */,
 				F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */,
 				29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */,
@@ -1300,6 +1309,7 @@
 				44A4D8D594A9EC223FCCAAA1 /* HLSPackagerTests.swift in Sources */,
 				C0DDE65E5C04789A09133D38 /* HelpEngineTests.swift in Sources */,
 				BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */,
+				4EF788CC92E5E105279A48F4 /* LogExporterTests.swift in Sources */,
 				A3D21AC06D681B38BFB30556 /* MeshConfigMutationTests.swift in Sources */,
 				3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */,
 				EC945C92A428A86DAF62173F /* MeshFailoverIntegrationTests.swift in Sources */,
@@ -1308,6 +1318,7 @@
 				EA45A299C5D6140C58AD7510 /* MusicLinkDetectorTests.swift in Sources */,
 				B0A3A295C27D6377473DDCB1 /* PatchySwiftMinerCampaignRouterTests.swift in Sources */,
 				F3448FDDAE9DF8344C392F3D /* PatchyValidationTests.swift in Sources */,
+				16882893D707E35D14590F57 /* StorageIsolationTests.swift in Sources */,
 				CCD0A6256F334076F0CC2059 /* SweepWeeklyMVPAnnouncementTests.swift in Sources */,
 				8AD16B5D17F230EBFF694EDB /* SwiftMinerDMRouterTests.swift in Sources */,
 				5F1C394CB812F1D2B78DB256 /* SwiftMinerDMSenderTests.swift in Sources */,
@@ -1323,6 +1334,7 @@
 				306B8E871FB74E9DCB898A68 /* VoicePlaybackServiceTests.swift in Sources */,
 				A0E4B62E8D14100E3163AB9E /* VoiceRecoveryBackoffTests.swift in Sources */,
 				8C3F7845C2B78E70DF2C261A /* VoiceSessionStoreTests.swift in Sources */,
+				BC754CF03E39AE254AD6DD1A /* VoiceTTSSourceTests.swift in Sources */,
 				8E1A62B386CB5E056D3BDB0C /* VoiceTransportSecurityTests.swift in Sources */,
 				8A09CE9D59BF7F3078D87B48 /* VoiceUntilEmptyTests.swift in Sources */,
 				235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */,
@@ -1769,7 +1781,7 @@
 			repositoryURL = "https://github.com/johnwatso/libdave-swift.git";
 			requirement = {
 				kind = exactVersion;
-				version = 2.0.1;
+				version = 3.0.0;
 			};
 		};
 		3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {

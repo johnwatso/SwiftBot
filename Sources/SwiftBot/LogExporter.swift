@@ -209,9 +209,20 @@ enum LogExporter {
             out += "daveSessionGeneration=\(transportDiagnostics.daveSessionGeneration.map(String.init) ?? "-") protocolVersion=\(transportDiagnostics.daveProtocolVersion.map(String.init) ?? "-") handshake=\(transportDiagnostics.daveHandshakeState ?? "-") mediaReady=\(transportDiagnostics.daveMediaReady.map(String.init) ?? "-")\n"
             out += "daveAppliedTransitions=\(transportDiagnostics.daveAppliedTransitionCount.map(String.init) ?? "-") pendingEpoch=\(transportDiagnostics.davePendingEpoch.map(String.init) ?? "-") pendingTransition=\(transportDiagnostics.davePendingTransitionId.map(String.init) ?? "-") activeTransition=\(transportDiagnostics.daveActiveTransitionId.map(String.init) ?? "-")\n"
             out += "daveStagedTransitions=\(stagedTransitions.isEmpty ? "-" : stagedTransitions) pendingOutboundActions=\(transportDiagnostics.davePendingOutboundActionCount.map(String.init) ?? "-") lastRecoveryAction=\(transportDiagnostics.daveLastRecoveryAction ?? "-")\n"
+            out += "daveExternalSenderState=\(transportDiagnostics.daveExternalSenderState ?? "-") rosterMembers=\(transportDiagnostics.daveRosterMemberCount.map(String.init) ?? "-") unrecognizedRosterMembers=\(transportDiagnostics.daveUnrecognizedRosterUserIds.count) evictedTransitions=\(transportDiagnostics.daveEvictedTransitionCount.map(String.init) ?? "-")\n"
+            if !transportDiagnostics.daveUnrecognizedRosterUserIds.isEmpty {
+                out += "daveUnrecognizedRosterUserIds=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveUnrecognizedRosterUserIds.joined(separator: ",")))\n"
+            }
+            out += "daveLastFailureCode=\(transportDiagnostics.daveLastFailureCode ?? "-") origin=\(transportDiagnostics.daveLastFailureOrigin ?? "-") nativeSource=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastFailureNativeSource ?? "-")) nativeReason=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastFailureNativeReason ?? "-"))\n"
             out += "daveLastTransitionAt=\(transportDiagnostics.daveLastTransitionAt.map { iso.string(from: $0) } ?? "-")\n"
             out += "daveEncryptSuccesses=\(transportDiagnostics.daveEncryptionSuccessCount.map(String.init) ?? "-") failures=\(transportDiagnostics.daveEncryptionFailureCount.map(String.init) ?? "-")\n"
             out += "daveLastMlsError=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastMlsError ?? "-"))\n"
+            out += "daveTraceEvents=\(transportDiagnostics.daveRecentEvents.count)\n"
+            for event in transportDiagnostics.daveRecentEvents {
+                let transition = event.transitionId.map(String.init) ?? "-"
+                let failure = event.failure.map { "\($0.code.rawValue)/\($0.origin.rawValue)" } ?? "-"
+                out += "daveTrace id=\(event.id) at=\(iso.string(from: event.timestamp)) generation=\(event.sessionGeneration) kind=\(event.kind.rawValue) outcome=\(event.outcome.rawValue) transition=\(transition) mediaReady=\(event.mediaReady) recovery=\(event.recoveryHint.rawValue) failure=\(failure) detail=\(SwiftBotLogRedactor.redact(event.detail ?? "-"))\n"
+            }
         } else {
             out += "state=not initialized\n"
         }

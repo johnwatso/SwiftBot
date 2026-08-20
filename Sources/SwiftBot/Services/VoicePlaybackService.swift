@@ -53,6 +53,15 @@ actor VoicePlaybackService {
         let daveActiveTransitionId: UInt64?
         let davePendingTransitionIds: [UInt64]
         let davePendingOutboundActionCount: Int?
+        let daveExternalSenderState: String?
+        let daveRosterMemberCount: Int?
+        let daveUnrecognizedRosterUserIds: [String]
+        let daveEvictedTransitionCount: UInt64?
+        let daveLastFailureCode: String?
+        let daveLastFailureOrigin: String?
+        let daveLastFailureNativeSource: String?
+        let daveLastFailureNativeReason: String?
+        let daveRecentEvents: [DaveDiagnosticEvent]
         let daveLastRecoveryAction: String?
         let daveLastMlsError: String?
         let daveLastTransitionAt: Date?
@@ -564,6 +573,15 @@ actor VoicePlaybackService {
             daveActiveTransitionId: dave?.activeTransitionId,
             davePendingTransitionIds: dave?.pendingTransitionIds ?? [],
             davePendingOutboundActionCount: dave?.pendingOutboundActionCount,
+            daveExternalSenderState: dave?.externalSenderState.rawValue,
+            daveRosterMemberCount: dave?.rosterMemberCount,
+            daveUnrecognizedRosterUserIds: await daveCoordinator?.unrecognizedRosterMembers() ?? [],
+            daveEvictedTransitionCount: dave?.evictedTransitionCount,
+            daveLastFailureCode: dave?.lastFailure?.code.rawValue,
+            daveLastFailureOrigin: dave?.lastFailure?.origin.rawValue,
+            daveLastFailureNativeSource: dave?.lastFailure?.nativeSource,
+            daveLastFailureNativeReason: dave?.lastFailure?.nativeReason,
+            daveRecentEvents: dave?.recentEvents ?? [],
             daveLastRecoveryAction: dave?.lastRecoveryAction?.rawValue,
             daveLastMlsError: dave?.lastMlsError,
             daveLastTransitionAt: dave?.lastTransitionTimestamp,
@@ -1588,7 +1606,7 @@ actor VoicePlaybackService {
             guard isCurrentConnection(generation) else { return }
             daveExternalSender = data
             await handleDaveGatewayResult(result, reason: "external sender", generation: generation)
-            await daveLog("DAVE external sender registered; key package is queued only after this acceptance.")
+            await daveLog("DAVE external sender submitted to native MLS; any key package uses the acknowledged gateway outbox.")
             await verbose("awaiting Discord → MLS proposals")
         } catch {
             await handleDaveGatewayError(error, context: "external sender", generation: generation)
@@ -1799,6 +1817,12 @@ actor VoicePlaybackService {
         generation: UInt64
     ) async {
         guard isCurrentConnection(generation) else { return }
+        if !result.unrecognizedRosterUserIds.isEmpty {
+            let members = result.unrecognizedRosterUserIds.joined(separator: ", ")
+            await daveLogError(
+                "DAVE roster verification warning: the MLS group contains \(result.unrecognizedRosterUserIds.count) unannounced voice member(s): \(members)."
+            )
+        }
         if result.needsRecovery {
             await daveLog("DAVE \(reason) requested recovery (\(result.recoveryHint.rawValue)); coordinator has queued its safe recovery actions.")
         }
@@ -1835,8 +1859,10 @@ actor VoicePlaybackService {
 
     private func handleDaveGatewayError(_ error: Error, context: String, generation: UInt64) async {
         guard isCurrentConnection(generation) else { return }
-        await daveLogError("DAVE \(context) failed: \(error.localizedDescription)")
         if let error = error as? DaveError {
+            await daveLogError(
+                "DAVE \(context) failed [\(error.failureCode.rawValue), \(error.failureOrigin.rawValue)]: \(error.localizedDescription)"
+            )
             switch error.recoveryHint {
             case .retryLater, .waitForExternalSender:
                 if status == .connected, daveMediaRequired {
@@ -1846,6 +1872,8 @@ actor VoicePlaybackService {
             case .none, .sendInvalidCommitWelcome, .recreateSession, .fatal:
                 break
             }
+        } else {
+            await daveLogError("DAVE \(context) failed: \(error.localizedDescription)")
         }
         await failIfCurrent("DAVE \(context) failed: \(error.localizedDescription)", generation: generation)
     }

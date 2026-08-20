@@ -9,6 +9,12 @@
 
 ## Recent Engineering Log
 
+### 2026-08-19 — libdave-swift 3.0.0
+
+- [x] Upgraded the DAVE dependency to 3.0.0, retained the acknowledged Discord gateway outbox contract, and adopted structured libdave diagnostic events plus export-safe post-mortem traces.
+- [x] Surface MLS roster members missing from Discord's announced voice session, include structured failure classifications in diagnostics, and purge persisted DAVE identities when the bot account is signed out or switched.
+- [ ] Before deployment, validate a real join, re-key, and two-way audio in a disposable non-production Discord voice channel; the MLS transition path cannot be covered end-to-end offline.
+
 ### 2026-08-19 — Announcer DAVE transition and external-disconnect recovery
 
 - [x] Accept Discord's epoch-1 DAVE Prepare Epoch form that omits `transition_id` for a zero-ID sole-member reset, allowing the documented follow-up transition to establish its fail-closed MLS state instead of classifying the voice session as malformed.

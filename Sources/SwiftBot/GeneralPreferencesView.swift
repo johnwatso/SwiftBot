@@ -175,9 +175,10 @@ struct GeneralPreferencesView: View {
         .alert("Replace Bot Token?", isPresented: $showingClearTokenConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Replace", role: .destructive) {
-                app.settings.token = ""
-                app.settings.cachedBotIdentity = CachedBotIdentity()
-                tokenVerifyError = nil
+                Task {
+                    await app.clearAPIKey()
+                    tokenVerifyError = nil
+                }
             }
         } message: {
             Text("Clears the saved token so you can paste a new one. SwiftBot will disconnect from Discord until a new token is verified.")
