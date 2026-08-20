@@ -50,6 +50,40 @@ final class VoiceTTSSource: @unchecked Sendable {
              voice.name.localizedCaseInsensitiveContains("ryan"))
     }
 
+    /// Third-party voices ship as separate app extensions, so they can crash or
+    /// fail to launch independently of SwiftBot. Apple's built-in voices are
+    /// in-process assets and stay available when that happens.
+    static func isSystemVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
+        voice.identifier.hasPrefix("com.apple.")
+    }
+
+    /// The voice a failed render retries with. It must be a *different* engine
+    /// from `selectedIdentifier`, not merely a different identifier: reusing
+    /// `preferredEnglishVoice()` here resolved to the selected voice itself on
+    /// a default configuration, so the retry re-entered the engine that had
+    /// just failed and the fallback never did anything.
+    static func fallbackEnglishVoice(excluding selectedIdentifier: String?) -> AVSpeechSynthesisVoice? {
+        fallbackEnglishVoice(from: AVSpeechSynthesisVoice.speechVoices(), excluding: selectedIdentifier)
+    }
+
+    static func fallbackEnglishVoice(
+        from voices: [AVSpeechSynthesisVoice],
+        excluding selectedIdentifier: String?
+    ) -> AVSpeechSynthesisVoice? {
+        let candidates = voices
+            .filter { $0.language.hasPrefix("en") }
+            .filter { $0.identifier != selectedIdentifier }
+        let systemVoices = candidates.filter(isSystemVoice)
+        // Compact (`.default`) voices are bundled with macOS; premium and
+        // enhanced ones are downloadable assets that may not be present. The
+        // fallback's job is to always work, so quality comes last here.
+        if let compact = systemVoices.first(where: { $0.quality == .default }) { return compact }
+        if let anySystem = systemVoices.first { return anySystem }
+        // No Apple voice installed for English at all; any other engine still
+        // beats retrying the one that just failed.
+        return candidates.first
+    }
+
     /// Synthesize `text` and return one fully-rendered AVAudioPCMBuffer in the
     /// pipeline's target format (48 kHz, stereo, interleaved Float32).
     func render(text: String, voice: AVSpeechSynthesisVoice?) async throws -> AVAudioPCMBuffer {
@@ -81,9 +115,16 @@ final class VoiceTTSSource: @unchecked Sendable {
                         }
                     }) else { return }
 
+                    // The session is retained by `completion`, which releases
+                    // every capture the moment it resolves. Keeping it alive
+                    // through the collector instead would close a reference
+                    // cycle (synthesizer -> write callback -> collector ->
+                    // completion closure -> session -> synthesizer) that
+                    // leaked one AVSpeechSynthesizer, and every buffer it had
+                    // rendered, for the lifetime of the process.
+                    completion.retainUntilResolved { Task { @MainActor in _ = session } }
                     let collector = SynthesisCollector(targetFormat: format) { result in
                         completion.resolve(result.map(SendableAudioBuffer.init))
-                        _ = session // keep alive until completion
                     }
                     session.synthesizer.write(utterance) { buffer in
                         collector.append(buffer)
@@ -109,6 +150,7 @@ private final class SynthesisRenderCompletion: @unchecked Sendable {
     private var continuation: CheckedContinuation<SendableAudioBuffer, Error>?
     private var result: Result<SendableAudioBuffer, Error>?
     private var cancellationAction: (() -> Void)?
+    private var sessionRelease: (() -> Void)?
 
     var isResolved: Bool {
         lock.lock()
@@ -141,6 +183,19 @@ private final class SynthesisRenderCompletion: @unchecked Sendable {
         return true
     }
 
+    /// Holds the render's synthesizer alive until this completion resolves,
+    /// then drops it. `release` is expected to hop to the main actor rather
+    /// than free the synthesizer inline: the resolve usually happens inside
+    /// the synthesizer's own buffer callback, which is no place to release
+    /// its last reference.
+    func retainUntilResolved(_ release: @escaping () -> Void) {
+        lock.lock()
+        let alreadyResolved = result != nil
+        if !alreadyResolved { sessionRelease = release }
+        lock.unlock()
+        if alreadyResolved { release() }
+    }
+
     func resolve(_ result: Result<SendableAudioBuffer, Error>) {
         finish(with: result, runCancellationAction: false)
     }
@@ -163,10 +218,13 @@ private final class SynthesisRenderCompletion: @unchecked Sendable {
         self.continuation = nil
         let cancellationAction = runCancellationAction ? self.cancellationAction : nil
         self.cancellationAction = nil
+        let sessionRelease = self.sessionRelease
+        self.sessionRelease = nil
         lock.unlock()
 
         cancellationAction?()
         continuation?.resume(with: result)
+        sessionRelease?()
     }
 }
 
@@ -183,7 +241,10 @@ private final class SpeechRenderSession {
 /// resamples them to the target format on completion.
 private final class SynthesisCollector {
     private let targetFormat: AVAudioFormat
-    private let completion: (Result<AVAudioPCMBuffer, Error>) -> Void
+    /// Cleared once it has run. `AVSpeechSynthesizer` holds its buffer
+    /// callback — and therefore this collector — so anything left in here
+    /// outlives the render.
+    private var completion: ((Result<AVAudioPCMBuffer, Error>) -> Void)?
     private var sourceFormat: AVAudioFormat?
     private var collected: [AVAudioPCMBuffer] = []
     private var finished = false
@@ -212,6 +273,13 @@ private final class SynthesisCollector {
 
     private func finishLocked() {
         finished = true
+        let completion = self.completion
+        self.completion = nil
+        defer {
+            self.collected.removeAll()
+            self.sourceFormat = nil
+        }
+        guard let completion else { return }
         guard let sourceFormat = sourceFormat, !collected.isEmpty else {
             completion(.failure(VoicePipelineError.audioFormatUnsupported))
             return

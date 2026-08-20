@@ -35,6 +35,11 @@ struct VoiceAnnouncerHealth: Sendable, Equatable {
     var lastRecoveryAt: Date?
     var activeStartedAt: Date?
     var activeCharacterCount: Int?
+    /// When the in-flight read's own deadline expires, plus the announcer's
+    /// grace. Past this point the announcer's bounded retry path has provably
+    /// failed to fire and the read is genuinely wedged. A read is legitimately
+    /// as long as its audio, so a fixed threshold can't judge one.
+    var activeExpiresAt: Date?
     var lastBatchSize: Int = 0
     var isPaused: Bool = false
     var isDraining: Bool = false
@@ -43,6 +48,10 @@ struct VoiceAnnouncerHealth: Sendable, Equatable {
         switch phase {
         case .rendering, .sending:
             guard !isPaused else { return false }
+            // Prefer the read's own deadline; a long message can legitimately
+            // outlast `threshold` and must not be reconnected out from under
+            // itself, while a short one shouldn't get a free 60 seconds.
+            if let activeExpiresAt { return now >= activeExpiresAt }
             guard let activeStartedAt else { return false }
             return now.timeIntervalSince(activeStartedAt) >= threshold
         case .queued:
@@ -62,6 +71,10 @@ struct VoiceAnnouncerHealth: Sendable, Equatable {
             guard let recoveryStartedAt else { return false }
             return now.timeIntervalSince(recoveryStartedAt) >= threshold
         case .idle, .paused:
+            // `.paused` is only ever an owner-requested hold (a handshake in
+            // progress, the empty-channel grace period), and the owner lifts
+            // it. A pause the announcer imposed on itself after a failure
+            // reports `.recovering` above, which is bounded.
             return false
         }
     }

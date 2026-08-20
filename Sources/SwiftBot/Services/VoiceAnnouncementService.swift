@@ -95,6 +95,16 @@ private final class PlaybackDeadlineRace: @unchecked Sendable {
 actor VoiceAnnouncementService {
     private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.announce")
 
+    /// Headroom between a read's own deadline and the point the owner's health
+    /// watchdog calls it stalled, so the announcer's bounded retry/recovery
+    /// path always gets to run first.
+    static let stallGraceSeconds: TimeInterval = 20
+
+    private static func seconds(_ duration: Duration) -> TimeInterval {
+        Double(duration.components.seconds) +
+            Double(duration.components.attoseconds) / 1e18
+    }
+
     struct Announcement: Sendable, Equatable {
         let id: UUID
         let text: String
@@ -127,6 +137,13 @@ actor VoiceAnnouncementService {
     private var queue: [Announcement] = []
     private var draining: Bool = false
     private var paused: Bool = false
+    /// Distinguishes a pause the announcer inflicted on itself after a failure
+    /// — which nothing will lift unless the owner notices — from one the owner
+    /// asked for deliberately (a handshake in progress, the empty-channel
+    /// grace period). Only the former is a stall the health watchdog should
+    /// bound; reporting both as `.paused` is what let a failed read park the
+    /// queue silently and indefinitely.
+    private var pausedForRecovery: Bool = false
     /// Advances when a newer voice path tells the announcer to resume: either
     /// DAVE media becomes ready or AppModel finishes an automatic rejoin. A
     /// playback attempt from an older generation may finish with a stale
@@ -183,7 +200,11 @@ actor VoiceAnnouncementService {
     }
 
     func setVoice(_ voice: AVSpeechSynthesisVoice?) {
+        guard self.voice?.identifier != voice?.identifier else { return }
         self.voice = voice
+        // The fallback is resolved relative to the selection, so a stale cache
+        // could name the newly selected voice as its own fallback.
+        fallbackVoiceID = nil
     }
 
     func setOnQueueChange(_ handler: @escaping @Sendable ([Announcement]) async -> Void) {
@@ -207,12 +228,35 @@ actor VoiceAnnouncementService {
     var recentHistory: [Announcement] { recent }
     var healthSnapshot: VoiceAnnouncerHealth { health }
 
+    /// The phase to report while the queue is held, or nil when it isn't.
+    /// `.recovering` is bounded by the owner's health watchdog and `.paused`
+    /// is not, so the distinction decides whether a stuck queue ever gets
+    /// rescued.
+    private var pausedPhase: VoiceAnnouncerPhase? {
+        guard paused else { return nil }
+        return pausedForRecovery ? .recovering : .paused
+    }
+
+    /// The phase for "there is queued work and nothing is actively reading it".
+    /// Returns nil while a read is genuinely in flight, so bookkeeping like a
+    /// newly queued message can't relabel it — that relabelling discarded the
+    /// active read's start time and left the watchdog measuring the wrong
+    /// clock in both directions.
+    private var idleOrQueuedPhase: VoiceAnnouncerPhase? {
+        if let pausedPhase { return pausedPhase }
+        if draining, health.phase == .rendering || health.phase == .sending { return nil }
+        return queue.isEmpty ? .idle : .queued
+    }
+
     func setPaused(_ paused: Bool) async {
         if !paused {
             recoveryGeneration &+= 1
         }
         self.paused = paused
-        await publishHealth(phase: paused ? .paused : (queue.isEmpty ? .idle : .queued))
+        // An explicit request from the owner, in either direction, ends any
+        // self-inflicted recovery pause: the owner is driving now.
+        pausedForRecovery = false
+        await publishHealth(phase: idleOrQueuedPhase)
         if !paused, !queue.isEmpty, !draining {
             scheduleDrain()
         }
@@ -239,11 +283,12 @@ actor VoiceAnnouncementService {
         retryCounts.removeAll()
         renderRetryCounts.removeAll()
         await onQueueChange?(queue)
-        await publishHealth(phase: paused ? .paused : .idle)
+        await publishHealth(phase: pausedPhase ?? .idle)
     }
 
     func markRecovering(_ reason: String) async {
         paused = true
+        pausedForRecovery = true
         await onDebug?("Discord speech recovery started: \(reason).")
         await publishHealth(
             phase: .recovering,
@@ -273,7 +318,7 @@ actor VoiceAnnouncementService {
         // diagnostics log (it still appears in the Recent list for the UI).
         await onDebug?("Queued Discord speech (\(spoken.count) chars); queue depth \(queue.count).")
         await onQueueChange?(queue)
-        await publishHealth(phase: paused ? .paused : .queued, lastQueuedAt: Date())
+        await publishHealth(phase: idleOrQueuedPhase, lastQueuedAt: Date())
         if !draining, !paused {
             // The coalesce window only pays for itself when there is something
             // to coalesce with. A message arriving into an idle queue starts
@@ -298,7 +343,7 @@ actor VoiceAnnouncementService {
     private func beginScheduledDrain() async {
         drainStartTask = nil
         guard !paused, !draining, !queue.isEmpty else {
-            await publishHealth(phase: paused ? .paused : (queue.isEmpty ? .idle : .queued))
+            await publishHealth(phase: idleOrQueuedPhase)
             return
         }
         await drain()
@@ -317,7 +362,7 @@ actor VoiceAnnouncementService {
 
     private func drain() async {
         draining = true
-        await publishHealth(phase: paused ? .paused : .queued)
+        await publishHealth(phase: idleOrQueuedPhase)
         // Let an in-flight engine warm-up finish so two renders never overlap.
         if let prewarm = prewarmTask {
             await prewarm.value
@@ -349,6 +394,9 @@ actor VoiceAnnouncementService {
                     phase: .rendering,
                     activeStartedAt: Date(),
                     activeCharacterCount: speechText.count,
+                    activeExpiresAt: Date().addingTimeInterval(
+                        Self.seconds(speechRenderTimeout) + Self.stallGraceSeconds
+                    ),
                     lastBatchSize: batch.count
                 )
                 await onDebug?("Rendering speech audio for Discord.")
@@ -386,16 +434,20 @@ actor VoiceAnnouncementService {
             }
 
             var recoveryGenerationAtPlaybackStart = recoveryGeneration
+            let playbackDeadline = playbackTimeout(for: current.audio)
             do {
                 await publishHealth(
                     phase: .sending,
                     activeStartedAt: Date(),
                     activeCharacterCount: current.speechText.count,
+                    activeExpiresAt: Date().addingTimeInterval(
+                        Self.seconds(playbackDeadline) + Self.stallGraceSeconds
+                    ),
                     lastBatchSize: current.batch.count
                 )
                 await onDebug?("Sending speech audio to Discord.")
                 recoveryGenerationAtPlaybackStart = recoveryGeneration
-                try await speakWithTimeout(current.audio)
+                try await speakWithTimeout(current.audio, timeout: playbackDeadline)
                 await onDebug?("Finished Discord speech (\(current.speechText.count) chars, \(current.batch.count) message\(current.batch.count == 1 ? "" : "s")).")
                 for item in current.batch {
                     retryCounts[item.id] = nil
@@ -406,8 +458,7 @@ actor VoiceAnnouncementService {
                     phase: (queue.isEmpty && prefetchTask == nil) ? .idle : .queued,
                     retryStreak: 0,
                     lastSpokenAt: Date(),
-                    activeStartedAt: nil,
-                    activeCharacterCount: nil,
+                    clearActiveRead: true,
                     lastBatchSize: current.batch.count
                 )
             } catch {
@@ -443,7 +494,7 @@ actor VoiceAnnouncementService {
             }
         }
         draining = false
-        await publishHealth(phase: paused ? .paused : (queue.isEmpty ? .idle : .queued))
+        await publishHealth(phase: idleOrQueuedPhase)
     }
 
     private enum DrainFailureStage {
@@ -468,7 +519,8 @@ actor VoiceAnnouncementService {
                     phase: .recovering,
                     retryStreak: retries + 1,
                     lastFailureAt: Date(),
-                    lastFailureReason: error.localizedDescription
+                    lastFailureReason: error.localizedDescription,
+                    clearActiveRead: true
                 )
                 await onDebug?("Discord speech rendering failed; retrying the queued read (\(retries + 1)/2).")
                 try? await Task.sleep(for: .milliseconds(250 * (retries + 1)))
@@ -486,7 +538,8 @@ actor VoiceAnnouncementService {
                     phase: .recovering,
                     retryStreak: retries + 1,
                     lastFailureAt: Date(),
-                    lastFailureReason: error.localizedDescription
+                    lastFailureReason: error.localizedDescription,
+                    clearActiveRead: true
                 )
                 await onDebug?("Discord speech paused while secure media refreshes; retrying.")
                 try? await Task.sleep(for: daveNotReadyRetryDelay)
@@ -507,13 +560,15 @@ actor VoiceAnnouncementService {
             let recoveredDuringFinalAttempt = recoveryGenerationAtPlaybackStart
                 .map { $0 != recoveryGeneration } ?? false
             paused = !recoveredDuringFinalAttempt
+            pausedForRecovery = paused
             await onQueueChange?(queue)
             if !paused {
                 await onDebug?("Discord speech recovered while its final secure-media retry completed; continuing queued reads.")
                 await publishHealth(
                     phase: .queued,
                     lastFailureAt: Date(),
-                    lastFailureReason: error.localizedDescription
+                    lastFailureReason: error.localizedDescription,
+                    clearActiveRead: true
                 )
                 return
             }
@@ -522,7 +577,8 @@ actor VoiceAnnouncementService {
                 phase: .recovering,
                 retryStreak: health.retryStreak + 1,
                 lastFailureAt: Date(),
-                lastFailureReason: error.localizedDescription
+                lastFailureReason: error.localizedDescription,
+                clearActiveRead: true
             )
             return
         }
@@ -535,13 +591,15 @@ actor VoiceAnnouncementService {
             let recoveredDuringPlayback = recoveryGenerationAtPlaybackStart
                 .map { $0 != recoveryGeneration } ?? false
             paused = !recoveredDuringPlayback
+            pausedForRecovery = paused
             await onQueueChange?(queue)
             if !paused {
                 await onDebug?("Discord speech recovery completed while a stale playback failure returned; continuing queued reads.")
                 await publishHealth(
                     phase: .queued,
                     lastFailureAt: Date(),
-                    lastFailureReason: error.localizedDescription
+                    lastFailureReason: error.localizedDescription,
+                    clearActiveRead: true
                 )
                 return
             }
@@ -554,7 +612,8 @@ actor VoiceAnnouncementService {
                 phase: .recovering,
                 retryStreak: health.retryStreak + 1,
                 lastFailureAt: Date(),
-                lastFailureReason: error.localizedDescription
+                lastFailureReason: error.localizedDescription,
+                clearActiveRead: true
             )
             return
         }
@@ -569,8 +628,7 @@ actor VoiceAnnouncementService {
             retryStreak: health.retryStreak + 1,
             lastFailureAt: Date(),
             lastFailureReason: error.localizedDescription,
-            activeStartedAt: nil,
-            activeCharacterCount: nil
+            clearActiveRead: true
         )
     }
 
@@ -624,6 +682,8 @@ actor VoiceAnnouncementService {
                 voiceIdentifier: selectedVoiceID
             )
             return try AnnouncerAudioGuardrails.validateAndRepair(rendered.buffer)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             guard let fallbackVoiceID, fallbackVoiceID != selectedVoiceID else { throw error }
             await onDebug?("Selected speech voice produced unusable audio; retrying with fallback voice.")
@@ -640,9 +700,15 @@ actor VoiceAnnouncementService {
     /// (~190 on a stock machine, ~90 ms). That result only changes when the user
     /// installs or removes a voice, so it must not sit on the render path — it
     /// was being paid on every announcement purely to know the fallback.
+    ///
+    /// Resolved against the selected voice so the retry lands on a different
+    /// engine. This used to call `preferredEnglishVoice()`, which returns the
+    /// selected voice on a default configuration — the retry then re-entered
+    /// the engine that had just failed, which meant there was no fallback at
+    /// all whenever the failure was the engine rather than the utterance.
     private func cachedFallbackVoiceID() -> String? {
         if let fallbackVoiceID { return fallbackVoiceID }
-        let resolved = VoiceTTSSource.preferredEnglishVoice()?.identifier
+        let resolved = VoiceTTSSource.fallbackEnglishVoice(excluding: voice?.identifier)?.identifier
         fallbackVoiceID = resolved
         return resolved
     }
@@ -675,12 +741,26 @@ actor VoiceAnnouncementService {
         }
     }
 
+    /// Playback is paced in real time, so the audio's own duration is a hard
+    /// floor on how long `speak` legitimately takes; `speechPlaybackTimeout`
+    /// is the slack on top of it. A flat deadline could not tell a wedged UDP
+    /// write from a long read: at ~17 characters per second of speech, a
+    /// single 1000-character message renders to about 56 seconds of audio and
+    /// blew through the flat 45-second deadline every time. That failed the
+    /// read, paused the queue, forced a voice reconnect, and then retried the
+    /// same message into the same deadline until the recovery budget ran out.
+    private func playbackTimeout(for audio: SendableAudioBuffer) -> Duration {
+        let format = audio.buffer.format
+        guard format.sampleRate > 0 else { return speechPlaybackTimeout }
+        let seconds = Double(audio.buffer.frameLength) / format.sampleRate
+        return speechPlaybackTimeout + .milliseconds(Int(seconds * 1000))
+    }
+
     /// A stalled UDP write must not hold the serial announcement drain forever.
     /// `VoicePlaybackService` cooperates with cancellation by failing the stale
     /// session, which lets normal auto-rejoin recovery rebuild the transport.
-    private func speakWithTimeout(_ audio: SendableAudioBuffer) async throws {
+    private func speakWithTimeout(_ audio: SendableAudioBuffer, timeout: Duration) async throws {
         let playback = self.playback
-        let timeout = speechPlaybackTimeout
         let race = PlaybackDeadlineRace()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -727,6 +807,8 @@ actor VoiceAnnouncementService {
         lastRecoveryAt: Date? = nil,
         activeStartedAt: Date? = nil,
         activeCharacterCount: Int? = nil,
+        activeExpiresAt: Date? = nil,
+        clearActiveRead: Bool = false,
         lastBatchSize: Int? = nil
     ) async {
         if let phase { health.phase = phase }
@@ -740,8 +822,19 @@ actor VoiceAnnouncementService {
         if let lastFailureAt { health.lastFailureAt = lastFailureAt }
         if let lastFailureReason { health.lastFailureReason = lastFailureReason }
         if let lastRecoveryAt { health.lastRecoveryAt = lastRecoveryAt }
-        health.activeStartedAt = activeStartedAt
-        health.activeCharacterCount = activeCharacterCount
+        // Only the start and the end of a read touch these. They used to be
+        // assigned unconditionally, so every unrelated update — a message
+        // arriving mid-read, most of all — erased the timestamps the watchdog
+        // uses to spot a read that never finishes.
+        if clearActiveRead {
+            health.activeStartedAt = nil
+            health.activeCharacterCount = nil
+            health.activeExpiresAt = nil
+        } else {
+            if let activeStartedAt { health.activeStartedAt = activeStartedAt }
+            if let activeCharacterCount { health.activeCharacterCount = activeCharacterCount }
+            if let activeExpiresAt { health.activeExpiresAt = activeExpiresAt }
+        }
         if let lastBatchSize { health.lastBatchSize = lastBatchSize }
         await onHealthChange?(health)
     }

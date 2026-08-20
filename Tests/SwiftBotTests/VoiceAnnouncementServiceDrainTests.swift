@@ -365,4 +365,159 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         // leaves a background task parked after the assertion has passed.
         await playback.release()
     }
+
+    // MARK: - Health reporting
+
+    /// The stall watchdog only bounds `.recovering`. A pause the announcer
+    /// imposed on itself after a failed read must therefore report
+    /// `.recovering`, not `.paused` — the drain loop's own exit used to
+    /// overwrite it with `.paused`, which `isStalled` treats as healthy
+    /// forever, so a failed read parked the queue silently and nothing ever
+    /// rescued it.
+    func testReconnectableFailureReportsRecoveringSoTheWatchdogCanSeeIt() async throws {
+        let playback = FakeAnnouncementPlayback()
+        await playback.setError(VoicePipelineError.notConnected)
+        let announcer = try makeAnnouncer(playback: playback)
+
+        await announcer.enqueue("keep me")
+        await waitUntil {
+            let health = await announcer.healthSnapshot
+            return health.isPaused && health.queueDepth == 1 && !health.isDraining
+        }
+
+        let health = await announcer.healthSnapshot
+        XCTAssertEqual(health.phase, .recovering)
+        XCTAssertTrue(health.isStalled(now: Date().addingTimeInterval(120)))
+    }
+
+    /// A message arriving while the queue is parked must not relabel the
+    /// recovery as an ordinary pause; that relabelling is what hid the stall
+    /// from the watchdog exactly when reads were piling up.
+    func testMessageArrivingDuringRecoveryKeepsTheRecoveringPhase() async throws {
+        let playback = FakeAnnouncementPlayback()
+        let announcer = try makeAnnouncer(playback: playback)
+
+        await announcer.markRecovering("voice connection lost")
+        await announcer.enqueue("arrived while recovering")
+
+        let health = await announcer.healthSnapshot
+        XCTAssertEqual(health.phase, .recovering)
+        XCTAssertEqual(health.queueDepth, 1)
+        XCTAssertTrue(health.isStalled(now: Date().addingTimeInterval(120)))
+    }
+
+    /// An owner-requested hold (handshake in progress, empty-channel grace)
+    /// is lifted by the owner, so it must stay unbounded.
+    func testOwnerRequestedPauseStaysUnbounded() async throws {
+        let playback = FakeAnnouncementPlayback()
+        let announcer = try makeAnnouncer(playback: playback)
+
+        await announcer.setPaused(true)
+        await announcer.enqueue("held deliberately")
+
+        let health = await announcer.healthSnapshot
+        XCTAssertEqual(health.phase, .paused)
+        XCTAssertFalse(health.isStalled(now: Date().addingTimeInterval(600)))
+    }
+
+    /// Resuming clears the recovery marking, so a later deliberate hold is not
+    /// mistaken for a stall.
+    func testResumingClearsTheRecoveryMarking() async throws {
+        let playback = FakeAnnouncementPlayback()
+        let announcer = try makeAnnouncer(playback: playback)
+
+        await announcer.markRecovering("voice connection lost")
+        await announcer.setPaused(false)
+        await waitUntil { await announcer.healthSnapshot.isPaused == false }
+        await announcer.setPaused(true)
+
+        let health = await announcer.healthSnapshot
+        XCTAssertEqual(health.phase, .paused)
+    }
+
+    /// A message queued mid-read used to overwrite the active read's phase and
+    /// wipe its start time, leaving the watchdog measuring time-since-last-
+    /// message instead of the read itself — a false negative on a wedged read
+    /// and a false positive on a healthy backlog.
+    func testQueuingDuringAReadDoesNotDisturbTheActiveReadTimestamps() async throws {
+        let playback = NonCooperativePlayback()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            speechPlaybackTimeout: .seconds(30),
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+
+        await announcer.enqueue("the read in flight")
+        await waitUntil { await playback.hasEntered }
+        await waitUntil { await announcer.healthSnapshot.phase == .sending }
+        let duringRead = await announcer.healthSnapshot
+        let activeStartedAt = try XCTUnwrap(duringRead.activeStartedAt)
+
+        await announcer.enqueue("arrives mid-read")
+
+        let afterQueuing = await announcer.healthSnapshot
+        XCTAssertEqual(afterQueuing.phase, .sending)
+        XCTAssertEqual(afterQueuing.activeStartedAt, activeStartedAt)
+        XCTAssertNotNil(afterQueuing.activeExpiresAt)
+
+        await playback.release()
+    }
+
+    // MARK: - Playback deadline
+
+    /// Playback is paced in real time, so the deadline has to scale with the
+    /// audio. A flat deadline failed every message long enough to outlast it,
+    /// then retried it into the same deadline until recovery gave up.
+    func testPlaybackDeadlineScalesWithAudioDuration() async throws {
+        let playback = SlowPlayback(duration: .seconds(2))
+        // Ten seconds of audio: a flat 3s deadline would fail this read, but
+        // the deadline is slack *on top of* the audio's own length.
+        let longAudio = makeRenderedBuffer(frames: AVAudioFrameCount(OpusFrameEncoder.sampleRate * 10))
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            speechPlaybackTimeout: .seconds(3),
+            renderOverride: { _, _ in longAudio }
+        )
+
+        await announcer.enqueue("a long message that takes a while to read out")
+        await waitUntil(timeout: 10) { await announcer.recentHistory.count == 1 }
+
+        let health = await announcer.healthSnapshot
+        XCTAssertNil(health.lastFailureReason)
+    }
+
+    /// The slack still applies: a send that outlasts audio duration plus the
+    /// configured timeout is still a wedged write.
+    func testPlaybackDeadlineStillFiresOnAWedgedSend() async throws {
+        let playback = NonCooperativePlayback()
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            daveNotReadyRetryDelay: .milliseconds(5),
+            speechPlaybackTimeout: .milliseconds(50),
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+
+        await announcer.enqueue("never completes")
+        await waitUntil(timeout: 2) {
+            let health = await announcer.healthSnapshot
+            return health.lastFailureReason == VoicePipelineError.playbackTimedOut.localizedDescription
+        }
+
+        await playback.release()
+    }
+}
+
+/// Completes each send after a fixed delay, modelling a real paced read.
+private actor SlowPlayback: AnnouncementPlayback {
+    private let duration: Duration
+
+    init(duration: Duration) {
+        self.duration = duration
+    }
+
+    func speak(pcm wrapped: SendableAudioBuffer) async throws {
+        try await Task.sleep(for: duration)
+    }
 }

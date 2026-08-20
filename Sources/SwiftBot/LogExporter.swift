@@ -327,18 +327,22 @@ enum LogExporter {
     @MainActor
     static func buildAnnouncerReport(from app: AppModel, generatedAt: Date = Date()) async -> String {
         let fullReport = await buildReport(from: app, generatedAt: generatedAt)
+        // These markers must be real newlines. Written as "\\n" they matched a
+        // literal backslash-n, every slice failed, and the bundle silently fell
+        // back to the full report — shipping settings and the system log in an
+        // export whose whole purpose is to exclude them.
         guard let header = reportSlice(
             in: fullReport,
-            from: "=== SwiftBot Diagnostic Report ===\\n",
-            upTo: "=== Bot Runtime ===\\n"
+            from: "=== SwiftBot Diagnostic Report ===\n",
+            upTo: "=== Bot Runtime ===\n"
         ), let voice = reportSlice(
             in: fullReport,
-            from: "=== Voice Announcer ===\\n",
-            upTo: "=== SwiftMesh ===\\n"
+            from: "=== Voice Announcer ===\n",
+            upTo: "=== SwiftMesh ===\n"
         ), let voiceLog = reportSlice(
             in: fullReport,
-            from: "-- Voice Log (most recent 200) --\\n",
-            upTo: "-- System Log (most recent 500 lines) --\\n"
+            from: "-- Voice Log (most recent 200) --\n",
+            upTo: "-- System Log (most recent 500 lines) --\n"
         ) else {
             return fullReport
         }
@@ -347,9 +351,9 @@ enum LogExporter {
             of: "=== SwiftBot Diagnostic Report ===",
             with: "=== SwiftBot Announcer Diagnostic Report ==="
         )
-        out += "\\n"
+        out += "\n"
         out += voice
-        out += "\\n"
+        out += "\n"
         out += voiceLog
         return out
     }
