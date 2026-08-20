@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Point the 1.22.9 release notes at the release commit - Release Notes</title>
+  <title>SwiftBot 1.22.10 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -44,11 +44,12 @@
     <p>SwiftBot 1.22.10</p>
 <p>A focused Announcer audio fix: speech that came out stretched and distorted, and a class of synthesizer whose output merged as pure silence.</p>
 <p>Speech That Sounds Like Speech</p>
-<p>- A synthesizer that changes its output format partway through an utterance is no longer merged as though it had not. The merge kept only the first chunk&rsquo;s format, so the whole render was resampled at the wrong ratio and played back stretched, pitched, and distorted. Mismatched chunks are now reconciled to the established format before they are collected.<br>- The synthesizer&rsquo;s output format is logged once per render, and any mid-render change is logged loudly, so a recurrence is provable rather than inferred.</p>
+<p>- A synthesizer that changes its output format partway through an utterance is no longer merged as though it had not. The merge kept only the first chunk's format, so the whole render was resampled at the wrong ratio and played back stretched, pitched, and distorted. Mismatched chunks are now reconciled to the established format before they are collected.<br>- The synthesizer's output format is logged once per render, and any mid-render change is logged loudly, so a recurrence is provable rather than inferred.</p>
 <p>Two Further Defects in the Same Merge</p>
-<p>- The merge indexed by the destination buffer&rsquo;s layout without checking that a chunk matched it or that it fit, so a differing channel count could write past the allocation.<br>- An Int16 synthesizer matched no copy path at all &mdash; float-to-float and int16-to-float existed, int16-to-int16 did not &mdash; so its render merged as silence.</p>
+<p>- The merge indexed by the destination buffer's layout without checking that a chunk matched it or that it fit, so a differing channel count could write past the allocation.<br>- An Int16 synthesizer matched no copy path at all - float-to-float and int16-to-float existed, int16-to-int16 did not - so its render merged as silence.</p>
 <p>Release Details</p>
 <p>- Updated MARKETING_VERSION to 1.22.10 and CURRENT_PROJECT_VERSION to 2026082110.<br>- Added regression coverage for the merge, including a mid-render sample-rate change; the suite is 387 tests.</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/4c1f4b60f115e18fdd3ed4102417e4f17b6b2132">4c1f4b6</a></p>
   </main>
 </body>
 </html>
