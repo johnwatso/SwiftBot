@@ -57,7 +57,8 @@ final class ThirdPartyNoticesTests: XCTestCase {
         let notices = try XCTUnwrap(AcknowledgementsView.loadNotices())
         // The bundled Dave.xcframework's component licenses were never captured,
         // so the notices must say so rather than guess at MIT/Apache/OpenSSL.
-        XCTAssertTrue(notices.contains("Its license status is unresolved"))
+        XCTAssertTrue(notices.contains("bundled framework's license status is unresolved"))
+        XCTAssertTrue(notices.contains("Its own Swift source is MIT licensed"))
         XCTAssertFalse(
             notices.contains("mlspp is licensed"),
             "Do not assert licenses for the native components — they are not recorded upstream"
