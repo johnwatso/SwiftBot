@@ -10,6 +10,7 @@
 		00897CDDBDC3BF553FDA4D68 /* AppModel+CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 814CAE5BAF267EB565154600 /* AppModel+CommandProcessor.swift */; };
 		01F92911F16A693797B44E3C /* AMDServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A07E12548C74B87208F10D /* AMDServiceTests.swift */; };
 		025D2F02C611ECDA346AC516 /* CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D123D57ED5BFDCD998577A34 /* CertificateManager.swift */; };
+		0372BF2E29EAD1A885063455 /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9322EE2A34F232A29B8A8553 /* AcknowledgementsView.swift */; };
 		05601F3C8B4085B5885E7F7F /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E0E173784A375131974B77D /* WikiBridgeView.swift */; };
 		05DAF7617637001E7E821C3B /* BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFF451AC4C1D5CFCA486E92 /* BotDataProvider.swift */; };
 		061C6ABACF516840BA8D9CD1 /* RecordingsKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 886361EEFCD726EB521500E6 /* RecordingsKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -29,6 +30,7 @@
 		11E6E52E41D8F3196BD933F7 /* GatewayEventDispatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00EB7C7EB0264A293D5F097 /* GatewayEventDispatcherTests.swift */; };
 		12DF9B6154580191B21A8ABD /* CertificateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */; };
 		145D84D6516814F33DF25F40 /* CommandProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */; };
+		158FF60B15F4C24413A58D5F /* DiscordRESTTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA761BFD22C655250801AB0 /* DiscordRESTTransport.swift */; };
 		16882893D707E35D14590F57 /* StorageIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B6B49FA18802E05DBE3D1E /* StorageIsolationTests.swift */; };
 		1702075E35E0AE27103CE46B /* VoiceEncryption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87CF1C132AFA60D6B6D721FF /* VoiceEncryption.swift */; };
 		182E9D59AEF88878CADADA25 /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B0A239115555D736293C45 /* AppModel+Gateway.swift */; };
@@ -91,6 +93,7 @@
 		4ACA9E40E51496EC3904579B /* NVIDIAService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB851EA01C7571AFA4E6081 /* NVIDIAService.swift */; };
 		4B2FE6B6D0C4645E1BE62C81 /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD7CC99C87BE90F546F28D9 /* VoiceView.swift */; };
 		4BC03BCBAC8C86BFD5EC81DF /* MusicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F55B75F302A6FF7106C7B75 /* MusicModels.swift */; };
+		4D32E7BA5EF6D846AEA39616 /* DiscordRateLimiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70753648882B0C7C34F403FF /* DiscordRateLimiter.swift */; };
 		4EF788CC92E5E105279A48F4 /* LogExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0646686CA089EF890C0FBD0 /* LogExporterTests.swift */; };
 		50F39AB4A62F7B4E0D6E2DE7 /* VoiceSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78C1AB0E1ED82D0D481F2F30 /* VoiceSessionStore.swift */; };
 		519AF8052EAE1BBB9678479A /* AuditAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB78B938253E057434118ED /* AuditAnalyzer.swift */; };
@@ -105,6 +108,7 @@
 		5F59E5DA9435761BB8FC767C /* GitHubServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6632242ABEFD0ED1584C533C /* GitHubServiceTests.swift */; };
 		60A214666F9F2009A5E05C4E /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3831E30606F74658B5E53A7E /* RootView.swift */; };
 		61CF3752C076F6239791352D /* CloudflareTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAA6A6AE6CCD8EA2864DFD30 /* CloudflareTunnelClient.swift */; };
+		62345580F31075ED79A1FD90 /* DiscordRESTTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC830DA5D158FD953E7E98B /* DiscordRESTTransportTests.swift */; };
 		626D847B8BB20176403EBBAA /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 8340F7290FCD93DB7287E27A /* Opus */; };
 		62E75279155C231F62D8A8E7 /* OpusFrameEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9524C5D92677750F6BF2717F /* OpusFrameEncoder.swift */; };
 		63C386642D98ACE57013F32A /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3360744C3501376DD639548C /* DiscordService.swift */; };
@@ -131,6 +135,7 @@
 		7EA01A87EB48668A013B0E4B /* AuditDismissalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F470DE73189776925E71D29 /* AuditDismissalStore.swift */; };
 		7EE812444756F4D2CDA0B455 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BCC89EED4A1FBB517843B46 /* AdminWebServer.swift */; };
 		809612F66781F81E1798C08B /* AppModel+WikiBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45D44EE6B96566AC77A5C0A /* AppModel+WikiBridge.swift */; };
+		816D04A797B09B56D8D44987 /* ThirdPartyNoticesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016C280F1D848F712E8A4529 /* ThirdPartyNoticesTests.swift */; };
 		82AFE54D3A1FACA8D333BE04 /* BotPermissionsCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3E46A2E973887D408730D2 /* BotPermissionsCheckView.swift */; };
 		838C7E3468BE6BC5AE73C7B4 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207953E8C7879C279BCB9D58 /* ClusterCoordinator.swift */; };
 		855D91D6C8ED90D29D71508D /* AutomationTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94959B5C927F07D4B652B686 /* AutomationTemplates.swift */; };
@@ -148,6 +153,7 @@
 		90B152AFDECD54D436537047 /* AMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F689277FFE543010FC9A6919 /* AMDService.swift */; };
 		916C90B864AAF6FF10BBCD40 /* AppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C4E3B85871C475A7A8D53DE /* AppIcon.png */; };
 		9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = 1C81108D7CF200AA2750ED17 /* NIOSSL */; };
+		9604A07EC3F497CBE53132CF /* THIRD-PARTY-NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = C8FEA39DA2F70EB0C435752F /* THIRD-PARTY-NOTICES.md */; };
 		969D3DEF4C6F9E8007591E77 /* AuditModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C6A83789CC85FA2F410946 /* AuditModels.swift */; };
 		99A52A2B655646B58AE1D20D /* RemoteAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC42B5CD69860CFA1209239 /* RemoteAPI.swift */; };
 		9C0192C375D6B9626513FCEF /* SwiftMinerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D5B1293EB5A245701B5F04 /* SwiftMinerClient.swift */; };
@@ -207,6 +213,7 @@
 		C94D6E55417E45C9EBFA98E6 /* BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06731023E19AE2BE56D43043 /* BotStateModels.swift */; };
 		CB33E9DF9408EEB9AB8AA7FF /* AppModel+AI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883F2A4B2FE4E51D9D491753 /* AppModel+AI.swift */; };
 		CCD0A6256F334076F0CC2059 /* SweepWeeklyMVPAnnouncementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76ACAC822C262D849FDCBFBD /* SweepWeeklyMVPAnnouncementTests.swift */; };
+		CD79F325926C9AFC89CD5A9F /* DiscordRateLimiterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4CDC5634CE8B6B9796C29B5 /* DiscordRateLimiterTests.swift */; };
 		D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */; };
 		D28247A5224312A0E701C5B8 /* PlaylistImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4155A5B46BE9627288D4C5E /* PlaylistImportService.swift */; };
 		D30DB2FE3DD38F94A4AC624D /* SwiftMinerDMEmbedBuilders.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD694DB2603BFF235153B63 /* SwiftMinerDMEmbedBuilders.swift */; };
@@ -310,6 +317,7 @@
 /* Begin PBXFileReference section */
 		00B80782DBD1EF5563074664 /* AppModel+DiscordEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordEvents.swift"; sourceTree = "<group>"; };
 		0106453740296F8C83BCDA66 /* DiscordPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordPreferencesView.swift; sourceTree = "<group>"; };
+		016C280F1D848F712E8A4529 /* ThirdPartyNoticesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyNoticesTests.swift; sourceTree = "<group>"; };
 		02F8C6D82B63AC2D6CBF3707 /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
 		04C6A83789CC85FA2F410946 /* AuditModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditModels.swift; sourceTree = "<group>"; };
 		0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationAITransformTests.swift; sourceTree = "<group>"; };
@@ -364,6 +372,7 @@
 		2D2C5438BC5D7ADA800D3BEE /* VoiceRecoveryBackoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecoveryBackoff.swift; sourceTree = "<group>"; };
 		2DF153482C54BA20D5A78A35 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		2E51AA5D2D331C44291BBF19 /* DiscordMessageRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordMessageRESTClient.swift; sourceTree = "<group>"; };
+		2EA761BFD22C655250801AB0 /* DiscordRESTTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordRESTTransport.swift; sourceTree = "<group>"; };
 		2F4C504701AF47831B437AE8 /* MediaThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaThumbnailCache.swift; sourceTree = "<group>"; };
 		30385FFD91A3E430C4B17CEE /* AutomationSimulationResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationSimulationResultView.swift; sourceTree = "<group>"; };
 		30AAD935771AFCBA4BE671E7 /* UpdateItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateItem.swift; sourceTree = "<group>"; };
@@ -424,6 +433,7 @@
 		6E2884042287AF3A3D8D33B6 /* AppOutputGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOutputGuardTests.swift; sourceTree = "<group>"; };
 		6F1F145780CE114E0D967E7B /* MeshCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCrypto.swift; sourceTree = "<group>"; };
 		6FD8586A9E98310B7A55771F /* Automations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Automations.swift; sourceTree = "<group>"; };
+		70753648882B0C7C34F403FF /* DiscordRateLimiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordRateLimiter.swift; sourceTree = "<group>"; };
 		76ACAC822C262D849FDCBFBD /* SweepWeeklyMVPAnnouncementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweepWeeklyMVPAnnouncementTests.swift; sourceTree = "<group>"; };
 		78C1AB0E1ED82D0D481F2F30 /* VoiceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSessionStore.swift; sourceTree = "<group>"; };
 		794252ACCFC6E05A409363F0 /* DiscordAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordAIService.swift; sourceTree = "<group>"; };
@@ -454,6 +464,7 @@
 		8F3E46A2E973887D408730D2 /* BotPermissionsCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotPermissionsCheckView.swift; sourceTree = "<group>"; };
 		917462982D90036009FCC38F /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteLinkTests.swift; sourceTree = "<group>"; };
+		9322EE2A34F232A29B8A8553 /* AcknowledgementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcknowledgementsView.swift; sourceTree = "<group>"; };
 		9371FC490B846B5897370CDA /* AppModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Commands.swift"; sourceTree = "<group>"; };
 		93A39779EC277A3861591809 /* AppModel+Automations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Automations.swift"; sourceTree = "<group>"; };
 		9454529F1CFCF156500D3B62 /* VoiceAnnouncementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAnnouncementService.swift; sourceTree = "<group>"; };
@@ -497,6 +508,7 @@
 		C4A0A18B259086CF2328D85A /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
 		C5935F83A4161478DCD1AD04 /* WikiSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiSyncTests.swift; sourceTree = "<group>"; };
 		C6DBDA5593B4C8C6BD1F2B00 /* AppModel+AdminWeb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AdminWeb.swift"; sourceTree = "<group>"; };
+		C8FEA39DA2F70EB0C435752F /* THIRD-PARTY-NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "THIRD-PARTY-NOTICES.md"; sourceTree = "<group>"; };
 		CAA6A6AE6CCD8EA2864DFD30 /* CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareTunnelClient.swift; sourceTree = "<group>"; };
 		CAF950DC05FEDEC53A0E7225 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
 		CB278722CB60B7E4792BB03D /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
@@ -508,6 +520,7 @@
 		D6D5B1293EB5A245701B5F04 /* SwiftMinerClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerClient.swift; sourceTree = "<group>"; };
 		DB53CF1F56DD9ADEE295DD79 /* AutomationConflictDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationConflictDetectorTests.swift; sourceTree = "<group>"; };
 		DC995D5DD1A67363B7BD7FAA /* ClusterSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterSecurityTests.swift; sourceTree = "<group>"; };
+		DCC830DA5D158FD953E7E98B /* DiscordRESTTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordRESTTransportTests.swift; sourceTree = "<group>"; };
 		DCE24F1FC23A7D5AE2163E12 /* RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteBotProvider.swift; sourceTree = "<group>"; };
 		DDBE5EBDA57392AC43CCE370 /* MeshSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshSyncTests.swift; sourceTree = "<group>"; };
 		DE53DBB48C421B9BF15DEF91 /* AdminWebCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebCopyTests.swift; sourceTree = "<group>"; };
@@ -531,6 +544,7 @@
 		F26512B0FB6B2F8BBD1B00F7 /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		F389784BAE230F409406406C /* AutomationExamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationExamples.swift; sourceTree = "<group>"; };
 		F4B6DB09FA8998EC1FF830EA /* MediaTranscodeCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTranscodeCache.swift; sourceTree = "<group>"; };
+		F4CDC5634CE8B6B9796C29B5 /* DiscordRateLimiterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordRateLimiterTests.swift; sourceTree = "<group>"; };
 		F538F306E15769EF138D545B /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeFlowServiceTests.swift; sourceTree = "<group>"; };
 		F6021CBD3F4619EC59B0A894 /* SwiftMinerDMStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMStateTests.swift; sourceTree = "<group>"; };
@@ -621,6 +635,8 @@
 				9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */,
 				2C8FA234EDBAE756493F5CF9 /* DiscordGuildRESTClientTests.swift */,
 				15DCEE4759A584388ABAC846 /* DiscordMessageRESTClientDMTests.swift */,
+				F4CDC5634CE8B6B9796C29B5 /* DiscordRateLimiterTests.swift */,
+				DCC830DA5D158FD953E7E98B /* DiscordRESTTransportTests.swift */,
 				AACEF05469E5AF7C7BF81683 /* DiscordServiceDMTests.swift */,
 				FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */,
 				69F5BC752F48845CADB3CA37 /* GatewayDMHandlingTests.swift */,
@@ -650,6 +666,7 @@
 				1F6A9414610F28A00389D53E /* SwiftMinerLinkWarningDismissTests.swift */,
 				216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */,
 				44BEF66B80A037B46C598D03 /* TextChannelAnnouncerTests.swift */,
+				016C280F1D848F712E8A4529 /* ThirdPartyNoticesTests.swift */,
 				0BF9712AF4197B5F8E2433DF /* VoiceAnnouncementServiceDrainTests.swift */,
 				3E3656072ADCD399C66EC948 /* VoicePipelineTestSupport.swift */,
 				BF7D44134F71D0F9A7BD163F /* VoicePlaybackServiceTests.swift */,
@@ -676,6 +693,7 @@
 				3B781432336CEB4787B37880 /* SwiftBotTests */,
 				6A7A4945675389627AFBFB2F /* admin */,
 				8964B98159AC25452C4423DF /* SwiftBot.icon */,
+				C8FEA39DA2F70EB0C435752F /* THIRD-PARTY-NOTICES.md */,
 				A63029345405694029040AF9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -697,6 +715,8 @@
 				C4A0A18B259086CF2328D85A /* DiscordIdentityRESTClient.swift */,
 				65D8E7FE6E37065C0FDE89A9 /* DiscordInteractionRESTClient.swift */,
 				2E51AA5D2D331C44291BBF19 /* DiscordMessageRESTClient.swift */,
+				70753648882B0C7C34F403FF /* DiscordRateLimiter.swift */,
+				2EA761BFD22C655250801AB0 /* DiscordRESTTransport.swift */,
 				47FB5492E7AD64FBC5083CB8 /* DiscordTimestamp.swift */,
 				4DF8DEBECE0DA1340194B8AE /* GatewayEventDispatcher.swift */,
 				6DDE2D481BEE14FBC0B80C60 /* GatewayEventPresentation.swift */,
@@ -743,6 +763,7 @@
 				74EABCD4096E193F0A8C0FA1 /* Security */,
 				6924157D11D0F61A76AE330E /* Services */,
 				DE37E9E294CC45D6448035E4 /* UpdateEngine */,
+				9322EE2A34F232A29B8A8553 /* AcknowledgementsView.swift */,
 				BD5B099ADAC282CCF6D8CCBB /* ActivityLogView.swift */,
 				2BCC89EED4A1FBB517843B46 /* AdminWebServer.swift */,
 				6088AEB2225DBD1F1EF1ECFE /* AdvancedPreferencesView.swift */,
@@ -1058,6 +1079,7 @@
 				2FED59E89C7EF46B3D67C5E3 /* SwiftBird.png in Resources */,
 				29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */,
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
+				9604A07EC3F497CBE53132CF /* THIRD-PARTY-NOTICES.md in Resources */,
 				587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */,
 				A47258F9FC57B429217A7D70 /* cloudflared in Resources */,
 			);
@@ -1108,6 +1130,7 @@
 				FD28D7BF592BF0F996F33394 /* ACMEClient.swift in Sources */,
 				B1552231505CD506C147838B /* AIModels.swift in Sources */,
 				90B152AFDECD54D436537047 /* AMDService.swift in Sources */,
+				0372BF2E29EAD1A885063455 /* AcknowledgementsView.swift in Sources */,
 				19C4D928D452849117339B4C /* ActivityLogView.swift in Sources */,
 				7EE812444756F4D2CDA0B455 /* AdminWebServer.swift in Sources */,
 				C84F89F12267019A888C2883 /* AdvancedPreferencesView.swift in Sources */,
@@ -1173,6 +1196,8 @@
 				0EEA9864548BE835188539BC /* DiscordInteractionRESTClient.swift in Sources */,
 				D5477FB7568F8E97079A7143 /* DiscordMessageRESTClient.swift in Sources */,
 				199A673F0A5398671620E5C2 /* DiscordPreferencesView.swift in Sources */,
+				158FF60B15F4C24413A58D5F /* DiscordRESTTransport.swift in Sources */,
+				4D32E7BA5EF6D846AEA39616 /* DiscordRateLimiter.swift in Sources */,
 				63C386642D98ACE57013F32A /* DiscordService.swift in Sources */,
 				2847ED0EB0E83A5B06E69802 /* DiscordTimestamp.swift in Sources */,
 				6D06C80E5E291D0823FBBF99 /* EmbedFormatter.swift in Sources */,
@@ -1301,6 +1326,8 @@
 				749CCBC0FB596535E6607CC8 /* DiscordGatewayConnectionTests.swift in Sources */,
 				F75C623FEA429EA1ABE94A3C /* DiscordGuildRESTClientTests.swift in Sources */,
 				3C1C26B9F698198C1D340768 /* DiscordMessageRESTClientDMTests.swift in Sources */,
+				62345580F31075ED79A1FD90 /* DiscordRESTTransportTests.swift in Sources */,
+				CD79F325926C9AFC89CD5A9F /* DiscordRateLimiterTests.swift in Sources */,
 				D55CF55772E4C031658C0980 /* DiscordServiceDMTests.swift in Sources */,
 				57B689BC7F6E15C9D73DB81D /* GatewayDMHandlingTests.swift in Sources */,
 				11E6E52E41D8F3196BD933F7 /* GatewayEventDispatcherTests.swift in Sources */,
@@ -1329,6 +1356,7 @@
 				BCF032218277AED8BE52A820 /* SwiftMinerLinkWarningDismissTests.swift in Sources */,
 				A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */,
 				3F21CC7649E2FA9622D71744 /* TextChannelAnnouncerTests.swift in Sources */,
+				816D04A797B09B56D8D44987 /* ThirdPartyNoticesTests.swift in Sources */,
 				C2DFCC6C538E1BA70D2967D7 /* VoiceAnnouncementServiceDrainTests.swift in Sources */,
 				257F7F0BAFE9F799E5EB77D0 /* VoicePipelineTestSupport.swift in Sources */,
 				306B8E871FB74E9DCB898A68 /* VoicePlaybackServiceTests.swift in Sources */,

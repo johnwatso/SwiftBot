@@ -175,6 +175,10 @@ struct SwiftBotApp: App {
                     updater.checkForUpdates()
                 }
                 .disabled(!updater.canCheckForUpdates)
+
+                Button("Acknowledgements…") {
+                    openWindow(id: "acknowledgements")
+                }
             }
             if appModel.canOpenRemoteDashboardFromLocalApp {
                 CommandMenu("View") {
@@ -209,6 +213,14 @@ struct SwiftBotApp: App {
                 .keyboardShortcut("e", modifiers: [.command, .option, .shift])
             }
         }
+
+        // Bundled third-party license notices. A separate window rather than the
+        // About panel's credits field: the text runs to a thousand-odd lines and
+        // needs to be scrollable and selectable.
+        Window("Acknowledgements", id: "acknowledgements") {
+            AcknowledgementsView()
+        }
+        .windowResizability(.contentSize)
 
         Settings {
             PreferencesView()

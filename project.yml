@@ -76,6 +76,11 @@ targets:
       - path: SwiftBot.icon
         type: file
         buildPhase: resources
+      # Bundled so the license notices travel with every distributed copy of the
+      # app, and so the Acknowledgements window can read them offline.
+      - path: THIRD-PARTY-NOTICES.md
+        type: file
+        buildPhase: resources
     preBuildScripts:
       - name: SwiftLint
         script: "if which swiftlint > /dev/null; then swiftlint; fi"
