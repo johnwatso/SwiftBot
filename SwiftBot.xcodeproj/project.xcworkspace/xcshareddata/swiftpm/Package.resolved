@@ -114,8 +114,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/johnwatso/swiftbot-opus.git",
       "state" : {
-        "revision" : "bce4de7943fcad79b70aaf2a8944abae87e629b4",
-        "version" : "0.1.1"
+        "revision" : "f593050e181f5f8217961656136fd713bc177fa8",
+        "version" : "0.2.0"
       }
     },
     {
