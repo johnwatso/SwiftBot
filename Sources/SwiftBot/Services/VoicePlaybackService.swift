@@ -1,7 +1,9 @@
 import AVFoundation
+import Accelerate
 import Foundation
 import OSLog
 import libdave_swift
+import os
 
 /// Top-level coordinator for one Discord voice connection. Owns the WS state
 /// machine, UDP transport, Opus encoder, RTP builder, and encryption state.
@@ -10,6 +12,7 @@ import libdave_swift
 /// over UDP.
 actor VoicePlaybackService {
     private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.playback")
+    private static let signposter = OSSignposter(subsystem: "com.swiftbot", category: "voice.pipeline")
 
     /// Redacted, export-safe state for investigating an announcer that appears
     /// connected but is not delivering audio. It intentionally contains no
@@ -826,8 +829,7 @@ actor VoicePlaybackService {
         let samplesPerFrame = Int(OpusFrameEncoder.samplesPerFrame)
         let channels = Int(OpusFrameEncoder.channelCount)
         let totalFrames = Int(buffer.frameLength)
-        guard let channelData = buffer.floatChannelData else { return }
-        let interleaved = buffer.format.isInterleaved
+        guard buffer.floatChannelData != nil else { return }
         let frameDuration = OpusFrameEncoder.frameDuration
 
         let clock = ContinuousClock()
@@ -841,37 +843,15 @@ actor VoicePlaybackService {
                 noteAudioQueueDelay(now - nextDeadline)
             }
             let chunkFrames = min(samplesPerFrame, totalFrames - processed)
-            guard let chunkBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) else {
+            guard let chunkBuffer = Self.prepareOpusFrame(
+                from: buffer,
+                startingAt: processed,
+                frameCount: chunkFrames,
+                destinationFormat: opus.format,
+                samplesPerFrame: samplesPerFrame,
+                channels: channels
+            ) else {
                 break
-            }
-            chunkBuffer.frameLength = AVAudioFrameCount(samplesPerFrame)
-            if let dest = chunkBuffer.floatChannelData {
-                if interleaved {
-                    // Source is interleaved Float32; only one channel pointer.
-                    let src = channelData[0]
-                    let dst = dest[0]
-                    let copy = chunkFrames * channels
-                    for i in 0..<copy {
-                        dst[i] = src[processed * channels + i]
-                    }
-                    // Zero-pad the tail of the final partial frame.
-                    if chunkFrames < samplesPerFrame {
-                        for i in copy..<(samplesPerFrame * channels) {
-                            dst[i] = 0
-                        }
-                    }
-                } else {
-                    for c in 0..<channels {
-                        let src = channelData[c]
-                        let dst = dest[c]
-                        for i in 0..<chunkFrames {
-                            dst[i] = src[processed + i]
-                        }
-                        for i in chunkFrames..<samplesPerFrame {
-                            dst[i] = 0
-                        }
-                    }
-                }
             }
             do {
                 try await sendFrame(chunkBuffer, transport: transport, generation: generation)
@@ -998,6 +978,67 @@ actor VoicePlaybackService {
 
     // MARK: - Private
 
+    /// Copies a source chunk into one fixed-size Opus frame and zero-pads the
+    /// final chunk. `vDSP_vclr` maps the padding operation to Accelerate's
+    /// hardware-tuned vector path on Apple silicon instead of a scalar loop.
+    private static func prepareOpusFrame(
+        from sourceBuffer: AVAudioPCMBuffer,
+        startingAt sourceFrame: Int,
+        frameCount: Int,
+        destinationFormat: AVAudioFormat,
+        samplesPerFrame: Int,
+        channels: Int
+    ) -> AVAudioPCMBuffer? {
+        let interval = signposter.beginInterval("Prepare Opus Frame")
+        defer { signposter.endInterval("Prepare Opus Frame", interval) }
+
+        guard let source = sourceBuffer.floatChannelData,
+              let destination = AVAudioPCMBuffer(
+                pcmFormat: destinationFormat,
+                frameCapacity: AVAudioFrameCount(samplesPerFrame)
+              ),
+              let target = destination.floatChannelData else {
+            return nil
+        }
+
+        destination.frameLength = AVAudioFrameCount(samplesPerFrame)
+        if sourceBuffer.format.isInterleaved {
+            // Interleaved Float32 uses a single channel pointer.
+            copyAndZeroPad(
+                from: source[0].advanced(by: sourceFrame * channels),
+                sampleCount: frameCount * channels,
+                to: target[0],
+                paddedSampleCount: samplesPerFrame * channels
+            )
+        } else {
+            for channel in 0..<channels {
+                copyAndZeroPad(
+                    from: source[channel].advanced(by: sourceFrame),
+                    sampleCount: frameCount,
+                    to: target[channel],
+                    paddedSampleCount: samplesPerFrame
+                )
+            }
+        }
+        return destination
+    }
+
+    private static func copyAndZeroPad(
+        from source: UnsafePointer<Float>,
+        sampleCount: Int,
+        to destination: UnsafeMutablePointer<Float>,
+        paddedSampleCount: Int
+    ) {
+        precondition(sampleCount <= paddedSampleCount)
+        destination.update(from: source, count: sampleCount)
+        guard sampleCount < paddedSampleCount else { return }
+        vDSP_vclr(
+            destination.advanced(by: sampleCount),
+            1,
+            vDSP_Length(paddedSampleCount - sampleCount)
+        )
+    }
+
     private func sendFrame(
         _ buffer: AVAudioPCMBuffer,
         transport: any VoiceMediaTransport,
@@ -1017,6 +1058,8 @@ actor VoicePlaybackService {
             throw VoicePipelineError.notConnected
         }
         let encodeStartedAt = DispatchTime.now().uptimeNanoseconds
+        let encodeInterval = Self.signposter.beginInterval("Opus Encode")
+        defer { Self.signposter.endInterval("Opus Encode", encodeInterval) }
         let plainPayload: Data
         do {
             plainPayload = try opus.encode(buffer)
