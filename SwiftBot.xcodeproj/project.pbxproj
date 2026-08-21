@@ -1857,7 +1857,7 @@
 			repositoryURL = "https://github.com/johnwatso/swiftbot-opus.git";
 			requirement = {
 				kind = exactVersion;
-				version = 0.1.1;
+				version = 0.2.0;
 			};
 		};
 		C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {

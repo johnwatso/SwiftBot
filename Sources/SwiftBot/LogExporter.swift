@@ -190,6 +190,17 @@ enum LogExporter {
             let stagedTransitions = transportDiagnostics.davePendingTransitionIds
                 .map(String.init)
                 .joined(separator: ",")
+            let averageAudioEncodeMilliseconds = transportDiagnostics.averageAudioEncodeMilliseconds
+                .map { String(format: "%.3f", $0) } ?? "-"
+            let audioMetrics = [
+                "opusProfile=\(transportDiagnostics.opusProfile)",
+                "encodedPackets=\(transportDiagnostics.encodedAudioPacketCount)",
+                "encodedBytes=\(transportDiagnostics.encodedAudioByteCount)",
+                "encodeFailures=\(transportDiagnostics.audioEncodeFailureCount)",
+                "sendFailures=\(transportDiagnostics.audioSendFailureCount)",
+                "averageEncodeMilliseconds=\(averageAudioEncodeMilliseconds)",
+                "worstQueueDelayMilliseconds=\(String(format: "%.3f", transportDiagnostics.worstAudioQueueDelayMilliseconds))",
+            ].joined(separator: " ")
             out += "status=\(transportDiagnostics.status)\n"
             out += "connectionGeneration=\(transportDiagnostics.connectionGeneration)\n"
             out += "lastFailureGeneration=\(transportDiagnostics.lastFailureGeneration.map(String.init) ?? "-")\n"
@@ -197,6 +208,7 @@ enum LogExporter {
             out += "gateway=\(transportDiagnostics.hasGateway) transport=\(transportDiagnostics.hasTransport) encryption=\(transportDiagnostics.hasEncryption) opus=\(transportDiagnostics.hasOpusEncoder) ssrc=\(transportDiagnostics.hasSSRC)\n"
             out += "isSpeaking=\(transportDiagnostics.isSpeaking) speakingElapsedSeconds=\(transportDiagnostics.speakingElapsedSeconds.map { String(format: "%.2f", $0) } ?? "-") firstAudioFrameSent=\(transportDiagnostics.didSendFirstAudioFrame)\n"
             out += "lastAudioFrameSentAt=\(transportDiagnostics.lastAudioFrameSentAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "\(audioMetrics)\n"
             out += "keepaliveCounter=\(transportDiagnostics.keepaliveCounter) failures=\(transportDiagnostics.keepaliveFailures)\n"
             out += "lastKeepaliveAttemptAt=\(transportDiagnostics.lastKeepaliveAttemptAt.map { iso.string(from: $0) } ?? "-")\n"
             out += "lastKeepaliveSuccessAt=\(transportDiagnostics.lastKeepaliveSuccessAt.map { iso.string(from: $0) } ?? "-")\n"
