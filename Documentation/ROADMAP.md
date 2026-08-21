@@ -9,6 +9,11 @@
 
 ## Recent Engineering Log
 
+### 2026-08-21 — Apple-silicon voice pipeline visibility
+
+- [x] Added Instruments signposts around PCM frame preparation and Opus encoding, making per-frame voice latency inspectable without logging audio or payload data.
+- [x] Replaced scalar final-frame padding with Accelerate/vDSP's hardware-tuned vector clear path while keeping the same fixed 20 ms Opus frame contract.
+
 ### 2026-08-21 — Swiftbot Opus 0.2.0 voice resilience
 
 - [x] Upgraded SwiftBot to the maintained `swiftbot-opus` 0.2.0 release, which adds typed encoder controls, in-band FEC decode support, packet-loss concealment, and sanitizer-backed malformed-packet coverage.
