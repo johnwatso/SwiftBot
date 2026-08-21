@@ -9,6 +9,10 @@
 
 ## Recent Engineering Log
 
+### 2026-08-21 — SwiftBot 1.23
+
+- [x] Bumped SwiftBot’s marketing version to 1.23 and its build number to 2026082111 for the Apple-native voice pipeline release.
+
 ### 2026-08-21 — Apple-silicon voice pipeline visibility
 
 - [x] Added Instruments signposts around PCM frame preparation and Opus encoding, making per-frame voice latency inspectable without logging audio or payload data.
