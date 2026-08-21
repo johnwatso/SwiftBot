@@ -34,9 +34,9 @@ packages:
   swift-markdown:
     url: https://github.com/swiftlang/swift-markdown.git
     majorVersion: 0.8.0
-  swift-opus:
-    url: https://github.com/alta/swift-opus.git
-    exactVersion: 0.0.2
+  swiftbot-opus:
+    url: https://github.com/johnwatso/swiftbot-opus.git
+    exactVersion: 0.1.0
   libdave-swift:
     url: https://github.com/johnwatso/libdave-swift.git
     # Keep this pin centralized: release a new libdave tag, change this one
@@ -105,7 +105,7 @@ targets:
         product: SwiftSoup
       - package: swift-markdown
         product: Markdown
-      - package: swift-opus
+      - package: swiftbot-opus
         product: Opus
       - package: libdave-swift
         product: libdave-swift

@@ -310,6 +310,12 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 
 ## Session log
 
+### 2026-08-21 — Swiftbot Opus Maintenance Fork
+
+| Commit | Summary |
+|---|---|
+| `dbc8f2a` | Switched SwiftBot's Opus package from upstream `alta/swift-opus` 0.0.2 to the Swiftbot-only `johnwatso/swiftbot-opus` 0.1.0 release. The fork updates libopus to 1.6.1, validates PCM format compatibility at the encoder/decoder boundaries, strengthens format/round-trip regression coverage, documents usage, and adds a multi-Xcode/Apple-platform CI build matrix. |
+
 ### 2026-08-06 — Voice Announcer Race and Route Recovery Hardening
 
 | Commit | Summary |

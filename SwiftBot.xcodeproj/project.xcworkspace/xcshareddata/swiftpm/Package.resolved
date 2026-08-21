@@ -1,5 +1,5 @@
 {
-  "originHash" : "6c8ee52e5747b4c4d9814b3fb154eafe700a0e94eb295f67a9f1a1bee8cb381d",
+  "originHash" : "1bd8f80e5787f7ea7308c0efd7d0923fd2f7d6801d72cae8ec3395846279c565",
   "pins" : [
     {
       "identity" : "libdave-swift",
@@ -101,21 +101,21 @@
       }
     },
     {
-      "identity" : "swift-opus",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/alta/swift-opus.git",
-      "state" : {
-        "revision" : "5f0164b8915fb9001265c54413aa0f0efbd3df06",
-        "version" : "0.0.2"
-      }
-    },
-    {
       "identity" : "swift-system",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
+      }
+    },
+    {
+      "identity" : "swiftbot-opus",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/johnwatso/swiftbot-opus.git",
+      "state" : {
+        "revision" : "dbc8f2ab58d42e3b3b8350729b8cdee2a2c121c2",
+        "version" : "0.1.0"
       }
     },
     {
