@@ -19,3 +19,26 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+THIRD-PARTY SOFTWARE
+
+SwiftBot is distributed as an application bundle containing third-party packages
+(Sparkle, SwiftNIO, Swift Crypto, SwiftSoup, and others). Their license and notice
+texts are reproduced in THIRD-PARTY-NOTICES.md, which forms part of this
+distribution.
+
+--------------------------------------------------------------------------------
+
+ACKNOWLEDGEMENTS
+
+SwiftDisc (https://github.com/M1tsumi/SwiftDisc)
+Copyright (c) 2025 quefep
+Licensed under the MIT License.
+
+SwiftBot does not include, link against, or depend on SwiftDisc. Its REST rate
+limiter (Sources/SwiftBot/Services/DiscordRateLimiter.swift) is original code
+whose approach to Discord bucket resolution and rate-limit scope handling was
+informed by reading SwiftDisc's Sources/SwiftDisc/REST/RateLimiter.swift. This
+notice is offered as credit, not as a license obligation.

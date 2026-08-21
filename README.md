@@ -132,4 +132,12 @@ Please raise a GitHub issue if something breaks. Include the SwiftBot version, m
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+SwiftBot ships third-party packages whose license and notice texts are reproduced in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Regenerate that file after a
+dependency bump:
+
+```bash
+python3 scripts/generate_third_party_notices.py
+```
