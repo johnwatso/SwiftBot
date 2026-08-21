@@ -3,12 +3,16 @@ import Foundation
 struct DiscordMessageRESTClient {
     static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
 
-    let session: URLSession
     let restBase: URL
+    private let transport: DiscordRESTTransport
 
-    init(session: URLSession, restBase: URL = DiscordMessageRESTClient.defaultRestBase) {
-        self.session = session
+    init(
+        session: URLSession,
+        restBase: URL = DiscordMessageRESTClient.defaultRestBase,
+        limiter: DiscordRateLimiter = .shared
+    ) {
         self.restBase = restBase
+        self.transport = DiscordRESTTransport(session: session, limiter: limiter)
     }
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
@@ -61,7 +65,7 @@ struct DiscordMessageRESTClient {
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = payloadData
 
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse else {
             throw NSError(
                 domain: "DiscordService",
@@ -117,7 +121,7 @@ struct DiscordMessageRESTClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = payloadData
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -136,7 +140,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -161,7 +165,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -178,7 +182,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(encodedEmoji)/@me"))
         req.httpMethod = "PUT"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to add reaction"])
         }
@@ -189,7 +193,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(encodedEmoji)/@me"))
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -204,7 +208,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/pins/\(messageId)"))
         req.httpMethod = "PUT"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -219,7 +223,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/pins/\(messageId)"))
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -239,7 +243,7 @@ struct DiscordMessageRESTClient {
             "name": name,
             "auto_archive_duration": 1440
         ])
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -322,14 +326,14 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/typing"))
         req.httpMethod = "POST"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        _ = try? await session.data(for: req)
+        _ = try? await transport.perform(req)
     }
 
     func deleteMessage(channelId: String, messageId: String, token: String) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -346,7 +350,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/emojis"))
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -371,7 +375,7 @@ struct DiscordMessageRESTClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["messages": messageIds])
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -386,7 +390,7 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)"))
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(
@@ -409,7 +413,7 @@ struct DiscordMessageRESTClient {
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["recipient_id": userId])
 
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create DM channel"])
         }
@@ -487,7 +491,7 @@ struct DiscordMessageRESTClient {
         appendString("--\(boundary)--\r\n")
 
         req.httpBody = body
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
             throw NSError(

@@ -137,6 +137,11 @@ struct DiscordChannelCoverage: Hashable {
 // MARK: - View
 
 struct BotPermissionsCheckView: View {
+    /// These checks hit the same bot-token buckets as the rest of the app — the
+    /// per-guild channel fan-out especially — so they share the app's limiter
+    /// rather than racing it.
+    private static let transport = DiscordRESTTransport(session: .shared, limiter: .shared)
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var app: AppModel
     let token: String
@@ -515,7 +520,7 @@ struct BotPermissionsCheckView: View {
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await Self.transport.perform(req)
         guard let http = response as? HTTPURLResponse else {
             throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
                 NSLocalizedDescriptionKey: "No response from Discord."
@@ -608,7 +613,7 @@ struct BotPermissionsCheckView: View {
         var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me")!)
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await Self.transport.perform(req)
         guard let http = response as? HTTPURLResponse else { return nil }
         guard (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
@@ -625,7 +630,7 @@ struct BotPermissionsCheckView: View {
         var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me/guilds")!)
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await Self.transport.perform(req)
         guard let http = response as? HTTPURLResponse else { return [] }
         guard (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
@@ -650,7 +655,7 @@ struct BotPermissionsCheckView: View {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await Self.transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])

@@ -877,10 +877,11 @@ actor DiscordService {
             }
         }
 
-        // Old → individual deletes, paced to stay polite with the API.
+        // Old → individual deletes. Pacing is `DiscordRateLimiter`'s job now: the
+        // per-message-delete bucket is the strictest one Discord hands out, and
+        // the limiter follows its real headers instead of a fixed guess.
         for id in old {
             if await deleteIndividually(channelId: channelId, messageId: id, token: token) { deleted += 1 }
-            try? await Task.sleep(nanoseconds: 350_000_000)
         }
 
         return deleted

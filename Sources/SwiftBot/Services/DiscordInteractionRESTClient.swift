@@ -1,8 +1,13 @@
 import Foundation
 
 struct DiscordInteractionRESTClient {
-    let session: URLSession
     let restBase: URL
+    private let transport: DiscordRESTTransport
+
+    init(session: URLSession, restBase: URL, limiter: DiscordRateLimiter = .shared) {
+        self.restBase = restBase
+        self.transport = DiscordRESTTransport(session: session, limiter: limiter)
+    }
 
     func registerGlobalApplicationCommands(
         applicationID: String,
@@ -16,7 +21,7 @@ struct DiscordInteractionRESTClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: commands)
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
                 domain: "DiscordService",
@@ -43,7 +48,7 @@ struct DiscordInteractionRESTClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: commands)
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
                 domain: "DiscordService",
@@ -78,7 +83,7 @@ struct DiscordInteractionRESTClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = payloadData
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
                 domain: "DiscordService",
@@ -113,7 +118,7 @@ struct DiscordInteractionRESTClient {
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = payloadData
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
                 domain: "DiscordService",
@@ -133,7 +138,7 @@ struct DiscordInteractionRESTClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["content": content])
 
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to send webhook"])
         }

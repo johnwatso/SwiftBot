@@ -3,15 +3,16 @@ import Foundation
 struct DiscordGuildRESTClient {
     static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
 
-    let session: URLSession
     let restBase: URL
+    private let transport: DiscordRESTTransport
 
     init(
         session: URLSession,
-        restBase: URL = DiscordGuildRESTClient.defaultRestBase
+        restBase: URL = DiscordGuildRESTClient.defaultRestBase,
+        limiter: DiscordRateLimiter = .shared
     ) {
-        self.session = session
         self.restBase = restBase
+        self.transport = DiscordRESTTransport(session: session, limiter: limiter)
     }
 
     func fetchGuildInvites(guildID: String, token: String) async throws -> [WelcomeFlowService.InviteSnapshot] {
@@ -24,7 +25,7 @@ struct DiscordGuildRESTClient {
         req.timeoutInterval = 10
         req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
                 domain: "DiscordService",
@@ -62,7 +63,7 @@ struct DiscordGuildRESTClient {
         req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (data, response) = try await session.data(for: req)
+            let (data, response) = try await transport.perform(req)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
@@ -91,7 +92,7 @@ struct DiscordGuildRESTClient {
         req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (data, response) = try await session.data(for: req)
+            let (data, response) = try await transport.perform(req)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
@@ -109,7 +110,7 @@ struct DiscordGuildRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)/roles/\(roleId)"))
         req.httpMethod = "PUT"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to add role"])
         }
@@ -119,7 +120,7 @@ struct DiscordGuildRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)/roles/\(roleId)"))
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to remove role"])
         }
@@ -136,7 +137,7 @@ struct DiscordGuildRESTClient {
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to timeout member"])
         }
@@ -152,7 +153,7 @@ struct DiscordGuildRESTClient {
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to kick member"])
         }
@@ -166,7 +167,7 @@ struct DiscordGuildRESTClient {
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to move member"])
         }
@@ -180,7 +181,7 @@ struct DiscordGuildRESTClient {
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response) = try await session.data(for: req)
+        let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create channel"])
         }
