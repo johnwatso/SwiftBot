@@ -1054,7 +1054,7 @@
 				C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 				53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */,
 				084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
-				F4C8B56AD37C979BBEA1E9BE /* XCRemoteSwiftPackageReference "swift-opus" */,
+				B1374D9B633575E7680E1A22 /* XCRemoteSwiftPackageReference "swiftbot-opus" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A63029345405694029040AF9 /* Products */;
@@ -1852,6 +1852,14 @@
 				minimumVersion = 3.12.3;
 			};
 		};
+		B1374D9B633575E7680E1A22 /* XCRemoteSwiftPackageReference "swiftbot-opus" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnwatso/swiftbot-opus.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.1.0;
+			};
+		};
 		C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/swiftlang/swift-markdown.git";
@@ -1866,14 +1874,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.8.0;
-			};
-		};
-		F4C8B56AD37C979BBEA1E9BE /* XCRemoteSwiftPackageReference "swift-opus" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/alta/swift-opus.git";
-			requirement = {
-				kind = exactVersion;
-				version = 0.0.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -1931,7 +1931,7 @@
 		};
 		8340F7290FCD93DB7287E27A /* Opus */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F4C8B56AD37C979BBEA1E9BE /* XCRemoteSwiftPackageReference "swift-opus" */;
+			package = B1374D9B633575E7680E1A22 /* XCRemoteSwiftPackageReference "swiftbot-opus" */;
 			productName = Opus;
 		};
 /* End XCSwiftPackageProductDependency section */
