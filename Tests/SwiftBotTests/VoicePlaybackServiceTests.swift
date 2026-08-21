@@ -117,6 +117,12 @@ final class VoicePlaybackServiceTests: XCTestCase {
 
         let packets = await transport.sentPackets
         XCTAssertFalse(packets.isEmpty, "PCM must produce RTP packets on the transport")
+        let diagnostics = await playback.diagnosticsSnapshot()
+        XCTAssertEqual(diagnostics.opusProfile, "reliable")
+        XCTAssertGreaterThan(diagnostics.encodedAudioPacketCount, 0)
+        XCTAssertGreaterThan(diagnostics.encodedAudioByteCount, 0)
+        XCTAssertEqual(diagnostics.audioEncodeFailureCount, 0)
+        XCTAssertEqual(diagnostics.audioSendFailureCount, 0)
         let speaking = await gateway.speakingUpdates
         XCTAssertEqual(speaking.first, true)
     }
