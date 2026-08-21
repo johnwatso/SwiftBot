@@ -939,15 +939,41 @@ Licensed under the Apache License, Version 2.0 — full text in [Appendix A](#ap
 `libdave-swift` is maintained alongside SwiftBot and ships a prebuilt
 `Dave.xcframework` compiled from Discord's libdave, mlspp, and OpenSSL/libcrypto.
 
-**Its license status is unresolved.** The repository carries no license file of its
-own, and its `THIRD_PARTY_NOTICES.md` records that the exact source revisions and
-license texts of the bundled native components were not captured at build time.
-That inventory explicitly warns against inferring a component's version or license
-from it, so no license is asserted for those components here.
+Its own Swift source is MIT licensed. That license explicitly does not extend to the
+bundled framework:
+
+```
+MIT License
+
+Copyright (c) 2026 johnwatso
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+**The bundled framework's license status is unresolved.** Its
+`THIRD_PARTY_NOTICES.md` records that the exact source revisions and license texts
+of the native components were not captured at build time, and explicitly warns
+against inferring a component's version or license from the artifact. No license is
+asserted for those components here.
 
 Resolving this requires capturing the upstream revisions and license texts during the
-next framework rebuild, per the workflow in that repository's `THIRD_PARTY_NOTICES.md`,
-and adding a license file to `libdave-swift` itself.
+next framework rebuild, per the workflow in that repository's `THIRD_PARTY_NOTICES.md`.
 
 * Bundled native components: Discord libdave, mlspp, OpenSSL/libcrypto
 * Component inventory: https://github.com/johnwatso/libdave-swift/blob/main/THIRD_PARTY_NOTICES.md
