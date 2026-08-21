@@ -9,6 +9,11 @@
 
 ## Recent Engineering Log
 
+### 2026-08-21 — Swiftbot Opus 0.2.0 voice resilience
+
+- [x] Upgraded SwiftBot to the maintained `swiftbot-opus` 0.2.0 release, which adds typed encoder controls, in-band FEC decode support, packet-loss concealment, and sanitizer-backed malformed-packet coverage.
+- [x] Tuned Discord announcement output to the reliable 48 kHz stereo speech profile (96 kbps constrained VBR, FEC, 10% expected-loss budget) and added per-connection packet count, byte count, encode latency, queue delay, and UDP send-failure diagnostics to the redacted voice export.
+
 ### 2026-08-21 — Gateway close-code accuracy and release hygiene
 
 - [x] Stopped a socket SwiftBot retired itself from pinning its "going away" close code to the dashboard, which held the Overview header on "Action Required" indefinitely and advised a token/intents check while the gateway was healthy. Close codes are now reported only for the live connection generation, RESUMED clears them alongside READY, and only the codes an operator can act on (4004, 4010-4014) raise critical severity.

@@ -28,6 +28,13 @@ actor VoicePlaybackService {
         let speakingElapsedSeconds: Double?
         let didSendFirstAudioFrame: Bool
         let lastAudioFrameSentAt: Date?
+        let opusProfile: String
+        let encodedAudioPacketCount: UInt64
+        let encodedAudioByteCount: UInt64
+        let audioEncodeFailureCount: Int
+        let audioSendFailureCount: Int
+        let averageAudioEncodeMilliseconds: Double?
+        let worstAudioQueueDelayMilliseconds: Double
         let keepaliveCounter: UInt32
         let keepaliveFailures: Int
         let lastKeepaliveAttemptAt: Date?
@@ -108,6 +115,7 @@ actor VoicePlaybackService {
     /// watchdog: a native callback that never returns otherwise leaves the
     /// bot connected, visibly speaking, and permanently silent.
     private let daveTransitionGateProgressTimeout: Duration
+    private let opusProfile: OpusFrameEncoder.Profile
     private var status: Status = .idle
     private var gateway: (any VoicePlaybackGateway)?
     private var transport: (any VoiceMediaTransport)?
@@ -246,6 +254,12 @@ actor VoicePlaybackService {
     private var lastKeepaliveFailureAt: Date?
     private var lastKeepaliveFailureReason: String?
     private var lastAudioFrameSentAt: Date?
+    private var encodedAudioPacketCount: UInt64 = 0
+    private var encodedAudioByteCount: UInt64 = 0
+    private var audioEncodeFailureCount: Int = 0
+    private var audioSendFailureCount: Int = 0
+    private var totalAudioEncodeNanoseconds: UInt64 = 0
+    private var worstAudioQueueDelayNanoseconds: UInt64 = 0
     /// A path monitor can report several details for one route handoff. Once a
     /// usable new route has requested recovery, ignore the rest until the next
     /// connection generation owns a fresh UDP transport.
@@ -296,7 +310,8 @@ actor VoicePlaybackService {
         connectionReadinessTimeout: Duration = .seconds(15),
         daveDowngradeTransitionTimeout: Duration = .seconds(12),
         daveTransitionGateProgressTimeout: Duration = .seconds(15),
-        networkPathRecoveryBudgetStabilityWindow: Duration = .seconds(30)
+        networkPathRecoveryBudgetStabilityWindow: Duration = .seconds(30),
+        opusProfile: OpusFrameEncoder.Profile = .reliable
     ) {
         self.session = session
         self.gatewayFactory = gatewayFactory
@@ -306,6 +321,7 @@ actor VoicePlaybackService {
         self.daveDowngradeTransitionTimeout = daveDowngradeTransitionTimeout
         self.daveTransitionGateProgressTimeout = daveTransitionGateProgressTimeout
         self.networkPathRecoveryBudgetStabilityWindow = networkPathRecoveryBudgetStabilityWindow
+        self.opusProfile = opusProfile
     }
 
     func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
@@ -369,7 +385,7 @@ actor VoicePlaybackService {
 
         try await withTaskCancellationHandler {
             do {
-                let opus = try OpusFrameEncoder()
+                let opus = try OpusFrameEncoder(profile: opusProfile)
                 guard isCurrentConnection(generation) else {
                     throw VoicePipelineError.notConnected
                 }
@@ -548,6 +564,15 @@ actor VoicePlaybackService {
             speakingElapsedSeconds: speakingElapsedSeconds,
             didSendFirstAudioFrame: didSendFirstAudioFrameForSpeech,
             lastAudioFrameSentAt: lastAudioFrameSentAt,
+            opusProfile: opusProfile.rawValue,
+            encodedAudioPacketCount: encodedAudioPacketCount,
+            encodedAudioByteCount: encodedAudioByteCount,
+            audioEncodeFailureCount: audioEncodeFailureCount,
+            audioSendFailureCount: audioSendFailureCount,
+            averageAudioEncodeMilliseconds: encodedAudioPacketCount > 0
+                ? Double(totalAudioEncodeNanoseconds) / Double(encodedAudioPacketCount) / 1_000_000
+                : nil,
+            worstAudioQueueDelayMilliseconds: Double(worstAudioQueueDelayNanoseconds) / 1_000_000,
             keepaliveCounter: keepaliveCounter,
             keepaliveFailures: keepaliveFailureCount,
             lastKeepaliveAttemptAt: lastKeepaliveAttemptAt,
@@ -811,6 +836,10 @@ actor VoicePlaybackService {
         var processed = 0
         while processed < totalFrames {
             try Task.checkCancellation()
+            let now = clock.now
+            if now > nextDeadline {
+                noteAudioQueueDelay(now - nextDeadline)
+            }
             let chunkFrames = min(samplesPerFrame, totalFrames - processed)
             guard let chunkBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) else {
                 break
@@ -945,7 +974,12 @@ actor VoicePlaybackService {
                 throw VoicePipelineError.daveNotReady
             }
             let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
-            try await transport.send(packet)
+            do {
+                try await transport.send(packet)
+            } catch {
+                audioSendFailureCount += 1
+                throw error
+            }
             guard isCurrentConnection(generation) else { throw VoicePipelineError.notConnected }
             // Persist each successfully emitted packet. If a DAVE transition
             // stops the remaining silence burst, the next utterance must not
@@ -982,7 +1016,18 @@ actor VoicePlaybackService {
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
-        let plainPayload = try opus.encode(buffer)
+        let encodeStartedAt = DispatchTime.now().uptimeNanoseconds
+        let plainPayload: Data
+        do {
+            plainPayload = try opus.encode(buffer)
+        } catch {
+            audioEncodeFailureCount += 1
+            throw error
+        }
+        noteEncodedAudioPacket(
+            byteCount: plainPayload.count,
+            durationNanoseconds: DispatchTime.now().uptimeNanoseconds - encodeStartedAt
+        )
         let mediaContextGeneration = daveMediaContextGeneration
         let encryptedPayload: Data
         if let coordinator = daveCoordinator {
@@ -1002,7 +1047,12 @@ actor VoicePlaybackService {
         }
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
-        try await transport.send(packet)
+        do {
+            try await transport.send(packet)
+        } catch {
+            audioSendFailureCount += 1
+            throw error
+        }
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
@@ -2240,7 +2290,24 @@ actor VoicePlaybackService {
         lastKeepaliveFailureAt = nil
         lastKeepaliveFailureReason = nil
         lastAudioFrameSentAt = nil
+        encodedAudioPacketCount = 0
+        encodedAudioByteCount = 0
+        audioEncodeFailureCount = 0
+        audioSendFailureCount = 0
+        totalAudioEncodeNanoseconds = 0
+        worstAudioQueueDelayNanoseconds = 0
         return connectionGeneration
+    }
+
+    private func noteEncodedAudioPacket(byteCount: Int, durationNanoseconds: UInt64) {
+        encodedAudioPacketCount &+= 1
+        encodedAudioByteCount &+= UInt64(byteCount)
+        totalAudioEncodeNanoseconds &+= durationNanoseconds
+    }
+
+    private func noteAudioQueueDelay(_ delay: Duration) {
+        let nanoseconds = UInt64(max(0, Self.durationSeconds(delay)) * 1_000_000_000)
+        worstAudioQueueDelayNanoseconds = max(worstAudioQueueDelayNanoseconds, nanoseconds)
     }
 
     /// Make every outstanding callback and worker stale before tearing down its
