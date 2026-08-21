@@ -3,18 +3,21 @@ import Foundation
 struct DiscordIdentityRESTClient {
     static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
 
-    let session: URLSession
-    let identitySession: URLSession
     let restBase: URL
+    private let transport: DiscordRESTTransport
+    /// Probe/validation calls use the short-timeout session but share the same
+    /// bucket bookkeeping, so a token check still learns from its headers.
+    private let identityTransport: DiscordRESTTransport
 
     init(
         session: URLSession,
         identitySession: URLSession,
-        restBase: URL = DiscordIdentityRESTClient.defaultRestBase
+        restBase: URL = DiscordIdentityRESTClient.defaultRestBase,
+        limiter: DiscordRateLimiter = .shared
     ) {
-        self.session = session
-        self.identitySession = identitySession
         self.restBase = restBase
+        self.transport = DiscordRESTTransport(session: session, limiter: limiter)
+        self.identityTransport = DiscordRESTTransport(session: identitySession, limiter: limiter)
     }
 
     func validateBotTokenRich(_ token: String) async -> DiscordService.TokenValidationResult {
@@ -36,7 +39,7 @@ struct DiscordIdentityRESTClient {
         req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (data, response) = try await identitySession.data(for: req)
+            let (data, response) = try await identityTransport.perform(req)
             guard let http = response as? HTTPURLResponse else {
                 return .failure(.networkFailure)
             }
@@ -86,7 +89,7 @@ struct DiscordIdentityRESTClient {
         req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (data, response) = try await session.data(for: req)
+            let (data, response) = try await transport.perform(req)
             guard let http = response as? HTTPURLResponse else {
                 return (false, "Discord returned an invalid response.")
             }
@@ -115,7 +118,7 @@ struct DiscordIdentityRESTClient {
         req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
 
         do {
-            let (data, response) = try await identitySession.data(for: req)
+            let (data, response) = try await identityTransport.perform(req)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let appID = json["id"] as? String else {
@@ -134,7 +137,7 @@ struct DiscordIdentityRESTClient {
         req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
         req.timeoutInterval = 10
         do {
-            let (_, response) = try await identitySession.data(for: req)
+            let (_, response) = try await identityTransport.perform(req, reserveSlot: false)
             guard let http = response as? HTTPURLResponse else { return (false, nil, nil) }
             let remaining = (http.value(forHTTPHeaderField: "X-RateLimit-Remaining"))
                 .flatMap { Int($0) }
@@ -154,7 +157,7 @@ struct DiscordIdentityRESTClient {
         req.timeoutInterval = 10
 
         do {
-            let (data, response) = try await identitySession.data(for: req)
+            let (data, response) = try await identityTransport.perform(req)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }

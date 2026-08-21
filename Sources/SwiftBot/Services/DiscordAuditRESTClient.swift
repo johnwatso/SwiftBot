@@ -1,20 +1,24 @@
 import Foundation
 
 /// Ingestion client for the Audit feature. Mirrors `DiscordGuildRESTClient`:
-/// a value type holding the session + base URL, every call takes the bot token,
-/// raw `URLSession` + `JSONSerialization`, errors thrown as `NSError`.
+/// a value type holding the transport + base URL, every call takes the bot token,
+/// `JSONSerialization` for parsing, errors thrown as `NSError`.
 struct DiscordAuditRESTClient {
     static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
 
     /// Discord snowflakes encode their creation time: (id >> 22) + Discord epoch.
     private static let discordEpochMs: Int64 = 1_420_070_400_000
 
-    let session: URLSession
     let restBase: URL
+    private let transport: DiscordRESTTransport
 
-    init(session: URLSession, restBase: URL = DiscordAuditRESTClient.defaultRestBase) {
-        self.session = session
+    init(
+        session: URLSession,
+        restBase: URL = DiscordAuditRESTClient.defaultRestBase,
+        limiter: DiscordRateLimiter = .shared
+    ) {
         self.restBase = restBase
+        self.transport = DiscordRESTTransport(session: session, limiter: limiter)
     }
 
     // MARK: - Roles
@@ -29,7 +33,7 @@ struct DiscordAuditRESTClient {
         req.timeoutInterval = 10
         req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to fetch roles"])
@@ -63,7 +67,7 @@ struct DiscordAuditRESTClient {
         req.timeoutInterval = 10
         req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to fetch audit log"])
