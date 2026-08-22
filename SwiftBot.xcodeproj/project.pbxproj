@@ -22,6 +22,7 @@
 		09907542E2668B9937CCFDFA /* MediaTranscodeCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B6DB09FA8998EC1FF830EA /* MediaTranscodeCache.swift */; };
 		0AC6BD103A9E46A8B825505C /* RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B12C876054D67E5927F759C /* RemoteControlService.swift */; };
 		0B9C49A75FE09790692B1011 /* AutomationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECE9D8C280FA778B62810CFB /* AutomationService.swift */; };
+		0E374177BA9A4507E9C2A07C /* AdminWebServerAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE89FB10FB15AAAC1EF0FB6 /* AdminWebServerAuthTests.swift */; };
 		0EEA9864548BE835188539BC /* DiscordInteractionRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D8E7FE6E37065C0FDE89A9 /* DiscordInteractionRESTClient.swift */; };
 		0F4FFB58F64CE7287CEC3042 /* MediaStreamDebug.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119133B577236BB2522E3AE /* MediaStreamDebug.swift */; };
 		0FAD08111C7F78D8F97ADA45 /* DiscordAuditRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF34B2D5F5A9E13F7F67C06E /* DiscordAuditRESTClient.swift */; };
@@ -440,6 +441,7 @@
 		7A7C274E28751870FD01AFBC /* AutomationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationsView.swift; sourceTree = "<group>"; };
 		7B14894064A5DF51A63023E6 /* SwiftMinerLinkWarningDismiss.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerLinkWarningDismiss.swift; sourceTree = "<group>"; };
 		7B9C73206F296924B1FAAF39 /* SwiftBird.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = SwiftBird.png; sourceTree = "<group>"; };
+		7BE89FB10FB15AAAC1EF0FB6 /* AdminWebServerAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebServerAuthTests.swift; sourceTree = "<group>"; };
 		7BED78EB9AF97FC3DA9EE531 /* OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingRootView.swift; sourceTree = "<group>"; };
 		7C4E3B85871C475A7A8D53DE /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
 		7D2915C01FB7B82D00D27D0B /* VoiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceProtocol.swift; sourceTree = "<group>"; };
@@ -621,6 +623,7 @@
 			children = (
 				DE53DBB48C421B9BF15DEF91 /* AdminWebCopyTests.swift */,
 				1A7976746ADE42B5041F7EB7 /* AdminWebOAuthTests.swift */,
+				7BE89FB10FB15AAAC1EF0FB6 /* AdminWebServerAuthTests.swift */,
 				62A07E12548C74B87208F10D /* AMDServiceTests.swift */,
 				6E2884042287AF3A3D8D33B6 /* AppOutputGuardTests.swift */,
 				0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */,
@@ -1312,6 +1315,7 @@
 				01F92911F16A693797B44E3C /* AMDServiceTests.swift in Sources */,
 				3F3EF4FAF4D2BCE7B8CC3CF0 /* AdminWebCopyTests.swift in Sources */,
 				FC3942D9BA9BA24CC48B7F8E /* AdminWebOAuthTests.swift in Sources */,
+				0E374177BA9A4507E9C2A07C /* AdminWebServerAuthTests.swift in Sources */,
 				E0E054077447FB570AB8C3E7 /* AppOutputGuardTests.swift in Sources */,
 				9D0628EF8EB7D0F6972B5A84 /* AutomationAITransformTests.swift in Sources */,
 				ECFA32C9AB64BEFA7F7C17CA /* AutomationConflictDetectorTests.swift in Sources */,
@@ -1401,7 +1405,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026082111;
+				CURRENT_PROJECT_VERSION = 2026082212;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1639,7 +1643,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026082111;
+				CURRENT_PROJECT_VERSION = 2026082212;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1809,7 +1813,7 @@
 			repositoryURL = "https://github.com/johnwatso/libdave-swift.git";
 			requirement = {
 				kind = exactVersion;
-				version = 3.0.0;
+				version = 3.0.1;
 			};
 		};
 		3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {

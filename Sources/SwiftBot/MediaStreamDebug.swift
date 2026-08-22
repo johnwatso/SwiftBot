@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import os
 
 /// Lightweight diagnostics for media playback streaming.
@@ -33,7 +34,17 @@ enum StreamDebug {
     /// Optional sink that mirrors stream-debug lines into the SwiftBot in-app
     /// Logs panel. Wired from `AppModel` at startup so this file stays free of
     /// cross-module dependencies.
-    nonisolated(unsafe) static var inAppSink: (@Sendable (String) -> Void)?
+    ///
+    /// Guarded by a mutex rather than left as bare mutable global state: the
+    /// write happens once on the main actor during `AppModel` setup, but reads
+    /// come from whichever executor is servicing a `/api/media/stream` range
+    /// request, so the two genuinely can overlap.
+    private static let sinkStorage = Mutex<(@Sendable (String) -> Void)?>(nil)
+
+    static var inAppSink: (@Sendable (String) -> Void)? {
+        get { sinkStorage.withLock { $0 } }
+        set { sinkStorage.withLock { $0 = newValue } }
+    }
 
     private static let logger = Logger(subsystem: "com.swiftbot.media", category: "stream")
 

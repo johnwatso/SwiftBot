@@ -216,11 +216,15 @@ actor TunnelManager: TunnelProvider {
             process.arguments = [
                 "tunnel",
                 "--no-autoupdate",
-                "run",
-                "--token",
-                configuration.tunnelToken
+                "run"
             ]
-            process.environment = ProcessInfo.processInfo.environment
+            // The token goes through the environment rather than `--token` on the
+            // command line: argv is world-readable via `ps`, so any process running
+            // as this user could lift the tunnel credential out of it. cloudflared
+            // documents `TUNNEL_TOKEN` as the equivalent of the flag.
+            var environment = ProcessInfo.processInfo.environment
+            environment["TUNNEL_TOKEN"] = configuration.tunnelToken
+            process.environment = environment
 
             let outputPipe = Pipe()
             process.standardOutput = outputPipe

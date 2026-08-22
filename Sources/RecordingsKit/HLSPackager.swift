@@ -211,15 +211,20 @@ public actor HLSPackager {
                 group.enter()
                 let queue = DispatchQueue(label: label)
                 let finished = Once()
+                // AVFoundation invokes this callback only on `queue`. Wrap the
+                // queue-confined references so Swift's @Sendable checking does
+                // not mistake the callback handoff for concurrent access.
+                let sendableOutput = QueueConfined(value: output)
+                let sendableInput = QueueConfined(value: input)
                 input.requestMediaDataWhenReady(on: queue) {
-                    while input.isReadyForMoreMediaData {
-                        if let sample = output.copyNextSampleBuffer() {
-                            if !input.append(sample) {
-                                if finished.run() { input.markAsFinished(); group.leave() }
+                    while sendableInput.value.isReadyForMoreMediaData {
+                        if let sample = sendableOutput.value.copyNextSampleBuffer() {
+                            if !sendableInput.value.append(sample) {
+                                if finished.run() { sendableInput.value.markAsFinished(); group.leave() }
                                 return
                             }
                         } else {
-                            if finished.run() { input.markAsFinished(); group.leave() }
+                            if finished.run() { sendableInput.value.markAsFinished(); group.leave() }
                             return
                         }
                     }
@@ -236,6 +241,13 @@ public actor HLSPackager {
             }
         }
     }
+}
+
+/// A reference that is deliberately confined to one dispatch queue. This is
+/// used only to bridge AVFoundation callback APIs whose imported types do not
+/// yet conform to `Sendable`.
+private struct QueueConfined<Value>: @unchecked Sendable {
+    let value: Value
 }
 
 /// Runs its first invocation exactly once; later calls are no-ops. Used to

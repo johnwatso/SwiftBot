@@ -296,6 +296,10 @@ actor DiscordService {
         commands: [[String: Any]],
         token: String
     ) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: registerGlobalApplicationCommands blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         nonisolated(unsafe) let safeCommands = commands
         try await interactionRESTClient.registerGlobalApplicationCommands(
             applicationID: applicationID,
@@ -310,6 +314,10 @@ actor DiscordService {
         commands: [[String: Any]],
         token: String
     ) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: registerGuildApplicationCommands blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         nonisolated(unsafe) let safeCommands = commands
         try await interactionRESTClient.registerGuildApplicationCommands(
             applicationID: applicationID,
@@ -543,6 +551,10 @@ actor DiscordService {
 
     /// Sends a typing indicator to the given channel. Fire-and-forget; errors are silently discarded.
     func triggerTyping(channelId: String, token: String) async {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: triggerTyping blocked — outputAllowed is false (node is not Primary).")
+            return
+        }
         await messageRESTClient.triggerTyping(channelId: channelId, token: token)
     }
 

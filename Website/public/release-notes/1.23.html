@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.23 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
+    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
+    section.announcer { --accent: #7c3aed; }
+    section.cluster { --accent: #0e7490; }
+    section.security { --accent: #b45309; }
+    section.reliability { --accent: #15803d; }
+    section.release { --accent: #52606d; }
+    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+      .meta, .summary { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
+      code { background: rgba(159, 176, 194, 0.16); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.23</h1>
+    <p class="meta">Version 1.23 · Build 2026082212</p>
+    <p class="intro">A voice-reliability release for the Announcer, with targeted fixes for repeated reconnects when channel membership changes and quieter, safer recovery across clustered bots.</p>
+
+    <section class="announcer">
+      <h2><span class="badge" aria-hidden="true">🔊</span>Announcer Reconnect Loop Fixed</h2>
+      <p class="summary">A delayed acknowledgement from an older voice disconnect could collide with a new join and repeatedly restart recovery.</p>
+      <ul>
+        <li><strong>Member joins no longer trigger endless reconnects:</strong> SwiftBot ignores a stale self-disconnect acknowledgement while an active voice recovery is already in progress, preserving the retry budget instead of resetting and starting over.</li>
+        <li><strong>Recovery remains bounded:</strong> The until-empty voice path now has regression coverage for delayed disconnect events, including the sequence that previously appeared when another person joined.</li>
+        <li><strong>Updated secure voice transport:</strong> SwiftBot now uses <code>libdave-swift 3.0.1</code>, incorporating the latest DAVE session fixes.</li>
+      </ul>
+    </section>
+
+    <section class="cluster">
+      <h2><span class="badge" aria-hidden="true">🔕</span>Quieter Cluster Failover</h2>
+      <p class="summary">Only the active output owner should create visible Discord activity during recovery.</p>
+      <ul>
+        <li><strong>No duplicate reconnect noise:</strong> Standby instances are blocked at the service boundary from registering commands or sending typing notifications.</li>
+        <li><strong>Safer ownership transitions:</strong> Output gates remain enforced even if a higher-level caller accidentally attempts an active-only Discord operation.</li>
+      </ul>
+    </section>
+
+    <section class="security">
+      <h2><span class="badge" aria-hidden="true">🛡️</span>Security and Admin Hardening</h2>
+      <p class="summary">Cluster and web-administration boundaries now fail more predictably under malformed or replayed traffic.</p>
+      <ul>
+        <li><strong>Replay protection outlives the clock-skew window:</strong> Previously accepted cluster nonces remain blocked for long enough to prevent a replay at the edge of the permitted timestamp range.</li>
+        <li><strong>Encrypted mesh traffic fails closed:</strong> Invalid secure envelopes are rejected instead of being reconsidered as plaintext cluster messages.</li>
+        <li><strong>Tunnel credentials stay out of process arguments:</strong> Tokens are passed through the child process environment.</li>
+        <li><strong>Admin authentication is regression-tested:</strong> Valid, expired, malformed, and tampered session tokens are covered with isolated test signing keys.</li>
+      </ul>
+    </section>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">⚙️</span>Concurrency Cleanup</h2>
+      <p class="summary">Media and diagnostics state is now better isolated under concurrent voice activity.</p>
+      <ul>
+        <li><strong>Media diagnostics are synchronized:</strong> Debug recording state can no longer race when voice callbacks arrive concurrently.</li>
+        <li><strong>HLS packaging respects queue isolation:</strong> AVFoundation capture state remains confined to its processing queue without crossing unsafe concurrency boundaries.</li>
+        <li><strong>Shared Discord rate limiting:</strong> REST traffic uses a bucket-aware limiter so concurrent services cooperate with Discord's rate limits.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">🚢</span>Release Details</h2>
+      <p class="summary">Version metadata and regression coverage for this release.</p>
+      <ul>
+        <li><code>MARKETING_VERSION</code> is 1.23 and <code>CURRENT_PROJECT_VERSION</code> is 2026082212.</li>
+        <li>The macOS application suite covers 438 tests, including the new voice recovery, cluster output, and admin authentication regressions.</li>
+        <li>Bundled dependency license notices include SwiftBot's Opus and DAVE components.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

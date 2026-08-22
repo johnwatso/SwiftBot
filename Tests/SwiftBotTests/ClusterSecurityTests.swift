@@ -205,6 +205,44 @@ final class ClusterSecurityTests: XCTestCase {
         XCTAssertEqual(statusCode(from: response), 401, "Stale timestamp must be rejected")
     }
 
+    /// A signature stays verifiable anywhere in ±`meshTimestampSkewWindow`, so one
+    /// captured request is replayable across a span of twice that. If a spent nonce
+    /// were forgotten before that span closed, the replay check would have a hole:
+    /// a request signed with a fast peer's future-leaning clock could be re-sent
+    /// once its nonce aged out but while its timestamp was still in range.
+    func testNonceRetentionOutlivesFullTimestampSkewSpan() {
+        let replaySpan = 2 * ClusterCoordinator.meshTimestampSkewWindow
+        XCTAssertGreaterThan(
+            ClusterCoordinator.meshNonceRetention,
+            replaySpan,
+            "Nonce retention must outlast the full ±skew replay span, or replays slip through once entries age out"
+        )
+    }
+
+    func testFutureTimestampWithinSkewIsAcceptedThenReplayRejected() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .standalone,
+            nodeName: "FutureSkewTest",
+            leaderAddress: "",
+            listenPort: 39014,
+            sharedSecret: "future-skew-secret"
+        )
+
+        let body = Data("{}".utf8)
+        let signedHeaders = await coordinator.testMakeHMACHeaders(method: "POST", path: "/v1/ai-reply", body: body)
+
+        let first = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
+        )
+        XCTAssertEqual(statusCode(from: first), 503, "Freshly signed request should clear auth")
+
+        let replay = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
+        )
+        XCTAssertEqual(statusCode(from: replay), 401, "Nonce must stay remembered for the whole skew span")
+    }
+
     func testMethodMismatchRejected() async {
         let coordinator = ClusterCoordinator()
         await coordinator.applySettings(
