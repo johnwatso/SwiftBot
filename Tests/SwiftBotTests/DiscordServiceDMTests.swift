@@ -40,6 +40,64 @@ final class DiscordServiceDMTests: XCTestCase {
         }
     }
 
+    func testGlobalCommandRegistrationBlockedOnStandby() async {
+        let service = DiscordService(session: makeMockSession())
+        await service.setOutputAllowed(false)
+
+        do {
+            try await service.registerGlobalApplicationCommands(
+                applicationID: "app-1",
+                commands: [["name": "ping"]],
+                token: "test-token"
+            )
+            XCTFail("Expected global command registration to throw when outputAllowed is false")
+        } catch {
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.domain, "DiscordService")
+            XCTAssertEqual(nsError.code, 403)
+        }
+    }
+
+    func testGuildCommandRegistrationBlockedOnStandby() async {
+        let service = DiscordService(session: makeMockSession())
+        await service.setOutputAllowed(false)
+
+        do {
+            try await service.registerGuildApplicationCommands(
+                applicationID: "app-1",
+                guildID: "guild-1",
+                commands: [["name": "ping"]],
+                token: "test-token"
+            )
+            XCTFail("Expected guild command registration to throw when outputAllowed is false")
+        } catch {
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.domain, "DiscordService")
+            XCTAssertEqual(nsError.code, 403)
+        }
+    }
+
+    func testTypingIndicatorBlockedOnStandby() async {
+        let requestExpectation = expectation(description: "typing request must not be sent")
+        requestExpectation.isInverted = true
+        MockURLProtocol.setHandler { request in
+            requestExpectation.fulfill()
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 204,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+
+        let service = DiscordService(session: makeMockSession())
+        await service.setOutputAllowed(false)
+        await service.triggerTyping(channelId: "channel-1", token: "test-token")
+
+        await fulfillment(of: [requestExpectation], timeout: 0.2)
+    }
+
     func testSendDMEmbedSuccess() async throws {
         let createExpectation = expectation(description: "createDirectMessageChannel called")
         let sendExpectation = expectation(description: "sendMessage called with embed payload")

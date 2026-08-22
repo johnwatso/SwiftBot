@@ -754,9 +754,19 @@ extension AppModel {
             // A null channel for our own bot is Discord's authoritative record
             // that it has left. During our own clean rejoin it is simply the
             // leave acknowledgement; otherwise it was a moderator/user-side
-            // disconnect and needs its own controlled recovery path.
+            // disconnect and needs its own controlled recovery path. Discord
+            // can deliver that acknowledgement after the 750 ms fallback has
+            // elapsed and the rejoin has already begun. Do not let that stale
+            // acknowledgement cancel and reset the recovery which caused it:
+            // doing so makes every attempt look like attempt 1 and permits an
+            // unbounded join/leave loop.
             if voiceLeaveAckState == .pending {
                 noteVoiceLeaveAck()
+            } else if voiceRecovery.inProgress {
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Ignored delayed self voice-disconnect acknowledgement while controlled recovery is in progress."
+                ))
             } else {
                 await handleExternalVoiceDisconnect(guildID: event.guildID)
             }

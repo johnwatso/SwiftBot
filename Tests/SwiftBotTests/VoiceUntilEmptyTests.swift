@@ -140,4 +140,31 @@ final class VoiceUntilEmptyTests: XCTestCase {
         // do not let this unit test attempt a real Discord connection.
         app.status = .stopped
     }
+
+    @MainActor
+    func testDelayedSelfLeaveDuringRecoveryDoesNotResetRetryBudget() async throws {
+        let app = makeConnectedApp()
+        app.status = .running
+        app.voiceRecovery = VoiceRecoveryBackoff(schedule: [.seconds(60), .seconds(60)])
+        _ = app.voiceRecovery.beginAttempt()
+        app.voiceConnectionStatus = .recovering("Rejoining after voice drop…")
+
+        // This is the null-channel acknowledgement for the leave SwiftBot
+        // sent as part of its own clean rejoin. It may arrive after the short
+        // leave-ack wait has elapsed, when the recovery is already underway.
+        let delayedLeave = GatewayVoiceStateUpdateEvent(
+            rawMap: ["channel_id": .null],
+            guildID: "guild-1",
+            userID: "swiftbot-self",
+            channelID: nil
+        )
+        await app.observeSelfVoiceStateUpdate(delayedLeave)
+
+        XCTAssertTrue(app.voiceRecovery.inProgress)
+        XCTAssertEqual(app.voiceRecovery.attemptsMade, 1)
+        XCTAssertEqual(app.voiceConnectionStatus, .recovering("Rejoining after voice drop…"))
+        XCTAssertTrue(app.voiceLog.contains {
+            $0.description.contains("Ignored delayed self voice-disconnect acknowledgement")
+        })
+    }
 }

@@ -1393,10 +1393,23 @@ actor ClusterCoordinator {
 
     // MARK: - Mesh Auth (HMAC-SHA256)
 
+    /// Widest age a signed request can still verify at. `verifyMeshAuth` accepts a
+    /// timestamp anywhere in ±`meshTimestampSkewWindow`, so a single signature stays
+    /// valid across a span of twice that — from `T - skew` to `T + skew`.
+    static let meshTimestampSkewWindow: TimeInterval = 60
+
+    /// How long a spent nonce is remembered. Must stay strictly greater than the
+    /// full `2 * meshTimestampSkewWindow` replay span: if a nonce were forgotten
+    /// while its signature were still inside the skew window, a captured request
+    /// (e.g. one signed by a peer whose clock runs fast) could be replayed once the
+    /// entry aged out. The extra margin covers the fact that pruning is
+    /// opportunistic rather than scheduled.
+    static let meshNonceRetention: TimeInterval = 3 * meshTimestampSkewWindow
+
     /// Computes HMAC-SHA256 over `METHOD:path:nonce:timestamp:` + body bytes using sharedSecret as key.
     /// Returns a lowercase hex string. Returns empty string if sharedSecret is empty.
     private func pruneNonces(now: Date) {
-        usedNonces = usedNonces.filter { now.timeIntervalSince($0.value) < 60 }
+        usedNonces = usedNonces.filter { now.timeIntervalSince($0.value) < Self.meshNonceRetention }
     }
 
     func meshSignature(method: String, nonce: String, timestamp: Int, path: String, body: Data) -> String {
@@ -1437,10 +1450,18 @@ actor ClusterCoordinator {
                 request.setValue(MeshCrypto.headerValueV1, forHTTPHeaderField: MeshCrypto.headerName)
                 request.httpBody = wireBody
             } catch {
-                // Falling back to plaintext would silently weaken every call.
-                // Better to fail closed so the receiver's HMAC rejects rather
-                // than send unencrypted secrets across the WAN.
-                meshLogger.error("Mesh body encryption failed; sending will likely 401: \(error.localizedDescription, privacy: .public)")
+                // Falling back to plaintext would silently weaken every call, so
+                // drop the body and leave the request unsigned. The receiver
+                // requires a valid signature on every route except /health, so an
+                // unsigned request is rejected with 401 — and the plaintext never
+                // reaches the wire in the first place.
+                meshLogger.error("Mesh body encryption failed; sending unsigned so the peer rejects: \(error.localizedDescription, privacy: .public)")
+                request.httpBody = nil
+                request.setValue(nil, forHTTPHeaderField: MeshCrypto.headerName)
+                request.setValue(nil, forHTTPHeaderField: "X-Mesh-Nonce")
+                request.setValue(nil, forHTTPHeaderField: "X-Mesh-Timestamp")
+                request.setValue(nil, forHTTPHeaderField: "X-Mesh-Signature")
+                return
             }
         }
 
@@ -1452,7 +1473,7 @@ actor ClusterCoordinator {
 
     /// Verifies inbound mesh auth headers. Returns true only if:
     /// - All required headers present
-    /// - Timestamp within ±300s skew window
+    /// - Timestamp within ±`meshTimestampSkewWindow` (60s)
     /// - Nonce has not been seen before (replay protection)
     /// - HMAC-SHA256 signature is valid (constant-time via CryptoKit)
     private func verifyMeshAuth(headers: [String: String], method: String, path: String, body: Data) -> Bool {
@@ -1463,15 +1484,16 @@ actor ClusterCoordinator {
               let timestamp = Int(tsStr),
               let sigHex = headers["x-mesh-signature"] else { return false }
 
-        // Opportunistic sweep of expired nonces (older than 60s).
+        // Opportunistic sweep of nonces past `meshNonceRetention`.
         let now = Date()
         let nowEpoch = Int(now.timeIntervalSince1970)
         pruneNonces(now: now)
 
-        // Timestamp skew check — fail-closed if outside ±60s window.
+        // Timestamp skew check — fail-closed outside the ± window.
+        let skewWindow = Int(Self.meshTimestampSkewWindow)
         let skew = abs(nowEpoch - timestamp)
-        guard skew <= 60 else {
-            meshLogger.warning("Mesh auth rejected: timestamp skew \(skew)s exceeds 60s window")
+        guard skew <= skewWindow else {
+            meshLogger.warning("Mesh auth rejected: timestamp skew \(skew)s exceeds \(skewWindow)s window")
             return false
         }
 

@@ -3871,8 +3871,25 @@ actor AdminWebServer {
         return diff == 0
     }
 
+    /// Nonisolated copy of the check `AppModel` exposes on the main actor, so it
+    /// can be read from this actor's own executor. `Persistence` keeps one for the
+    /// same reason.
+    private static let isRunningUnderXCTest: Bool =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+
     private func serverSigningKey() -> SymmetricKey {
         if let cached = cachedSigningKey { return cached }
+        // Under XCTest, stay off the Keychain entirely: the real one is slow to
+        // reach from an ad-hoc-signed test host and writing to it would leave
+        // per-run junk in the developer's login keychain. An ephemeral key is
+        // sufficient — nothing in a test run needs a token to survive the
+        // process. `Persistence` redirects its storage the same way.
+        if Self.isRunningUnderXCTest {
+            let key = SymmetricKey(size: .bits256)
+            cachedSigningKey = key
+            return key
+        }
         if let stored = KeychainHelper.load(account: signingKeyKeychainAccount),
            let data = Data(base64Encoded: stored) {
             let key = SymmetricKey(data: data)
@@ -4607,3 +4624,69 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
         return 0
     }
 }
+
+#if DEBUG
+// MARK: - Test Seam
+//
+// The auth surface (sessions, CSRF, user-agent binding, role gating, media
+// access tokens, login lockout) is reachable only through `process`, and every
+// piece of state it reads is `private`. These hooks live in this file because
+// Swift scopes `private` to the enclosing file — an extension anywhere else
+// could not see them. They deliberately expose behaviour rather than internals:
+// tests drive real HTTP bytes through the real router and assert on real
+// responses, so they keep holding after a refactor of anything behind them.
+extension AdminWebServer {
+    /// Inserts a ready-made admin session and returns the values a client would
+    /// need to use it. `userAgent` nil leaves the session unbound, matching a
+    /// native Remote client that sent no UA header.
+    func testSeedSession(
+        userAgent: String? = nil,
+        expiresIn: TimeInterval = 3_600,
+        viewerRole: Bool = false
+    ) -> (id: String, csrf: String) {
+        let session = Session(
+            id: randomToken(),
+            userID: "1234567890",
+            username: "audit-fixture",
+            globalName: "Audit Fixture",
+            discriminator: nil,
+            avatar: nil,
+            csrfToken: randomToken(),
+            expiresAt: Date().addingTimeInterval(expiresIn),
+            userAgentHash: userAgent.map { sha256Hex($0) },
+            role: viewerRole ? .viewer : .admin
+        )
+        sessions[session.id] = session
+        return (session.id, session.csrfToken)
+    }
+
+    /// Feeds raw request bytes through the same entry point the NIO and Network
+    /// listeners use, and hands back the raw response bytes.
+    func testProcessRequest(_ raw: Data, peerIP: String? = nil) async -> Data {
+        await process(raw, peerIP: peerIP)
+    }
+
+    /// Mints a media access token exactly as `GET /api/media/access-token` does.
+    func testMintMediaAccessToken(sessionID: String) -> String {
+        mintMediaAccessToken(sessionID: sessionID).token
+    }
+
+    /// Drops a session from the store without waiting for its TTL, standing in
+    /// for logout or eviction.
+    func testRevokeSession(_ sessionID: String) {
+        sessions.removeValue(forKey: sessionID)
+    }
+
+    /// Records `count` failed local logins for one IP/username pair and reports
+    /// whether the bucket ended up locked.
+    func testRegisterFailedLogins(count: Int, peerIP: String, username: String) -> Bool {
+        let attemptKey = "\(peerIP)|\(username.lowercased())"
+        var bucket = localLoginAttempts[attemptKey] ?? RateLimitBucket()
+        for _ in 0..<count {
+            registerFailedAttempt(&bucket, threshold: loginFailureThreshold)
+        }
+        localLoginAttempts[attemptKey] = bucket
+        return isBucketLocked(bucket)
+    }
+}
+#endif
