@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00897CDDBDC3BF553FDA4D68 /* AppModel+CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 814CAE5BAF267EB565154600 /* AppModel+CommandProcessor.swift */; };
+		01AB843FBD3CB6F9C08E05FA /* AnnouncerReadAloudThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49621D2D238D7DF11D2356CE /* AnnouncerReadAloudThreadTests.swift */; };
 		01F92911F16A693797B44E3C /* AMDServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A07E12548C74B87208F10D /* AMDServiceTests.swift */; };
 		025D2F02C611ECDA346AC516 /* CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D123D57ED5BFDCD998577A34 /* CertificateManager.swift */; };
 		0372BF2E29EAD1A885063455 /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9322EE2A34F232A29B8A8553 /* AcknowledgementsView.swift */; };
@@ -393,6 +394,7 @@
 		4622FDCA8F04C6BA993CBEFA /* SwiftMinerE2EIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerE2EIntegrationTests.swift; sourceTree = "<group>"; };
 		472A0A99DF74AC4BB384B33F /* DiscordGuildRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGuildRESTClient.swift; sourceTree = "<group>"; };
 		47FB5492E7AD64FBC5083CB8 /* DiscordTimestamp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordTimestamp.swift; sourceTree = "<group>"; };
+		49621D2D238D7DF11D2356CE /* AnnouncerReadAloudThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerReadAloudThreadTests.swift; sourceTree = "<group>"; };
 		4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshFailoverIntegrationTests.swift; sourceTree = "<group>"; };
 		4C5788F384AF1C5CEC1A7137 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		4D2E9D2E506AD2D8AE3A4C2A /* VoiceAnnouncerHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAnnouncerHealth.swift; sourceTree = "<group>"; };
@@ -625,6 +627,7 @@
 				1A7976746ADE42B5041F7EB7 /* AdminWebOAuthTests.swift */,
 				7BE89FB10FB15AAAC1EF0FB6 /* AdminWebServerAuthTests.swift */,
 				62A07E12548C74B87208F10D /* AMDServiceTests.swift */,
+				49621D2D238D7DF11D2356CE /* AnnouncerReadAloudThreadTests.swift */,
 				6E2884042287AF3A3D8D33B6 /* AppOutputGuardTests.swift */,
 				0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */,
 				DB53CF1F56DD9ADEE295DD79 /* AutomationConflictDetectorTests.swift */,
@@ -1316,6 +1319,7 @@
 				3F3EF4FAF4D2BCE7B8CC3CF0 /* AdminWebCopyTests.swift in Sources */,
 				FC3942D9BA9BA24CC48B7F8E /* AdminWebOAuthTests.swift in Sources */,
 				0E374177BA9A4507E9C2A07C /* AdminWebServerAuthTests.swift in Sources */,
+				01AB843FBD3CB6F9C08E05FA /* AnnouncerReadAloudThreadTests.swift in Sources */,
 				E0E054077447FB570AB8C3E7 /* AppOutputGuardTests.swift in Sources */,
 				9D0628EF8EB7D0F6972B5A84 /* AutomationAITransformTests.swift in Sources */,
 				ECFA32C9AB64BEFA7F7C17CA /* AutomationConflictDetectorTests.swift in Sources */,

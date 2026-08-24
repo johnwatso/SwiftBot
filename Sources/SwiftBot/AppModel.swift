@@ -322,6 +322,14 @@ final class AppModel: ObservableObject {
     var voiceLeaveAckContinuation: CheckedContinuation<Void, Never>?
     /// Intro queued to speak the moment the voice pipeline connects.
     var pendingVoiceJoinIntro: (channelID: String, text: String)?
+    /// Thread opened on the `/announce join` reply so listeners can type to be
+    /// read aloud. Held only for the life of the session: a rejoin preserves it,
+    /// a real disconnect archives it. Nil whenever no such thread is live.
+    var announcerReadAloudThreadID: String?
+    /// Rate-limit state for the read-aloud thread, keyed by author. The thread
+    /// is open to anyone who can see it, so the cap protects the TTS queue from
+    /// one person flooding it rather than restricting who may use it.
+    var announcerThreadLastSpokenAt: [String: Date] = [:]
     /// When the current join attempt started, for the "announcer live in Xs"
     /// summary log.
     var voiceJoinRequestedAt: ContinuousClock.Instant?

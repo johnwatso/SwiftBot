@@ -78,15 +78,21 @@ actor TextChannelAnnouncer {
 
     /// Hook to call from `GatewayEventDispatcher.onMessageCreate`. `channelNames`
     /// / `roleNames` (id → name) let `<#id>` / `<@&id>` resolve to real names.
+    /// - Parameter bypassChannelFilter: skips the watched-channel check for a
+    ///   source the caller has already authorised. The `/announce join`
+    ///   read-aloud thread uses this: it is not a configured feed, it comes and
+    ///   goes with the voice session, and keeping it out of `watchedChannelIDs`
+    ///   means a mid-session config reload cannot silently drop it.
     func handle(
         _ event: GatewayMessageCreateEvent,
         displayNameOverride: String? = nil,
         channelNames: [String: String] = [:],
         roleNames: [String: String] = [:],
         options: AnnouncerReadOptions = AnnouncerReadOptions(),
+        bypassChannelFilter: Bool = false,
         now: Date = Date()
     ) async {
-        guard watchedChannelIDs.contains(event.channelID) else { return }
+        guard bypassChannelFilter || watchedChannelIDs.contains(event.channelID) else { return }
         switch speechDecision(
             for: event, displayNameOverride: displayNameOverride,
             channelNames: channelNames, roleNames: roleNames, options: options

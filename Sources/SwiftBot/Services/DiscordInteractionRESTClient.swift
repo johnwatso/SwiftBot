@@ -131,6 +131,35 @@ struct DiscordInteractionRESTClient {
         }
     }
 
+    /// Fetches the message an interaction response produced, so callers can act
+    /// on it afterwards — creating a thread on it, for instance. The interaction
+    /// response itself returns no body, so the id is only reachable this way.
+    /// Returns `nil` if the response has no usable id yet.
+    func fetchOriginalInteractionResponse(
+        applicationID: String,
+        interactionToken: String
+    ) async throws -> (messageID: String, channelID: String)? {
+        var req = URLRequest(url: restBase.appendingPathComponent("webhooks/\(applicationID)/\(interactionToken)/messages/@original"))
+        req.httpMethod = "GET"
+        let (data, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to fetch interaction response",
+                    "responseBody": String(data: data, encoding: .utf8) ?? ""
+                ]
+            )
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let messageID = json["id"] as? String, !messageID.isEmpty,
+              let channelID = json["channel_id"] as? String, !channelID.isEmpty else {
+            return nil
+        }
+        return (messageID, channelID)
+    }
+
     func sendWebhook(url: String, content: String) async throws {
         guard let webhookUrl = URL(string: url) else { return }
         var req = URLRequest(url: webhookUrl)
