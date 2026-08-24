@@ -536,6 +536,32 @@ extension AppModel {
             } catch {
                 logs.append("❌ Failed editing slash response: \(error.localizedDescription)")
             }
+
+            // The read-aloud thread hangs off the `/announce` reply, so it can
+            // only be opened once that reply exists. `textChannelSourceEnabled`
+            // is set by `activateAnnouncerConfig` and cleared on teardown, which
+            // makes it the honest signal that a session actually came up.
+            if slashName == "announce" {
+                let action = (slashOptionString(named: "action", in: event.data) ?? "join").lowercased()
+                var connectionFailed = false
+                if case .failed = voiceConnectionStatus { connectionFailed = true }
+
+                if action != "join" && action != "rejoin" {
+                    // `disconnect` and anything unrecognised: nothing to open.
+                } else if !settings.voice.textChannelSourceEnabled {
+                    noteReadAloudThreadSkipped("the announcer session did not activate (textChannelSourceEnabled is false).")
+                } else if connectionFailed {
+                    noteReadAloudThreadSkipped("the voice connection reported failure.")
+                } else {
+                    let activeChannelID = settings.voice.voiceChannelID
+                    let channelName = settings.voice.announcerConfigs
+                        .first(where: { $0.voiceChannelID == activeChannelID })?.voiceChannelName ?? "voice"
+                    await openAnnouncerReadAloudThread(
+                        interactionToken: event.interactionToken,
+                        channelName: channelName
+                    )
+                }
+            }
         case 3:
             let customID = slashCustomID(in: event.data)
             if customID == SwiftMinerDMEmbedBuilders.linkWarningDismissCustomID ||

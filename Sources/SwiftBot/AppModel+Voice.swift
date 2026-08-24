@@ -675,7 +675,14 @@ extension AppModel {
         // when the active config opts in. Defaults to true for the manual path.
         let readsVoiceChat = activeConfig?.readVoiceChannelChat ?? true
         let isVoiceChannelChat = readsVoiceChat && !activeVoiceChannelID.isEmpty && event.channelID == activeVoiceChannelID
-        guard watchedIDs.contains(event.channelID) || isVoiceChannelChat else { return }
+        // The `/announce join` read-aloud thread is a source for as long as the
+        // session lives. It carries its own length cap and per-author cooldown
+        // because, unlike a configured feed, anyone who can see it may post.
+        let isReadAloudThread = shouldSpeakAnnouncerThreadMessage(event)
+        guard watchedIDs.contains(event.channelID) || isVoiceChannelChat || isReadAloudThread else { return }
+        if isReadAloudThread {
+            noteAnnouncerThreadSpoken(userID: event.userID)
+        }
         // Don't read SwiftBot's own messages to avoid feedback loops.
         if let botUserId, event.userID == botUserId { return }
         // Optionally skip webhook posts (integrations, bridges, bots that post
@@ -704,7 +711,8 @@ extension AppModel {
             displayNameOverride: cachedDisplayName,
             channelNames: flattenedChannelNames(),
             roleNames: flattenedRoleNames(),
-            options: options
+            options: options,
+            bypassChannelFilter: isReadAloudThread
         )
     }
 
@@ -1528,6 +1536,7 @@ extension AppModel {
     private func deactivateAnnouncerSession() {
         stopAnnouncerHealthWatchdog()
         pendingVoiceJoinIntro = nil
+        archiveAnnouncerReadAloudThread()
         if let announcer = voiceAnnouncementServiceStorage {
             Task {
                 await announcer.setPaused(true)
@@ -1741,5 +1750,144 @@ extension AppModel {
         case .string(let value): return Int(value)
         default: return nil
         }
+    }
+}
+
+// MARK: - Announcer read-aloud thread
+
+extension AppModel {
+    /// Longest message the thread will read. Beyond this the announcer's own
+    /// shortening options would kick in anyway; the hard cap stops a wall of
+    /// text monopolising the voice channel.
+    static let announcerThreadMaxCharacters = 400
+    /// Minimum gap between two reads from the same author. The thread is open to
+    /// anyone who can see it, so this is what keeps one person from flooding the
+    /// TTS queue.
+    static let announcerThreadPerUserCooldown: TimeInterval = 3
+
+    /// Opens the read-aloud thread on the `/announce join` reply. Called after
+    /// the reply has actually been posted, since the message must exist before
+    /// a thread can hang off it. Failure is non-fatal: the announcer is already
+    /// live and reading its configured feed, so a missing thread costs nothing
+    /// but the convenience.
+    /// Records why the thread was not opened. Every early exit reports: a
+    /// feature that quietly does nothing is impossible to diagnose from a
+    /// server, and the first build of this shipped with five silent returns.
+    func noteReadAloudThreadSkipped(_ reason: String) {
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Read-aloud thread not opened: \(reason)"
+        ))
+        logs.append("ℹ️ Read-aloud thread not opened: \(reason)")
+    }
+
+    func openAnnouncerReadAloudThread(interactionToken: String, channelName: String) async {
+        guard announcerReadAloudThreadID == nil else {
+            noteReadAloudThreadSkipped("one is already open for this session.")
+            return
+        }
+        guard let applicationID = botUserId, !applicationID.isEmpty else {
+            noteReadAloudThreadSkipped("the bot's application ID is not known yet.")
+            return
+        }
+        guard ActionDispatcher.canSend(
+            clusterMode: runtimeClusterMode,
+            action: "openAnnouncerReadAloudThread",
+            log: { logs.append($0) }
+        ) else {
+            noteReadAloudThreadSkipped("this node is not the Primary.")
+            return
+        }
+
+        do {
+            guard let original = try await service.fetchOriginalInteractionResponse(
+                applicationID: applicationID,
+                interactionToken: interactionToken
+            ) else {
+                noteReadAloudThreadSkipped("Discord returned no usable message for the /announce reply.")
+                return
+            }
+
+            let threadID = try await service.createThreadFromMessage(
+                channelId: original.channelID,
+                messageId: original.messageID,
+                name: "🔊 Read aloud — \(channelName)".prefix(100).description,
+                token: settings.token
+            )
+            announcerReadAloudThreadID = threadID
+            announcerThreadLastSpokenAt.removeAll()
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Opened read-aloud thread for \(channelName). Messages posted there will be spoken."
+            ))
+        } catch {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Could not open the read-aloud thread: \(error.localizedDescription)"
+            ))
+            logs.append("⚠️ Could not open the Announcer read-aloud thread: \(error.localizedDescription)")
+        }
+    }
+
+    /// Collapses the thread when the announcer leaves. Archiving keeps every
+    /// message readable and lets Discord reopen the thread if someone posts, so
+    /// nothing anyone wrote is lost.
+    func archiveAnnouncerReadAloudThread() {
+        guard let threadID = announcerReadAloudThreadID else { return }
+        announcerReadAloudThreadID = nil
+        announcerThreadLastSpokenAt.removeAll()
+        guard ActionDispatcher.canSend(
+            clusterMode: runtimeClusterMode,
+            action: "archiveAnnouncerReadAloudThread",
+            log: { logs.append($0) }
+        ) else { return }
+        let token = settings.token
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.service.setThreadArchived(threadId: threadID, archived: true, token: token)
+                self.addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Archived the read-aloud thread. It collapses out of the channel list but stays readable."
+                ))
+            } catch {
+                // Surface this in the voice log rather than only the general log:
+                // a thread left open after the announcer leaves is visible to the
+                // whole server, so a silent failure here is worth noticing.
+                self.addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Could not archive the read-aloud thread: \(error.localizedDescription)"
+                ))
+                self.logs.append("⚠️ Could not archive the Announcer read-aloud thread: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Whether `event` is a message in the live read-aloud thread that should be
+    /// spoken. Bots and the app's own posts are excluded upstream in
+    /// `forwardMessageToVoiceAnnouncer`; this adds the thread-specific limits.
+    func shouldSpeakAnnouncerThreadMessage(_ event: GatewayMessageCreateEvent, now: Date = Date()) -> Bool {
+        guard let threadID = announcerReadAloudThreadID, event.channelID == threadID else { return false }
+        let trimmed = event.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard trimmed.count <= Self.announcerThreadMaxCharacters else { return false }
+        // Commands are for the bot, not for the room.
+        let commandPrefix = settings.prefix.trimmingCharacters(in: .whitespaces)
+        if !commandPrefix.isEmpty, trimmed.hasPrefix(commandPrefix) { return false }
+        guard !trimmed.hasPrefix("/") else { return false }
+        if let last = announcerThreadLastSpokenAt[event.userID],
+           now.timeIntervalSince(last) < Self.announcerThreadPerUserCooldown {
+            return false
+        }
+        return true
+    }
+
+    /// Records that `userID` was just read aloud, starting their cooldown.
+    func noteAnnouncerThreadSpoken(userID: String, now: Date = Date()) {
+        announcerThreadLastSpokenAt[userID] = now
+        // The map only ever holds people who posted during this session, but
+        // drop stale entries so a long session doesn't accumulate them.
+        let cutoff = now.addingTimeInterval(-Self.announcerThreadPerUserCooldown * 20)
+        announcerThreadLastSpokenAt = announcerThreadLastSpokenAt.filter { $0.value > cutoff }
     }
 }

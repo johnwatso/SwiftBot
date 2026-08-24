@@ -484,6 +484,26 @@ actor DiscordService {
         return try await messageRESTClient.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: token)
     }
 
+    func setThreadArchived(threadId: String, archived: Bool, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: setThreadArchived blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        try await messageRESTClient.setThreadArchived(threadId: threadId, archived: archived, token: token)
+    }
+
+    /// Read-only, so it carries no `outputAllowed` guard — a standby node
+    /// resolving a message id has no outward effect.
+    func fetchOriginalInteractionResponse(
+        applicationID: String,
+        interactionToken: String
+    ) async throws -> (messageID: String, channelID: String)? {
+        try await interactionRESTClient.fetchOriginalInteractionResponse(
+            applicationID: applicationID,
+            interactionToken: interactionToken
+        )
+    }
+
     @discardableResult
     func sendMessageWithImage(
         channelId: String,

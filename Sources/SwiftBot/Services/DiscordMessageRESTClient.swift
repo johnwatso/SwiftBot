@@ -260,6 +260,26 @@ struct DiscordMessageRESTClient {
         return id
     }
 
+    /// Archives or reopens a thread. Archiving collapses it out of the channel
+    /// list without destroying anything — Discord reopens it automatically if
+    /// someone posts again.
+    func setThreadArchived(threadId: String, archived: Bool, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(threadId)"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["archived": archived])
+        let (data, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to set thread archived state", "responseBody": responseBody]
+            )
+        }
+    }
+
     @discardableResult
     func sendMessageWithImage(
         channelId: String,
