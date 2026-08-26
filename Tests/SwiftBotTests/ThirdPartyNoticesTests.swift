@@ -12,7 +12,7 @@ final class ThirdPartyNoticesTests: XCTestCase {
     private static let expectedPackages = [
         "Sparkle",
         "SwiftSoup",
-        "swift-opus",
+        "swiftbot-opus",
         "SwiftNIO",
         "SwiftNIO SSL",
         "Swift Crypto",
