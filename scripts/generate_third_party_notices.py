@@ -39,7 +39,7 @@ OUTPUT = os.path.join(REPO_ROOT, "THIRD-PARTY-NOTICES.md")
 PACKAGES = {
     "sparkle": ("Sparkle", "Sparkle", "Signed automatic app updates."),
     "swiftsoup": ("SwiftSoup", "SwiftSoup", "HTML parsing for Patchy and WikiBridge."),
-    "swift-opus": ("swift-opus", "swift-opus", "Opus encode/decode for Discord voice."),
+    "swiftbot-opus": ("swiftbot-opus", "swiftbot-opus", "Opus encode/decode for Discord voice."),
     "swift-nio": ("SwiftNIO", "swift-nio", "Networking for SwiftMesh cluster transport."),
     "swift-nio-ssl": ("SwiftNIO SSL", "swift-nio-ssl", "TLS for SwiftMesh cluster transport."),
     "swift-crypto": ("Swift Crypto", "swift-crypto", "Cryptographic primitives for mesh auth."),

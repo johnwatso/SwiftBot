@@ -6,7 +6,7 @@ reproduced here to satisfy the attribution terms those licenses require.
 
 This file is generated — edit `scripts/generate_third_party_notices.py` and re-run it
 rather than editing this file by hand. Package versions reflect the pins in
-`SwiftBot.xcodeproj/.../Package.resolved` as of 2026-08-21.
+`SwiftBot.xcodeproj/.../Package.resolved` as of 2026-08-27.
 
 SwiftBot's own license is in [LICENSE](LICENSE).
 
@@ -14,7 +14,7 @@ SwiftBot's own license is in [LICENSE](LICENSE).
 
 * [Sparkle](#sparkle)
 * [SwiftSoup](#swiftsoup)
-* [swift-opus](#swift-opus)
+* [swiftbot-opus](#swiftbot-opus)
 * [SwiftNIO](#swiftnio)
 * [SwiftNIO SSL](#swiftnio-ssl)
 * [Swift Crypto](#swift-crypto)
@@ -210,10 +210,10 @@ SOFTWARE.
 
 ---
 
-## swift-opus
+## swiftbot-opus
 
-* Version: `0.0.2`
-* Upstream: https://github.com/alta/swift-opus
+* Version: `0.2.0`
+* Upstream: https://github.com/johnwatso/swiftbot-opus
 * Used for: Opus encode/decode for Discord voice.
 
 License text (`LICENSE`):
@@ -932,7 +932,7 @@ Licensed under the Apache License, Version 2.0 — full text in [Appendix A](#ap
 
 ## libdave-swift
 
-* Version: `3.0.0`
+* Version: `3.0.1`
 * Upstream: https://github.com/johnwatso/libdave-swift
 * Used for: Discord DAVE end-to-end encrypted voice.
 
