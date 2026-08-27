@@ -116,7 +116,7 @@ extension AppModel {
         let connection = connectionSettings.connection(for: descriptor)
         do {
             let response = try await finalsIDLatestRoundClient.fetchLatestRound(
-                endpointPath: "/v1/players/\(player.playerID)/rounds",
+                playerID: player.playerID,
                 connection: connection
             )
             return GameSessionSummaryBuilder.totals(for: session, rounds: response.results)

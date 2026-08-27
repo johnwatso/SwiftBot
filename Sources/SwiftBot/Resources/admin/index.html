@@ -7920,7 +7920,7 @@
           const scoreText = player.score === null || player.score === undefined
             ? (player.supportsRankedScore ? 'No baseline yet' : 'Rank not tracked for this game')
             : `${player.score.toLocaleString()} SR`;
-          const rankText = [player.rankName, player.season].filter(Boolean).map(escapeHtml).join(' &middot; ');
+          const rankText = [player.rankName, player.season].filter(Boolean).map(escapeHTML).join(' &middot; ');
           return `
             <div class="glass" style="padding: 16px; display: flex; align-items: center; gap: 14px; border-radius: 14px; ${player.isEnabled ? '' : 'opacity: 0.55;'}">
               <div class="stat-icon" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.1); color: #6366f1; flex-shrink: 0;">

@@ -680,9 +680,6 @@ extension AppModel {
         // because, unlike a configured feed, anyone who can see it may post.
         let isReadAloudThread = shouldSpeakAnnouncerThreadMessage(event)
         guard watchedIDs.contains(event.channelID) || isVoiceChannelChat || isReadAloudThread else { return }
-        if isReadAloudThread {
-            noteAnnouncerThreadSpoken(userID: event.userID)
-        }
         // Don't read SwiftBot's own messages to avoid feedback loops.
         if let botUserId, event.userID == botUserId { return }
         // Optionally skip webhook posts (integrations, bridges, bots that post
@@ -691,6 +688,13 @@ extension AppModel {
         // Optionally skip bot-authored messages.
         if activeConfig?.skipBots == true, event.isBot { return }
         guard let watcher = textChannelAnnouncer else { return }
+        // Charge the per-author cooldown only once the message has cleared every
+        // filter that would have discarded it. Stamping it at the channel check
+        // meant a self/webhook/bot post the announcer never reads still spent the
+        // author's budget, silencing the real message that followed it.
+        if isReadAloudThread {
+            noteAnnouncerThreadSpoken(userID: event.userID)
+        }
         // `smartShortenWithAppleIntelligence` is a legacy flag: the announcer no
         // longer calls a model on the read path (an on-device rewrite costs
         // 5-8 s, far longer than the read it would delay). Existing configs that

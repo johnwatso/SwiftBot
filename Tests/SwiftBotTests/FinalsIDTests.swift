@@ -537,4 +537,110 @@ final class FinalsIDTests: XCTestCase {
 
         XCTAssertTrue(state.history.isEmpty)
     }
+
+    // MARK: - Endpoint construction
+
+    /// Both request paths interpolate an operator-supplied player identifier.
+    /// The rounds listing used to interpolate it raw, so an identifier with a
+    /// space produced a URL that would not build and quietly reduced the
+    /// session summary to duration alone; one containing `/` could reshape the
+    /// path outright.
+    func testLatestRoundEncodesThePlayerIDAsASinglePathSegment() async throws {
+        let connection = GameProviderConnection(
+            baseURL: "https://example.test",
+            token: "t0ken",
+            auth: .bearer,
+            rankEndpointTemplate: "/v1/players/{playerID}/rank"
+        )
+
+        let requestedURL = try await capturedRequestURL {
+            let client = FinalsIDAPIClient(session: $0)
+            _ = try? await client.fetchLatestRound(playerID: "some one/../admin", connection: connection)
+        }
+
+        XCTAssertEqual(
+            requestedURL.absoluteString,
+            "https://example.test/v1/players/some%20one%2F..%2Fadmin/rounds"
+        )
+        XCTAssertEqual(requestedURL.host, "example.test")
+    }
+
+    func testRankEndpointEncodesThePlayerIDTheSameWay() async throws {
+        let connection = GameProviderConnection(
+            baseURL: "https://example.test",
+            token: "t0ken",
+            auth: .bearer,
+            rankEndpointTemplate: "/v1/players/{playerID}/rank"
+        )
+        var player = GameTrackedPlayer()
+        player.playerID = "some one/../admin"
+
+        let requestedURL = try await capturedRequestURL {
+            let client = FinalsIDAPIClient(session: $0)
+            _ = try? await client.fetchRankSnapshot(for: player, connection: connection)
+        }
+
+        XCTAssertEqual(
+            requestedURL.absoluteString,
+            "https://example.test/v1/players/some%20one%2F..%2Fadmin/rank"
+        )
+    }
+
+    /// Runs `perform` against a stubbed session and returns the URL it requested.
+    private func capturedRequestURL(
+        _ perform: (URLSession) async -> Void
+    ) async throws -> URL {
+        defer { FinalsIDMockURLProtocol.requestHandler = nil }
+        let recorded = FinalsIDRecordedURL()
+        FinalsIDMockURLProtocol.requestHandler = { request in
+            recorded.value = request.url
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data("{}".utf8))
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FinalsIDMockURLProtocol.self]
+        await perform(URLSession(configuration: configuration))
+
+        return try XCTUnwrap(recorded.value, "The client never issued a request.")
+    }
+}
+
+private final class FinalsIDRecordedURL: @unchecked Sendable {
+    var value: URL?
+}
+
+private final class FinalsIDMockURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            XCTFail("Missing request handler for FinalsIDMockURLProtocol.")
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }
