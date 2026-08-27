@@ -31,6 +31,36 @@ struct GatewayChannelCreateEvent: Sendable {
     let name: String
 }
 
+/// One entry from a member's Discord presence `activities` array.
+struct GatewayPresenceActivity: Sendable, Equatable {
+    /// Discord activity type. 0 is "Playing", which is the only kind that
+    /// reliably indicates a game session.
+    static let playingType = 0
+
+    let name: String
+    let type: Int
+    let applicationID: String?
+    let details: String?
+    let state: String?
+    let startedAt: Date?
+
+    var isPlaying: Bool { type == Self.playingType }
+}
+
+struct GatewayPresenceUpdateEvent: Sendable, Equatable {
+    let guildID: String
+    let userID: String
+    /// `online`, `idle`, `dnd`, or `offline`.
+    let status: String
+    let activities: [GatewayPresenceActivity]
+
+    var isOffline: Bool { status.lowercased() == "offline" }
+
+    var playingActivities: [GatewayPresenceActivity] {
+        isOffline ? [] : activities.filter(\.isPlaying)
+    }
+}
+
 struct GatewayGuildDeleteEvent: Sendable {
     let guildID: String
 }
@@ -132,6 +162,7 @@ actor GatewayEventDispatcher {
     typealias InteractionCreateHandler = @Sendable (GatewayInteractionCreateEvent) async -> Void
     typealias MemberJoinHandler = @Sendable (GatewayMemberJoinEvent) async -> Void
     typealias MemberLeaveHandler = @Sendable (GatewayMemberLeaveEvent) async -> Void
+    typealias PresenceUpdateHandler = @Sendable (GatewayPresenceUpdateEvent) async -> Void
 
     private let onEventReceived: EventRecorder
     private let onMessageCreate: MessageCreateHandler
@@ -145,6 +176,7 @@ actor GatewayEventDispatcher {
     private let onMemberJoin: MemberJoinHandler
     private let onMemberLeave: MemberLeaveHandler
     private let onGuildDelete: GuildDeleteHandler
+    private let onPresenceUpdate: PresenceUpdateHandler
 
     init(
         onEventReceived: @escaping EventRecorder,
@@ -158,7 +190,8 @@ actor GatewayEventDispatcher {
         onChannelCreate: @escaping ChannelCreateHandler,
         onMemberJoin: @escaping MemberJoinHandler,
         onMemberLeave: @escaping MemberLeaveHandler,
-        onGuildDelete: @escaping GuildDeleteHandler
+        onGuildDelete: @escaping GuildDeleteHandler,
+        onPresenceUpdate: @escaping PresenceUpdateHandler
     ) {
         self.onEventReceived = onEventReceived
         self.onMessageCreate = onMessageCreate
@@ -172,6 +205,7 @@ actor GatewayEventDispatcher {
         self.onMemberJoin = onMemberJoin
         self.onMemberLeave = onMemberLeave
         self.onGuildDelete = onGuildDelete
+        self.onPresenceUpdate = onPresenceUpdate
     }
 
     func dispatch(_ payload: GatewayPayload, shouldProcessPrimaryGatewayActions: Bool) async {
@@ -214,6 +248,10 @@ actor GatewayEventDispatcher {
             guard shouldProcessPrimaryGatewayActions else { return }
             guard let memberLeaveEvent = parseMemberLeaveEvent(from: payload.d) else { return }
             await onMemberLeave(memberLeaveEvent)
+        case "PRESENCE_UPDATE":
+            guard shouldProcessPrimaryGatewayActions else { return }
+            guard let presenceUpdateEvent = parsePresenceUpdateEvent(from: payload.d) else { return }
+            await onPresenceUpdate(presenceUpdateEvent)
         case "GUILD_DELETE":
             guard let guildDeleteEvent = parseGuildDeleteEvent(from: payload.d) else { return }
             await onGuildDelete(guildDeleteEvent)
@@ -465,6 +503,59 @@ actor GatewayEventDispatcher {
         }
         let endpoint = stringValue(for: "endpoint", in: map)
         return GatewayVoiceServerUpdateEvent(guildID: guildID, token: token, endpoint: endpoint)
+    }
+
+    private func parsePresenceUpdateEvent(from raw: DiscordJSON?) -> GatewayPresenceUpdateEvent? {
+        guard case let .object(map)? = raw,
+              case let .object(user)? = map["user"],
+              let userID = stringValue(for: "id", in: user),
+              let guildID = stringValue(for: "guild_id", in: map) else {
+            return nil
+        }
+
+        var activities: [GatewayPresenceActivity] = []
+        if case let .array(rawActivities)? = map["activities"] {
+            for entry in rawActivities {
+                guard case let .object(activity) = entry,
+                      let name = nonEmptyStringValue(for: "name", in: activity) else { continue }
+                let type: Int
+                if case let .int(value)? = activity["type"] {
+                    type = value
+                } else if case let .double(value)? = activity["type"] {
+                    type = Int(value)
+                } else {
+                    continue
+                }
+
+                // `timestamps.start` is milliseconds since epoch when present.
+                var startedAt: Date?
+                if case let .object(timestamps)? = activity["timestamps"] {
+                    if case let .int(start)? = timestamps["start"] {
+                        startedAt = Date(timeIntervalSince1970: Double(start) / 1000)
+                    } else if case let .double(start)? = timestamps["start"] {
+                        startedAt = Date(timeIntervalSince1970: start / 1000)
+                    }
+                }
+
+                activities.append(
+                    GatewayPresenceActivity(
+                        name: name,
+                        type: type,
+                        applicationID: stringValue(for: "application_id", in: activity),
+                        details: nonEmptyStringValue(for: "details", in: activity),
+                        state: nonEmptyStringValue(for: "state", in: activity),
+                        startedAt: startedAt
+                    )
+                )
+            }
+        }
+
+        return GatewayPresenceUpdateEvent(
+            guildID: guildID,
+            userID: userID,
+            status: stringValue(for: "status", in: map) ?? "online",
+            activities: activities
+        )
     }
 
     private func stringValue(for key: String, in map: [String: DiscordJSON]) -> String? {

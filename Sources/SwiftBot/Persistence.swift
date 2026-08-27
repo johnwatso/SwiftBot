@@ -13,6 +13,7 @@ enum SwiftBotStorage {
     static let voiceActiveSessionsFileName = "voice-active-sessions.json"
     static let voiceSessionHistoryFileName = "voice-session-history.json"
     static let analyticsRuntimeFileName = "analytics-runtime.json"
+    static let gameTrackingStateFileName = "game-tracking-state.json"
 
     /// The test bundle is hosted by `SwiftBot.app` itself, so without this the
     /// suite reads and writes the same `settings.json`, caches and session
@@ -90,6 +91,13 @@ actor ConfigStore {
     private let adminWebPublicAccessTunnelTokenAccount = "admin-web-public-access-tunnel-token"
     private let adminWebLocalAuthPasswordAccount = "admin-web-local-auth-password"
     private let openAIAPIKeyAccount = "openai-api-key"
+    /// Pre-multi-provider account name, migrated on first load.
+    private let legacyFinalsIDAPITokenAccount = "finals-id-api-token"
+    private var lastGameProviderTokens: [GameProviderID: String] = [:]
+
+    private func gameProviderTokenAccount(_ id: GameProviderID) -> String {
+        "game-provider-token-\(id.rawValue)"
+    }
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -166,6 +174,27 @@ actor ConfigStore {
         }
         lastAdminWebPublicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken
 
+        // One Keychain item per provider. The finals.id item predates the keyed
+        // store, so fold it in before reading the per-provider accounts.
+        if let legacyToken = KeychainHelper.load(account: legacyFinalsIDAPITokenAccount) {
+            if KeychainHelper.save(legacyToken, account: gameProviderTokenAccount(.finalsID)) {
+                KeychainHelper.delete(account: legacyFinalsIDAPITokenAccount)
+            }
+            settings.gameProviders.setToken(legacyToken, for: .finalsID)
+        }
+        for providerID in GameProviderID.allCases {
+            let account = gameProviderTokenAccount(providerID)
+            if let token = KeychainHelper.load(account: account) {
+                settings.gameProviders.setToken(token, for: providerID)
+            } else {
+                let pending = settings.gameProviders.token(for: providerID)
+                if !pending.isEmpty {
+                    _ = KeychainHelper.save(pending, account: account)
+                }
+            }
+            lastGameProviderTokens[providerID] = settings.gameProviders.token(for: providerID)
+        }
+
         // OpenAI API keys are no longer used. Purge the legacy keychain entry
         // on first load after the Apple-only consolidation so secrets don't
         // sit in the keychain indefinitely.
@@ -226,12 +255,27 @@ actor ConfigStore {
             lastAdminWebPublicAccessTunnelToken = trimmedTunnelToken
         }
 
+        for providerID in GameProviderID.allCases {
+            let trimmed = settings.gameProviders
+                .token(for: providerID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed != lastGameProviderTokens[providerID] else { continue }
+            let account = gameProviderTokenAccount(providerID)
+            if trimmed.isEmpty {
+                KeychainHelper.delete(account: account)
+            } else {
+                KeychainHelper.save(trimmed, account: account)
+            }
+            lastGameProviderTokens[providerID] = trimmed
+        }
+
         // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordOAuth.clientSecret = ""
         settingsToSave.adminWebUI.localAuthPassword = ""
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.adminWebUI.publicAccessTunnelToken = ""
+        settingsToSave.gameProviders.clearTokens()
         settingsToSave.clusterSharedSecret = ""
         settingsToSave.clusterMode = .standalone
         settingsToSave.clusterNodeName = Host.current().localizedName ?? "SwiftBot Node"

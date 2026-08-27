@@ -4442,6 +4442,10 @@
 
             <div class="nav-section">
               <div class="nav-heading">Services</div>
+              <button class="nav-link" data-view="gametracker" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="gamepad-2"></i></span>
+                <span class="nav-text">Game Tracker</span>
+              </button>
               <button class="nav-link" data-view="patchy" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="download"></i></span>
                 <span class="nav-text">Patchy</span>
@@ -4706,6 +4710,33 @@
           <div class="diagnostics-shell">
             <section id="logsTop" class="diagnostics-top glass"></section>
             <section id="logsPanels" class="diagnostics-panels"></section>
+          </div>
+        </section>
+
+        <section id="gametrackerView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="gamepad-2"></i> Game Tracker</div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="gametrackerSchedule" class="muted-text"></span>
+                <button id="gametrackerCheckNow" class="primary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Check Now</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="gametrackerMetrics" class="stats-grid" style="margin-top: 10px;"></div>
+
+          <div id="gametrackerNotice" class="hidden" style="margin-bottom: 16px;"></div>
+
+          <div class="diagnostics-panels" style="grid-template-columns: 1fr 340px;">
+            <div>
+              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="users"></i> Tracked Players</div>
+              <div id="gametrackerPlayers" style="display: grid; gap: 10px;"></div>
+            </div>
+            <div>
+              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="history"></i> Recent Activity</div>
+              <div id="gametrackerHistory" class="event-list glass" style="max-height: 600px; overflow-y: auto;"></div>
+            </div>
           </div>
         </section>
 
@@ -5020,6 +5051,7 @@
     let aiBotsData = null;
     let mediaLibraryData = null;
     let sweepData = null;
+    let gameTrackerData = null;
     let announcerData = null;
     let mediaExportStatus = null;
     let mediaExportJobs = [];
@@ -6189,6 +6221,14 @@
       if (!response.ok) throw new Error('Sweep unavailable');
       const data = await response.json();
       sweepData = data;
+      return data;
+    }
+
+    async function loadGameTracker() {
+      const response = await fetch('/api/gametracker');
+      if (!response.ok) throw new Error('Game Tracker unavailable');
+      const data = await response.json();
+      gameTrackerData = data;
       return data;
     }
 
@@ -7798,6 +7838,131 @@
           setMessage(error.message || 'Patchy changes could not be saved.', 'error');
         }
       }, 220);
+    }
+
+    const GAME_TRACKER_TONE_COLORS = { green: '#22c55e', amber: '#f59e0b', gray: '#9ca3af' };
+
+    const GAME_TRACKER_HISTORY_ICONS = {
+      check: 'search',
+      announcement: 'megaphone',
+      seasonReset: 'rotate-ccw',
+      sessionStarted: 'play',
+      sessionEnded: 'square',
+      error: 'alert-triangle'
+    };
+
+    function renderGameTrackerView() {
+      if (!gameTrackerData) return;
+      const metrics = document.getElementById('gametrackerMetrics');
+      const notice = document.getElementById('gametrackerNotice');
+      const playersList = document.getElementById('gametrackerPlayers');
+      const historyList = document.getElementById('gametrackerHistory');
+      const schedule = document.getElementById('gametrackerSchedule');
+      const checkButton = document.getElementById('gametrackerCheckNow');
+      if (!metrics || !notice || !playersList || !historyList || !schedule || !checkButton) return;
+
+      const data = gameTrackerData;
+      schedule.textContent = data.scheduleDescription || '';
+
+      checkButton.disabled = !!data.checkInProgress || !data.isPollingRuntime;
+      checkButton.onclick = async () => {
+        checkButton.disabled = true;
+        try {
+          await postJSON('/api/gametracker/check', {});
+          await loadGameTracker();
+          renderGameTrackerView();
+        } catch (e) {
+          console.error(e);
+          setMessage('Game Tracker check failed.', 'error');
+        }
+      };
+
+      metrics.innerHTML = `
+        <article class="stat-card glass">
+          <div class="stat-header"><h3>Status</h3><div class="stat-icon" style="color: ${GAME_TRACKER_TONE_COLORS[data.statusTone] || '#9ca3af'};"><i class="lucide" data-lucide="${data.enabled ? 'gamepad-2' : 'pause'}"></i></div></div>
+          <div class="stat-value">${escapeHTML(data.statusText || 'Unknown')}</div>
+          <div class="stat-subtitle">${data.enabled ? 'Tracking enabled' : 'Tracking disabled'}</div>
+        </article>
+        <article class="stat-card glass">
+          <div class="stat-header"><h3>Players</h3><div class="stat-icon" style="color: #6366f1;"><i class="lucide" data-lucide="users"></i></div></div>
+          <div class="stat-value">${data.enabledPlayerCount}</div>
+          <div class="stat-subtitle">of ${data.totalPlayerCount} profile${data.totalPlayerCount === 1 ? '' : 's'}</div>
+        </article>
+        <article class="stat-card glass">
+          <div class="stat-header"><h3>Next Check</h3><div class="stat-icon" style="color: #3b82f6;"><i class="lucide" data-lucide="clock"></i></div></div>
+          <div class="stat-value">${data.nextCheckAt ? new Date(data.nextCheckAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '--'}</div>
+          <div class="stat-subtitle">${data.isPollingRuntime ? 'This node polls' : 'Polling runs on Primary'}</div>
+        </article>
+        <article class="stat-card glass">
+          <div class="stat-header"><h3>Last Check</h3><div class="stat-icon" style="color: #a855f7;"><i class="lucide" data-lucide="history"></i></div></div>
+          <div class="stat-value">${data.lastCheckAt ? relativeTime(data.lastCheckAt) : 'Never'}</div>
+          <div class="stat-subtitle">Successful poll</div>
+        </article>
+      `;
+
+      if (data.configurationIssue) {
+        notice.classList.remove('hidden');
+        notice.innerHTML = `
+          <div class="glass" style="padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-radius: 14px;">
+            <i class="lucide" data-lucide="alert-triangle" style="color: #f59e0b; flex-shrink: 0;"></i>
+            <span style="font-size: 13px;">${escapeHTML(data.configurationIssue)}</span>
+          </div>
+        `;
+      } else {
+        notice.classList.add('hidden');
+        notice.innerHTML = '';
+      }
+
+      if (!data.players.length) {
+        playersList.innerHTML = `<div class="placeholder">No tracked players yet. Add a profile in the native Game Tracker view.</div>`;
+      } else {
+        playersList.innerHTML = data.players.map(player => {
+          const scoreText = player.score === null || player.score === undefined
+            ? (player.supportsRankedScore ? 'No baseline yet' : 'Rank not tracked for this game')
+            : `${player.score.toLocaleString()} SR`;
+          const rankText = [player.rankName, player.season].filter(Boolean).map(escapeHtml).join(' &middot; ');
+          return `
+            <div class="glass" style="padding: 16px; display: flex; align-items: center; gap: 14px; border-radius: 14px; ${player.isEnabled ? '' : 'opacity: 0.55;'}">
+              <div class="stat-icon" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.1); color: #6366f1; flex-shrink: 0;">
+                <i class="lucide" data-lucide="gamepad-2"></i>
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span style="font-weight: 650; font-size: 14px;">${escapeHTML(player.displayName)}</span>
+                  <span style="font-size: 10px; font-weight: 700; color: var(--muted); background: var(--nav-icon-bg); padding: 2px 6px; border-radius: 999px;">${escapeHTML(player.gameDisplayName)}</span>
+                  <span style="font-size: 10px; font-weight: 700; color: var(--muted); background: var(--nav-icon-bg); padding: 2px 6px; border-radius: 999px;">${escapeHTML(player.providerDisplayName)}</span>
+                  ${player.isEnabled ? '' : '<span style="font-size: 10px; font-weight: 700; color: var(--muted);">Disabled</span>'}
+                </div>
+                <p style="font-size: 12px; color: var(--muted); margin: 0; line-height: 1.4;">
+                  ${scoreText}${rankText ? ` &middot; ${rankText}` : ''} &middot; posts to #${escapeHTML(player.destinationChannelName)}
+                </p>
+              </div>
+              <div style="text-align: right; flex-shrink: 0;">
+                <div style="font-size: 11px; color: var(--muted);">${player.baselineRecordedAt ? relativeTime(player.baselineRecordedAt) : ''}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      if (!data.history.length) {
+        historyList.innerHTML = `<div class="placeholder">No checks recorded yet.</div>`;
+      } else {
+        historyList.innerHTML = data.history.map(entry => `
+          <div class="event-item${entry.kind === 'error' ? ' error' : ''}" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: ${entry.kind === 'error' ? '#f87171' : 'inherit'};">
+                <i class="lucide" data-lucide="${GAME_TRACKER_HISTORY_ICONS[entry.kind] || 'circle'}" style="width: 13px; height: 13px;"></i>
+                ${escapeHTML(entry.title)}
+              </span>
+              <span style="font-size: 10px; color: var(--muted);">${formatTime(entry.timestamp)}</span>
+            </div>
+            <div style="font-size: 11px; color: var(--muted);">${escapeHTML(entry.detail)}</div>
+          </div>
+        `).join('');
+      }
+
+      refreshIcons();
     }
 
     function renderSweepView() {
@@ -10945,6 +11110,14 @@
         secondaryTitle: 'Runtime',
         eventsTitle: 'Recent Activity'
       },
+      gametracker: {
+        title: 'Game Tracker',
+        icon: 'gamepad-2',
+        copy: 'Ranked-score tracking for linked game accounts across supported providers.',
+        primaryTitle: 'Tracker Status',
+        secondaryTitle: 'Tracked Players',
+        eventsTitle: 'Recent Activity'
+      },
       patchy: {
         title: 'Patchy',
         icon: 'download',
@@ -11281,6 +11454,7 @@
       const analytics = document.getElementById('analyticsView');
       const patchy = document.getElementById('patchyView');
       const sweep = document.getElementById('sweepView');
+      const gametracker = document.getElementById('gametrackerView');
       const automations = document.getElementById('automationsView');
       const moderation = document.getElementById('moderationView');
       const welcome = document.getElementById('welcomeView');
@@ -11300,7 +11474,7 @@
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, patchy, sweep, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
+        [overview, commands, analytics, patchy, sweep, gametracker, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
       hideAllViews();
@@ -11362,6 +11536,14 @@
         sweep.classList.remove('hidden');
         renderSweepView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Sweep';
+        setMessage('', '');
+      } else if (view === 'gametracker') {
+        gametracker?.classList.remove('hidden');
+        (async () => {
+          try { await loadGameTracker(); } catch (e) { console.error(e); }
+          renderGameTrackerView();
+        })();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Game Tracker';
         setMessage('', '');
       } else if (view === 'automations') {
         automations?.classList.remove('hidden');

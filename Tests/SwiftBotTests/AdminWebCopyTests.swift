@@ -32,7 +32,8 @@ final class AdminWebCopyTests: XCTestCase {
             .recordings: "recordings",
             .analytics: "analytics",
             .swiftMesh: "swiftmesh",
-            .sweep: "sweep"
+            .sweep: "sweep",
+            .gameTracker: "gametracker"
         ]
 
         for item in SidebarItem.allCases {

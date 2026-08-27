@@ -25,6 +25,7 @@ final class AppModel: ObservableObject {
         didSet {
             if status != oldValue {
                 configurePatchyMonitoring()
+                configureGameTrackingMonitoring()
             }
         }
     }
@@ -155,6 +156,12 @@ final class AppModel: ObservableObject {
     @Published var workerModeMigrated = false
     @Published var swiftMinerPairingStatusMessage: String?
     @Published var swiftMinerPairingStatusSucceeded = false
+    @Published var gameTrackingStatusText = "Not configured"
+    @Published var gameTrackingCheckInProgress = false
+    @Published var gameTrackingLastCheckAt: Date?
+    @Published var gameTrackingNextCheckAt: Date?
+    @Published var gameTrackingBaselines: [UUID: GameRankBaseline] = [:]
+    @Published var gameTrackingHistory: [GameTrackingHistoryEntry] = []
     // MARK: - P0.4 Diagnostics state
 
     @Published var connectionDiagnostics = ConnectionDiagnostics()
@@ -216,6 +223,7 @@ final class AppModel: ObservableObject {
     let mediaLibraryConfigStore = MediaLibraryConfigStore()
     let discordCacheStore = DiscordCacheStore()
     let meshCursorStore = MeshCursorStore()
+    let gameTrackingStateStore = GameTrackingStateStore()
     let mediaLibraryIndexer = MediaLibraryIndexer()
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
@@ -261,6 +269,12 @@ final class AppModel: ObservableObject {
     lazy var messageRESTClient = DiscordMessageRESTClient(session: discordRESTSession)
     lazy var wikiLookupService = WikiLookupService(session: discordRESTSession)
     lazy var musicLookupService = MusicLookupService(session: discordRESTSession)
+    lazy var gameProviderRegistry = GameProviderRegistry(session: discordRESTSession)
+    /// Direct handle for the finals.id-only latest-round endpoint, which is not
+    /// part of the provider-neutral rank protocol yet.
+    lazy var finalsIDLatestRoundClient = FinalsIDAPIClient(session: discordRESTSession)
+    var gameSessionTracker = GamePresenceSessionTracker()
+    var gameSessionSweeperTask: Task<Void, Never>?
     lazy var playlistImportService = PlaylistImportService(session: discordRESTSession)
     lazy var service = DiscordService(
         session: discordRESTSession,
@@ -368,6 +382,9 @@ final class AppModel: ObservableObject {
     let sweepService = SweepService()
     var patchyMonitorTask: Task<Void, Never>?
     var lastPatchyMonitoringSnapshot: PatchyMonitoringSnapshot?
+    var gameTrackingMonitorTask: Task<Void, Never>?
+    var gameTrackingSettingsSaveTask: Task<Void, Never>?
+    var lastGameTrackingMonitoringSnapshot: GameTrackingMonitoringSnapshot?
     var adminWebCertificateRenewalTask: Task<Void, Never>?
     var adminWebCertificateRenewalConfiguration: AdminWebCertificateRenewalConfiguration?
     var mediaMonitorTask: Task<Void, Never>?
@@ -958,6 +975,7 @@ final class AppModel: ObservableObject {
             await pollClusterStatus()
             await configureServiceCallbacks()
             configurePatchyMonitoring()
+            configureGameTrackingMonitoring()
             if settings.autoStart, !settings.token.isEmpty {
                 await startBot()
             }
@@ -1008,6 +1026,8 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
         settings.remoteMode.normalize()
         settings.patchy.syncMonitoringEnabledWithTargets()
+        settings.gameTracking.normalize()
+        settings.gameProviders.normalize()
         mediaLibrarySettings.fastStartOutputPath = mediaLibrarySettings.fastStartOutputPath
             .trimmingCharacters(in: .whitespacesAndNewlines)
         isOnboardingComplete = onboardingCompleted(for: settings)
@@ -1051,9 +1071,12 @@ final class AppModel: ObservableObject {
                 )
                 await configureAdminWebServer()
                 configurePatchyMonitoring()
+                configureGameTrackingMonitoring()
             } else {
                 patchyMonitorTask?.cancel()
                 patchyMonitorTask = nil
+                gameTrackingMonitorTask?.cancel()
+                gameTrackingMonitorTask = nil
                 await cluster.stopAll()
                 await adminWebServer.stop()
                 await service.setOutputAllowed(false)
@@ -1112,6 +1135,8 @@ final class AppModel: ObservableObject {
         clusterNodesRefreshTask = nil
         patchyMonitorTask?.cancel()
         patchyMonitorTask = nil
+        gameTrackingMonitorTask?.cancel()
+        gameTrackingMonitorTask = nil
         connectionHealthTask?.cancel()
         connectionHealthTask = nil
         uptimeTask?.cancel()

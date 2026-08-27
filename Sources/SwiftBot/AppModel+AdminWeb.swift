@@ -122,7 +122,9 @@ extension AppModel {
             localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
             useAIInGuildChannels: settings.behavior.useAIInGuildChannels,
             allowDMs: settings.behavior.allowDMs,
-            localAISystemPrompt: settings.localAISystemPrompt
+            localAISystemPrompt: settings.localAISystemPrompt,
+            gameTracking: settings.gameTracking,
+            gameProviders: settings.gameProviders
         )
     }
 
@@ -1984,6 +1986,22 @@ extension AppModel {
                 guard let model = self else { return MediaExportJobResponse(job: nil, error: "Unavailable") }
                 return await model.adminWebStartMediaMultiViewExport(request: request)
             },
+            gameTrackerProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebGameTrackerPayload(
+                        enabled: false, statusText: "Unavailable", statusTone: "gray",
+                        configurationIssue: nil, checkInProgress: false, scheduleDescription: "Daily",
+                        lastCheckAt: nil, nextCheckAt: nil, enabledPlayerCount: 0, totalPlayerCount: 0,
+                        players: [], history: [], isPollingRuntime: false
+                    )
+                }
+                return await MainActor.run { model.adminWebGameTrackerSnapshot() }
+            },
+            gameTrackerCheckRunner: { [weak self] in
+                guard let model = self else { return false }
+                await model.runGameTrackingCheck(trigger: "Web")
+                return true
+            },
             sweepProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebSweepPayload(
@@ -3242,5 +3260,86 @@ extension AppModel {
         setManualAnnouncerHold(guildID: guildID, channelID: channelID, source: "the admin web UI")
         await disconnectVoice()
         return true
+    }
+}
+
+// MARK: - Game Tracker admin web surface
+
+extension AppModel {
+    @MainActor
+    func adminWebGameTrackerSnapshot() -> AdminWebGameTrackerPayload {
+        let tracking = settings.gameTracking
+        let issue = tracking.configurationIssue(connections: settings.gameProviders)
+        let mode = runtimeClusterMode
+        let isPollingRuntime = mode == .standalone || mode == .leader
+
+        var channelNames: [String: String] = [:]
+        for channels in availableTextChannelsByServer.values {
+            for channel in channels { channelNames[channel.id] = channel.name }
+        }
+
+        let players = tracking.players.map { player -> AdminWebGameTrackerPlayerPayload in
+            let baseline = gameTrackingBaselines[player.id]
+            let descriptor = GameProviderCatalog.descriptor(for: player.provider)
+            return AdminWebGameTrackerPlayerPayload(
+                id: player.id.uuidString,
+                game: player.game.rawValue,
+                gameDisplayName: player.game.displayName,
+                provider: player.provider.rawValue,
+                providerDisplayName: player.provider.displayName,
+                playerID: player.playerID,
+                displayName: player.resolvedDisplayName,
+                destinationChannelID: player.destinationChannelID,
+                destinationChannelName: channelNames[player.destinationChannelID]
+                    ?? player.destinationChannelID,
+                isEnabled: player.isEnabled,
+                supportsRankedScore: descriptor?.capabilities.contains(.rankedScore) ?? false,
+                season: baseline?.season,
+                rankName: baseline?.rankName,
+                score: baseline?.score,
+                baselineRecordedAt: baseline?.recordedAt
+            )
+        }
+
+        let tone: String
+        if !tracking.enabled {
+            tone = "gray"
+        } else if issue != nil {
+            tone = "amber"
+        } else if !isPollingRuntime {
+            tone = "amber"
+        } else {
+            tone = "green"
+        }
+
+        return AdminWebGameTrackerPayload(
+            enabled: tracking.enabled,
+            statusText: gameTrackingStatusText,
+            statusTone: tone,
+            configurationIssue: issue,
+            checkInProgress: gameTrackingCheckInProgress,
+            scheduleDescription: gameTrackingScheduleDescription(),
+            lastCheckAt: gameTrackingLastCheckAt,
+            nextCheckAt: gameTrackingNextCheckAt,
+            enabledPlayerCount: tracking.enabledPlayers.count,
+            totalPlayerCount: tracking.players.count,
+            players: players,
+            history: gameTrackingHistory,
+            isPollingRuntime: isPollingRuntime
+        )
+    }
+
+    @MainActor
+    func gameTrackingScheduleDescription() -> String {
+        var components = DateComponents()
+        components.hour = settings.gameTracking.checkHour
+        components.minute = settings.gameTracking.checkMinute
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        let zone = TimeZone(identifier: settings.gameTracking.timeZoneIdentifier) ?? .current
+        formatter.timeZone = zone
+        let calendar = Calendar.current
+        guard let date = calendar.date(from: components) else { return "Daily" }
+        return "Daily at \(formatter.string(from: date)) (\(zone.identifier))"
     }
 }

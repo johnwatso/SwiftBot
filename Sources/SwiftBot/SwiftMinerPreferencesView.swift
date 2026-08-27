@@ -8,6 +8,8 @@ struct SwiftMinerPreferencesView: View {
 
     var body: some View {
         Form {
+            GameProviderPreferencesSection()
+
             statusCard
 
             if !app.settings.swiftMiner.enabled {
