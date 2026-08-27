@@ -163,7 +163,7 @@ enum LogExporter {
                 + Double(components.attoseconds) / 1_000_000_000_000_000_000
             return String(format: "%.2fs", seconds)
         }.joined(separator: ",")
-        out += "voiceRecoveryInProgress=\(app.voiceRecovery.inProgress) attempts=\(app.voiceRecovery.attemptsMade)/\(app.voiceRecovery.attemptsAllowed) schedule=\(recoveryDelays)\n"
+        out += "voiceRecoveryInProgress=\(app.voiceRecovery.inProgress) attempts=\(app.voiceRecovery.attemptsMade)/\(app.voiceRecovery.attemptsAllowed) schedule=\(recoveryDelays) stabilityWindowPending=\(app.voiceRecoveryStabilityTask != nil)\n"
         out += "voiceLeaveAckState=\(app.voiceLeaveAckState) preserveAnnouncerSession=\(app.voiceDisconnectPreservesAnnouncerSession) awaitingExternalDisconnectClosure=\(app.voiceRecoveryAwaitingExternalDisconnectClosure)\n"
         out += "pendingJoinIntroduction=\(app.pendingVoiceJoinIntro != nil)\n"
         if let manualHold {
@@ -203,13 +203,17 @@ enum LogExporter {
             ].joined(separator: " ")
             out += "status=\(transportDiagnostics.status)\n"
             out += "connectionGeneration=\(transportDiagnostics.connectionGeneration)\n"
+            out += "lastSuccessfulConnectionGeneration=\(transportDiagnostics.lastSuccessfulConnectionGeneration.map(String.init) ?? "-")\n"
             out += "lastFailureGeneration=\(transportDiagnostics.lastFailureGeneration.map(String.init) ?? "-")\n"
+            out += "lastFailureHistorical=\(transportDiagnostics.lastFailureIsHistorical)\n"
             out += "lastFailureReason=\(SwiftBotLogRedactor.redact(transportDiagnostics.lastFailureReason ?? "-"))\n"
             out += "gateway=\(transportDiagnostics.hasGateway) transport=\(transportDiagnostics.hasTransport) encryption=\(transportDiagnostics.hasEncryption) opus=\(transportDiagnostics.hasOpusEncoder) ssrc=\(transportDiagnostics.hasSSRC)\n"
             out += "isSpeaking=\(transportDiagnostics.isSpeaking) speakingElapsedSeconds=\(transportDiagnostics.speakingElapsedSeconds.map { String(format: "%.2f", $0) } ?? "-") firstAudioFrameSent=\(transportDiagnostics.didSendFirstAudioFrame)\n"
-            out += "lastAudioFrameSentAt=\(transportDiagnostics.lastAudioFrameSentAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "connectionEstablishedAt=\(transportDiagnostics.connectionEstablishedAt.map { iso.string(from: $0) } ?? "-")\n"
+            out += "lastAudioFrameSentAt=\(transportDiagnostics.lastAudioFrameSentAt.map { iso.string(from: $0) } ?? "-") mediaIdleSeconds=\(transportDiagnostics.mediaIdleSeconds.map { String(format: "%.1f", $0) } ?? "-")\n"
+            out += "recoveredDaveIdleRefreshArmed=\(transportDiagnostics.recoveredDaveIdleRefreshArmed) thresholdSeconds=\(transportDiagnostics.recoveredDaveIdleRefreshThresholdSeconds)\n"
             out += "\(audioMetrics)\n"
-            out += "keepaliveCounter=\(transportDiagnostics.keepaliveCounter) failures=\(transportDiagnostics.keepaliveFailures)\n"
+            out += "keepaliveCounter=\(transportDiagnostics.keepaliveCounter) failures=\(transportDiagnostics.keepaliveFailures) evidence=local-send-only\n"
             out += "lastKeepaliveAttemptAt=\(transportDiagnostics.lastKeepaliveAttemptAt.map { iso.string(from: $0) } ?? "-")\n"
             out += "lastKeepaliveSuccessAt=\(transportDiagnostics.lastKeepaliveSuccessAt.map { iso.string(from: $0) } ?? "-")\n"
             out += "lastKeepaliveFailureAt=\(transportDiagnostics.lastKeepaliveFailureAt.map { iso.string(from: $0) } ?? "-")\n"
@@ -225,7 +229,7 @@ enum LogExporter {
             if !transportDiagnostics.daveUnrecognizedRosterUserIds.isEmpty {
                 out += "daveUnrecognizedRosterUserIds=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveUnrecognizedRosterUserIds.joined(separator: ",")))\n"
             }
-            out += "daveLastFailureCode=\(transportDiagnostics.daveLastFailureCode ?? "-") origin=\(transportDiagnostics.daveLastFailureOrigin ?? "-") nativeSource=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastFailureNativeSource ?? "-")) nativeReason=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastFailureNativeReason ?? "-"))\n"
+            out += "daveLastFailureCode=\(transportDiagnostics.daveLastFailureCode ?? "-") origin=\(transportDiagnostics.daveLastFailureOrigin ?? "-") historical=\(transportDiagnostics.daveLastFailureIsHistorical) nativeSource=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastFailureNativeSource ?? "-")) nativeReason=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastFailureNativeReason ?? "-"))\n"
             out += "daveLastTransitionAt=\(transportDiagnostics.daveLastTransitionAt.map { iso.string(from: $0) } ?? "-")\n"
             out += "daveEncryptSuccesses=\(transportDiagnostics.daveEncryptionSuccessCount.map(String.init) ?? "-") failures=\(transportDiagnostics.daveEncryptionFailureCount.map(String.init) ?? "-")\n"
             out += "daveLastMlsError=\(SwiftBotLogRedactor.redact(transportDiagnostics.daveLastMlsError ?? "-"))\n"

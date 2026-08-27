@@ -228,6 +228,24 @@ actor VoiceAnnouncementService {
     var recentHistory: [Announcement] { recent }
     var healthSnapshot: VoiceAnnouncerHealth { health }
 
+    /// Wait for already-queued speech to finish without accepting ownership of
+    /// the drain. The bounded wait lets `untilEmpty` play a final departure
+    /// announcement before it pauses or disconnects, while still guaranteeing
+    /// that a wedged renderer/media path cannot hold presence processing.
+    func waitUntilIdle(timeout: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while draining || !queue.isEmpty || drainStartTask != nil {
+            guard clock.now < deadline else { return false }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return false
+            }
+        }
+        return true
+    }
+
     /// The phase to report while the queue is held, or nil when it isn't.
     /// `.recovering` is bounded by the owner's health watchdog and `.paused`
     /// is not, so the distinction decides whether a stuck queue ever gets
@@ -256,7 +274,10 @@ actor VoiceAnnouncementService {
         // An explicit request from the owner, in either direction, ends any
         // self-inflicted recovery pause: the owner is driving now.
         pausedForRecovery = false
-        await publishHealth(phase: idleOrQueuedPhase)
+        await publishHealth(
+            phase: idleOrQueuedPhase,
+            clearFailureState: !paused
+        )
         if !paused, !queue.isEmpty, !draining {
             scheduleDrain()
         }
@@ -809,6 +830,7 @@ actor VoiceAnnouncementService {
         activeCharacterCount: Int? = nil,
         activeExpiresAt: Date? = nil,
         clearActiveRead: Bool = false,
+        clearFailureState: Bool = false,
         lastBatchSize: Int? = nil
     ) async {
         if let phase { health.phase = phase }
@@ -819,6 +841,10 @@ actor VoiceAnnouncementService {
         if let retryStreak { health.retryStreak = retryStreak }
         if let lastQueuedAt { health.lastQueuedAt = lastQueuedAt }
         if let lastSpokenAt { health.lastSpokenAt = lastSpokenAt }
+        if clearFailureState {
+            health.lastFailureAt = nil
+            health.lastFailureReason = nil
+        }
         if let lastFailureAt { health.lastFailureAt = lastFailureAt }
         if let lastFailureReason { health.lastFailureReason = lastFailureReason }
         if let lastRecoveryAt { health.lastRecoveryAt = lastRecoveryAt }

@@ -12,11 +12,34 @@ final class VoicePlaybackServiceTests: XCTestCase {
         var isCompleted: Bool { completed }
     }
 
+    private final class TestDateClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Date
+
+        init(_ value: Date = Date(timeIntervalSince1970: 1_800_000_000)) {
+            self.value = value
+        }
+
+        func now() -> Date {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+
+        func advance(by interval: TimeInterval) {
+            lock.lock()
+            value = value.addingTimeInterval(interval)
+            lock.unlock()
+        }
+    }
+
     private func makePipeline(
         resumeConfirmationTimeout: Duration = .seconds(5),
         connectionReadinessTimeout: Duration = .seconds(15),
         daveDowngradeTransitionTimeout: Duration = .seconds(12),
-        daveTransitionGateProgressTimeout: Duration = .seconds(15)
+        daveTransitionGateProgressTimeout: Duration = .seconds(15),
+        recoveredDaveIdleRefreshInterval: TimeInterval = 20 * 60,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) -> (VoicePlaybackService, FakeVoiceGateway, FakeVoiceTransport) {
         let server = makeVoiceServerInfo()
         let gateway = FakeVoiceGateway(server: server)
@@ -27,7 +50,9 @@ final class VoicePlaybackServiceTests: XCTestCase {
             resumeConfirmationTimeout: resumeConfirmationTimeout,
             connectionReadinessTimeout: connectionReadinessTimeout,
             daveDowngradeTransitionTimeout: daveDowngradeTransitionTimeout,
-            daveTransitionGateProgressTimeout: daveTransitionGateProgressTimeout
+            daveTransitionGateProgressTimeout: daveTransitionGateProgressTimeout,
+            recoveredDaveIdleRefreshInterval: recoveredDaveIdleRefreshInterval,
+            now: now
         )
         return (playback, gateway, transport)
     }
@@ -125,6 +150,99 @@ final class VoicePlaybackServiceTests: XCTestCase {
         XCTAssertEqual(diagnostics.audioSendFailureCount, 0)
         let speaking = await gateway.speakingUpdates
         XCTAssertEqual(speaking.first, true)
+    }
+
+    func testHealthySessionDoesNotRefreshSolelyForLongIdle() async throws {
+        let clock = TestDateClock()
+        let (playback, gateway, transport) = makePipeline(
+            recoveredDaveIdleRefreshInterval: 60,
+            now: clock.now
+        )
+        try await connect(playback, gateway)
+
+        try await playback.speak(pcm: makeRenderedBuffer())
+        let firstPacketCount = await transport.sentPackets.count
+        clock.advance(by: 61)
+        try await playback.speak(pcm: makeRenderedBuffer())
+
+        let diagnostics = await playback.diagnosticsSnapshot()
+        let finalPacketCount = await transport.sentPackets.count
+        XCTAssertEqual(diagnostics.status, "connected")
+        XCTAssertFalse(diagnostics.recoveredDaveIdleRefreshArmed)
+        XCTAssertGreaterThan(finalPacketCount, firstPacketCount)
+        await playback.disconnect()
+    }
+
+    func testRecoveredDaveFailureRefreshesMediaOnceAfterLongIdle() async throws {
+        let clock = TestDateClock()
+        let server = makeVoiceServerInfo()
+        let firstGateway = FakeVoiceGateway(server: server)
+        let secondGateway = FakeVoiceGateway(server: server)
+        let thirdGateway = FakeVoiceGateway(server: server)
+        let firstTransport = FakeVoiceTransport()
+        let secondTransport = FakeVoiceTransport()
+        let thirdTransport = FakeVoiceTransport()
+        let pipeline = SequencedVoicePipeline(
+            gateways: [firstGateway, secondGateway, thirdGateway],
+            transports: [firstTransport, secondTransport, thirdTransport]
+        )
+        let playback = VoicePlaybackService(
+            gatewayFactory: { session, info in pipeline.makeGateway(session, info) },
+            transportFactory: { host, port in pipeline.makeTransport(host, port) },
+            daveTransitionGateProgressTimeout: .milliseconds(50),
+            recoveredDaveIdleRefreshInterval: 60,
+            now: clock.now
+        )
+
+        try await connect(playback, firstGateway)
+        await firstGateway.emitPrepareEpoch(version: 1, epoch: 1, transitionId: 19)
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+        var diagnostics = await playback.diagnosticsSnapshot()
+        XCTAssertTrue(diagnostics.recoveredDaveIdleRefreshArmed)
+        XCTAssertFalse(diagnostics.lastFailureIsHistorical)
+
+        await playback.disconnect()
+        try await connect(playback, secondGateway)
+        diagnostics = await playback.diagnosticsSnapshot()
+        XCTAssertTrue(diagnostics.recoveredDaveIdleRefreshArmed)
+        XCTAssertTrue(diagnostics.lastFailureIsHistorical)
+
+        try await playback.speak(pcm: makeRenderedBuffer())
+        let packetsBeforeIdleRefresh = await secondTransport.sentPackets.count
+        clock.advance(by: 61)
+        do {
+            try await playback.speak(pcm: makeRenderedBuffer())
+            XCTFail("the first post-DAVE long idle must rebuild media before speaking")
+        } catch VoicePipelineError.socketClosed {
+            // Expected: the announcer retains the batch and AppModel performs
+            // its existing bounded automatic rejoin.
+        } catch {
+            XCTFail("expected socketClosed for the one-shot media rebuild, got \(error)")
+        }
+
+        diagnostics = await playback.diagnosticsSnapshot()
+        let packetsAfterIdleRefresh = await secondTransport.sentPackets.count
+        XCTAssertEqual(diagnostics.status, "failed")
+        XCTAssertFalse(diagnostics.recoveredDaveIdleRefreshArmed)
+        XCTAssertEqual(packetsAfterIdleRefresh, packetsBeforeIdleRefresh)
+        XCTAssertTrue(diagnostics.lastFailureReason?.contains("rebuilding once") == true)
+
+        await playback.disconnect()
+        try await connect(playback, thirdGateway)
+        try await playback.speak(pcm: makeRenderedBuffer())
+        let firstReplacementPacketCount = await thirdTransport.sentPackets.count
+        clock.advance(by: 61)
+        try await playback.speak(pcm: makeRenderedBuffer())
+
+        diagnostics = await playback.diagnosticsSnapshot()
+        let finalReplacementPacketCount = await thirdTransport.sentPackets.count
+        XCTAssertEqual(diagnostics.status, "connected")
+        XCTAssertFalse(diagnostics.recoveredDaveIdleRefreshArmed)
+        XCTAssertGreaterThan(finalReplacementPacketCount, firstReplacementPacketCount)
+        await playback.disconnect()
     }
 
     func testCancellingActiveSpeechFailsSessionForCleanRecovery() async throws {

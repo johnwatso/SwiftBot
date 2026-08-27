@@ -174,6 +174,19 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         )
     }
 
+    func testWaitUntilIdleAllowsDepartureSpeechToFinish() async throws {
+        let playback = FakeAnnouncementPlayback()
+        await playback.setDelay(.milliseconds(100))
+        let announcer = try makeAnnouncer(playback: playback)
+
+        await announcer.enqueue("Gabe has left.")
+
+        let drained = await announcer.waitUntilIdle(timeout: .seconds(1))
+        let recent = await announcer.recentHistory
+        XCTAssertTrue(drained)
+        XCTAssertEqual(recent.map(\.text), ["Gabe has left."])
+    }
+
     func testProlongedDaveNotReadyPausesAndKeepsQueue() async throws {
         let playback = FakeAnnouncementPlayback()
         await playback.setError(VoicePipelineError.daveNotReady)
@@ -433,6 +446,8 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
 
         let health = await announcer.healthSnapshot
         XCTAssertEqual(health.phase, .paused)
+        XCTAssertNil(health.lastFailureAt)
+        XCTAssertNil(health.lastFailureReason)
     }
 
     /// A message queued mid-read used to overwrite the active read's phase and
