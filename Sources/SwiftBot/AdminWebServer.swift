@@ -223,6 +223,8 @@ struct AdminWebGameTrackerPlayerPayload: Codable {
 
 struct AdminWebGameTrackerPayload: Codable {
     let enabled: Bool
+    let dailyCheckEnabled: Bool
+    let sessionTrackingEnabled: Bool
     let statusText: String
     let statusTone: String
     let configurationIssue: String?

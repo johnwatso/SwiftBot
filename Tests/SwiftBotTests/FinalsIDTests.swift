@@ -354,8 +354,75 @@ final class FinalsIDTests: XCTestCase {
         )
     }
 
+    func testEnabledIsDerivedFromTheTwoBehaviourSwitches() {
+        var tracking = GameTrackingSettings()
+        XCTAssertFalse(tracking.enabled, "Nothing on means the service is off")
+
+        tracking.dailyCheckEnabled = true
+        XCTAssertTrue(tracking.enabled)
+
+        tracking.dailyCheckEnabled = false
+        tracking.sessionTrackingEnabled = true
+        XCTAssertTrue(tracking.enabled, "Sessions alone keep the service running")
+
+        tracking.sessionTrackingEnabled = false
+        XCTAssertFalse(tracking.enabled)
+    }
+
+    func testLegacyEnabledFlagMigratesToDailyCheck() throws {
+        // Installs predating the daily/session split stored one `enabled` flag
+        // that meant "run the daily check".
+        let legacy = Data(#"{"enabled":true,"checkHour":9,"checkMinute":0}"#.utf8)
+        let decoded = try JSONDecoder().decode(GameTrackingSettings.self, from: legacy)
+
+        XCTAssertTrue(decoded.dailyCheckEnabled)
+        XCTAssertFalse(decoded.sessionTrackingEnabled)
+        XCTAssertTrue(decoded.enabled)
+
+        // The legacy key is not written back out.
+        let reencoded = try JSONSerialization.jsonObject(
+            with: try JSONEncoder().encode(decoded)
+        ) as? [String: Any]
+        XCTAssertNil(reencoded?["enabled"])
+        XCTAssertEqual(reencoded?["dailyCheckEnabled"] as? Bool, true)
+    }
+
+    func testSessionOnlyModeNeedsNoProviderConnection() {
+        // Presence-only announcements have no provider behind them, so
+        // readiness must not demand a rank endpoint or credential.
+        var tracking = GameTrackingSettings()
+        tracking.sessionTrackingEnabled = true
+        var player = GameTrackedPlayer(displayName: "Tyr")
+        player.playerID = "p-1"
+        player.destinationChannelID = "channel-1"
+        player.discordUserID = "discord-1"
+        tracking.players = [player]
+
+        XCTAssertNil(
+            tracking.configurationIssue(connections: GameProviderConnections()),
+            "An unconfigured provider must not block session-only mode"
+        )
+        // But a ranked poll still requires one.
+        XCTAssertFalse(tracking.canPollRanks(connections: GameProviderConnections()))
+    }
+
+    func testSessionTrackingRequiresAtLeastOneLinkedProfile() {
+        var tracking = GameTrackingSettings()
+        tracking.sessionTrackingEnabled = true
+        var player = GameTrackedPlayer(displayName: "Tyr")
+        player.playerID = "p-1"
+        player.destinationChannelID = "channel-1"
+        tracking.players = [player] // no discordUserID
+
+        XCTAssertEqual(
+            tracking.configurationIssue(connections: GameProviderConnections()),
+            "Add a Discord User ID to a profile to announce play sessions."
+        )
+    }
+
     func testGameTrackingRequiresCompleteEnabledProfilesAndProviderConnection() {
-        var tracking = GameTrackingSettings(enabled: true)
+        var tracking = GameTrackingSettings()
+        tracking.dailyCheckEnabled = true
         var connections = GameProviderConnections()
 
         XCTAssertEqual(

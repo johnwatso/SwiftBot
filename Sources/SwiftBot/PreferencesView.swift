@@ -46,7 +46,7 @@ struct PreferencesView: View {
                         }
                         .tag(2)
 
-                    SwiftMinerPreferencesView()
+                    IntegrationsSettingsView()
                         .tabItem {
                             Label("Integrations", systemImage: "app.connected.to.app.below.fill")
                         }

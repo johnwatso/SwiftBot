@@ -190,8 +190,64 @@ enum FinalsIDRankResponseDecoder {
             season: season,
             rankName: rankName,
             score: score,
-            updatedAt: updatedAtText.flatMap(parseDate)
+            updatedAt: updatedAtText.flatMap(parseDate),
+            metrics: decodeMetrics(from: scoreNode, root: root)
         )
+    }
+
+    /// Aliases a provider might use for each metric. Only explicit matches are
+    /// accepted — a bare `score` is still rejected, since the round payload's
+    /// combat score must never be read as a tracked rating.
+    private static let metricKeys: [(GameMetricID, [String])] = [
+        (.kills, ["kills", "eliminations", "totalKills"]),
+        (.deaths, ["deaths", "totalDeaths"]),
+        (.assists, ["assists", "totalAssists"]),
+        (.killDeathRatio, ["kd", "kdr", "killDeathRatio", "kill-death-ratio", "kill_death_ratio"]),
+        (.killsPerMinute, ["kpm", "killsPerMinute", "kills_per_minute"]),
+        (.wins, ["wins", "matchesWon", "victories"]),
+        (.losses, ["losses", "matchesLost", "defeats"]),
+        (.winRate, ["winRate", "winPercent", "win_rate", "winPercentage"]),
+        (.matchesPlayed, ["matches", "matchesPlayed", "roundsPlayed", "games"]),
+        (.timePlayed, ["timePlayed", "secondsPlayed", "playtime", "time_played"]),
+        (.damage, ["damage", "totalDamage", "damageDealt"]),
+        (.accuracy, ["accuracy", "hitAccuracy"]),
+        (.headshotRate, ["headshotRate", "headshotPercent", "headshots"])
+    ]
+
+    private static func decodeMetrics(from node: [String: Any], root: Any) -> GameMetricSet {
+        var metrics = GameMetricSet()
+        for (metric, keys) in metricKeys {
+            if let value = double(from: value(forAnyKey: keys, in: node)) {
+                metrics[metric] = value
+            } else if let value = doubleFromTree(root, keys: keys) {
+                metrics[metric] = value
+            }
+        }
+        return metrics
+    }
+
+    private static func double(from candidate: Any?) -> Double? {
+        switch candidate {
+        case let value as Double: return value
+        case let value as Int: return Double(value)
+        case let value as NSNumber: return value.doubleValue
+        case let value as String: return Double(value)
+        default: return nil
+        }
+    }
+
+    private static func doubleFromTree(_ candidate: Any, keys: [String]) -> Double? {
+        if let dictionary = candidate as? [String: Any] {
+            if let found = double(from: value(forAnyKey: keys, in: dictionary)) { return found }
+            for nested in dictionary.values {
+                if let found = doubleFromTree(nested, keys: keys) { return found }
+            }
+        } else if let array = candidate as? [Any] {
+            for nested in array {
+                if let found = doubleFromTree(nested, keys: keys) { return found }
+            }
+        }
+        return nil
     }
 
     private static func findScoreNode(in candidate: Any) -> [String: Any]? {

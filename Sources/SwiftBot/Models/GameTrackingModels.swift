@@ -92,11 +92,42 @@ struct GameProviderDescriptor: Hashable, Sendable {
     let capabilities: Set<GameTrackingCapability>
     let auth: GameProviderAuth
     let defaultBaseURL: String
+    /// Metrics this provider can report. Drives which options a profile is
+    /// offered, so the UI never presents a statistic the API cannot supply.
+    var supportedMetrics: Set<GameMetricID> = [.rankedScore]
+    /// SF Symbol used wherever this provider is listed. Descriptor-supplied so
+    /// Integrations never switches on a provider id to pick an icon.
+    var symbolName: String = "point.3.connected.trianglepath.dotted"
 
     /// Only providers that can report a ranked score need an endpoint template.
     /// A presence-only game such as Call of Duty has no rank API to point at.
     var requiresRankEndpointTemplate: Bool {
         capabilities.contains(.rankedScore)
+    }
+
+    var supportedGamesText: String {
+        supportedGames
+            .map(\.displayName)
+            .sorted()
+            .formatted(.list(type: .and))
+    }
+
+    /// One-line row subtitle, e.g. "THE FINALS player data".
+    var tagline: String {
+        "\(supportedGamesText) player data"
+    }
+
+    /// Sentence explaining what connecting this provider unlocks. Assembled
+    /// from the declared capabilities so a new provider reads correctly with
+    /// no copy to write.
+    var capabilitySummary: String {
+        var parts: [String] = []
+        if capabilities.contains(.rankedScore) { parts.append("ranked score") }
+        if capabilities.contains(.rankTier) { parts.append("tier") }
+        if capabilities.contains(.latestSession) { parts.append("sessions") }
+        if capabilities.contains(.matchHistory) { parts.append("match history") }
+        let capabilityText = parts.isEmpty ? "profile" : parts.formatted(.list(type: .and))
+        return "Provides \(capabilityText) for \(supportedGamesText) profiles in Game Tracker."
     }
 }
 
@@ -110,7 +141,12 @@ enum GameProviderCatalog {
             supportedGames: [.theFinals],
             capabilities: [.rankedScore, .rankTier, .latestSession, .matchHistory],
             auth: .bearer,
-            defaultBaseURL: "https://api.finals.id"
+            defaultBaseURL: "https://api.finals.id",
+            supportedMetrics: [
+                .rankedScore, .rankTier, .kills, .deaths, .assists,
+                .killDeathRatio, .damage, .matchesPlayed, .wins, .winRate
+            ],
+            symbolName: "scope"
         )
     ]
 
@@ -149,6 +185,42 @@ struct GameProviderConnection: Hashable, Sendable {
     }
 }
 
+/// Why a provider connection is not usable yet. Typed rather than stringly so
+/// Integrations can tell "not configured" apart from "configured but
+/// incomplete" and present each without dressing the first up as an error.
+enum GameProviderConfigurationIssue: Hashable, Sendable {
+    case invalidBaseURL
+    case missingCredential
+    case missingRankEndpointContract
+
+    /// Standalone sentence for the provider's own configuration sheet, where
+    /// naming the provider again would be redundant.
+    func message(for descriptor: GameProviderDescriptor) -> String {
+        switch self {
+        case .invalidBaseURL:
+            return "The API base URL is invalid."
+        case .missingCredential:
+            return "\(descriptor.auth.credentialLabel) is required."
+        case .missingRankEndpointContract:
+            return "The rank endpoint contract has not been configured yet."
+        }
+    }
+
+    /// Provider-prefixed phrasing used by logs and Game Tracker status text.
+    func prefixedMessage(for descriptor: GameProviderDescriptor) -> String {
+        let body: String
+        switch self {
+        case .invalidBaseURL:
+            body = "API base URL is invalid."
+        case .missingCredential:
+            body = "\(descriptor.auth.credentialLabel) is required."
+        case .missingRankEndpointContract:
+            body = "the rank endpoint contract has not been configured yet."
+        }
+        return "\(descriptor.id.displayName): \(body)"
+    }
+}
+
 /// Operator-supplied connection details for one provider. Stored per provider so
 /// adding a provider is a new dictionary entry rather than a new settings field.
 struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
@@ -173,23 +245,34 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         )
     }
 
-    /// `nil` when this connection is usable for the given provider.
-    func configurationIssue(for descriptor: GameProviderDescriptor) -> String? {
+    /// `true` once the operator has supplied this provider's credential. Being
+    /// credentialled is not the same as being usable — see `issue(for:)`.
+    var hasCredential: Bool {
+        !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// `nil` when this connection is usable for the given provider. Typed so
+    /// callers can distinguish "never set up" from "set up but incomplete"
+    /// without parsing a message.
+    func issue(for descriptor: GameProviderDescriptor) -> GameProviderConfigurationIssue? {
         let resolved = resolvedBaseURL(for: descriptor)
         guard let url = URL(string: resolved),
               let scheme = url.scheme?.lowercased(),
               ["http", "https"].contains(scheme),
               url.host != nil else {
-            return "\(descriptor.id.displayName): API base URL is invalid."
+            return .invalidBaseURL
         }
-        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "\(descriptor.id.displayName): \(descriptor.auth.credentialLabel) is required."
-        }
+        guard hasCredential else { return .missingCredential }
         if descriptor.requiresRankEndpointTemplate,
            !rankEndpointTemplate.contains("{playerID}") {
-            return "\(descriptor.id.displayName): the rank endpoint contract has not been configured yet."
+            return .missingRankEndpointContract
         }
         return nil
+    }
+
+    /// Provider-prefixed message for logs and cross-cutting status text.
+    func configurationIssue(for descriptor: GameProviderDescriptor) -> String? {
+        issue(for: descriptor)?.prefixedMessage(for: descriptor)
     }
 
     mutating func normalize() {
@@ -272,6 +355,20 @@ struct GameTrackedPlayer: Codable, Hashable, Identifiable, Sendable {
     /// Optional: a profile can still be polled on a schedule without it.
     var discordUserID: String = ""
 
+    /// Metrics whose movement causes an announcement. Counters are excluded by
+    /// design — kills only ever climb, so triggering on one would post after
+    /// every match. Defaults to the ranked score, preserving the original
+    /// behaviour for existing profiles.
+    var triggerMetrics: Set<GameMetricID> = [.rankedScore]
+    /// Metrics shown alongside a triggered announcement for context, whether or
+    /// not they moved.
+    var contextMetrics: Set<GameMetricID> = [.killDeathRatio, .wins]
+
+    /// Trigger metrics that are actually usable — a counter can never trigger.
+    var effectiveTriggerMetrics: Set<GameMetricID> {
+        triggerMetrics.filter(\.canTriggerAnnouncement)
+    }
+
     var resolvedDisplayName: String {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedName.isEmpty ? playerID.trimmingCharacters(in: .whitespacesAndNewlines) : trimmedName
@@ -289,7 +386,8 @@ struct GameTrackedPlayer: Codable, Hashable, Identifiable, Sendable {
 }
 
 struct GameTrackingSettings: Codable, Hashable, Sendable {
-    var enabled = false
+    /// Poll the provider once a day for ranked-score changes.
+    var dailyCheckEnabled = false
     var checkHour = 9
     var checkMinute = 0
     var timeZoneIdentifier = TimeZone.current.identifier
@@ -305,6 +403,12 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
     /// Delay after a session ends before querying the provider, giving the game
     /// backend time to publish the final match.
     var sessionSettleDelaySeconds = 120
+
+    /// The service runs when either behaviour is switched on. There is no
+    /// separate master switch: a user turning both off has already expressed
+    /// "off", and a third flag only creates states where the UI says enabled
+    /// while nothing actually happens.
+    var enabled: Bool { dailyCheckEnabled || sessionTrackingEnabled }
 
     var sessionTrackerConfiguration: GameSessionTrackerConfiguration {
         GameSessionTrackerConfiguration(
@@ -337,7 +441,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
     }
 
     func configurationIssue(connections: GameProviderConnections) -> String? {
-        guard enabled else { return "Game Tracker is disabled." }
+        guard enabled else { return "Game Tracker is off. Turn on a daily check or play sessions." }
         let selectedPlayers = players.filter(\.isEnabled)
         guard !selectedPlayers.isEmpty else { return "Add or enable at least one player profile." }
         guard !selectedPlayers.contains(where: {
@@ -350,6 +454,30 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         }) else {
             return "Every enabled profile needs a Discord destination channel."
         }
+        // A provider connection is only required for the daily ranked poll.
+        // Presence-only session announcements need no provider at all.
+        if dailyCheckEnabled {
+            for providerID in activeProviderIDs() {
+                guard let descriptor = GameProviderCatalog.descriptor(for: providerID) else {
+                    return "\(providerID.displayName) is not a supported provider in this build."
+                }
+                if let issue = connections[providerID].configurationIssue(for: descriptor) {
+                    return issue
+                }
+            }
+        }
+        if sessionTrackingEnabled, presenceLinkedPlayers.isEmpty {
+            return "Add a Discord User ID to a profile to announce play sessions."
+        }
+        return nil
+    }
+
+    /// Blocks a ranked poll specifically. Unlike `configurationIssue`, this
+    /// always demands a usable provider connection, so the manual "Check Now"
+    /// action cannot run when only session announcements are switched on.
+    func rankPollingIssue(connections: GameProviderConnections) -> String? {
+        let selectedPlayers = players.filter(\.isEnabled)
+        guard !selectedPlayers.isEmpty else { return "Add or enable at least one player profile." }
         for providerID in activeProviderIDs() {
             guard let descriptor = GameProviderCatalog.descriptor(for: providerID) else {
                 return "\(providerID.displayName) is not a supported provider in this build."
@@ -361,8 +489,58 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         return nil
     }
 
+    func canPollRanks(connections: GameProviderConnections) -> Bool {
+        rankPollingIssue(connections: connections) == nil
+    }
+
     func isReady(connections: GameProviderConnections) -> Bool {
         enabled && configurationIssue(connections: connections) == nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dailyCheckEnabled
+        case enabled // legacy master flag, decode-only
+        case checkHour
+        case checkMinute
+        case timeZoneIdentifier
+        case players
+        case sessionTrackingEnabled
+        case sessionAbsenceGraceSeconds
+        case sessionMinimumDurationSeconds
+        case sessionSettleDelaySeconds
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Installs written before the daily/session split stored one `enabled`
+        // flag that meant "run the daily check".
+        dailyCheckEnabled = try container.decodeIfPresent(Bool.self, forKey: .dailyCheckEnabled)
+            ?? container.decodeIfPresent(Bool.self, forKey: .enabled)
+            ?? false
+        checkHour = try container.decodeIfPresent(Int.self, forKey: .checkHour) ?? 9
+        checkMinute = try container.decodeIfPresent(Int.self, forKey: .checkMinute) ?? 0
+        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
+            ?? TimeZone.current.identifier
+        players = try container.decodeIfPresent([GameTrackedPlayer].self, forKey: .players) ?? []
+        sessionTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .sessionTrackingEnabled) ?? false
+        sessionAbsenceGraceSeconds = try container.decodeIfPresent(Int.self, forKey: .sessionAbsenceGraceSeconds) ?? 180
+        sessionMinimumDurationSeconds = try container.decodeIfPresent(Int.self, forKey: .sessionMinimumDurationSeconds) ?? 300
+        sessionSettleDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .sessionSettleDelaySeconds) ?? 120
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dailyCheckEnabled, forKey: .dailyCheckEnabled)
+        try container.encode(checkHour, forKey: .checkHour)
+        try container.encode(checkMinute, forKey: .checkMinute)
+        try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
+        try container.encode(players, forKey: .players)
+        try container.encode(sessionTrackingEnabled, forKey: .sessionTrackingEnabled)
+        try container.encode(sessionAbsenceGraceSeconds, forKey: .sessionAbsenceGraceSeconds)
+        try container.encode(sessionMinimumDurationSeconds, forKey: .sessionMinimumDurationSeconds)
+        try container.encode(sessionSettleDelaySeconds, forKey: .sessionSettleDelaySeconds)
     }
 
     mutating func normalize() {
@@ -386,8 +564,57 @@ struct GameRankSnapshot: Codable, Hashable, Sendable {
     let displayName: String
     let season: String
     let rankName: String?
+    /// Headline ranked score. Zero when the provider has no rating for this
+    /// game — check `metrics` for what it did report.
     let score: Int
     let updatedAt: Date?
+    /// Everything else the provider returned. Ratios the provider omitted but
+    /// which can be derived from counters are filled in here.
+    var metrics: GameMetricSet = GameMetricSet()
+
+    private enum CodingKeys: String, CodingKey {
+        case game, provider, playerID, displayName, season, rankName, score, updatedAt, metrics
+    }
+
+    init(
+        game: GameID,
+        provider: GameProviderID,
+        playerID: String,
+        displayName: String,
+        season: String,
+        rankName: String?,
+        score: Int,
+        updatedAt: Date?,
+        metrics: GameMetricSet = GameMetricSet()
+    ) {
+        self.game = game
+        self.provider = provider
+        self.playerID = playerID
+        self.displayName = displayName
+        self.season = season
+        self.rankName = rankName
+        self.score = score
+        self.updatedAt = updatedAt
+        var resolved = metrics
+        // Keep the headline score reachable through the metric API too.
+        if resolved[.rankedScore] == nil, score != 0 {
+            resolved[.rankedScore] = Double(score)
+        }
+        self.metrics = resolved.derivingRatios()
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        game = try container.decode(GameID.self, forKey: .game)
+        provider = try container.decode(GameProviderID.self, forKey: .provider)
+        playerID = try container.decode(String.self, forKey: .playerID)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        season = try container.decode(String.self, forKey: .season)
+        rankName = try container.decodeIfPresent(String.self, forKey: .rankName)
+        score = try container.decode(Int.self, forKey: .score)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+        metrics = try container.decodeIfPresent(GameMetricSet.self, forKey: .metrics) ?? GameMetricSet()
+    }
 }
 
 struct GameRankChange: Hashable, Sendable {
@@ -401,6 +628,12 @@ struct GameRankChange: Hashable, Sendable {
     let rankName: String?
     let previousScore: Int
     let currentScore: Int
+    /// Every metric that moved, including the headline score when it is one of
+    /// them. Empty for providers that only report a rating.
+    var metricChanges: [GameMetricChange] = []
+    /// Current readings for metrics the profile wants shown as context, whether
+    /// or not they moved.
+    var contextMetrics: GameMetricSet = GameMetricSet()
 
     var delta: Int { currentScore - previousScore }
 }
@@ -414,6 +647,11 @@ struct GameRankBaseline: Codable, Hashable, Sendable {
     let rankName: String?
     let score: Int
     let recordedAt: Date
+    var metrics: GameMetricSet = GameMetricSet()
+
+    private enum CodingKeys: String, CodingKey {
+        case game, provider, playerID, displayName, season, rankName, score, recordedAt, metrics
+    }
 
     init(snapshot: GameRankSnapshot, displayName: String, recordedAt: Date) {
         game = snapshot.game
@@ -423,7 +661,22 @@ struct GameRankBaseline: Codable, Hashable, Sendable {
         season = snapshot.season
         rankName = snapshot.rankName
         score = snapshot.score
+        metrics = snapshot.metrics
         self.recordedAt = recordedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        game = try container.decode(GameID.self, forKey: .game)
+        provider = try container.decode(GameProviderID.self, forKey: .provider)
+        playerID = try container.decode(String.self, forKey: .playerID)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        season = try container.decode(String.self, forKey: .season)
+        rankName = try container.decodeIfPresent(String.self, forKey: .rankName)
+        score = try container.decode(Int.self, forKey: .score)
+        recordedAt = try container.decode(Date.self, forKey: .recordedAt)
+        // Baselines written before metrics existed carry only the score.
+        metrics = try container.decodeIfPresent(GameMetricSet.self, forKey: .metrics) ?? GameMetricSet()
     }
 }
 
@@ -503,7 +756,30 @@ enum GameRankEvaluator {
         if !previousSeason.isEmpty, !currentSeason.isEmpty, previousSeason != currentSeason {
             return .seasonChanged
         }
-        guard previous.score != current.score else { return .unchanged }
+        // Compare every trigger metric the profile asked for, falling back to
+        // the headline score when the provider reported nothing else.
+        let triggers = target.effectiveTriggerMetrics
+        var movements: [GameMetricChange] = []
+        for metric in triggers.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let currentValue = current.metrics[metric] else { continue }
+            let previousValue = previous.metrics[metric]
+                ?? (metric == .rankedScore ? Double(previous.score) : nil)
+            guard let previousValue, previousValue != currentValue else { continue }
+            movements.append(
+                GameMetricChange(metric: metric, previous: previousValue, current: currentValue)
+            )
+        }
+
+        // Nothing the profile cares about moved.
+        guard !movements.isEmpty || previous.score != current.score else { return .unchanged }
+        // A score move with no metric coverage still counts, so a rating-only
+        // provider behaves exactly as it did before metrics existed.
+        if movements.isEmpty, triggers.contains(.rankedScore) == false { return .unchanged }
+
+        var context = GameMetricSet()
+        for metric in target.contextMetrics {
+            if let value = current.metrics[metric] { context[metric] = value }
+        }
 
         return .changed(
             GameRankChange(
@@ -516,9 +792,10 @@ enum GameRankEvaluator {
                 season: current.season,
                 rankName: current.rankName,
                 previousScore: previous.score,
-                currentScore: current.score
+                currentScore: current.score,
+                metricChanges: movements,
+                contextMetrics: context
             )
         )
     }
 }
-

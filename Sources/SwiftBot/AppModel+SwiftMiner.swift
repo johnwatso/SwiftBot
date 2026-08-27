@@ -17,6 +17,23 @@ extension AppModel {
         }
     }
 
+    /// Drops the SwiftMiner pairing. Clears only the credentials and artwork
+    /// that came from the pairing bundle — per-user onboarding and delivery
+    /// bookkeeping is preserved so re-pairing does not re-send welcome DMs or
+    /// replay events that were already delivered.
+    func disconnectSwiftMiner() {
+        settings.swiftMiner.enabled = false
+        settings.swiftMiner.apiKey = ""
+        settings.swiftMiner.webhookSecret = ""
+        settings.swiftMiner.webhookHint = ""
+        settings.swiftMiner.artworkURL = ""
+        settings.swiftMiner.cachedArtworkFileName = ""
+        swiftMinerPairingStatusMessage = nil
+        swiftMinerPairingStatusSucceeded = false
+        saveSettings()
+        logs.append("[INFO] SwiftMiner pairing removed.")
+    }
+
     func decodeSwiftMinerPairingToken(_ rawToken: String) throws -> SwiftMinerPairingBundle {
         let trimmed = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SwiftMinerPairingError.empty }

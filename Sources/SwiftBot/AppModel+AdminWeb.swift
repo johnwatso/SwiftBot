@@ -1989,7 +1989,8 @@ extension AppModel {
             gameTrackerProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebGameTrackerPayload(
-                        enabled: false, statusText: "Unavailable", statusTone: "gray",
+                        enabled: false, dailyCheckEnabled: false, sessionTrackingEnabled: false,
+                        statusText: "Unavailable", statusTone: "gray",
                         configurationIssue: nil, checkInProgress: false, scheduleDescription: "Daily",
                         lastCheckAt: nil, nextCheckAt: nil, enabledPlayerCount: 0, totalPlayerCount: 0,
                         players: [], history: [], isPollingRuntime: false
@@ -3314,6 +3315,8 @@ extension AppModel {
 
         return AdminWebGameTrackerPayload(
             enabled: tracking.enabled,
+            dailyCheckEnabled: tracking.dailyCheckEnabled,
+            sessionTrackingEnabled: tracking.sessionTrackingEnabled,
             statusText: gameTrackingStatusText,
             statusTone: tone,
             configurationIssue: issue,

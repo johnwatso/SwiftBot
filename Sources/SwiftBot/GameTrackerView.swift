@@ -23,12 +23,9 @@ struct GameTrackerView: View {
 
                 trackedPlayersSection
 
-                HStack(alignment: .top, spacing: 16) {
-                    schedulePanel
-                        .frame(width: 330)
-                    recentActivityPanel
-                        .frame(maxWidth: .infinity)
-                }
+                automationPanel
+
+                recentActivityPanel
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -101,14 +98,12 @@ struct GameTrackerView: View {
                 }
                 .buttonStyle(GlassActionButtonStyle())
                 .disabled(
-                    !app.settings.gameTracking.isReady(connections: app.settings.gameProviders)
+                    !app.settings.gameTracking.canPollRanks(connections: app.settings.gameProviders)
                         || app.status != .running
                         || app.gameTrackingCheckInProgress
                 )
 
-                Toggle("Enabled", isOn: serviceEnabledBinding)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
+                servicePill
             }
         }
     }
@@ -328,14 +323,36 @@ struct GameTrackerView: View {
         .dashboardSurface()
     }
 
-    private var schedulePanel: some View {
+    /// One full-width card holding both of the service's behaviours side by
+    /// side. Neither half is wide enough to justify its own row, and keeping
+    /// them together is what makes the derived on/off state legible.
+    private var automationPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SettingsSectionHeader(title: "Schedule", systemImage: "calendar.badge.clock", titleFont: .headline)
+            SettingsSectionHeader(title: "Automation", systemImage: "gearshape.2", titleFont: .headline)
+
+            HStack(alignment: .top, spacing: 24) {
+                dailyCheckColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                playSessionsColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(14)
+        .dashboardSurface()
+    }
+
+    private var dailyCheckColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Daily ranked check", isOn: dailyCheckBinding)
+                .font(.subheadline.weight(.medium))
 
             HStack {
-                Text("Daily Check")
-                    .font(.subheadline)
-                Spacer()
+                Text("Runs at")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Picker("Hour", selection: scheduleHourBinding) {
                     ForEach(0..<24, id: \.self) { hour in
                         Text(hourLabel(hour)).tag(hour)
@@ -343,48 +360,45 @@ struct GameTrackerView: View {
                 }
                 .labelsHidden()
                 .frame(width: 110)
-            }
-
-            Divider()
-
-            LabeledContent("Time Zone") {
                 Text(app.settings.gameTracking.timeZoneIdentifier)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                Spacer()
             }
-            .font(.caption)
+            .disabled(!app.settings.gameTracking.dailyCheckEnabled)
+            .opacity(app.settings.gameTracking.dailyCheckEnabled ? 1 : 0.5)
 
             Text("A missed check catches up when SwiftBot next starts. First results and new seasons establish silent baselines.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            Divider()
-
-            SettingsSectionHeader(title: "Play Sessions", systemImage: "gamecontroller", titleFont: .headline)
-
-            Toggle("Announce play sessions", isOn: sessionTrackingBinding)
-                .font(.subheadline)
-
-            if app.settings.gameTracking.sessionTrackingEnabled {
-                LabeledContent("Linked profiles") {
-                    Text("\(app.settings.gameTracking.presenceLinkedPlayers.count)")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption)
-
-                Text("Detected from Discord rich presence. A session must last at least \(app.settings.gameTracking.sessionMinimumDurationSeconds / 60) minutes, and ends \(app.settings.gameTracking.sessionAbsenceGraceSeconds / 60) minutes after the game disappears so client restarts do not post twice.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if app.settings.gameTracking.presenceLinkedPlayers.isEmpty {
-                    Label("Add a Discord User ID to a profile to enable this.", systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .dashboardSurface()
+    }
+
+    private var playSessionsColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Play session announcements", isOn: sessionTrackingBinding)
+                .font(.subheadline.weight(.medium))
+
+            let linked = app.settings.gameTracking.presenceLinkedPlayers.count
+            HStack(spacing: 6) {
+                Image(systemName: linked > 0 ? "person.badge.clock" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(linked > 0 ? Color.secondary : Color.orange)
+                Text(linked > 0
+                     ? "\(linked) linked profile\(linked == 1 ? "" : "s")"
+                     : "No profiles linked to a Discord account")
+                    .font(.caption)
+                    .foregroundStyle(linked > 0 ? Color.secondary : Color.orange)
+                Spacer()
+            }
+            .opacity(app.settings.gameTracking.sessionTrackingEnabled ? 1 : 0.5)
+
+            Text("Detected from Discord rich presence. A session must last at least \(app.settings.gameTracking.sessionMinimumDurationSeconds / 60) minutes and ends \(app.settings.gameTracking.sessionAbsenceGraceSeconds / 60) minutes after the game disappears, so client restarts do not post twice.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var recentActivityPanel: some View {
@@ -397,7 +411,7 @@ struct GameTrackerView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
             } else {
-                ForEach(Array(app.gameTrackingHistory.prefix(5))) { entry in
+                ForEach(Array(app.gameTrackingHistory.prefix(8))) { entry in
                     HStack(alignment: .top, spacing: 9) {
                         Image(systemName: historySymbol(entry.kind))
                             .foregroundStyle(historyColor(entry.kind))
@@ -414,10 +428,10 @@ struct GameTrackerView: View {
                             Text(entry.detail)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                                .lineLimit(1)
                         }
                     }
-                    if entry.id != app.gameTrackingHistory.prefix(5).last?.id {
+                    if entry.id != app.gameTrackingHistory.prefix(8).last?.id {
                         Divider()
                     }
                 }
@@ -427,11 +441,34 @@ struct GameTrackerView: View {
         .dashboardSurface()
     }
 
-    private var serviceEnabledBinding: Binding<Bool> {
+    private var servicePill: some View {
+        let tracking = app.settings.gameTracking
+        let issue = tracking.configurationIssue(connections: app.settings.gameProviders)
+        let label: String
+        let color: Color
+        if !tracking.enabled {
+            label = "Off"
+            color = .secondary
+        } else if issue != nil {
+            label = "Needs setup"
+            color = .orange
+        } else {
+            label = "Active"
+            color = .green
+        }
+        return Text(label)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(color.opacity(0.12)))
+    }
+
+    private var dailyCheckBinding: Binding<Bool> {
         Binding(
-            get: { app.settings.gameTracking.enabled },
+            get: { app.settings.gameTracking.dailyCheckEnabled },
             set: { enabled in
-                app.settings.gameTracking.enabled = enabled
+                app.settings.gameTracking.dailyCheckEnabled = enabled
                 app.gameTrackingSettingsDidChange()
             }
         )
@@ -610,6 +647,29 @@ private struct GameTrackedPlayerEditor: View {
                     TextField("Provider Player ID", text: $player.playerID)
                 }
 
+                Section("Tracked Stats") {
+                    if availableMetrics.isEmpty {
+                        Text("This provider does not publish any trackable statistics yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        MetricChipGrid(
+                            title: "Announce when these change",
+                            metrics: availableMetrics.filter(\.canTriggerAnnouncement),
+                            selection: $player.triggerMetrics
+                        )
+                        Text("Counters such as kills only ever climb, so they cannot trigger an announcement \u{2014} they would post after every match. Pick them as context instead.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        MetricChipGrid(
+                            title: "Also show for context",
+                            metrics: availableMetrics,
+                            selection: $player.contextMetrics
+                        )
+                    }
+                }
+
                 Section("Play Sessions") {
                     TextField("Discord User ID", text: $player.discordUserID)
                     Text("Optional. Links this profile to a Discord account so SwiftBot can detect play sessions from rich presence and post a summary when the session ends.")
@@ -657,9 +717,58 @@ private struct GameTrackedPlayerEditor: View {
         GameProviderID.allCases.filter { $0.supportedGames.contains(player.game) }
     }
 
+    /// Only what the selected provider can actually report.
+    private var availableMetrics: [GameMetricID] {
+        let supported = GameProviderCatalog.descriptor(for: player.provider)?.supportedMetrics ?? []
+        return GameMetricID.allCases.filter { supported.contains($0) }
+    }
+
     private var isValid: Bool {
         !player.playerID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !player.destinationChannelID.isEmpty
             && player.provider.supportedGames.contains(player.game)
+    }
+}
+
+/// Multi-select chips for picking metrics. Kept generic so it serves both the
+/// trigger and context pickers without duplicating layout.
+private struct MetricChipGrid: View {
+    let title: String
+    let metrics: [GameMetricID]
+    @Binding var selection: Set<GameMetricID>
+
+    private let columns = [GridItem(.adaptive(minimum: 110), spacing: 6)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
+                ForEach(metrics) { metric in
+                    let isOn = selection.contains(metric)
+                    Button {
+                        if isOn { selection.remove(metric) } else { selection.insert(metric) }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                                .font(.caption2)
+                            Text(metric.displayName)
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            Capsule().fill(isOn ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+                        )
+                        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }

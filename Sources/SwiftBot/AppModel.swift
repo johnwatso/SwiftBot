@@ -162,6 +162,11 @@ final class AppModel: ObservableObject {
     @Published var gameTrackingNextCheckAt: Date?
     @Published var gameTrackingBaselines: [UUID: GameRankBaseline] = [:]
     @Published var gameTrackingHistory: [GameTrackingHistoryEntry] = []
+    /// Message from the most recent failed call to each game data provider,
+    /// cleared as soon as a call to that provider succeeds. Drives the
+    /// "Connection Failed" state in Settings › Integrations, so an unconfigured
+    /// provider is never mistaken for a broken one.
+    @Published var gameProviderConnectionFailures: [GameProviderID: String] = [:]
     // MARK: - P0.4 Diagnostics state
 
     @Published var connectionDiagnostics = ConnectionDiagnostics()

@@ -44,6 +44,13 @@ extension AppModel {
             gameTrackingStatusText = "Not running"
             return
         }
+        // The daily poll is its own switch now; sessions can run without it.
+        guard settings.gameTracking.dailyCheckEnabled else {
+            gameTrackingStatusText = settings.gameTracking.sessionTrackingEnabled
+                ? "Play sessions only"
+                : "Not running"
+            return
+        }
         if let issue = settings.gameTracking.configurationIssue(connections: settings.gameProviders) {
             gameTrackingStatusText = issue
             logs.append("[INFO] Game Tracker paused: \(issue)")
@@ -103,6 +110,12 @@ extension AppModel {
                 ?? "Not configured"
             return
         }
+        // A ranked poll always needs a usable provider, even when the daily
+        // schedule itself is switched off.
+        if let issue = settings.gameTracking.rankPollingIssue(connections: settings.gameProviders) {
+            gameTrackingStatusText = issue
+            return
+        }
         guard status == .running else {
             gameTrackingStatusText = "Start SwiftBot before checking"
             return
@@ -131,6 +144,7 @@ extension AppModel {
             do {
                 let snapshot = try await fetchGameRankSnapshot(for: target)
                 successfulFetches += 1
+                gameProviderConnectionFailures[target.provider] = nil
                 let key = target.id.uuidString
                 let baseline = GameRankBaseline(
                     snapshot: snapshot,
@@ -165,6 +179,7 @@ extension AppModel {
                     changedSnapshots.append((change, baseline))
                 }
             } catch {
+                gameProviderConnectionFailures[target.provider] = error.localizedDescription
                 failures.append("\(target.resolvedDisplayName): \(error.localizedDescription)")
             }
         }
@@ -284,6 +299,32 @@ extension AppModel {
     func loadGameTrackingStateForDisplay() async {
         let state = await gameTrackingStateStore.load()
         publishGameTrackingState(state)
+    }
+
+    /// Status shown for a provider in Settings › Integrations.
+    func integrationStatus(for providerID: GameProviderID) -> IntegrationConnectionStatus {
+        guard let descriptor = GameProviderCatalog.descriptor(for: providerID) else {
+            return .notConfigured
+        }
+        return .gameProvider(
+            connection: settings.gameProviders[providerID],
+            descriptor: descriptor,
+            lastFailure: gameProviderConnectionFailures[providerID]
+        )
+    }
+
+    /// Stores a provider connection edited in its configuration sheet. The
+    /// credential lands in the Keychain via `ConfigStore`; a stale failure from
+    /// a previous credential is cleared so the row reflects the new attempt.
+    func applyGameProviderConnection(
+        _ connection: GameProviderConnectionSettings,
+        for providerID: GameProviderID
+    ) {
+        var normalized = connection
+        normalized.normalize()
+        settings.gameProviders[providerID] = normalized
+        gameProviderConnectionFailures[providerID] = nil
+        gameTrackingSettingsDidChange()
     }
 
     func gameTrackingSettingsDidChange() {
