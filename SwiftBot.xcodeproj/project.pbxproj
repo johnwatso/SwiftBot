@@ -40,6 +40,7 @@
 		1879114BADC8D69EDBEFF3B0 /* GameSessionSummaryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE03315976AAC450CB490BF /* GameSessionSummaryBuilder.swift */; };
 		199A673F0A5398671620E5C2 /* DiscordPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0106453740296F8C83BCDA66 /* DiscordPreferencesView.swift */; };
 		19C4D928D452849117339B4C /* ActivityLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD5B099ADAC282CCF6D8CCBB /* ActivityLogView.swift */; };
+		19E22CD52F7E2C332448F73F /* GameMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 359EFAA303C29535F4F50CA2 /* GameMetricsTests.swift */; };
 		1A6BE29F7AB04A6A8E70C147 /* AuditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06E0C85825B8E281B30FE199 /* AuditView.swift */; };
 		1D0A2B21135BBBB021D4739A /* UpdateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = D69E6017EA1D016338C47909 /* UpdateSource.swift */; };
 		1D30EB61BE0A3E76319F3871 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C5788F384AF1C5CEC1A7137 /* main.swift */; };
@@ -52,6 +53,7 @@
 		26001C9AFAE18FF56EA4BCDD /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = 6BEFF4EF2D66A493DAF66DDA /* SwiftASN1 */; };
 		272E703A605272929F402E4E /* LogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80859225F976C75EFDB6B459 /* LogExporter.swift */; };
 		2782AC6744E0B9AC94CE141D /* MeshSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBE5EBDA57392AC43CCE370 /* MeshSyncTests.swift */; };
+		27FB124EFF8B3F1472527781 /* IntegrationStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89C9E7FA76CEBDF7DA7A57C3 /* IntegrationStatus.swift */; };
 		2847ED0EB0E83A5B06E69802 /* DiscordTimestamp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47FB5492E7AD64FBC5083CB8 /* DiscordTimestamp.swift */; };
 		28E77FAFC5F8084A01CB71DF /* AppModel+Voice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E4EC9D78C68ABE01644F817 /* AppModel+Voice.swift */; };
 		29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */ = {isa = PBXBuildFile; fileRef = C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */; };
@@ -74,6 +76,7 @@
 		3AA5917F094954284FBE5F72 /* GitHubService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB33AF73B410B2CBCD3B11BF /* GitHubService.swift */; };
 		3B75FC8A87C745BEDB09B767 /* AppSharedTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CB2A94B58F31E09599AA61 /* AppSharedTypes.swift */; };
 		3BEE1CEA79B0EB5CF68B502E /* WebUIPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E98793778F81DB2BF26E8B /* WebUIPreferencesView.swift */; };
+		3C08A41BDFB478C1CE0F8BDA /* SwiftMinerPairingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A644EABB5A66579E1E5896D0 /* SwiftMinerPairingSheet.swift */; };
 		3C1C26B9F698198C1D340768 /* DiscordMessageRESTClientDMTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15DCEE4759A584388ABAC846 /* DiscordMessageRESTClientDMTests.swift */; };
 		3CB0F17CB4E3C5D094130B1B /* EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1218F2D3CD35139659133AD3 /* EventBus.swift */; };
 		3D16A300F4DCD8FD5A33879B /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8450C4A48DC007496BAAD5D6 /* PatchyView.swift */; };
@@ -83,6 +86,7 @@
 		3F21CC7649E2FA9622D71744 /* TextChannelAnnouncerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BEF66B80A037B46C598D03 /* TextChannelAnnouncerTests.swift */; };
 		3F3EF4FAF4D2BCE7B8CC3CF0 /* AdminWebCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE53DBB48C421B9BF15DEF91 /* AdminWebCopyTests.swift */; };
 		408F2E17E2FF0510DEFCF083 /* AutomationModerationPrecedenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */; };
+		40B7A1A28464C12BD8208349 /* IntegrationsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8828189D72F4654219748D3 /* IntegrationsSettingsView.swift */; };
 		40E65BD3A18D3DD9604C1F36 /* AppModel+DiscordEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B80782DBD1EF5563074664 /* AppModel+DiscordEvents.swift */; };
 		40EEEB0FC47E27A70C5D25AF /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 7C341BA99920552C7CDA9D24 /* Sparkle */; };
 		41704AF1857CBC0E23F5CCE9 /* CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03299945FB9BAE2D02952CD /* CommandProcessor.swift */; };
@@ -138,7 +142,6 @@
 		749CCBC0FB596535E6607CC8 /* DiscordGatewayConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */; };
 		76C7817206B2687787250C9A /* RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26FF49BEB3FB1121D5D6B6EB /* RemoteModels.swift */; };
 		79F782A61C6E1790A4CFF561 /* CommonUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E08244F764D8DD025AB8F6A /* CommonUI.swift */; };
-		7A8F835C0FCB993DA59F3AFA /* GameProviderPreferencesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF728CA0FBE47F9E2DD6393 /* GameProviderPreferencesSection.swift */; };
 		7AEEABF5EE4F1E8741511E4D /* DMTimeoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */; };
 		7B637D9D9A83750C7BF2CACF /* AppleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 956971B960C43D817EDDDE82 /* AppleService.swift */; };
 		7C8E2861223DCCBCE2E9DBF9 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB278722CB60B7E4792BB03D /* IntelligenceGlowBorder.swift */; };
@@ -172,7 +175,7 @@
 		9C0192C375D6B9626513FCEF /* SwiftMinerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D5B1293EB5A245701B5F04 /* SwiftMinerClient.swift */; };
 		9D0628EF8EB7D0F6972B5A84 /* AutomationAITransformTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */; };
 		9F327A8C13AE1959FC6E7265 /* VariableAutocompleteField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 522C60906F9932F6C65019FF /* VariableAutocompleteField.swift */; };
-		A028909EB5F5E6287BC3C72A /* SwiftMinerPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13186CAFC979304A004AE44D /* SwiftMinerPreferencesView.swift */; };
+		A052EBDCC4AFB88C007A7F4F /* GameMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A94F5F29F0C8D28724E9ED /* GameMetrics.swift */; };
 		A0C659E1F590EAB56FDC902E /* AuditViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19274FF535CCC83656F10282 /* AuditViewModel.swift */; };
 		A0E4B62E8D14100E3163AB9E /* VoiceRecoveryBackoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371732DE4DCB38531E12670F /* VoiceRecoveryBackoffTests.swift */; };
 		A11286CC06BF31DED460381F /* VoiceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C654453B8C0EDE901C01798 /* VoiceSettings.swift */; };
@@ -263,6 +266,7 @@
 		F034FD7DAC1C1CBE346C4371 /* RecordingsKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 886361EEFCD726EB521500E6 /* RecordingsKit.framework */; };
 		F07C545CBFF3406D51C93DC6 /* EmptyRuleOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF950DC05FEDEC53A0E7225 /* EmptyRuleOnboardingView.swift */; };
 		F0B2B5701138001C0B40F034 /* DiscordIdentityRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A0A18B259086CF2328D85A /* DiscordIdentityRESTClient.swift */; };
+		F0B8F2CC0FFE6CEBA65C8534 /* GameProviderConfigurationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25B5E210A99B2C4F7EACE16A /* GameProviderConfigurationSheet.swift */; };
 		F1058852BAF6862E05F83CA2 /* DiscordAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794252ACCFC6E05A409363F0 /* DiscordAIService.swift */; };
 		F26EBEE313045C5587DBDCFE /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 637196EF58EFB3DE507EEBD5 /* AnalyticsView.swift */; };
 		F2D195292A6C1FFA2C9B9DD6 /* PatchySwiftMinerCampaignRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A0E658387DA152DC3752958 /* PatchySwiftMinerCampaignRouter.swift */; };
@@ -353,7 +357,6 @@
 		0E94C07714D92AC1D7275E00 /* EmbedFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedFormatter.swift; sourceTree = "<group>"; };
 		1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTransportSecurityTests.swift; sourceTree = "<group>"; };
 		1218F2D3CD35139659133AD3 /* EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBus.swift; sourceTree = "<group>"; };
-		13186CAFC979304A004AE44D /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		13E0F76AF1F933F59A65CB21 /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
 		148146E9D6C2A1CABFEFF833 /* VoiceUntilEmptyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceUntilEmptyTests.swift; sourceTree = "<group>"; };
 		14B156B46AB6BBE21F4C86E1 /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
@@ -379,8 +382,10 @@
 		21C16880906FB1F98EF051F3 /* SwiftMinerDMRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouter.swift; sourceTree = "<group>"; };
 		21C985EE531CA6A336353012 /* TextChannelAnnouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextChannelAnnouncer.swift; sourceTree = "<group>"; };
 		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		25B5E210A99B2C4F7EACE16A /* GameProviderConfigurationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProviderConfigurationSheet.swift; sourceTree = "<group>"; };
 		25F59233FAE01955ADD9372E /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		26FF49BEB3FB1121D5D6B6EB /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
+		28A94F5F29F0C8D28724E9ED /* GameMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameMetrics.swift; sourceTree = "<group>"; };
 		28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSessionStoreTests.swift; sourceTree = "<group>"; };
 		29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupServiceTests.swift; sourceTree = "<group>"; };
 		2B026EFC9AE62F7E5F97EF75 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -400,6 +405,7 @@
 		3360744C3501376DD639548C /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
 		352900AC9EE29A8F31F209CC /* SwiftMinerDMTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMTheme.swift; sourceTree = "<group>"; };
 		354B1FFFE908028CDB42E1F3 /* BuiltInUpdateSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInUpdateSources.swift; sourceTree = "<group>"; };
+		359EFAA303C29535F4F50CA2 /* GameMetricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameMetricsTests.swift; sourceTree = "<group>"; };
 		371732DE4DCB38531E12670F /* VoiceRecoveryBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecoveryBackoffTests.swift; sourceTree = "<group>"; };
 		3831E30606F74658B5E53A7E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		3A0E658387DA152DC3752958 /* PatchySwiftMinerCampaignRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchySwiftMinerCampaignRouter.swift; sourceTree = "<group>"; };
@@ -481,6 +487,7 @@
 		883F2A4B2FE4E51D9D491753 /* AppModel+AI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AI.swift"; sourceTree = "<group>"; };
 		886361EEFCD726EB521500E6 /* RecordingsKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = RecordingsKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8964B98159AC25452C4423DF /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = SwiftBot.icon; sourceTree = "<group>"; };
+		89C9E7FA76CEBDF7DA7A57C3 /* IntegrationStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationStatus.swift; sourceTree = "<group>"; };
 		8B5256CC38B52DF9D53176CB /* AppModel+BotLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+BotLifecycle.swift"; sourceTree = "<group>"; };
 		8CEF7EB5B287F29B8308E663 /* cloudflared */ = {isa = PBXFileReference; path = cloudflared; sourceTree = "<group>"; };
 		8DE5CC58AB07D284D32766A1 /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
@@ -512,6 +519,8 @@
 		A380D54604E7075186DF0710 /* FinalsIDModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalsIDModels.swift; sourceTree = "<group>"; };
 		A3D7686E83795D5BDCFDBCF9 /* FinalsIDAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalsIDAPIClient.swift; sourceTree = "<group>"; };
 		A47F215D3ADFD09AC1D0E8CB /* SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshSetupView.swift; sourceTree = "<group>"; };
+		A644EABB5A66579E1E5896D0 /* SwiftMinerPairingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPairingSheet.swift; sourceTree = "<group>"; };
+		A8828189D72F4654219748D3 /* IntegrationsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationsSettingsView.swift; sourceTree = "<group>"; };
 		A933AF0A5FA75FD751954082 /* VoiceTTSSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTTSSource.swift; sourceTree = "<group>"; };
 		A9F0D5CD0C8C8D93EE4D621E /* OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStyles.swift; sourceTree = "<group>"; };
 		AA8E5774B16EF9FB0F53A83B /* AppModel+VoicePresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+VoicePresence.swift"; sourceTree = "<group>"; };
@@ -561,7 +570,6 @@
 		E45D44EE6B96566AC77A5C0A /* AppModel+WikiBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+WikiBridge.swift"; sourceTree = "<group>"; };
 		E495B6299B8BB1DD6834DE29 /* GatewayEventPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEventPresentationTests.swift; sourceTree = "<group>"; };
 		EA92A70C27956B55998CB8A5 /* AutomationConflictDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationConflictDetector.swift; sourceTree = "<group>"; };
-		EAF728CA0FBE47F9E2DD6393 /* GameProviderPreferencesSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProviderPreferencesSection.swift; sourceTree = "<group>"; };
 		EB33AF73B410B2CBCD3B11BF /* GitHubService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubService.swift; sourceTree = "<group>"; };
 		EBEE8DEFE1A39BC0B627AED5 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		EC86FAC3F5E18EB5479DFF96 /* SwiftMinerEditGamesModalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerEditGamesModalTests.swift; sourceTree = "<group>"; };
@@ -674,6 +682,7 @@
 				AACEF05469E5AF7C7BF81683 /* DiscordServiceDMTests.swift */,
 				FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */,
 				D16D8F3F95BC54588A22C582 /* FinalsIDTests.swift */,
+				359EFAA303C29535F4F50CA2 /* GameMetricsTests.swift */,
 				E4135118D10757C553BD2395 /* GamePresenceSessionTests.swift */,
 				531FCE63D1120FE35E3F028F /* GameProviderAbstractionTests.swift */,
 				69F5BC752F48845CADB3CA37 /* GatewayDMHandlingTests.swift */,
@@ -845,10 +854,11 @@
 				0106453740296F8C83BCDA66 /* DiscordPreferencesView.swift */,
 				3360744C3501376DD639548C /* DiscordService.swift */,
 				CAF950DC05FEDEC53A0E7225 /* EmptyRuleOnboardingView.swift */,
-				EAF728CA0FBE47F9E2DD6393 /* GameProviderPreferencesSection.swift */,
+				25B5E210A99B2C4F7EACE16A /* GameProviderConfigurationSheet.swift */,
 				060ADA82554C3C1D4E85BC2B /* GameTrackerView.swift */,
 				ED2CF29F9F8DB07E15A6B797 /* GeneralPreferencesView.swift */,
 				8DE5CC58AB07D284D32766A1 /* HelpEngine.swift */,
+				A8828189D72F4654219748D3 /* IntegrationsSettingsView.swift */,
 				CB278722CB60B7E4792BB03D /* IntelligenceGlowBorder.swift */,
 				80859225F976C75EFDB6B459 /* LogExporter.swift */,
 				C119133B577236BB2522E3AE /* MediaStreamDebug.swift */,
@@ -874,7 +884,7 @@
 				53FB3C81292CC293ED07F43C /* SwiftBotApp.swift */,
 				A47F215D3ADFD09AC1D0E8CB /* SwiftMeshSetupView.swift */,
 				C15B689C01D6FF29CC5E66B3 /* SwiftMeshView.swift */,
-				13186CAFC979304A004AE44D /* SwiftMinerPreferencesView.swift */,
+				A644EABB5A66579E1E5896D0 /* SwiftMinerPairingSheet.swift */,
 				1EEA0FB4BE4A2575A0E7DB68 /* UpdatesPreferencesView.swift */,
 				87AC4E5BF73C4C6BC7DF7E4B /* UserTimezonesView.swift */,
 				522C60906F9932F6C65019FF /* VariableAutocompleteField.swift */,
@@ -961,8 +971,10 @@
 				82266A5BF1F54F34EDC49019 /* DiscordCache.swift */,
 				1218F2D3CD35139659133AD3 /* EventBus.swift */,
 				A380D54604E7075186DF0710 /* FinalsIDModels.swift */,
+				28A94F5F29F0C8D28724E9ED /* GameMetrics.swift */,
 				561FEC07FFD01F610280F12A /* GameTrackingModels.swift */,
 				6D5D15ACDB94FE515E94F85D /* GatewayModels.swift */,
+				89C9E7FA76CEBDF7DA7A57C3 /* IntegrationStatus.swift */,
 				A1B6102C6401DD65125DFF91 /* KeychainHelper.swift */,
 				2F4C504701AF47831B437AE8 /* MediaThumbnailCache.swift */,
 				1F55B75F302A6FF7106C7B75 /* MusicModels.swift */,
@@ -1256,8 +1268,9 @@
 				EA6A07BDF1BF65FEAF7985AA /* FinalsIDAPIClient.swift in Sources */,
 				434C9F1F5D0A7B7C2F42BC1F /* FinalsIDModels.swift in Sources */,
 				5BCF6F189105C9E3117E6A3E /* FinalsIDRuntime.swift in Sources */,
+				A052EBDCC4AFB88C007A7F4F /* GameMetrics.swift in Sources */,
 				5CADC54CE6CF4F01D15F307C /* GamePresenceSessionTracker.swift in Sources */,
-				7A8F835C0FCB993DA59F3AFA /* GameProviderPreferencesSection.swift in Sources */,
+				F0B8F2CC0FFE6CEBA65C8534 /* GameProviderConfigurationSheet.swift in Sources */,
 				0BB031B715A860C3503A25E8 /* GameProviderRegistry.swift in Sources */,
 				1879114BADC8D69EDBEFF3B0 /* GameSessionSummaryBuilder.swift in Sources */,
 				57AD01996746C06CB35A42CE /* GameTrackerView.swift in Sources */,
@@ -1268,6 +1281,8 @@
 				3161511E1067675942079612 /* GeneralPreferencesView.swift in Sources */,
 				3AA5917F094954284FBE5F72 /* GitHubService.swift in Sources */,
 				71F4C42C87088BF4C1AD157B /* HelpEngine.swift in Sources */,
+				27FB124EFF8B3F1472527781 /* IntegrationStatus.swift in Sources */,
+				40B7A1A28464C12BD8208349 /* IntegrationsSettingsView.swift in Sources */,
 				ECD55E2B486FCDE4D3333598 /* IntelService.swift in Sources */,
 				7C8E2861223DCCBCE2E9DBF9 /* IntelligenceGlowBorder.swift in Sources */,
 				FE2C59782108E00A4CF09BCF /* KeychainHelper.swift in Sources */,
@@ -1321,7 +1336,7 @@
 				DF44381E5311FB180D482589 /* SwiftMinerDMTheme.swift in Sources */,
 				7D539F732EDB5BE24F265F6F /* SwiftMinerDMTypes.swift in Sources */,
 				E27CD7C67C1DF8833E8C2F7E /* SwiftMinerLinkWarningDismiss.swift in Sources */,
-				A028909EB5F5E6287BC3C72A /* SwiftMinerPreferencesView.swift in Sources */,
+				3C08A41BDFB478C1CE0F8BDA /* SwiftMinerPairingSheet.swift in Sources */,
 				2CD0CD605FD3CACF3B26FBE4 /* TextChannelAnnouncer.swift in Sources */,
 				86DE1B176292F7A9DB2488FA /* TunnelManager.swift in Sources */,
 				6788654FF0507DD9163D28AB /* UpdateChecker.swift in Sources */,
@@ -1391,6 +1406,7 @@
 				CD79F325926C9AFC89CD5A9F /* DiscordRateLimiterTests.swift in Sources */,
 				D55CF55772E4C031658C0980 /* DiscordServiceDMTests.swift in Sources */,
 				50F71E356115AC6C38996246 /* FinalsIDTests.swift in Sources */,
+				19E22CD52F7E2C332448F73F /* GameMetricsTests.swift in Sources */,
 				329C6F9DFEF2974E998831C4 /* GamePresenceSessionTests.swift in Sources */,
 				5E5EC0A7C25D77BE3C210868 /* GameProviderAbstractionTests.swift in Sources */,
 				57B689BC7F6E15C9D73DB81D /* GatewayDMHandlingTests.swift in Sources */,
@@ -1921,7 +1937,7 @@
 			repositoryURL = "https://github.com/johnwatso/swiftbot-opus.git";
 			requirement = {
 				kind = exactVersion;
-				version = 0.2.0;
+				version = 0.2.1;
 			};
 		};
 		C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
