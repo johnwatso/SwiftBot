@@ -1051,7 +1051,12 @@ extension AppModel {
         let channelID = voicePendingChannelID ?? settings.voice.voiceChannelID
         guard !shouldSuppressAutomaticAnnouncerConnection(guildID: guildID, channelID: channelID) else { return false }
         guard status == .running, !guildID.isEmpty, !channelID.isEmpty else { return false }
-        guard let delay = voiceRecovery.beginAttempt() else { return false }
+        voiceRecoveryStabilityTask?.cancel()
+        voiceRecoveryStabilityTask = nil
+        guard let delay = voiceRecovery.beginAttempt() else {
+            openVoiceRecoveryCircuitBreakerIfExhausted()
+            return false
+        }
 
         voiceConnectionStatus = .recovering("Rejoining after voice drop…")
         if let announcer = voiceAnnouncementServiceStorage {
@@ -1107,18 +1112,27 @@ extension AppModel {
     @discardableResult
     private func finishVoiceRecoveryIfNeeded(success: Bool) -> Bool {
         guard voiceRecovery.inProgress else { return false }
-        voiceRecovery.finish(success: success)
+        voiceRecovery.finishAttempt()
         voiceRecoveryTask = nil
         if success {
+            armVoiceRecoveryStabilityWindow()
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
-                description: "Voice auto-rejoin succeeded; queued reads are resuming."
+                description: "Voice auto-rejoin succeeded; queued reads are resuming. The retry budget will reset after 30 seconds of stability."
             ))
             return false
         }
         if scheduleVoiceAutoRecovery(reason: "the previous rejoin attempt failed") {
             return true
         }
+        openVoiceRecoveryCircuitBreakerIfExhausted()
+        return false
+    }
+
+    private func openVoiceRecoveryCircuitBreakerIfExhausted() {
+        guard !voiceRecovery.inProgress,
+              voiceRecovery.attemptsMade >= voiceRecovery.attemptsAllowed,
+              !announcerRecoveryCircuitBreaker.isOpen else { return }
         announcerRecoveryCircuitBreaker.trip(
             reason: "voice recovery exhausted after \(voiceRecovery.attemptsMade) attempts",
             attempts: voiceRecovery.attemptsMade
@@ -1127,12 +1141,40 @@ extension AppModel {
             time: Date(),
             description: "Voice auto-rejoin failed with no attempts remaining; recovery circuit breaker is open for 5 minutes and the announcer session was stopped."
         ))
-        return false
+    }
+
+    /// A transport handshake is not enough to prove recovery when DAVE is
+    /// processing a burst of add/remove proposals. Keep the consumed attempt
+    /// charged until the connection survives the participant-transition
+    /// window, so repeated short-lived successes eventually reach the circuit
+    /// breaker instead of producing an unbounded rejoin loop.
+    private func armVoiceRecoveryStabilityWindow() {
+        let attemptsAtConnection = voiceRecovery.attemptsMade
+        voiceRecoveryStabilityTask?.cancel()
+        voiceRecoveryStabilityTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.voiceRecoveryStabilityTask = nil
+            guard self.voiceConnectionStatus.isConnected,
+                  !self.voiceRecovery.inProgress,
+                  self.voiceRecovery.attemptsMade == attemptsAtConnection else { return }
+            self.voiceRecovery.reset()
+            self.addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice connection remained stable for 30 seconds; the auto-rejoin retry budget was restored."
+            ))
+        }
     }
 
     private func cancelVoiceRecovery() {
         voiceRecoveryTask?.cancel()
         voiceRecoveryTask = nil
+        voiceRecoveryStabilityTask?.cancel()
+        voiceRecoveryStabilityTask = nil
         voiceRecovery.cancel()
     }
 
@@ -1635,6 +1677,33 @@ extension AppModel {
         await speakAnnouncement(announcement)
     }
 
+    /// Announces a human departure from the exact channel where Announcer is
+    /// currently live. Voice-state moves use this for the old channel too, so
+    /// leaving for another room is announced just like disconnecting. Bot and
+    /// SwiftBot-owned departures are deliberately silent.
+    func announceMemberVoiceDeparture(
+        userID: String,
+        displayName: String,
+        channelID: String,
+        guildID: String
+    ) async {
+        let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
+        guard !botIDs.contains(userID),
+              voicePendingGuildID == guildID,
+              isVoiceConnected(to: channelID),
+              settings.voice.announcerConfigs.contains(where: {
+                  $0.enabled && $0.voiceChannelID == channelID
+              })
+        else { return }
+
+        let announcement = "\(displayName) has left."
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Announcer saying \(displayName) has left the active voice channel."
+        ))
+        await speakAnnouncement(announcement)
+    }
+
     /// Re-evaluate the optional presence-aware Announcer mode after any voice
     /// presence change. When the last human leaves, reads pause immediately and
     /// a short grace period avoids needless leave/rejoin churn for a brief hop.
@@ -1666,6 +1735,23 @@ extension AppModel {
         }
 
         guard emptyChannelDisconnectTask == nil else { return }
+        if let announcer = voiceAnnouncementServiceStorage {
+            let drained = await announcer.waitUntilIdle(timeout: .seconds(10))
+            if !drained {
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Announcer departure speech did not drain within 10 seconds; continuing the bounded empty-channel shutdown."
+                ))
+            }
+        }
+        // The goodbye can take a moment to render and play. A member may have
+        // returned while that actor work was in flight, so never continue from
+        // the pre-speech empty-room snapshot.
+        guard voiceConnectionStatus.isConnected,
+              voicePendingChannelID == channelId,
+              activeVoice.allSatisfy({
+                  $0.guildId != guildId || $0.channelId != channelId || botIDs.contains($0.userId)
+              }) else { return }
         let graceSeconds = min(120, max(0, config.emptyChannelGraceSeconds))
         if graceSeconds == 0 {
             await autoDisconnect(reason: "No human members remain in \"\(config.name)\"; disconnecting immediately (empty-channel grace disabled).")

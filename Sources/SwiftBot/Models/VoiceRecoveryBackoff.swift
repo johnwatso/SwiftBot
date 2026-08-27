@@ -37,12 +37,12 @@ struct VoiceRecoveryBackoff: Sendable, Equatable {
         return delay
     }
 
-    /// Close out the in-flight attempt. Success restores the full budget.
-    mutating func finish(success: Bool) {
+    /// Close out the in-flight attempt without refunding it. The owner restores
+    /// the budget only after the recovered connection remains healthy for its
+    /// stability window; otherwise a briefly successful but still-flapping
+    /// session could loop forever on attempt one.
+    mutating func finishAttempt() {
         inProgress = false
-        if success {
-            attemptsMade = 0
-        }
     }
 
     /// Abandon the in-flight attempt without touching the budget (e.g. the

@@ -300,6 +300,9 @@ final class AppModel: ObservableObject {
     /// that Discord can replay while the main gateway is reconnecting.
     var voicePipelineSessionID: String?
     var voiceRecoveryTask: Task<Void, Never>?
+    /// A recovered connection must survive this task before its spent retry
+    /// attempts are refunded. This keeps rapid DAVE membership churn bounded.
+    var voiceRecoveryStabilityTask: Task<Void, Never>?
     var voiceAutoConnectTask: Task<Void, Never>?
     var announcerHealthWatchdogTask: Task<Void, Never>?
     var voiceSettingsFinalSaveTask: Task<Void, Never>?

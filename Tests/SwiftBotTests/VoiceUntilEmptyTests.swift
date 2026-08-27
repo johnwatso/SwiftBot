@@ -100,6 +100,65 @@ final class VoiceUntilEmptyTests: XCTestCase {
     }
 
     @MainActor
+    func testAnnouncesHumanWhoLeavesAnActiveAnnouncerChannel() async throws {
+        let app = makeConnectedApp()
+        let announcer = try XCTUnwrap(app.voiceAnnouncementService)
+        await announcer.setPaused(true)
+
+        await app.announceMemberVoiceDeparture(
+            userID: "gabe",
+            displayName: "Gabe",
+            channelID: "voice-1",
+            guildID: "guild-1"
+        )
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Gabe has left."])
+    }
+
+    @MainActor
+    func testDoesNotAnnounceBotDeparture() async throws {
+        let app = makeConnectedApp()
+        app.knownBotUserIds = ["music-bot"]
+        let announcer = try XCTUnwrap(app.voiceAnnouncementService)
+        await announcer.setPaused(true)
+
+        await app.announceMemberVoiceDeparture(
+            userID: "music-bot",
+            displayName: "Music Bot",
+            channelID: "voice-1",
+            guildID: "guild-1"
+        )
+
+        let pending = await announcer.pending
+        XCTAssertTrue(pending.isEmpty)
+    }
+
+    @MainActor
+    func testMemberReturningDuringGoodbyePreventsStaleEmptyDisconnect() async throws {
+        let app = makeConnectedApp()
+        let playback = FakeAnnouncementPlayback()
+        await playback.setDelay(.milliseconds(200))
+        let announcer = try VoiceAnnouncementService(
+            playback: playback,
+            renderOverride: { _, _ in makeRenderedBuffer() }
+        )
+        app.voiceAnnouncementServiceStorage = announcer
+        app.activeVoice = [presence("swiftbot-self")]
+        await announcer.enqueue("Gabe has left.")
+
+        let emptyCheck = Task { @MainActor in
+            await app.handleAnnouncerPresenceChange(channelId: "voice-1", guildId: "guild-1")
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        app.activeVoice = [presence("swiftbot-self"), presence("alice")]
+        await emptyCheck.value
+
+        XCTAssertTrue(app.voiceConnectionStatus.isConnected)
+        XCTAssertNil(app.emptyChannelDisconnectTask)
+    }
+
+    @MainActor
     func testIgnoresMembersOfAnotherChannel() async throws {
         let app = makeConnectedApp()
         app.activeVoice = [presence("swiftbot-self"), presence("alice", channelId: "voice-2")]

@@ -20,8 +20,10 @@ actor VoicePlaybackService {
     struct DiagnosticsSnapshot: Sendable {
         let status: String
         let connectionGeneration: UInt64
+        let lastSuccessfulConnectionGeneration: UInt64?
         let lastFailureGeneration: UInt64?
         let lastFailureReason: String?
+        let lastFailureIsHistorical: Bool
         let hasGateway: Bool
         let hasTransport: Bool
         let hasEncryption: Bool
@@ -30,7 +32,11 @@ actor VoicePlaybackService {
         let isSpeaking: Bool
         let speakingElapsedSeconds: Double?
         let didSendFirstAudioFrame: Bool
+        let connectionEstablishedAt: Date?
         let lastAudioFrameSentAt: Date?
+        let mediaIdleSeconds: Double?
+        let recoveredDaveIdleRefreshArmed: Bool
+        let recoveredDaveIdleRefreshThresholdSeconds: Int
         let opusProfile: String
         let encodedAudioPacketCount: UInt64
         let encodedAudioByteCount: UInt64
@@ -71,6 +77,7 @@ actor VoicePlaybackService {
         let daveLastFailureOrigin: String?
         let daveLastFailureNativeSource: String?
         let daveLastFailureNativeReason: String?
+        let daveLastFailureIsHistorical: Bool
         let daveRecentEvents: [DaveDiagnosticEvent]
         let daveLastRecoveryAction: String?
         let daveLastMlsError: String?
@@ -118,6 +125,13 @@ actor VoicePlaybackService {
     /// watchdog: a native callback that never returns otherwise leaves the
     /// bot connected, visibly speaking, and permanently silent.
     private let daveTransitionGateProgressTimeout: Duration
+    /// A native DAVE failure can recover cleanly yet leave a replacement media
+    /// path that later becomes locally writable but inaudible after a long idle.
+    /// Arm one proactive rebuild only after such a failure, and only when the
+    /// next queued utterance crosses this idle boundary. Healthy sessions never
+    /// pay a periodic reconnect cost.
+    private let recoveredDaveIdleRefreshInterval: TimeInterval
+    private let now: @Sendable () -> Date
     private let opusProfile: OpusFrameEncoder.Profile
     private var status: Status = .idle
     private var gateway: (any VoicePlaybackGateway)?
@@ -214,6 +228,15 @@ actor VoicePlaybackService {
     /// installed its readiness continuation.
     private var lastFailureGeneration: UInt64?
     private var lastFailureReason: String?
+    private var lastSuccessfulConnectionGeneration: UInt64?
+    /// Keep the terminal native report after teardown. Resetting libdave is
+    /// necessary for recovery, but previously erased the only evidence that
+    /// distinguishes an MLS epoch failure from a generic failed-closed state.
+    private var lastDaveFailureReport: DaveFailureReport?
+    private var lastDaveFailureConnectionGeneration: UInt64?
+    /// Set by an actual DAVE failure and spent by at most one post-recovery
+    /// idle-media rebuild. It deliberately survives the normal rejoin.
+    private var recoveredDaveIdleRefreshArmed = false
     /// `gateway.connect()` is deliberately detached from the caller's
     /// readiness wait. Some socket implementations only finish their connect
     /// call after a close; keeping it as a cancellable worker means
@@ -256,6 +279,7 @@ actor VoicePlaybackService {
     private var lastKeepaliveSuccessAt: Date?
     private var lastKeepaliveFailureAt: Date?
     private var lastKeepaliveFailureReason: String?
+    private var connectionEstablishedAt: Date?
     private var lastAudioFrameSentAt: Date?
     private var encodedAudioPacketCount: UInt64 = 0
     private var encodedAudioByteCount: UInt64 = 0
@@ -314,7 +338,9 @@ actor VoicePlaybackService {
         daveDowngradeTransitionTimeout: Duration = .seconds(12),
         daveTransitionGateProgressTimeout: Duration = .seconds(15),
         networkPathRecoveryBudgetStabilityWindow: Duration = .seconds(30),
-        opusProfile: OpusFrameEncoder.Profile = .reliable
+        opusProfile: OpusFrameEncoder.Profile = .reliable,
+        recoveredDaveIdleRefreshInterval: TimeInterval = 20 * 60,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.session = session
         self.gatewayFactory = gatewayFactory
@@ -325,6 +351,8 @@ actor VoicePlaybackService {
         self.daveTransitionGateProgressTimeout = daveTransitionGateProgressTimeout
         self.networkPathRecoveryBudgetStabilityWindow = networkPathRecoveryBudgetStabilityWindow
         self.opusProfile = opusProfile
+        self.recoveredDaveIdleRefreshInterval = recoveredDaveIdleRefreshInterval
+        self.now = now
     }
 
     func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
@@ -550,14 +578,34 @@ actor VoicePlaybackService {
 
     func diagnosticsSnapshot() async -> DiagnosticsSnapshot {
         let dave = await daveCoordinator?.getDiagnostics()
+        let daveFailure = dave?.lastFailure ?? lastDaveFailureReport
+        let lastFailureIsHistorical = if let lastFailureGeneration,
+                                         let lastSuccessfulConnectionGeneration {
+            lastSuccessfulConnectionGeneration > lastFailureGeneration
+        } else {
+            false
+        }
+        let daveLastFailureIsHistorical = if dave?.lastFailure != nil {
+            false
+        } else if let lastDaveFailureConnectionGeneration,
+                  let lastSuccessfulConnectionGeneration {
+            lastSuccessfulConnectionGeneration > lastDaveFailureConnectionGeneration
+        } else {
+            false
+        }
+        let mediaIdleSeconds = (lastAudioFrameSentAt ?? connectionEstablishedAt).map {
+            max(0, now().timeIntervalSince($0))
+        }
         let speakingElapsedSeconds = speakingStartedAt.map { start in
             Self.durationSeconds(ContinuousClock().now - start)
         }
         return DiagnosticsSnapshot(
             status: label(for: status),
             connectionGeneration: connectionGeneration,
+            lastSuccessfulConnectionGeneration: lastSuccessfulConnectionGeneration,
             lastFailureGeneration: lastFailureGeneration,
             lastFailureReason: lastFailureReason,
+            lastFailureIsHistorical: lastFailureIsHistorical,
             hasGateway: gateway != nil,
             hasTransport: transport != nil,
             hasEncryption: encryption != nil,
@@ -566,7 +614,11 @@ actor VoicePlaybackService {
             isSpeaking: isSpeaking,
             speakingElapsedSeconds: speakingElapsedSeconds,
             didSendFirstAudioFrame: didSendFirstAudioFrameForSpeech,
+            connectionEstablishedAt: connectionEstablishedAt,
             lastAudioFrameSentAt: lastAudioFrameSentAt,
+            mediaIdleSeconds: mediaIdleSeconds,
+            recoveredDaveIdleRefreshArmed: recoveredDaveIdleRefreshArmed,
+            recoveredDaveIdleRefreshThresholdSeconds: Int(recoveredDaveIdleRefreshInterval),
             opusProfile: opusProfile.rawValue,
             encodedAudioPacketCount: encodedAudioPacketCount,
             encodedAudioByteCount: encodedAudioByteCount,
@@ -605,10 +657,11 @@ actor VoicePlaybackService {
             daveRosterMemberCount: dave?.rosterMemberCount,
             daveUnrecognizedRosterUserIds: await daveCoordinator?.unrecognizedRosterMembers() ?? [],
             daveEvictedTransitionCount: dave?.evictedTransitionCount,
-            daveLastFailureCode: dave?.lastFailure?.code.rawValue,
-            daveLastFailureOrigin: dave?.lastFailure?.origin.rawValue,
-            daveLastFailureNativeSource: dave?.lastFailure?.nativeSource,
-            daveLastFailureNativeReason: dave?.lastFailure?.nativeReason,
+            daveLastFailureCode: daveFailure?.code.rawValue,
+            daveLastFailureOrigin: daveFailure?.origin.rawValue,
+            daveLastFailureNativeSource: daveFailure?.nativeSource,
+            daveLastFailureNativeReason: daveFailure?.nativeReason,
+            daveLastFailureIsHistorical: daveLastFailureIsHistorical,
             daveRecentEvents: dave?.recentEvents ?? [],
             daveLastRecoveryAction: dave?.lastRecoveryAction?.rawValue,
             daveLastMlsError: dave?.lastMlsError,
@@ -781,6 +834,10 @@ actor VoicePlaybackService {
               let transport = transport,
               let opus = opus,
               let ssrc = ssrc else {
+            throw VoicePipelineError.notConnected
+        }
+        try await rebuildRecoveredDaveMediaAfterLongIdleIfNeeded(generation: generation)
+        guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
         guard await isDaveMediaReadyForCurrentSession() else {
@@ -1099,7 +1156,7 @@ actor VoicePlaybackService {
         guard isCurrentConnection(generation) else {
             throw VoicePipelineError.notConnected
         }
-        lastAudioFrameSentAt = Date()
+        lastAudioFrameSentAt = now()
         self.rtp = rtp
         self.encryption = encryption
         await noteFirstAudioFrameSent(generation: generation)
@@ -1971,6 +2028,35 @@ actor VoicePlaybackService {
         await failIfCurrent("DAVE \(context) failed: \(error.localizedDescription)", generation: generation)
     }
 
+    /// Spend the one-shot recovery armed by an earlier native DAVE failure.
+    /// The utterance has not sent a speaking update or media yet, so the
+    /// announcer can safely retain it while AppModel performs its ordinary
+    /// bounded rejoin. This targets the observed post-recovery idle failure
+    /// without periodically reconnecting every healthy Announcer session.
+    private func rebuildRecoveredDaveMediaAfterLongIdleIfNeeded(generation: UInt64) async throws {
+        guard isCurrentConnection(generation),
+              status == .connected,
+              recoveredDaveIdleRefreshArmed,
+              recoveredDaveIdleRefreshInterval > 0,
+              let idleSince = lastAudioFrameSentAt ?? connectionEstablishedAt else { return }
+        let idleSeconds = max(0, now().timeIntervalSince(idleSince))
+        guard idleSeconds >= recoveredDaveIdleRefreshInterval else { return }
+
+        // Spend before failing the connection. The recovery reason deliberately
+        // does not claim a second DAVE failure, so `fail` cannot re-arm it.
+        recoveredDaveIdleRefreshArmed = false
+        let roundedIdle = Int(idleSeconds.rounded(.down))
+        await debug(
+            "Recovered secure-media session was idle for \(roundedIdle)s; rebuilding voice once before sending the queued announcement.",
+            generation: generation
+        )
+        await failIfCurrent(
+            "recovered secure-media session was idle for \(roundedIdle)s; rebuilding once before queued speech",
+            generation: generation
+        )
+        throw VoicePipelineError.socketClosed
+    }
+
     private func scheduleDaveReadinessObservation(reason: String, generation: UInt64) {
         guard isCurrentConnection(generation), status == .connected, daveMediaRequired else { return }
         daveReadinessObservationTask?.cancel()
@@ -2096,14 +2182,23 @@ actor VoicePlaybackService {
 
     private func fail(_ reason: String, generation: UInt64) async {
         guard isCurrentConnection(generation) else { return }
-        Self.logger.error("voice pipeline failed: \(reason)")
+        let liveDaveFailure = await daveCoordinator?.getDiagnostics().lastFailure
+        if let liveDaveFailure {
+            lastDaveFailureReport = liveDaveFailure
+            lastDaveFailureConnectionGeneration = generation
+        }
+        if liveDaveFailure != nil || reason.localizedCaseInsensitiveContains("DAVE") {
+            recoveredDaveIdleRefreshArmed = true
+        }
+        let recordedReason = Self.failureReason(reason, including: liveDaveFailure)
+        Self.logger.error("voice pipeline failed: \(recordedReason)")
         let oldGateway = gateway
         let oldTransport = transport
         let oldDaveCoordinator = daveCoordinator
         let continuation = readyContinuationGeneration == generation ? readyContinuation : nil
 
         lastFailureGeneration = generation
-        lastFailureReason = reason
+        lastFailureReason = recordedReason
 
         invalidateConnection()
         readyContinuation = nil
@@ -2128,8 +2223,8 @@ actor VoicePlaybackService {
         pendingDaveSoleMemberReset = false
         connectStartedAt = nil
         lastDaveStepAt = nil
-        await setStatus(.failed(reason))
-        continuation?.resume(throwing: VoicePipelineError.unexpectedPayload(reason))
+        await setStatus(.failed(recordedReason))
+        continuation?.resume(throwing: VoicePipelineError.unexpectedPayload(recordedReason))
         await oldGateway?.disconnect()
         await oldTransport?.stop()
         await oldDaveCoordinator?.reset()
@@ -2160,6 +2255,8 @@ actor VoicePlaybackService {
             continuation?.resume(throwing: VoicePipelineError.notConnected)
             return
         }
+        connectionEstablishedAt = now()
+        lastSuccessfulConnectionGeneration = generation
         continuation?.resume()
         startKeepalive(generation: generation)
         scheduleNetworkPathRecoveryBudgetResetIfNeeded(generation: generation)
@@ -2332,6 +2429,7 @@ actor VoicePlaybackService {
         lastKeepaliveSuccessAt = nil
         lastKeepaliveFailureAt = nil
         lastKeepaliveFailureReason = nil
+        connectionEstablishedAt = nil
         lastAudioFrameSentAt = nil
         encodedAudioPacketCount = 0
         encodedAudioByteCount = 0
@@ -2367,6 +2465,7 @@ actor VoicePlaybackService {
         recoveredSpeechOperationReceipts.removeAll()
         awaitingVoiceResume = false
         keepaliveFailureCount = 0
+        connectionEstablishedAt = nil
         pathRecoveryRequested = false
     }
 
@@ -2592,6 +2691,26 @@ actor VoicePlaybackService {
     private func debug(_ message: String, generation: UInt64) async {
         guard isCurrentConnection(generation) else { return }
         await debug(message)
+    }
+
+    private static func failureReason(
+        _ reason: String,
+        including report: DaveFailureReport?
+    ) -> String {
+        guard let report else { return reason }
+        var details = [
+            "code=\(report.code.rawValue)",
+            "origin=\(report.origin.rawValue)"
+        ]
+        if let source = report.nativeSource, !source.isEmpty {
+            details.append("source=\(source)")
+        }
+        if let nativeReason = report.nativeReason, !nativeReason.isEmpty {
+            details.append("native=\(nativeReason)")
+        }
+        let suffix = details.joined(separator: ", ")
+        guard !reason.contains(suffix) else { return reason }
+        return "\(reason) [\(suffix)]"
     }
 
     private static func format(_ duration: Duration) -> String {

@@ -21,6 +21,7 @@ final class LogExporterTests: XCTestCase {
         let report = await LogExporter.buildReport(from: app)
 
         XCTAssertTrue(report.contains("voiceRecoveryInProgress=true attempts=1/2 schedule=0.75s,5.00s"))
+        XCTAssertTrue(report.contains("stabilityWindowPending=false"))
         XCTAssertTrue(report.contains("voiceLeaveAckState=pending preserveAnnouncerSession=true awaitingExternalDisconnectClosure=true"))
         XCTAssertTrue(report.contains("pendingJoinIntroduction=true"))
         XCTAssertTrue(report.contains("-- Voice Log (most recent 200) --"))

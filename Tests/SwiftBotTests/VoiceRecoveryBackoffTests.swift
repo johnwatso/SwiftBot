@@ -25,11 +25,11 @@ final class VoiceRecoveryBackoffTests: XCTestCase {
         var backoff = VoiceRecoveryBackoff(schedule: [.seconds(1), .seconds(2), .seconds(3)])
 
         XCTAssertEqual(backoff.beginAttempt(), .seconds(1))
-        backoff.finish(success: false)
+        backoff.finishAttempt()
         XCTAssertEqual(backoff.beginAttempt(), .seconds(2))
-        backoff.finish(success: false)
+        backoff.finishAttempt()
         XCTAssertEqual(backoff.beginAttempt(), .seconds(3))
-        backoff.finish(success: false)
+        backoff.finishAttempt()
         XCTAssertNil(backoff.beginAttempt(), "budget must be exhausted after the schedule runs out")
     }
 
@@ -40,16 +40,19 @@ final class VoiceRecoveryBackoffTests: XCTestCase {
         XCTAssertNil(backoff.beginAttempt(), "a second attempt must not start while one is in flight")
     }
 
-    func testSuccessRestoresFullBudget() {
+    func testFinishedAttemptRemainsConsumedUntilStableReset() {
         var backoff = VoiceRecoveryBackoff(schedule: [.seconds(1), .seconds(2)])
 
         XCTAssertNotNil(backoff.beginAttempt())
-        backoff.finish(success: false)
+        backoff.finishAttempt()
         XCTAssertNotNil(backoff.beginAttempt())
-        backoff.finish(success: true)
+        backoff.finishAttempt()
 
-        XCTAssertEqual(backoff.attemptsMade, 0)
-        XCTAssertEqual(backoff.beginAttempt(), .seconds(1))
+        XCTAssertEqual(backoff.attemptsMade, 2)
+        XCTAssertNil(backoff.beginAttempt(), "a short-lived connection must not refund a spent attempt")
+
+        backoff.reset()
+        XCTAssertEqual(backoff.beginAttempt(), .seconds(1), "the owner refunds attempts after its stability window")
     }
 
     func testCancelKeepsBudgetConsumed() {
