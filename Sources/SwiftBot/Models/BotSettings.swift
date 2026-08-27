@@ -379,6 +379,8 @@ struct BotSettings: Codable, Hashable {
     var patchy = PatchySettings()
     var musicLinkWatch = MusicLinkWatchSettings()
     var swiftMiner = SwiftMinerSettings()
+    var gameTracking = GameTrackingSettings()
+    var gameProviders = GameProviderConnections()
     var cachedBotIdentity = CachedBotIdentity()
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
@@ -444,6 +446,9 @@ struct BotSettings: Codable, Hashable {
         case patchy
         case musicLinkWatch
         case swiftMiner
+        case gameTracking
+        case gameProviders
+        case finalsID // legacy, decode-only
         case cachedBotIdentity
         case help
         case adminWebUI
@@ -496,6 +501,17 @@ struct BotSettings: Codable, Hashable {
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
         musicLinkWatch = try container.decodeIfPresent(MusicLinkWatchSettings.self, forKey: .musicLinkWatch) ?? MusicLinkWatchSettings()
         swiftMiner = try container.decodeIfPresent(SwiftMinerSettings.self, forKey: .swiftMiner) ?? SwiftMinerSettings()
+        gameTracking = try container.decodeIfPresent(GameTrackingSettings.self, forKey: .gameTracking) ?? GameTrackingSettings()
+        if let providers = try container.decodeIfPresent(GameProviderConnections.self, forKey: .gameProviders) {
+            gameProviders = providers
+        } else if let legacy = try container.decodeIfPresent(LegacyFinalsIDSettings.self, forKey: .finalsID) {
+            // Migrate the pre-multi-provider finals.id block into the keyed store.
+            var migrated = GameProviderConnections()
+            migrated[.finalsID] = legacy.migratedConnection
+            gameProviders = migrated
+        } else {
+            gameProviders = GameProviderConnections()
+        }
         cachedBotIdentity = try container.decodeIfPresent(CachedBotIdentity.self, forKey: .cachedBotIdentity) ?? CachedBotIdentity()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
@@ -539,6 +555,8 @@ struct BotSettings: Codable, Hashable {
         try container.encode(patchy, forKey: .patchy)
         try container.encode(musicLinkWatch, forKey: .musicLinkWatch)
         try container.encode(swiftMiner, forKey: .swiftMiner)
+        try container.encode(gameTracking, forKey: .gameTracking)
+        try container.encode(gameProviders, forKey: .gameProviders)
         try container.encode(cachedBotIdentity, forKey: .cachedBotIdentity)
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)

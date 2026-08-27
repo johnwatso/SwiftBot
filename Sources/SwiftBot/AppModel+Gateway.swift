@@ -46,6 +46,9 @@ extension AppModel {
             },
             onGuildDelete: { [weak self] event in
                 await self?.handleGuildDelete(event)
+            },
+            onPresenceUpdate: { [weak self] event in
+                await self?.handlePresenceUpdate(event)
             }
         )
     }
@@ -1748,6 +1751,18 @@ extension AppModel {
                 // A move empties the old channel just as a disconnect does.
                 // Without this, the last member hopping to another channel left
                 // the bot parked in an empty one indefinitely.
+                await announceMemberVoiceDeparture(
+                    userID: userId,
+                    displayName: previous.username,
+                    channelID: previous.channelId,
+                    guildID: guildId
+                )
+                await announceMemberVoiceJoin(
+                    userID: userId,
+                    displayName: next.username,
+                    channelID: next.channelId,
+                    guildID: guildId
+                )
                 await handleUntilEmptyCheck(leftChannelId: previous.channelId, guildId: guildId)
                 await handleAnnouncerPresenceChange(channelId: next.channelId, guildId: guildId)
             }
@@ -1775,6 +1790,12 @@ extension AppModel {
             let elapsedSec = Int(now.timeIntervalSince(startedAt))
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
+                await announceMemberVoiceDeparture(
+                    userID: userId,
+                    displayName: previous.username,
+                    channelID: previous.channelId,
+                    guildID: guildId
+                )
                 await handleUntilEmptyCheck(leftChannelId: previous.channelId, guildId: guildId)
             }
         }

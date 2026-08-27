@@ -9,6 +9,32 @@
 
 ## Recent Engineering Log
 
+### 2026-08-27 — Multi-provider Game Tracker, admin web parity, and presence sessions
+
+- [x] Generalised the Game Tracker wiring for multiple game APIs: provider descriptors now declare their own auth style (bearer / API-key header / query key), default base URL, and capabilities, with connections stored per provider and credentials keyed in the Keychain as `game-provider-token-<providerID>`. Legacy finals.id settings and its Keychain item migrate on first load.
+- [x] Replaced the finals.id `switch` with a `GameProviderRegistry`, so registering a provider is one catalog entry plus one client. Readiness checks are capability-aware — a provider that cannot report a ranked score is never asked for one and needs no rank endpoint.
+- [x] Wired Game Tracker into the admin web UI (nav entry, view, `/api/gametracker` snapshot and manual check), closing the native-sidebar parity test that blocked the branch.
+- [x] Added presence-driven play-session tracking: `PRESENCE_UPDATE` is now dispatched (the `GUILD_PRESENCES` intent was already in the identify bitmask), sessions debounce client restarts behind a grace window, short sessions are discarded, and a session summary is posted from real match data — or duration alone for games with no stats provider.
+- [x] Corrected the latest-round decoder against a real finals.id payload: the queue field is `mode`, not `node`, which previously decoded to nil against live data while a self-matching fixture passed. Collections now decode defensively and `partyMembers` accepts an object or an array.
+- [ ] (blocked: finals.id public API contract) Confirm authentication, the ranked-score endpoint, the latest-round listing path, and whether `mode` distinguishes rated queues, then validate against live accounts.
+
+### 2026-08-27 — Game Tracker service and finals.id provider preparation
+
+- [x] Added Game Tracker as a first-class sidebar service with provider-neutral game profiles, per-player Discord destinations, current ranked-score baselines, scheduling controls, recent activity, and reusable provider capability metadata.
+- [x] Added finals.id as the first provider with a compact Integrations connection card, Keychain-backed credentials, Primary-only daily scheduling at 9 AM local time, durable per-season SR baselines, and change-only Discord embeds.
+- [x] Modelled the proposed latest-played-round response for future session features while keeping combat score and generic score fields ineligible for SR announcements.
+- [ ] (blocked: finals.id public API contract) Confirm the authentication scheme, ranked-score endpoint template, stable player identifier, and explicit SR response field documented in `FINALS_ID_API_CONTRACT.md`, then validate against live accounts before enabling the integration.
+
+### 2026-08-26 — Announcer participant departures
+
+- [x] Announce human departures from an active Announcer channel, including moves to another voice channel, while suppressing bot/self departures and allowing the final goodbye to drain before Until Empty pauses or disconnects.
+
+### 2026-08-25 — Announcer post-DAVE idle recovery
+
+- [x] After a real DAVE failure and successful automatic rejoin, arm one media refresh before the next announcement only when the recovered session has been media-idle for 20 minutes; healthy sessions never reconnect solely because they are quiet, and the queued read survives the controlled refresh.
+- [x] Preserve the terminal native DAVE failure across teardown, label earlier connection failures as historical after recovery, clear stale Announcer failure health on resume, and state explicitly that UDP keepalive success proves only a local datagram write—not remote Discord media receipt.
+- [x] Require 30 seconds of healthy voice after an automatic rejoin before refunding its retry budget, preventing rapid DAVE participant churn from looping indefinitely through fresh attempt-one reconnects.
+
 ### 2026-08-21 — SwiftBot 1.23
 
 - [x] Bumped SwiftBot’s marketing version to 1.23 and its build number to 2026082111 for the Apple-native voice pipeline release.
@@ -323,6 +349,18 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 ---
 
 ## Session log
+
+### 2026-08-27 — Game Tracker service and finals.id provider preparation
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Added Game Tracker as a first-class Services sidebar destination and reshaped the initial finals.id work into a reusable game/provider model. The service owns per-player profiles, Discord destinations, ranked baselines, scheduling, manual checks, and recent activity; Integrations owns the compact Keychain-backed finals.id connection. Daily checks remain Primary-only with startup catch-up, silent initial/season baselines, change-only grouped Discord embeds, and defensive SR decoding. The live finals.id provider remains blocked until its public auth and rank endpoint contract is confirmed. |
+
+### 2026-08-25 — Announcer post-DAVE idle recovery
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Investigated the connected-but-inaudible 20-minute failure and added a one-shot, queue-preserving media rebuild for sessions that have recovered from a DAVE failure and then remained media-idle for 20 minutes. Healthy sessions do not refresh, successful recovery clears stale Announcer failure health, and exported diagnostics now preserve/classify DAVE failures and distinguish local UDP keepalive writes from remote delivery evidence. Added deterministic healthy-idle and one-shot post-DAVE recovery regressions. |
 
 ### 2026-08-21 — Swiftbot Opus Maintenance Fork
 

@@ -375,6 +375,10 @@ struct AppPreferencesSnapshot: Equatable {
     var useAIInGuildChannels = false
     var allowDMs = false
     var localAISystemPrompt = ""
+
+    // Game Tracker providers and profiles
+    var gameTracking = GameTrackingSettings()
+    var gameProviders = GameProviderConnections()
 }
 
 struct MeshSyncedFilesPayload: Codable, Hashable {

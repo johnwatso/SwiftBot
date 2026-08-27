@@ -203,6 +203,40 @@ struct AdminWebSweepPayload: Codable {
     let textChannelsByServer: [String: [AdminWebSimpleOption]]
 }
 
+struct AdminWebGameTrackerPlayerPayload: Codable {
+    let id: String
+    let game: String
+    let gameDisplayName: String
+    let provider: String
+    let providerDisplayName: String
+    let playerID: String
+    let displayName: String
+    let destinationChannelID: String
+    let destinationChannelName: String
+    let isEnabled: Bool
+    let supportsRankedScore: Bool
+    let season: String?
+    let rankName: String?
+    let score: Int?
+    let baselineRecordedAt: Date?
+}
+
+struct AdminWebGameTrackerPayload: Codable {
+    let enabled: Bool
+    let statusText: String
+    let statusTone: String
+    let configurationIssue: String?
+    let checkInProgress: Bool
+    let scheduleDescription: String
+    let lastCheckAt: Date?
+    let nextCheckAt: Date?
+    let enabledPlayerCount: Int
+    let totalPlayerCount: Int
+    let players: [AdminWebGameTrackerPlayerPayload]
+    let history: [GameTrackingHistoryEntry]
+    let isPollingRuntime: Bool
+}
+
 struct AdminWebSweepRunReportPayload: Codable {
     let report: SweepRunReport
 }
@@ -899,6 +933,8 @@ actor AdminWebServer {
     private var mediaClipExportStarter: (@Sendable (MediaExportClipRequest) async -> MediaExportJobResponse)?
     private var mediaMultiViewExportStarter: (@Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse)?
     private var sweepProvider: (@Sendable () async -> AdminWebSweepPayload)?
+    private var gameTrackerProvider: (@Sendable () async -> AdminWebGameTrackerPayload)?
+    private var gameTrackerCheckRunner: (@Sendable () async -> Bool)?
     private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
     private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
     private var createSweepPolicy: (@Sendable (AdminWebSweepPolicyCreatePatch) async -> SweepPolicy?)?
@@ -1019,6 +1055,8 @@ actor AdminWebServer {
         mediaPlaybackRecorder: @escaping @Sendable (AdminWebMediaPlaybackPatch) async -> Bool,
         mediaClipExportStarter: @escaping @Sendable (MediaExportClipRequest) async -> MediaExportJobResponse,
         mediaMultiViewExportStarter: @escaping @Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse,
+        gameTrackerProvider: @escaping @Sendable () async -> AdminWebGameTrackerPayload,
+        gameTrackerCheckRunner: @escaping @Sendable () async -> Bool,
         sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
         setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
         updateSweepPolicy: @escaping @Sendable (SweepPolicy) async -> Bool,
@@ -1104,6 +1142,8 @@ actor AdminWebServer {
         self.mediaClipExportStarter = mediaClipExportStarter
         self.mediaMultiViewExportStarter = mediaMultiViewExportStarter
         self.sweepProvider = sweepProvider
+        self.gameTrackerProvider = gameTrackerProvider
+        self.gameTrackerCheckRunner = gameTrackerCheckRunner
         self.setSweepGlobalPaused = setSweepGlobalPaused
         self.updateSweepPolicy = updateSweepPolicy
         self.createSweepPolicy = createSweepPolicy
@@ -2271,6 +2311,28 @@ actor AdminWebServer {
             }
             guard await pullPatchyTarget?(patch.targetID) == true else {
                 return jsonResponse(["error": "pull_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/gametracker"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await gameTrackerProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "gametracker_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/gametracker/check"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard await gameTrackerCheckRunner?() == true else {
+                return jsonResponse(["error": "check_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
         case ("GET", "/api/sweep"):

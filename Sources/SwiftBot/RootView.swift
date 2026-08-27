@@ -109,6 +109,7 @@ struct UnifiedRootView: View {
                 SwiftMeshView()
             }
         case .sweep: SweepView()
+        case .gameTracker: GameTrackerView()
         }
     }
 
@@ -176,6 +177,7 @@ struct DashboardSidebar: View {
                     }
 
                     Section("Services") {
+                        sidebarListRow(.gameTracker)
                         sidebarListRow(.patchy)
                         sidebarListRow(.sweep)
                         sidebarListRow(.wikiBridge)
