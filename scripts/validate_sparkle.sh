@@ -7,20 +7,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 INFO_PLIST="$ROOT_DIR/Sources/SwiftBot/Info.plist"
+PROJECT_YML="$ROOT_DIR/project.yml"
 
-# `.github/workflows/deploy-website.yml` rsyncs `docs/` over `Website/public/`
-# before publishing, so `docs/appcast.xml` — the file ShipHook rewrites on every
-# release — is the feed users' Sparkle actually fetches. Validating the
-# `Website/public/` copy instead reports on a file that never ships, which is
-# how a stale 1.22.10 enclosure once passed while 1.23 was live.
-APPCAST_STABLE="$ROOT_DIR/Website/public/appcast.xml"
-if [[ -f "$ROOT_DIR/docs/appcast.xml" ]]; then
-    APPCAST_STABLE="$ROOT_DIR/docs/appcast.xml"
-fi
-APPCAST_BETA="$ROOT_DIR/Website/public/beta/appcast.xml"
-if [[ -f "$ROOT_DIR/docs/beta/appcast.xml" ]]; then
-    APPCAST_BETA="$ROOT_DIR/docs/beta/appcast.xml"
-fi
+# Resolve a published site path the same way deployment does.
+# .github/workflows/deploy-website.yml runs `rsync -a docs/ Website/public/`
+# before uploading Website/public as the Pages artifact, so a file present in
+# docs/ overwrites its Website/public/ counterpart. Check docs/ first so this
+# script reads the bytes users actually fetch.
+resolve_published() {
+    local relative_path="$1"
+    if [[ -f "$ROOT_DIR/docs/$relative_path" ]]; then
+        echo "$ROOT_DIR/docs/$relative_path"
+    elif [[ -f "$ROOT_DIR/Website/public/$relative_path" ]]; then
+        echo "$ROOT_DIR/Website/public/$relative_path"
+    fi
+}
+
+# Reads the first <item>'s value for a given Sparkle tag.
+first_item_value() {
+    local appcast="$1" tag="$2"
+    grep -oE "<$tag>[^<]*</$tag>" "$appcast" | head -n 1 | sed -E "s|</?$tag>||g"
+}
+
+APPCAST_STABLE="$(resolve_published "appcast.xml")"
+APPCAST_BETA="$(resolve_published "beta/appcast.xml")"
 
 echo "🔍 Validating Sparkle Release Pipeline..."
 
@@ -47,28 +57,41 @@ fi
 echo "✅ SUPublicEDKey: $PUBLIC_KEY"
 
 # 3. Validate Stable Appcast
-if [[ ! -f "$APPCAST_STABLE" ]]; then
-    echo "❌ Error: Stable appcast missing at $APPCAST_STABLE"
+if [[ -z "$APPCAST_STABLE" ]]; then
+    echo "❌ Error: Stable appcast missing at docs/appcast.xml and Website/public/appcast.xml"
     exit 1
 fi
 echo "✅ Stable appcast (the file the deploy actually serves): ${APPCAST_STABLE#"$ROOT_DIR/"}"
 
-# 3a. Compare the feed against the version this checkout would build. ShipHook
+# Report the version this feed actually advertises, so a stale feed is visible.
+STABLE_VERSION=$(first_item_value "$APPCAST_STABLE" "sparkle:shortVersionString")
+STABLE_BUILD=$(first_item_value "$APPCAST_STABLE" "sparkle:version")
+if [[ -z "$STABLE_VERSION" ]]; then
+    echo "❌ Error: No sparkle:shortVersionString found in stable appcast"
+    exit 1
+fi
+
+# Compare the feed against the version this checkout would build. ShipHook
 # rewrites the appcast at publish time, so lagging behind is expected during
-# release prep — but matching an already-published build number means an update
-# nobody can receive, since Sparkle compares sparkle:version for equality.
+# release prep. Matching an already-published build number is an error because
+# Sparkle compares sparkle:version for equality and would offer no update.
 BUILD_VERSION=$(plutil -extract CFBundleVersion raw "$INFO_PLIST" 2>/dev/null || echo "")
 if [[ -z "$BUILD_VERSION" || "$BUILD_VERSION" == "\$(CURRENT_PROJECT_VERSION)" ]]; then
-    BUILD_VERSION=$(grep -m1 'CURRENT_PROJECT_VERSION:' "$ROOT_DIR/project.yml" | tr -d ' "' | cut -d: -f2)
+    BUILD_VERSION=$(grep -m1 'CURRENT_PROJECT_VERSION:' "$PROJECT_YML" | tr -d ' "' | cut -d: -f2)
 fi
-MARKETING=$(grep -m1 'MARKETING_VERSION:' "$ROOT_DIR/project.yml" | tr -d ' "' | cut -d: -f2)
-FEED_BUILD=$(grep -oE '<sparkle:version>[^<]+' "$APPCAST_STABLE" | head -n 1 | cut -d'>' -f2)
-FEED_SHORT=$(grep -oE '<sparkle:shortVersionString>[^<]+' "$APPCAST_STABLE" | head -n 1 | cut -d'>' -f2)
-echo "ℹ️  Checkout: $MARKETING ($BUILD_VERSION) — feed: ${FEED_SHORT:-?} (${FEED_BUILD:-?})"
-if [[ -n "$FEED_BUILD" && "$FEED_BUILD" == "$BUILD_VERSION" ]]; then
+MARKETING_VERSION=$(grep -E '^\s*MARKETING_VERSION:' "$PROJECT_YML" | head -n 1 | sed -E 's|.*:[[:space:]]*"?([^"]*)"?[[:space:]]*$|\1|')
+echo "ℹ️  Checkout: $MARKETING_VERSION ($BUILD_VERSION) — feed: $STABLE_VERSION (${STABLE_BUILD:-?})"
+
+if [[ -n "$STABLE_BUILD" && "$STABLE_BUILD" == "$BUILD_VERSION" ]]; then
     echo "❌ Error: this checkout's build number ($BUILD_VERSION) is already published in the feed."
     echo "   Sparkle would offer no update. Refresh CURRENT_PROJECT_VERSION before releasing."
     exit 1
+fi
+
+# Cross-check against project.yml. These legitimately differ between a version
+# bump and the publish that follows it, so this warns rather than fails.
+if [[ -n "$MARKETING_VERSION" && "$MARKETING_VERSION" != "$STABLE_VERSION" ]]; then
+    echo "⚠️  Warning: MARKETING_VERSION is $MARKETING_VERSION but stable appcast advertises $STABLE_VERSION"
 fi
 
 # Check if stable appcast contains the public key (as a comment or in signatures)
@@ -83,19 +106,27 @@ fi
 STABLE_URL=$(grep -oE 'url="https://github.com/[^"]+"' "$APPCAST_STABLE" | head -n 1 | cut -d'"' -f2)
 if [[ -n "$STABLE_URL" ]]; then
     echo "📡 Checking stable enclosure reachability: $STABLE_URL"
-    if curl --output /dev/null --silent --head --fail "$STABLE_URL"; then
+    if curl --output /dev/null --silent --location --head --fail "$STABLE_URL"; then
         echo "✅ Stable enclosure is reachable"
     else
-        echo "❌ Error: Stable enclosure is NOT reachable (HTTP 404 or other)"
-        # Don't exit 1 here yet, might be a very fresh release not yet uploaded
+        # Non-fatal: a freshly cut release may not have its asset uploaded yet.
+        echo "⚠️  Warning: Stable enclosure is NOT reachable (HTTP 404 or other)"
     fi
 fi
 
 # 5. Validate Beta Appcast (if it exists)
-if [[ -f "$APPCAST_BETA" ]]; then
-    echo "✅ Beta appcast found"
-    if ! grep -q "sparkle:edSignature" "$APPCAST_BETA"; then
-        echo "⚠️  Warning: No edSignature found in beta appcast."
+# The app derives the beta feed from SUFeedURL (see AppUpdater.betaFeedURL), so
+# this file is served at <feed dir>/beta/appcast.xml whenever it is present.
+if [[ -n "$APPCAST_BETA" ]]; then
+    echo "✅ Beta appcast: ${APPCAST_BETA#"$ROOT_DIR"/}"
+    if ! grep -q "<item>" "$APPCAST_BETA"; then
+        echo "ℹ️  Beta channel is empty (no beta releases published)"
+    else
+        BETA_VERSION=$(first_item_value "$APPCAST_BETA" "sparkle:shortVersionString")
+        echo "✅ Beta appcast advertises ${BETA_VERSION:-unknown}"
+        if ! grep -q "sparkle:edSignature" "$APPCAST_BETA"; then
+            echo "⚠️  Warning: No edSignature found in beta appcast."
+        fi
     fi
 else
     echo "ℹ️  Beta appcast not found (optional)"
