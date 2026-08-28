@@ -6,12 +6,15 @@ This folder contains the production website published at
 ## Structure
 
 - `public/` is the static site deployed to GitHub Pages.
-- `public/appcast.xml` and `public/beta/appcast.xml` are release-critical
-  Sparkle feeds managed by ShipHook.
-- `public/release-notes/` contains the stable release-note archive.
-- `../docs/appcast.xml` and `../docs/release-notes/` may contain
-  ShipHook-generated release metadata. Deployment overlays `docs/` onto
-  `public/`, so the docs copy wins when both exist.
+- `../docs/appcast.xml` is the live stable Sparkle feed, managed by ShipHook,
+  and is what `SUFeedURL` resolves to. `../docs/release-notes/` holds the notes
+  for ShipHook-published versions. Deployment overlays `docs/` onto `public/`,
+  so the docs copy wins when both exist — which is why there is deliberately no
+  `public/appcast.xml`.
+- `public/beta/appcast.xml` is the live beta feed (currently an empty channel).
+  `docs/` has no beta counterpart, so this file is served as-is.
+- `public/release-notes/` contains the pre-ShipHook release-note archive
+  (versions up to 1.22.5, plus older releases the docs copy does not carry).
 - `public/help/` contains the help and knowledge-base pages.
 - `styles/` is reserved for stylesheet source files that are not published
   directly (e.g. `tailwind.src.css`).

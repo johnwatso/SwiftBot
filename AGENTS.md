@@ -50,7 +50,7 @@ Do not use `swift build` or `swift test` as a substitute for validating the app 
 - `CURRENT_PROJECT_VERSION` is timestamp-based. Update it whenever release/version/build preparation is part of the requested work. Use the local project time at the moment of the change, formatted as `yyyyMMddHH` (example: `2026050813` means 2026 May 8 at 1pm).
 - Treat ShipHook/publish/release-prep work like SwiftMiner: refresh the build number before shipping, even when the marketing version stays the same.
 - When version metadata changes, keep `project.yml` and `SwiftBot.xcodeproj/project.pbxproj` aligned.
-- If release metadata is touched, also verify related Sparkle/appcast files under `Website/public/`:
+- If release metadata is touched, also verify the live Sparkle feed at `docs/appcast.xml`:
   - `sparkle:shortVersionString` should match `MARKETING_VERSION`.
   - `sparkle:version` should match the generated `CURRENT_PROJECT_VERSION` timestamp.
   - Any visible build references in release notes should match the generated build number.
@@ -61,8 +61,18 @@ Treat these as release-critical whenever touched:
 
 - `project.yml`
 - `SwiftBot.xcodeproj/project.pbxproj`
-- `Website/public/appcast.xml`
-- `Website/public/release-notes/*`
+- `docs/appcast.xml` — the live stable Sparkle feed, owned by ShipHook
+- `docs/release-notes/*` — release notes for versions published by ShipHook
+- `Website/public/beta/appcast.xml` — the live beta feed
+- `Website/public/release-notes/*` — the pre-ShipHook release-note archive
+
+`.github/workflows/deploy-website.yml` overlays `docs/` onto `Website/public/`
+(`rsync -a docs/ Website/public/`) and publishes the merged folder to GitHub
+Pages, so `docs/` wins wherever both contain the same path. `SUFeedURL` points
+at `https://johnwatso.github.io/SwiftBot/appcast.xml`, which is served from
+`docs/appcast.xml`. Do not reintroduce `Website/public/appcast.xml`: it is
+always shadowed by the `docs/` copy, so an edit there has no effect on what
+users fetch.
 
 Do not break:
 
