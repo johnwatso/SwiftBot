@@ -9,6 +9,15 @@
 
 ## Recent Engineering Log
 
+### 2026-08-28 — SwiftBot 1.24 release prep
+
+- [x] Bumped the marketing version to 1.24 and the build number to 2026082810. The six commits since the published 1.23 build (`2026082212`) were still carrying that already-released version identity, which would have left Sparkle with nothing to offer and collided with the existing `v1.23` tag and GitHub release.
+- [x] Fixed the admin web Game Tracker view calling `escapeHtml` where the helper is `escapeHTML`. The argument is evaluated before `.map` runs, so every configured player hit a `ReferenceError` that left the player list and recent activity blank; only the zero-player placeholder path rendered, which is why it went unnoticed.
+- [x] Moved the finals.id latest-round path into `FinalsIDAPIClient` so the player identifier is percent-encoded by the same rule as the rank endpoint. The call site had been interpolating it raw, so an identifier with a space or `#` silently reduced session summaries to duration alone.
+- [x] Charged the read-aloud thread's per-author cooldown only after a message clears the self/webhook/bot filters, instead of at the channel check. A post the announcer never read was spending the author's budget and silencing the message that followed.
+- [x] Pointed `scripts/validate_sparkle.sh` at `docs/appcast.xml` — the file the deploy workflow rsyncs over `Website/public/` and therefore actually serves — and made it fail when the checkout's build number is already published in the feed. It had been validating a `Website/public/appcast.xml` stale at 1.22.10 while 1.23 was live.
+- [ ] `Website/public/appcast.xml` remains stale at 1.22.10. It is overlaid by `docs/` at deploy time so it never reaches users, but it is still a trap for anyone reading it as the current feed.
+
 ### 2026-08-27 — Multi-provider Game Tracker, admin web parity, and presence sessions
 
 - [x] Generalised the Game Tracker wiring for multiple game APIs: provider descriptors now declare their own auth style (bearer / API-key header / query key), default base URL, and capabilities, with connections stored per provider and credentials keyed in the Keychain as `game-provider-token-<providerID>`. Legacy finals.id settings and its Keychain item migrate on first load.

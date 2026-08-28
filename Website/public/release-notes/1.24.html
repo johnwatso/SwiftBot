@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.24 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 32px 20px 48px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; color: #111827; }
+    main { max-width: 780px; margin: 0 auto; padding: 30px; border: 1px solid rgba(82, 96, 109, 0.14); border-radius: 18px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10); }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section { margin-top: 18px; padding: 18px 18px 14px; border: 1px solid rgba(82, 96, 109, 0.18); border-left: 5px solid var(--accent, #0a67a3); border-radius: 14px; background: rgba(255, 255, 255, 0.56); }
+    section.announcer { --accent: #7c3aed; }
+    section.tracker { --accent: #4f46e5; }
+    section.integrations { --accent: #0e7490; }
+    section.reliability { --accent: #15803d; }
+    section.fixes { --accent: #b45309; }
+    section.release { --accent: #52606d; }
+    .badge { display: inline-grid; width: 28px; height: 28px; place-items: center; margin-right: 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent); font-size: 16px; vertical-align: middle; }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    code { padding: 1px 5px; border-radius: 6px; background: rgba(82, 96, 109, 0.12); font-size: 0.92em; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main { background: rgba(15, 23, 32, 0.92); border-color: rgba(159, 176, 194, 0.14); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+      .meta, .summary { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section { border-color: rgba(159, 176, 194, 0.18); background: rgba(255, 255, 255, 0.04); }
+      code { background: rgba(159, 176, 194, 0.16); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.24</h1>
+    <p class="meta">Version 1.24 · Build 2026082810</p>
+    <p class="intro">A feature release: Game Tracker arrives as a new service, the Announcer gains a read-aloud thread and departure announcements, and every integration now lives on one Settings page.</p>
+
+    <section class="tracker">
+      <h2><span class="badge" aria-hidden="true">🎮</span>Game Tracker</h2>
+      <p class="summary">A new service that follows linked game accounts and posts changes to Discord. Off until you switch it on.</p>
+      <ul>
+        <li><strong>Ranked-score tracking:</strong> Add game profiles with their own Discord destination channel, and SwiftBot posts a grouped embed when a tracked score moves. Baselines are recorded silently, so the first check and each new season never produce a burst of noise.</li>
+        <li><strong>Play sessions from Discord presence:</strong> Optionally announce when a linked member starts and finishes a session. Brief client restarts are absorbed by a grace window, very short sessions are discarded, and the summary is built from real match data where the provider can supply it.</li>
+        <li><strong>Provider-neutral by design:</strong> Providers declare their own authentication style, base URL and capabilities, so a provider that cannot report a ranked score is never asked for one. finals.id ships as the first provider.</li>
+        <li><strong>Available in the web admin too:</strong> Game Tracker appears in the Services sidebar with status, tracked players, recent activity and a manual Check Now.</li>
+        <li><strong>Daily checks stay on Primary:</strong> Polling runs only on the active node, with catch-up at startup if a scheduled check was missed.</li>
+      </ul>
+    </section>
+
+    <section class="announcer">
+      <h2><span class="badge" aria-hidden="true">🧵</span>Announcer Read-Aloud Thread</h2>
+      <p class="summary"><code>/announce join</code> now opens a thread where anything typed is spoken into the voice channel.</p>
+      <ul>
+        <li><strong>Type to speak:</strong> Anyone who can see the thread can post and be read aloud, with no configuration needed — useful for someone without a microphone.</li>
+        <li><strong>Same rules as any other source:</strong> The thread feeds the existing announcer pipeline, so it inherits link stripping, long-message shortening, emoji-spam filtering and the self-message guard.</li>
+        <li><strong>Flood protection:</strong> A 400-character cap and a per-author cooldown keep one person from monopolising the queue, and announcer commands are not read back to the room.</li>
+        <li><strong>Tidied up on leave:</strong> The thread is archived when the announcer disconnects, which collapses it without destroying what anyone wrote.</li>
+      </ul>
+    </section>
+
+    <section class="announcer">
+      <h2><span class="badge" aria-hidden="true">👋</span>Departure Announcements</h2>
+      <p class="summary">The Announcer now says when someone leaves, not only when they arrive.</p>
+      <ul>
+        <li><strong>Leaving is announced like joining:</strong> Human departures from the active Announcer channel are spoken, including moves to another voice channel. Bot and SwiftBot departures stay silent.</li>
+        <li><strong>The goodbye finishes first:</strong> Until Empty waits for a final departure announcement to play before it pauses or disconnects.</li>
+      </ul>
+    </section>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">🔊</span>Voice Reliability</h2>
+      <p class="summary">Targeted work on the connected-but-silent failure that could follow a recovered secure-media session.</p>
+      <ul>
+        <li><strong>One-shot recovery after a long idle:</strong> Following a real DAVE failure and a successful rejoin, SwiftBot rebuilds the media path once before the next announcement — but only if the recovered session has been idle for 20 minutes. Healthy sessions never reconnect just because they are quiet, and the queued message survives the refresh.</li>
+        <li><strong>Rejoins must prove themselves:</strong> An automatic rejoin now has to stay healthy for 30 seconds before its retry budget is refunded, so rapid participant churn can no longer loop indefinitely through fresh first attempts.</li>
+        <li><strong>Honest diagnostics:</strong> Exported logs preserve the underlying DAVE failure across teardown, mark earlier failures as historical once a connection recovers, and state plainly that keepalive success proves a local write rather than delivery to Discord.</li>
+        <li><strong>Updated Opus codec:</strong> SwiftBot now uses <code>swiftbot-opus 0.2.1</code>.</li>
+      </ul>
+    </section>
+
+    <section class="integrations">
+      <h2><span class="badge" aria-hidden="true">🔗</span>Settings › Integrations</h2>
+      <p class="summary">One page that answers what SwiftBot can connect to, what is connected, and what needs attention.</p>
+      <ul>
+        <li><strong>Everything in one place:</strong> Game-tracking providers and companion apps now share a single overview, with credentials and advanced options in per-integration sheets.</li>
+        <li><strong>SwiftMiner pairing moved:</strong> SwiftMiner is now paired from its own sheet on the Integrations page instead of a separate preferences tab.</li>
+        <li><strong>Credentials in the Keychain:</strong> Provider tokens are stored per provider in the Keychain and never written to <code>settings.json</code>. Existing finals.id credentials migrate automatically on first launch.</li>
+      </ul>
+    </section>
+
+    <section class="fixes">
+      <h2><span class="badge" aria-hidden="true">🔧</span>Fixes</h2>
+      <ul>
+        <li><strong>Game Tracker renders in the web admin:</strong> A mistyped helper stopped the tracked-player list and recent activity from drawing as soon as any player was configured.</li>
+        <li><strong>Player identifiers are escaped in session lookups:</strong> Identifiers containing spaces or punctuation no longer break the request that fetches a session's matches, which previously reduced summaries to duration alone.</li>
+        <li><strong>Read-aloud cooldown counts only spoken messages:</strong> A filtered post — SwiftBot's own, a webhook, or a bot when those are skipped — no longer spends the author's cooldown and silences the message that follows.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">📦</span>Release Notes</h2>
+      <ul>
+        <li>Requires macOS 26 or later on Apple silicon.</li>
+        <li>Game Tracker is off by default. Both the daily check and play-session tracking are opt-in, and a provider needs its credentials and endpoint configured in Settings › Integrations before it will run.</li>
+        <li>Updates are delivered through Sparkle and verified with the SwiftBot signing key.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

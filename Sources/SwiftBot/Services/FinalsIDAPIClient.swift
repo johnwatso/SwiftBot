@@ -78,13 +78,23 @@ actor FinalsIDAPIClient: GameRankProvider {
         )
     }
 
+    /// Listing path for a player's recent rounds. Held here rather than at the
+    /// call site so the player identifier is encoded by the same rule as the
+    /// rank endpoint. Still part of the unconfirmed public contract — see
+    /// `Documentation/FINALS_ID_API_CONTRACT.md`.
+    private static let latestRoundPathTemplate = "/v1/players/{playerID}/rounds"
+
     func fetchLatestRound(
-        endpointPath: String,
+        playerID: String,
         connection: GameProviderConnection
     ) async throws -> FinalsIDLatestRoundResponse {
         guard let baseURL = normalizedBaseURL(connection.baseURL) else {
             throw FinalsIDAPIError.invalidBaseURL
         }
+        let endpointPath = Self.latestRoundPathTemplate.replacingOccurrences(
+            of: "{playerID}",
+            with: try Self.encodedPathSegment(playerID)
+        )
         guard let url = URL(string: endpointPath, relativeTo: baseURL)?.absoluteURL else {
             throw FinalsIDAPIError.invalidEndpoint
         }
@@ -122,18 +132,26 @@ actor FinalsIDAPIClient: GameRankProvider {
         guard template.contains("{playerID}") else {
             throw FinalsIDAPIError.endpointContractMissing
         }
-        var allowedPlayerIDCharacters = CharacterSet.urlPathAllowed
-        allowedPlayerIDCharacters.remove(charactersIn: "/")
-        guard let encodedPlayerID = playerID.addingPercentEncoding(
-            withAllowedCharacters: allowedPlayerIDCharacters
-        ) else {
-            throw FinalsIDAPIError.invalidEndpoint
-        }
-        let path = template.replacingOccurrences(of: "{playerID}", with: encodedPlayerID)
+        let path = template.replacingOccurrences(
+            of: "{playerID}",
+            with: try Self.encodedPathSegment(playerID)
+        )
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw FinalsIDAPIError.invalidEndpoint
         }
         return url
+    }
+
+    /// Percent-encodes an operator-supplied identifier for use as a single path
+    /// component. `/` is excluded from the allowed set so an identifier can
+    /// never escape its own segment and reshape the endpoint.
+    private static func encodedPathSegment(_ value: String) throws -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            throw FinalsIDAPIError.invalidEndpoint
+        }
+        return encoded
     }
 
     private func normalizedBaseURL(_ value: String) -> URL? {
