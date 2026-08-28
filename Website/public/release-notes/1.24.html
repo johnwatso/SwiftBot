@@ -45,11 +45,12 @@
       <h2><span class="badge" aria-hidden="true">🎮</span>Game Tracker</h2>
       <p class="summary">A new service that follows linked game accounts and posts changes to Discord. Off until you switch it on.</p>
       <ul>
-        <li><strong>Ranked-score tracking:</strong> Add game profiles with their own Discord destination channel, and SwiftBot posts a grouped embed when a tracked score moves. Baselines are recorded silently, so the first check and each new season never produce a burst of noise.</li>
-        <li><strong>Play sessions from Discord presence:</strong> Optionally announce when a linked member starts and finishes a session. Brief client restarts are absorbed by a grace window, very short sessions are discarded, and the summary is built from real match data where the provider can supply it.</li>
+        <li><strong>Tracks the stats a game actually has:</strong> Ranked score, K/D, wins and playtime are all first-class, so a provider reports what it has rather than being assumed to have a rating. Choose which metrics trigger an announcement and which ride along for context.</li>
+        <li><strong>Change-only announcements:</strong> Add game profiles with their own Discord destination channel, and SwiftBot posts a grouped embed when a tracked metric moves. Baselines are recorded silently — the first check and each new season never produce a burst of noise — and only advance once the message is actually delivered, so a failed post is retried rather than skipped.</li>
+        <li><strong>Play sessions from Discord presence:</strong> Optionally announce when a linked member starts and finishes a session. Sessions use Discord's own start timestamp, absorb brief client restarts behind a grace window, record the end as the moment the game disappeared, and discard runs below a minimum length. The summary is built from real match data, or from duration alone for games with no stats provider.</li>
         <li><strong>Provider-neutral by design:</strong> Providers declare their own authentication style, base URL and capabilities, so a provider that cannot report a ranked score is never asked for one. finals.id ships as the first provider.</li>
         <li><strong>Available in the web admin too:</strong> Game Tracker appears in the Services sidebar with status, tracked players, recent activity and a manual Check Now.</li>
-        <li><strong>Daily checks stay on Primary:</strong> Polling runs only on the active node, with catch-up at startup if a scheduled check was missed.</li>
+        <li><strong>Cluster-aware:</strong> Daily polling runs only on Primary, with catch-up at startup if a scheduled check was missed, and tracked profiles and provider connections replicate to failover nodes.</li>
       </ul>
     </section>
 
@@ -89,7 +90,8 @@
       <p class="summary">One page that answers what SwiftBot can connect to, what is connected, and what needs attention.</p>
       <ul>
         <li><strong>Everything in one place:</strong> Game-tracking providers and companion apps now share a single overview, with credentials and advanced options in per-integration sheets.</li>
-        <li><strong>SwiftMiner pairing moved:</strong> SwiftMiner is now paired from its own sheet on the Integrations page instead of a separate preferences tab.</li>
+        <li><strong>SwiftMiner pairing moved:</strong> SwiftMiner is now paired from its own sheet on the Integrations page instead of a separate preferences tab, and can be disconnected without losing per-user onboarding — re-pairing will not re-send welcome DMs or replay events that already went out.</li>
+        <li><strong>"Not set up" is not an error:</strong> An integration nobody has configured is shown as available rather than failing, so genuine problems stand out.</li>
         <li><strong>Credentials in the Keychain:</strong> Provider tokens are stored per provider in the Keychain and never written to <code>settings.json</code>. Existing finals.id credentials migrate automatically on first launch.</li>
       </ul>
     </section>
@@ -108,6 +110,8 @@
       <ul>
         <li>Requires macOS 26 or later on Apple silicon.</li>
         <li>Game Tracker is off by default. Both the daily check and play-session tracking are opt-in, and a provider needs its credentials and endpoint configured in Settings › Integrations before it will run.</li>
+        <li>Play-session tracking reads Discord rich presence. No developer-portal change is needed: SwiftBot has always required the privileged Presence intent to connect, so any working bot already has it enabled.</li>
+        <li>Known issue: the <code>/announce join</code> read-aloud thread is not created on some runs. This release adds a reason to the voice log for every path that declines to open it, so the cause can be identified from a running server.</li>
         <li>Updates are delivered through Sparkle and verified with the SwiftBot signing key.</li>
       </ul>
     </section>
