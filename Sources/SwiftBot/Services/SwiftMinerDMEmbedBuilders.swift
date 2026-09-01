@@ -568,25 +568,39 @@ enum SwiftMinerDMEmbedBuilders {
     static func buildPrioritisedGameNeedsLinkingEmbed(
         discordName: String?,
         affectedGame: String?,
+        issueKind: SwiftMinerIssueKind?,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
     ) -> [String: Any] {
         let game = affectedGame ?? "a prioritised game"
-        let desc = String(format: theme.prioritisedGameNeedsLinkingDescription, game)
+        // Claimed-but-undelivered is not the same problem as cannot-earn, and
+        // telling someone to go and earn rewards they already hold reads as a
+        // mistake. SwiftMiner distinguishes the two; honour it.
+        let awaitingDelivery = issueKind == .accountLinkDeliveryPending
+        let desc = String(
+            format: awaitingDelivery
+                ? theme.prioritisedGameDeliveryPendingDescription
+                : theme.prioritisedGameNeedsLinkingDescription,
+            game
+        )
 
         var fields: [[String: Any]] = []
         // Primary CTA: open the Twitch Drops page where the user manages Drops
         // and the linked account that claims them.
         fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
             title: "🔗 Open Twitch Drops",
-            value: "[Link your account for Drops](\(twitchDropsURL))"
+            value: awaitingDelivery
+                ? "[Link your account to receive them](\(twitchDropsURL))"
+                : "[Link your account for Drops](\(twitchDropsURL))"
         ))
         if let helpField = SwiftMinerDMEmbedPrimitives.makeHelpField(theme: theme) {
             fields.append(helpField)
         }
 
         let embed = SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "🔗 Link Twitch for \(game)",
+            title: awaitingDelivery
+                ? "🔗 \(game) rewards are waiting"
+                : "🔗 Link Twitch for \(game)",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .warning,
             fields: fields,

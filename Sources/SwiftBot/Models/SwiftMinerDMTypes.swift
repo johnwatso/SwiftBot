@@ -221,6 +221,9 @@ enum SwiftMinerPortalDestination: String, Codable, Sendable, CaseIterable {
 enum SwiftMinerIssueKind: String, Codable, Sendable, CaseIterable {
     case subscriptionRequired = "subscription_required"
     case accountLinkRequired = "account_link_required"
+    /// Drops are claimed on Twitch, but the missing account link stops the
+    /// publisher delivering them in-game. Nothing is at risk of being lost.
+    case accountLinkDeliveryPending = "account_link_delivery_pending"
     case connectionExpired = "connection_expired"
     case unknown
 
@@ -228,6 +231,7 @@ enum SwiftMinerIssueKind: String, Codable, Sendable, CaseIterable {
         switch self {
         case .subscriptionRequired: return "Twitch Subscription Required"
         case .accountLinkRequired: return "Account Linking Required"
+        case .accountLinkDeliveryPending: return "Rewards Waiting on an Account Link"
         case .connectionExpired: return "Twitch Connection Expired"
         case .unknown: return "Action Required"
         }

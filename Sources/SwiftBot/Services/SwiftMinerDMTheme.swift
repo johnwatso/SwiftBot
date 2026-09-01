@@ -85,6 +85,9 @@ struct SwiftMinerDMTheme: Sendable {
     var accountActionFixLabel: String = "🛠️ Next step"
     var accountActionFixValue: String = "Run `/miner action:status` for details, or `/miner action:setup` if Twitch needs reconnecting."
     var prioritisedGameNeedsLinkingDescription: String = "**%@** is prioritised, but no linked Twitch account can claim its Drops yet."
+    /// Used when the Drops are already claimed and only delivery is blocked, so
+    /// the DM does not tell someone to go and earn rewards they already hold.
+    var prioritisedGameDeliveryPendingDescription: String = "Your **%@** Drops are claimed and waiting. They cannot be delivered to the game until that account is linked to Twitch."
 
     // MARK: - Defaults
 

@@ -148,6 +148,7 @@ struct SwiftMinerDMRouter: Sendable {
             embed = SwiftMinerDMEmbedBuilders.buildPrioritisedGameNeedsLinkingEmbed(
                 discordName: discordName,
                 affectedGame: request.affectedGame,
+                issueKind: request.issueKind,
                 debug: request.debug,
                 theme: theme
             )

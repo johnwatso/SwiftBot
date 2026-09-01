@@ -376,6 +376,63 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         }))
     }
 
+    // MARK: - Claimed but undelivered
+
+    /// Telling someone to go and earn rewards they already hold reads as a bug,
+    /// so the claimed case gets its own wording.
+    func testDeliveryPendingLinkDMDoesNotTellTheUserToEarnAnything() {
+        let result = router.route(
+            request: .init(
+                messageType: .prioritisedGameNeedsLinking,
+                affectedGame: "Call of Duty: Modern Warfare 4",
+                issueKind: .accountLinkDeliveryPending
+            ),
+            discordName: nil
+        )
+
+        let body = embedTitle(result) + " " + embedDescription(result)
+        XCTAssertTrue(body.contains("waiting"), body)
+        XCTAssertTrue(body.contains("cannot be delivered"), body)
+        XCTAssertFalse(body.contains("can claim its Drops yet"), body)
+    }
+
+    func testUnclaimedLinkDMKeepsTheEarningWording() {
+        let result = router.route(
+            request: .init(
+                messageType: .prioritisedGameNeedsLinking,
+                affectedGame: "Call of Duty: Modern Warfare 4",
+                issueKind: .accountLinkRequired
+            ),
+            discordName: nil
+        )
+
+        let body = embedTitle(result) + " " + embedDescription(result)
+        XCTAssertTrue(body.contains("can claim its Drops yet"), body)
+        XCTAssertFalse(body.contains("waiting"), body)
+    }
+
+    /// An older SwiftMiner sends no issue_kind at all; that must keep the
+    /// original wording rather than silently switching to the claimed variant.
+    func testLinkDMWithoutAnIssueKindKeepsTheOriginalWording() {
+        let result = router.route(
+            request: .init(
+                messageType: .prioritisedGameNeedsLinking,
+                affectedGame: "Call of Duty: Modern Warfare 4"
+            ),
+            discordName: nil
+        )
+
+        XCTAssertTrue(embedDescription(result).contains("can claim its Drops yet"))
+    }
+
+    func testDeliveryPendingKindDecodesFromTheWire() throws {
+        let payload = #"{"message_type":"prioritised_game_needs_linking","issue_kind":"account_link_delivery_pending"}"#
+        let request = try JSONDecoder().decode(SwiftMinerDMRequest.self, from: Data(payload.utf8))
+
+        XCTAssertEqual(request.issueKind, .accountLinkDeliveryPending)
+        XCTAssertEqual(request.issueKind?.title, "Rewards Waiting on an Account Link")
+    }
+
     // MARK: - Payload compatibility
 
     func testPayloadsWithoutTheNewFieldsStillDecode() throws {
