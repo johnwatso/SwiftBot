@@ -11,6 +11,12 @@ import Foundation
 // - .linked         → track onboarding completion (unless debug)
 // - .setup          → does NOT track completion (onboarding started, not finished)
 // - all others      → do not mutate onboarding state
+//
+// Portal links: SwiftMiner resolves a deep link per DM and sends it as
+// `portal_url`. That becomes the one primary button, labelled from
+// `portal_destination`. Only when a DM carries no deep link does the generic
+// "manage your miner" dashboard footer stand in — never both, or the reader
+// gets a specific destination and a vague one side by side.
 
 struct SwiftMinerDMRouter: Sendable {
 
@@ -26,9 +32,9 @@ struct SwiftMinerDMRouter: Sendable {
 
     func route(request: SwiftMinerDMRequest, discordName: String?) -> SwiftMinerDMResult {
         var embed: [String: Any]
-        // DMs are notifications only — actions live on the web dashboard, so no
-        // buttons or modals are attached anymore.
-        let components: [[String: Any]] = []
+        // Interactive controls still live on the web dashboard; the only
+        // components a DM carries are link buttons out to it.
+        let components: [[String: Any]] = Self.portalComponents(for: request)
         var shouldTrackWelcome = false
         var shouldTrackCompletion = false
         let analyticsDescription: String
@@ -130,6 +136,9 @@ struct SwiftMinerDMRouter: Sendable {
             embed = SwiftMinerDMEmbedBuilders.buildAccountActionRequiredEmbed(
                 discordName: discordName,
                 recoveryReason: request.recoveryReason,
+                issueKind: request.issueKind,
+                campaignName: request.campaignName,
+                affectedGame: request.affectedGame,
                 debug: request.debug,
                 theme: theme
             )
@@ -152,8 +161,9 @@ struct SwiftMinerDMRouter: Sendable {
             analyticsDescription = "web_dashboard_available"
         }
 
-        // Single, consistent pointer to the dashboard on every DM.
-        if let dashboardURL, !dashboardURL.isEmpty {
+        // Fallback only. A DM that already has a deep-linked button must not
+        // also advertise the dashboard root — the specific route is better.
+        if components.isEmpty, let dashboardURL, !dashboardURL.isEmpty {
             var description = (embed["description"] as? String) ?? ""
             description += "\n\n🌐 Manage your miner: \(dashboardURL)"
             embed["description"] = description
@@ -166,6 +176,49 @@ struct SwiftMinerDMRouter: Sendable {
             shouldTrackCompletion: shouldTrackCompletion,
             analyticsDescription: analyticsDescription
         )
+    }
+
+    // MARK: - Portal Buttons
+
+    /// The link buttons for a DM: the portal deep link SwiftMiner resolved, plus
+    /// the help article when there is one.
+    ///
+    /// Returns nothing when SwiftMiner sent no `portal_url`, which is how it
+    /// reports that the operator has no reachable portal. Guessing a URL here
+    /// would hand the recipient a link that cannot load.
+    static func portalComponents(for request: SwiftMinerDMRequest) -> [[String: Any]] {
+        var buttons: [[String: Any]] = []
+
+        if let portalURL = request.portalURL, isRenderableLink(portalURL) {
+            buttons.append([
+                "type": 2,
+                "style": 5,
+                "label": (request.portalDestination ?? .dashboard).buttonLabel,
+                "url": portalURL
+            ])
+        }
+
+        // Secondary, and only alongside a primary — a help article on its own
+        // is not the action the DM is asking for.
+        if !buttons.isEmpty, let helpURL = request.helpURL, isRenderableLink(helpURL) {
+            buttons.append([
+                "type": 2,
+                "style": 5,
+                "label": "Learn More",
+                "url": helpURL
+            ])
+        }
+
+        return buttons.isEmpty ? [] : [["type": 1, "components": buttons]]
+    }
+
+    /// Discord rejects a link button whose URL is not http(s), and rejects the
+    /// whole message with it — so a malformed link must drop the button, not
+    /// the DM.
+    private static func isRenderableLink(_ raw: String) -> Bool {
+        guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return false }
+        guard scheme == "https" || scheme == "http" else { return false }
+        return !(url.host ?? "").isEmpty
     }
 
     private static func campaignId(fromEventId eventId: String?) -> String? {

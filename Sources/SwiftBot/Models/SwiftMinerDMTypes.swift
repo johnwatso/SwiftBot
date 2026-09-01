@@ -63,6 +63,21 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let recoveryReason: String?
     /// Opaque event identifier for persistent deduplication. E.g. "drop:<id>", "campaign:<id>".
     let eventId: String?
+    /// Absolute deep link into the operator's SwiftMiner web portal, already
+    /// pointing at the page that explains or resolves this DM. Absent when the
+    /// operator has no reachable portal — render no portal button in that case
+    /// rather than falling back to a link that would 404 for the recipient.
+    let portalURL: String?
+    /// What `portalURL` points at, so the button can be labelled without
+    /// parsing the URL. Unknown values fall back to `.dashboard`.
+    let portalDestination: SwiftMinerPortalDestination?
+    /// The specific problem behind a broad message type, so a DM can name what
+    /// is actually wrong instead of saying "Needs a Look".
+    let issueKind: SwiftMinerIssueKind?
+    /// The campaign this DM is about, where one applies.
+    let campaignId: String?
+    /// Public help article on swiftminer.app covering this situation.
+    let helpURL: String?
 
     init(
         messageType: SwiftMinerDMMessageType,
@@ -81,7 +96,12 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         minerDisplayName: String? = nil,
         affectedGameId: String? = nil,
         recoveryReason: String? = nil,
-        eventId: String? = nil
+        eventId: String? = nil,
+        portalURL: String? = nil,
+        portalDestination: SwiftMinerPortalDestination? = nil,
+        issueKind: SwiftMinerIssueKind? = nil,
+        campaignId: String? = nil,
+        helpURL: String? = nil
     ) {
         self.messageType = messageType
         self.debug = debug
@@ -100,6 +120,11 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.affectedGameId = affectedGameId
         self.recoveryReason = recoveryReason
         self.eventId = eventId
+        self.portalURL = portalURL
+        self.portalDestination = portalDestination
+        self.issueKind = issueKind
+        self.campaignId = campaignId
+        self.helpURL = helpURL
     }
 
     init(from decoder: Decoder) throws {
@@ -125,6 +150,17 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.affectedGameId = try container.decodeIfPresent(String.self, forKey: .affectedGameId)
         self.recoveryReason = try container.decodeIfPresent(String.self, forKey: .recoveryReason)
         self.eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
+        self.portalURL = try container.decodeIfPresent(String.self, forKey: .portalURL)
+        // Unknown enum values must not fail the whole decode: SwiftMiner may
+        // add a destination or issue kind before this build knows about it.
+        self.portalDestination = (try? container.decodeIfPresent(String.self, forKey: .portalDestination))
+            .flatMap { $0 }
+            .flatMap(SwiftMinerPortalDestination.init(rawValue:))
+        self.issueKind = (try? container.decodeIfPresent(String.self, forKey: .issueKind))
+            .flatMap { $0 }
+            .flatMap(SwiftMinerIssueKind.init(rawValue:))
+        self.campaignId = try container.decodeIfPresent(String.self, forKey: .campaignId)
+        self.helpURL = try container.decodeIfPresent(String.self, forKey: .helpURL)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -145,6 +181,56 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case affectedGameId = "affected_game_id"
         case recoveryReason = "recovery_reason"
         case eventId = "event_id"
+        case portalURL = "portal_url"
+        case portalDestination = "portal_destination"
+        case issueKind = "issue_kind"
+        case campaignId = "campaign_id"
+        case helpURL = "help_url"
+    }
+}
+
+// MARK: - Portal Destinations
+
+/// Where a DM's portal button lands. SwiftMiner resolves the URL; this only
+/// decides how the button reads, so the same destination is worded the same way
+/// in every DM. See Documentation/SwiftBotDMContract.md in the SwiftMiner repo.
+enum SwiftMinerPortalDestination: String, Codable, Sendable, CaseIterable {
+    case dashboard
+    case miner
+    case accountConnection = "account_connection"
+    case campaign
+    case campaigns
+    case drops
+
+    var buttonLabel: String {
+        switch self {
+        case .dashboard: return "Open Dashboard"
+        case .miner: return "View Miner"
+        case .accountConnection: return "Reconnect Twitch"
+        case .campaign: return "View Campaign"
+        case .campaigns: return "View Campaigns"
+        case .drops: return "View Drops"
+        }
+    }
+}
+
+// MARK: - Issue Kinds
+
+/// The specific cause behind a broad message type. `accountActionRequired` is a
+/// catch-all whose title should never read "Needs a Look" when the cause is known.
+enum SwiftMinerIssueKind: String, Codable, Sendable, CaseIterable {
+    case subscriptionRequired = "subscription_required"
+    case accountLinkRequired = "account_link_required"
+    case connectionExpired = "connection_expired"
+    case unknown
+
+    var title: String {
+        switch self {
+        case .subscriptionRequired: return "Twitch Subscription Required"
+        case .accountLinkRequired: return "Account Linking Required"
+        case .connectionExpired: return "Twitch Connection Expired"
+        case .unknown: return "Action Required"
+        }
     }
 }
 

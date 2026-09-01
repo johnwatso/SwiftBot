@@ -206,11 +206,213 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     }
 
     func testDMsCarryNoInteractiveControls() {
-        // Actions live on the web dashboard now; every DM is buttonless.
+        // Interactive controls live on the web dashboard. Without a portal deep
+        // link from SwiftMiner there is nothing to link to either, so a DM that
+        // carries no `portal_url` stays buttonless.
         for type in SwiftMinerDMMessageType.allCases {
             let result = router.route(request: .init(messageType: type), discordName: nil)
             XCTAssertTrue(result.components.isEmpty, "expected no components for \(type.rawValue)")
         }
+    }
+
+    // MARK: - Portal Deep Links
+
+    private static let portal = "https://swiftminer.example.com"
+
+    func testPortalLinkBecomesTheOneButtonLabelledByItsDestination() {
+        let result = router.route(
+            request: .init(
+                messageType: .reauth,
+                portalURL: "\(Self.portal)/app#/account/connection",
+                portalDestination: .accountConnection
+            ),
+            discordName: nil
+        )
+
+        let buttons = linkButtons(result)
+        XCTAssertEqual(buttons.count, 1)
+        XCTAssertEqual(buttons.first?.label, "Reconnect Twitch")
+        XCTAssertEqual(buttons.first?.url, "\(Self.portal)/app#/account/connection")
+    }
+
+    func testEveryDestinationRendersItsOwnLabel() {
+        let expected: [SwiftMinerPortalDestination: String] = [
+            .dashboard: "Open Dashboard",
+            .miner: "View Miner",
+            .accountConnection: "Reconnect Twitch",
+            .campaign: "View Campaign",
+            .campaigns: "View Campaigns",
+            .drops: "View Drops"
+        ]
+
+        for destination in SwiftMinerPortalDestination.allCases {
+            let result = router.route(
+                request: .init(
+                    messageType: .campaignCompleted,
+                    portalURL: "\(Self.portal)/app",
+                    portalDestination: destination
+                ),
+                discordName: nil
+            )
+            XCTAssertEqual(linkButtons(result).first?.label, expected[destination], destination.rawValue)
+        }
+    }
+
+    /// The specific route is better than the dashboard root, so a DM must never
+    /// show both.
+    func testDeepLinkedDMDropsTheGenericDashboardFooter() {
+        let dashboardRouter = SwiftMinerDMRouter(dashboardURL: Self.portal)
+        let result = dashboardRouter.route(
+            request: .init(
+                messageType: .campaignCompleted,
+                portalURL: "\(Self.portal)/app#/drops",
+                portalDestination: .drops
+            ),
+            discordName: nil
+        )
+
+        XCTAssertFalse(embedDescription(result).contains("Manage your miner"))
+        XCTAssertEqual(linkButtons(result).first?.url, "\(Self.portal)/app#/drops")
+    }
+
+    func testHelpArticleIsSecondaryToThePortalButton() {
+        let result = router.route(
+            request: .init(
+                messageType: .accountActionRequired,
+                portalURL: "\(Self.portal)/app#/campaign/camp-1",
+                portalDestination: .campaign,
+                issueKind: .subscriptionRequired,
+                helpURL: "https://swiftminer.app/help/subscription-required-drops/"
+            ),
+            discordName: nil
+        )
+
+        XCTAssertEqual(linkButtons(result).map(\.label), ["View Campaign", "Learn More"])
+    }
+
+    /// A help article on its own is not the action the DM is asking for.
+    func testHelpArticleAloneRendersNoButton() {
+        let result = router.route(
+            request: .init(
+                messageType: .accountActionRequired,
+                issueKind: .subscriptionRequired,
+                helpURL: "https://swiftminer.app/help/subscription-required-drops/"
+            ),
+            discordName: nil
+        )
+
+        XCTAssertTrue(result.components.isEmpty)
+    }
+
+    /// Discord rejects the whole message over a malformed link button, so a bad
+    /// URL has to cost the button rather than the DM.
+    func testMalformedPortalURLDropsTheButtonNotTheDM() {
+        for bad in ["", "not a url", "javascript:alert(1)", "ftp://example.com/x"] {
+            let result = router.route(
+                request: .init(messageType: .reauth, portalURL: bad, portalDestination: .accountConnection),
+                discordName: nil
+            )
+            XCTAssertTrue(result.components.isEmpty, "expected no button for \(bad)")
+            XCTAssertFalse(embedTitle(result).isEmpty, "DM itself should still render for \(bad)")
+        }
+    }
+
+    func testUnknownDestinationStillLinksUsingTheDashboardLabel() throws {
+        // SwiftMiner may add a destination before this build knows it; the URL
+        // is the authority, so the button must still render.
+        let json = #"{"message_type":"reauth","portal_url":"https://swiftminer.example.com/app#/something/new","portal_destination":"something_new"}"#
+        let request = try JSONDecoder().decode(SwiftMinerDMRequest.self, from: Data(json.utf8))
+        XCTAssertNil(request.portalDestination)
+
+        let result = router.route(request: request, discordName: nil)
+        XCTAssertEqual(linkButtons(result).first?.label, "Open Dashboard")
+        XCTAssertEqual(linkButtons(result).first?.url, "\(Self.portal)/app#/something/new")
+    }
+
+    // MARK: - Specific Language
+
+    func testKnownCauseTitlesTheDMInsteadOfNeedsALook() {
+        let cases: [(SwiftMinerIssueKind, String)] = [
+            (.subscriptionRequired, "Twitch Subscription Required"),
+            (.accountLinkRequired, "Account Linking Required"),
+            (.connectionExpired, "Twitch Connection Expired")
+        ]
+
+        for (kind, expected) in cases {
+            let result = router.route(
+                request: .init(messageType: .accountActionRequired, issueKind: kind),
+                discordName: nil
+            )
+            XCTAssertTrue(embedTitle(result).contains(expected), "\(kind.rawValue) produced \(embedTitle(result))")
+            XCTAssertFalse(embedTitle(result).lowercased().contains("needs a look"))
+        }
+    }
+
+    func testUnclassifiedCauseKeepsTheGenericTitle() {
+        for kind in [SwiftMinerIssueKind.unknown, nil] {
+            let result = router.route(
+                request: .init(messageType: .accountActionRequired, issueKind: kind),
+                discordName: nil
+            )
+            XCTAssertTrue(embedTitle(result).lowercased().contains("needs a look"))
+        }
+    }
+
+    func testCampaignIsNamedAheadOfTheRawReason() {
+        let result = router.route(
+            request: .init(
+                messageType: .accountActionRequired,
+                affectedGame: "Cyberpunk 2077",
+                campaignName: "Phantom Liberty Drops",
+                recoveryReason: "Requires an active Twitch subscription.",
+                issueKind: .subscriptionRequired
+            ),
+            discordName: nil
+        )
+
+        XCTAssertTrue(hasField(result, matching: { _, value in
+            value.contains("Cyberpunk 2077: Phantom Liberty Drops")
+                && value.contains("Requires an active Twitch subscription.")
+        }))
+    }
+
+    // MARK: - Payload compatibility
+
+    func testPayloadsWithoutTheNewFieldsStillDecode() throws {
+        let legacy = #"{"message_type":"welcome","debug":false,"priority_games":[]}"#
+        let request = try JSONDecoder().decode(SwiftMinerDMRequest.self, from: Data(legacy.utf8))
+
+        XCTAssertEqual(request.messageType, .welcome)
+        XCTAssertNil(request.portalURL)
+        XCTAssertNil(request.portalDestination)
+        XCTAssertNil(request.issueKind)
+        XCTAssertNil(request.campaignId)
+        XCTAssertNil(request.helpURL)
+    }
+
+    func testSwiftMinerPayloadDecodesEndToEnd() throws {
+        // The shape SwiftMiner emits for a subscription-gated campaign; see
+        // Documentation/SwiftBotDMContract.md in the SwiftMiner repo.
+        let payload = #"""
+        {"message_type":"account_action_required","debug":false,
+         "twitch_username":"john","priority_games":["Cyberpunk 2077"],
+         "affected_game":"Cyberpunk 2077","campaign_name":"Phantom Liberty Drops",
+         "account_id":"123456","miner_display_name":"John",
+         "recovery_reason":"A paid Twitch subscription is required.",
+         "portal_url":"https://portal.example.com/app#/campaign/camp%2D1",
+         "portal_destination":"campaign","issue_kind":"subscription_required",
+         "campaign_id":"camp-1",
+         "help_url":"https://swiftminer.app/help/subscription-required-drops/"}
+        """#
+        let request = try JSONDecoder().decode(SwiftMinerDMRequest.self, from: Data(payload.utf8))
+
+        XCTAssertEqual(request.portalDestination, .campaign)
+        XCTAssertEqual(request.issueKind, .subscriptionRequired)
+        XCTAssertEqual(request.campaignId, "camp-1")
+
+        let result = router.route(request: request, discordName: "John")
+        XCTAssertTrue(embedTitle(result).contains("Twitch Subscription Required"))
+        XCTAssertEqual(linkButtons(result).map(\.label), ["View Campaign", "Learn More"])
     }
 
     func testDashboardFooterAppendedWhenURLConfigured() {
@@ -287,6 +489,18 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func linkButtons(_ result: SwiftMinerDMResult) -> [(label: String, url: String)] {
+        result.components
+            .compactMap { $0["components"] as? [[String: Any]] }
+            .flatMap { $0 }
+            .filter { ($0["style"] as? Int) == 5 }
+            .compactMap { button in
+                guard let label = button["label"] as? String,
+                      let url = button["url"] as? String else { return nil }
+                return (label, url)
+            }
+    }
 
     private func embedTitle(_ result: SwiftMinerDMResult) -> String {
         result.embed["title"] as? String ?? ""

@@ -511,16 +511,31 @@ enum SwiftMinerDMEmbedBuilders {
     static func buildAccountActionRequiredEmbed(
         discordName: String?,
         recoveryReason: String?,
+        issueKind: SwiftMinerIssueKind?,
+        campaignName: String?,
+        affectedGame: String?,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
     ) -> [String: Any] {
         var fields: [[String: Any]] = []
 
-        let reason = recoveryReason ?? "Something needs your attention."
-        fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
-            title: theme.accountActionIssueLabel,
-            value: reason
-        ))
+        // Name the campaign before the raw reason: "which campaign" is the
+        // first thing the reader wants, and the reason explains it.
+        if let campaignName, !campaignName.isEmpty {
+            let heading = [affectedGame, campaignName]
+                .compactMap { $0?.isEmpty == false ? $0 : nil }
+                .joined(separator: ": ")
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.accountActionIssueLabel,
+                value: "**\(heading)**\n" + (recoveryReason ?? "This campaign can't currently be earned.")
+            ))
+        } else {
+            let reason = recoveryReason ?? "Something needs your attention."
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.accountActionIssueLabel,
+                value: reason
+            ))
+        }
 
         fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
             title: theme.accountActionFixLabel,
@@ -531,8 +546,14 @@ enum SwiftMinerDMEmbedBuilders {
             fields.append(helpField)
         }
 
+        // SwiftMiner classifies the cause where it can. Only fall back to the
+        // vague wording when it genuinely does not know.
+        let title = (issueKind ?? .unknown) == .unknown
+            ? "⚠️ SwiftMiner needs a look"
+            : "⚠️ " + (issueKind ?? .unknown).title
+
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "⚠️ SwiftMiner needs a look",
+            title: title,
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.accountActionRequiredDescription,
             style: .recovery,
             fields: fields,
