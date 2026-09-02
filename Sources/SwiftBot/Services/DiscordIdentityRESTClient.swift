@@ -1,6 +1,18 @@
 import Foundation
 
-struct DiscordIdentityRESTClient {
+struct DiscordIdentityRESTClient: Sendable {
+    struct UserIdentity: Sendable, Equatable {
+        let id: String
+        let username: String
+        let globalName: String?
+        let avatarHash: String?
+
+        var displayName: String {
+            let cleaned = globalName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return cleaned.isEmpty ? username : cleaned
+        }
+    }
+
     static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
 
     let restBase: URL
@@ -165,6 +177,57 @@ struct DiscordIdentityRESTClient {
                 return []
             }
             return arr.compactMap { $0["id"] as? String }
+        } catch {
+            return nil
+        }
+    }
+
+    /// Resolves one Discord account directly from the REST API. Gateway caches
+    /// are intentionally opportunistic, so a registered SwiftMiner user may
+    /// have a known name but no avatar hash after SwiftBot restarts.
+    func fetchUser(userID: String, token: String) async -> UserIdentity? {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty, !trimmedUserID.isEmpty else { return nil }
+
+        var request = URLRequest(
+            url: restBase
+                .appendingPathComponent("users")
+                .appendingPathComponent(trimmedUserID)
+        )
+        request.httpMethod = "GET"
+        request.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
+        // SwiftMiner's companion lookup has a five-second budget. Keep this
+        // request inside it so a failed Discord lookup can fall back cleanly.
+        request.timeoutInterval = 4
+
+        struct Payload: Decodable {
+            let id: String
+            let username: String
+            let globalName: String?
+            let avatar: String?
+
+            enum CodingKeys: String, CodingKey {
+                case id
+                case username
+                case globalName = "global_name"
+                case avatar
+            }
+        }
+
+        do {
+            let (data, response) = try await transport.perform(request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+                return nil
+            }
+            return UserIdentity(
+                id: payload.id,
+                username: payload.username,
+                globalName: payload.globalName,
+                avatarHash: payload.avatar?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
         } catch {
             return nil
         }

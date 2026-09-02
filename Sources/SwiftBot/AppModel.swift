@@ -412,6 +412,9 @@ final class AppModel: ObservableObject {
     @Published var botAvatarHash: String?
     @Published var userAvatarHashById: [String: String] = [:]
     @Published var guildAvatarHashByMemberKey: [String: String] = [:]
+    /// Accounts already resolved through Discord REST during this process,
+    /// including accounts that intentionally use Discord's generated avatar.
+    var resolvedSwiftMinerDiscordUserIDs: Set<String> = []
     // Max cache entries to prevent unbounded memory growth during extended operation
     private let maxAvatarCacheCount = 1000
 

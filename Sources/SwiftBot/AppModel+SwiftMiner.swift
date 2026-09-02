@@ -583,6 +583,7 @@ extension AppModel {
     }
 
     func swiftMinerDiscordUsers() async -> [AdminWebDiscordUser] {
+        await hydrateRegisteredSwiftMinerDiscordUsers()
         let users = await discordCache.humanUsers()
         return users.map { user in
             let avatar = avatarURL(forUserId: user.id) ?? fallbackAvatarURL(forUserId: user.id)
@@ -593,6 +594,62 @@ extension AppModel {
                 avatarURL: avatar?.absoluteString
             )
         }
+    }
+
+    /// SwiftMiner stores the authoritative set of linked Discord IDs. Resolve
+    /// only those accounts through Discord REST when the gateway has not yet
+    /// supplied an avatar hash; this avoids probing every member of a large
+    /// server while making linked pictures deterministic immediately at launch.
+    private func hydrateRegisteredSwiftMinerDiscordUsers() async {
+        let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return }
+
+        let swiftMinerClient = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        guard let registeredIDs = try? await swiftMinerClient.registeredUserIds() else { return }
+
+        let unresolvedIDs = Set(registeredIDs).filter {
+            avatarURL(forUserId: $0) == nil && !resolvedSwiftMinerDiscordUserIDs.contains($0)
+        }
+        guard !unresolvedIDs.isEmpty else { return }
+
+        let identityClient = identityRESTClient
+        let identities = await withTaskGroup(
+            of: DiscordIdentityRESTClient.UserIdentity?.self,
+            returning: [DiscordIdentityRESTClient.UserIdentity].self
+        ) { group in
+            for userID in unresolvedIDs {
+                group.addTask {
+                    await identityClient.fetchUser(userID: userID, token: token)
+                }
+            }
+
+            var resolved: [DiscordIdentityRESTClient.UserIdentity] = []
+            for await identity in group {
+                if let identity {
+                    resolved.append(identity)
+                }
+            }
+            return resolved
+        }
+
+        guard !identities.isEmpty else { return }
+        let existingUsers = Dictionary(
+            uniqueKeysWithValues: (await discordCache.humanUsers()).map { ($0.id, $0) }
+        )
+        for identity in identities {
+            resolvedSwiftMinerDiscordUserIDs.insert(identity.id)
+            if let avatarHash = identity.avatarHash, !avatarHash.isEmpty {
+                cacheUserAvatar(avatarHash, for: identity.id)
+            }
+
+            let existing = existingUsers[identity.id]
+            await discordCache.upsertUser(
+                id: identity.id,
+                preferredName: existing?.displayName ?? identity.displayName,
+                username: identity.username
+            )
+        }
+        scheduleDiscordCacheSave()
     }
 
     // MARK: - SwiftMiner Typed DM Pipeline

@@ -181,6 +181,63 @@ final class SwiftMinerE2EIntegrationTests: XCTestCase {
         XCTAssertEqual(result.status, "401 Unauthorized")
     }
 
+    func testSwiftMinerUserListHydratesRegisteredDiscordAvatarAfterStartup() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let model = AppModel(discordRESTSession: session)
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        model.settings.token = "discord-bot-token"
+        model.settings.swiftMiner.enabled = true
+        model.settings.swiftMiner.apiKey = testApiKey
+        model.settings.swiftMiner.baseURL = "http://127.0.0.1:8080"
+        model.userAvatarHashById.removeAll()
+
+        var snapshot = DiscordCacheSnapshot()
+        snapshot.usernamesById["123456789012345678"] = "Known Guild Name"
+        await model.discordCache.replace(with: snapshot)
+
+        let registeredUsersExpectation = expectation(description: "Registered SwiftMiner users requested")
+        let discordIdentityExpectation = expectation(description: "Discord identity requested")
+        MockURLProtocol.setHandler { request in
+            let path = request.url?.path ?? ""
+            if request.url?.host == "127.0.0.1", path == "/v1/users" {
+                registeredUsersExpectation.fulfill()
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data(#"{"users":[{"discord_id":"123456789012345678"}]}"#.utf8)
+                )
+            }
+            if request.url?.host == "discord.com", path == "/api/v10/users/123456789012345678" {
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bot discord-bot-token")
+                discordIdentityExpectation.fulfill()
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data(#"{"id":"123456789012345678","username":"gabe","global_name":"Gabe","avatar":"avatar_hash"}"#.utf8)
+                )
+            }
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        let users = await model.swiftMinerDiscordUsers()
+
+        await fulfillment(
+            of: [registeredUsersExpectation, discordIdentityExpectation],
+            timeout: 2
+        )
+        let user = try XCTUnwrap(users.first { $0.discordId == "123456789012345678" })
+        XCTAssertEqual(user.displayName, "Known Guild Name")
+        XCTAssertEqual(user.username, "gabe")
+        XCTAssertEqual(
+            user.avatarURL,
+            "https://cdn.discordapp.com/avatars/123456789012345678/avatar_hash.png?size=96"
+        )
+    }
+
     func testSwiftMinerStatusCommandRendersActiveCampaignClearly() async {
         let configuration = URLSessionConfiguration.default
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -364,7 +421,7 @@ private final class MockURLProtocol: URLProtocol {
         let host = url.host ?? ""
         let path = url.path
         if host == "discord.com" { return true }
-        if host == "127.0.0.1" && path.hasPrefix("/v1/discord/users/") { return true }
+        if host == "127.0.0.1" && (path == "/v1/users" || path.hasPrefix("/v1/discord/users/")) { return true }
         return false
     }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

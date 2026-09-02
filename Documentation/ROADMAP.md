@@ -9,6 +9,10 @@
 
 ## Recent Engineering Log
 
+### 2026-09-02 — SwiftMiner Discord avatar startup recovery
+
+- [x] Resolve linked SwiftMiner users through Discord REST when the gateway cache has not supplied their avatar hashes since startup. The companion `/v1/users` response now returns real Discord avatar URLs immediately without probing every member in larger servers, while users with no custom avatar retain Discord's generated fallback.
+
 ### 2026-08-28 — SwiftBot 1.24 release prep
 
 - [x] Bumped the marketing version to 1.24 and the build number to 2026082810. The six commits since the published 1.23 build (`2026082212`) were still carrying that already-released version identity, which would have left Sparkle with nothing to offer and collided with the existing `v1.23` tag and GitHub release.
