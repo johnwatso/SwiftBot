@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add Rewind message archive and prepare SwiftBot 1.26.1 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Add Rewind message archive and prepare SwiftBot 1.26.1</h1>
+    <p class="meta">Version 1.26.1</p>
+    <p>Add Rewind message archive and prepare SwiftBot 1.26.1</p>
+<p>Rewind archives guild message text so an arbitrary word or phrase can be<br>counted retroactively, and rolls the same traffic into per-day counters for<br>leaderboards and a year-in-review.</p>
+<p>Storage is append-only JSONL month shards plus per-day aggregate JSON under<br>`rewind/&lt;guildID&gt;/`. Deliberately not part of AnalyticsRuntimeStore, which<br>re-encodes its whole file on every append — fine at command volume, ruinous at<br>message volume. Files are written 0600 inside 0700 directories, and `start()`<br>narrows an archive created before that was true; the archive is also excluded<br>from Time Machine by default, since a backup target is usually less protected<br>than the machine holding it.</p>
+<p>Ingest hangs off handleMessageCreate above the bot guard and above that<br>handler's early returns, so the include-bots setting can see bot traffic and a<br>watched music link cannot silently drop a message. Timestamps come from the<br>snowflake so live ingest and the REST backfill derive dates identically.</p>
+<p>`/rewind query:&lt;phrase&gt;` counts occurrences over the whole archive. Matching<br>runs on the token stream rather than raw substrings, so &quot;how often is&quot; matches<br>&quot;How often IS this?&quot; while &quot;is&quot; never matches inside &quot;island&quot;.</p>
+<p>Collection ships off. The admin web mirror is read-only and admin-gated: its<br>top words and phrases are verbatim fragments of members' messages, not<br>operational metrics like the analytics feed beside it.</p>
+<p>Also drives the dashboard sidebar from a declared layout instead of hand-written<br>rows, with a test that every SidebarItem is reachable — Rewind first shipped<br>with an enum case and a detail view but no row, which compiled and rendered in<br>the web UI while being unreachable in the app.</p>
+<p>Co-Authored-By: Claude Opus 5 &lt;noreply@anthropic.com&gt;</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/94f9cc6655b82bf874bfd49bacd4a4e5f25ba801">94f9cc6</a></p>
+  </main>
+</body>
+</html>
