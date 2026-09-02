@@ -168,6 +168,48 @@ const analytics = {
   peakActivityLabel: 'Preview mode'
 };
 
+const rewind = {
+  generatedAt: new Date().toISOString(),
+  isEnabled: true,
+  retainsContent: true,
+  retentionDays: 0,
+  messageCount: 182441,
+  diskBytes: 15_204_352,
+  earliestDay: '2026-01-01',
+  latestDay: '2026-09-03',
+  guilds: [
+    {
+      id: '1',
+      name: 'Preview Server',
+      years: [2026, 2025],
+      year: 2026,
+      totalMessages: 182441,
+      totalWords: 1_204_889,
+      activeDays: 246,
+      busiestDay: '2026-03-14',
+      peakHour: '9pm',
+      topUsers: [
+        { label: 'john', count: 41203 },
+        { label: 'max', count: 30112 },
+        { label: 'gabe', count: 18994 }
+      ],
+      topWords: [
+        { label: 'gg', count: 4821 },
+        { label: 'lol', count: 3902 },
+        { label: 'actually', count: 1544 }
+      ],
+      topPhrases: [
+        { label: 'gg guys', count: 812 },
+        { label: 'how often is', count: 96 }
+      ],
+      topEmoji: [
+        { label: '😂', count: 5210 },
+        { label: '🎉', count: 1044 }
+      ]
+    }
+  ]
+};
+
 const authOptions = { discordEnabled: false, localEnabled: true, botName: 'SwiftBot (Preview)', botAvatarURL: '' };
 
-module.exports = { announcer, me, overview, status, analytics, authOptions };
+module.exports = { announcer, me, overview, status, analytics, rewind, authOptions };

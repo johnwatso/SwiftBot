@@ -171,6 +171,12 @@ extension AppModel {
                     let value = self.settings.userTimezones[userID]?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     return (value?.isEmpty == false) ? value : nil
+                },
+                rewindCommand: { [weak self] query, raw in
+                    guard let self else {
+                        return (ok: false, message: "Rewind is unavailable right now.", embed: nil)
+                    }
+                    return await self.rewindCommand(query: query, raw: raw)
                 }
             )
         )

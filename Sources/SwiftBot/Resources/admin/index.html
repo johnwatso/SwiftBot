@@ -4474,6 +4474,10 @@
                 <span class="nav-icon"><i class="lucide" data-lucide="activity"></i></span>
                 <span class="nav-text">Analytics</span>
               </button>
+              <button class="nav-link" data-view="rewind" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="rotate-ccw"></i></span>
+                <span class="nav-text">Rewind</span>
+              </button>
               <button class="nav-link" data-view="activity" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="clipboard-list"></i></span>
                 <span class="nav-text">Activity</span>
@@ -4631,6 +4635,38 @@
               <article class="analytics-panel glass">
                 <div class="panel-title"><i class="lucide" data-lucide="users"></i> Top Users</div>
                 <div id="analyticsUsers" class="analytics-health-grid"></div>
+              </article>
+            </section>
+          </div>
+        </section>
+
+        <section id="rewindView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="rotate-ccw"></i> Rewind</div>
+              <div id="rewindUpdated" class="command-desc">Message archive</div>
+            </div>
+          </div>
+          <div class="analytics-shell">
+            <section id="rewindPulse" class="analytics-pulse glass"></section>
+            <section class="analytics-main">
+              <article class="analytics-panel glass">
+                <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Year in Review</div>
+                <div id="rewindSummary" class="analytics-health-grid"></div>
+              </article>
+              <article class="analytics-panel glass">
+                <div class="panel-title"><i class="lucide" data-lucide="type"></i> Top Words &amp; Phrases</div>
+                <div id="rewindTerms" class="analytics-health-grid"></div>
+              </article>
+            </section>
+            <section class="analytics-diagnostics">
+              <article class="analytics-panel glass">
+                <div class="panel-title"><i class="lucide" data-lucide="users"></i> Most Talkative</div>
+                <div id="rewindUsers" class="analytics-health-grid"></div>
+              </article>
+              <article class="analytics-panel glass">
+                <div class="panel-title"><i class="lucide" data-lucide="smile"></i> Most-Used Emoji</div>
+                <div id="rewindEmoji" class="analytics-health-grid"></div>
               </article>
             </section>
           </div>
@@ -5042,6 +5078,7 @@
     let dashboardStatus = null;
     let dashboardOverview = null;
     let dashboardAnalytics = null;
+    let dashboardRewind = null;
     let dashboardSettings = null;
     let dashboardConfig = null;
     let commandsCatalog = null;
@@ -6044,6 +6081,130 @@
       renderAnalyticsView();
       try { window.__cvUsage?.render(); } catch (_) {}
       return dashboardAnalytics;
+    }
+
+    async function loadRewind() {
+      const response = await fetch('/api/rewind');
+      if (!response.ok) {
+        throw new Error('Rewind unavailable');
+      }
+      dashboardRewind = await response.json();
+      window.dashboardRewind = dashboardRewind;
+      renderRewindView();
+      return dashboardRewind;
+    }
+
+    function rewindTermList(entries, emptyLabel) {
+      if (!entries || !entries.length) {
+        return `<div class="placeholder">${emptyLabel}</div>`;
+      }
+      return entries.map(entry => `
+        <article class="analytics-card">
+          <div class="label">${escapeHTML(entry.label)}</div>
+          <div class="value">${Number(entry.count).toLocaleString()}</div>
+        </article>
+      `).join('');
+    }
+
+    function rewindBytes(bytes) {
+      const value = Number(bytes) || 0;
+      if (value < 1024) return `${value} B`;
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let scaled = value / 1024;
+      let unit = 0;
+      while (scaled >= 1024 && unit < units.length - 1) {
+        scaled /= 1024;
+        unit += 1;
+      }
+      return `${scaled.toFixed(1)} ${units[unit]}`;
+    }
+
+    function renderRewindView() {
+      const updated = document.getElementById('rewindUpdated');
+      const pulse = document.getElementById('rewindPulse');
+      const summaryNode = document.getElementById('rewindSummary');
+      const termsNode = document.getElementById('rewindTerms');
+      const usersNode = document.getElementById('rewindUsers');
+      const emojiNode = document.getElementById('rewindEmoji');
+
+      const data = dashboardRewind;
+      if (!data) {
+        if (pulse) pulse.innerHTML = `<div class="placeholder">Loading the Rewind archive…</div>`;
+        return;
+      }
+
+      if (updated) {
+        updated.textContent = data.isEnabled
+          ? `Archiving on · updated ${relativeTime(data.generatedAt) || 'just now'}`
+          : 'Archiving is switched off in the SwiftBot app';
+      }
+
+      if (pulse) {
+        const coverage = (data.earliestDay && data.latestDay)
+          ? `${data.earliestDay} → ${data.latestDay}`
+          : 'No messages yet';
+        pulse.innerHTML = `
+          <article class="analytics-card">
+            <div class="label">Messages Archived</div>
+            <div class="value">${Number(data.messageCount || 0).toLocaleString()}</div>
+            <div class="detail">${escapeHTML(coverage)}</div>
+          </article>
+          <article class="analytics-card">
+            <div class="label">On Disk</div>
+            <div class="value">${rewindBytes(data.diskBytes)}</div>
+            <div class="detail">${data.retainsContent ? 'Message text kept' : 'Counts only'}</div>
+          </article>
+          <article class="analytics-card">
+            <div class="label">Retention</div>
+            <div class="value">${data.retentionDays > 0 ? `${data.retentionDays}d` : 'Forever'}</div>
+            <div class="detail">${data.isEnabled ? 'Collecting' : 'Paused'}</div>
+          </article>
+        `;
+      }
+
+      const guild = (data.guilds || [])[0];
+      if (!guild) {
+        const empty = `<div class="placeholder">Nothing archived yet. Turn Rewind on in the SwiftBot app.</div>`;
+        if (summaryNode) summaryNode.innerHTML = empty;
+        if (termsNode) termsNode.innerHTML = empty;
+        if (usersNode) usersNode.innerHTML = empty;
+        if (emojiNode) emojiNode.innerHTML = empty;
+        return;
+      }
+
+      if (summaryNode) {
+        summaryNode.innerHTML = `
+          <article class="analytics-card">
+            <div class="label">${escapeHTML(guild.name)} · ${guild.year}</div>
+            <div class="value">${Number(guild.totalMessages).toLocaleString()}</div>
+            <div class="detail">messages</div>
+          </article>
+          <article class="analytics-card">
+            <div class="label">Words</div>
+            <div class="value">${Number(guild.totalWords).toLocaleString()}</div>
+            <div class="detail">${guild.activeDays} active days</div>
+          </article>
+          <article class="analytics-card">
+            <div class="label">Busiest Day</div>
+            <div class="value">${escapeHTML(guild.busiestDay || '--')}</div>
+            <div class="detail">Peak hour ${escapeHTML(guild.peakHour || '--')}</div>
+          </article>
+        `;
+      }
+
+      if (termsNode) {
+        const words = rewindTermList(guild.topWords, 'No words counted yet');
+        const phrases = rewindTermList(guild.topPhrases, 'No phrases counted yet');
+        termsNode.innerHTML = words + phrases;
+      }
+
+      if (usersNode) {
+        usersNode.innerHTML = rewindTermList(guild.topUsers, 'No members counted yet');
+      }
+
+      if (emojiNode) {
+        emojiNode.innerHTML = rewindTermList(guild.topEmoji, 'No emoji counted yet');
+      }
     }
 
     async function loadOverview() {
@@ -11102,6 +11263,14 @@
         secondaryTitle: 'Health',
         eventsTitle: 'Live Operations'
       },
+      rewind: {
+        title: 'Rewind',
+        icon: 'rotate-ccw',
+        copy: 'The server message archive and the year in review it feeds.',
+        primaryTitle: 'Archive',
+        secondaryTitle: 'Year in Review',
+        eventsTitle: 'Top Terms'
+      },
       voice: {
         title: 'Automations',
         icon: 'zap',
@@ -11452,6 +11621,7 @@
       const overview = document.getElementById('overviewView');
       const commands = document.getElementById('commandsView');
       const analytics = document.getElementById('analyticsView');
+      const rewind = document.getElementById('rewindView');
       const patchy = document.getElementById('patchyView');
       const sweep = document.getElementById('sweepView');
       const gametracker = document.getElementById('gametrackerView');
@@ -11474,7 +11644,7 @@
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, patchy, sweep, gametracker, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
+        [overview, commands, analytics, rewind, patchy, sweep, gametracker, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
       hideAllViews();
@@ -11509,6 +11679,11 @@
         analytics.classList.remove('hidden');
         renderAnalyticsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Analytics';
+        setMessage('', '');
+      } else if (view === 'rewind') {
+        rewind.classList.remove('hidden');
+        loadRewind().catch(() => renderRewindView());
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Rewind';
         setMessage('', '');
       } else if (view === 'commands') {
         overview.classList.add('hidden');

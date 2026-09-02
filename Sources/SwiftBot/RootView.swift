@@ -102,6 +102,7 @@ struct UnifiedRootView: View {
         case .voice: VoiceView()
         case .recordings: RecordingsView()
         case .analytics: AnalyticsView()
+        case .rewind: RewindView()
         case .swiftMesh:
             if shouldHideSwiftMesh {
                 OverviewView(onOpenSwiftMesh: {})
@@ -165,32 +166,11 @@ struct DashboardSidebar: View {
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
                 List {
-                    Section("Dashboard") {
-                        sidebarListRow(.overview)
-                    }
-
-                    Section("Workflows") {
-                        sidebarListRow(.commands)
-                        sidebarListRow(.welcomeFlow)
-                        sidebarListRow(.automations)
-                        sidebarListRow(.moderation)
-                    }
-
-                    Section("Services") {
-                        sidebarListRow(.gameTracker)
-                        sidebarListRow(.patchy)
-                        sidebarListRow(.sweep)
-                        sidebarListRow(.wikiBridge)
-                        sidebarListRow(.voice)
-                        sidebarListRow(.recordings, count: app.recentMediaCount24h)
-                    }
-
-                    Section("System") {
-                        sidebarListRow(.appleIntelligence)
-                        sidebarListRow(.analytics)
-                        sidebarListRow(.activity)
-                        if !shouldHideSwiftMesh {
-                            sidebarListRow(.swiftMesh)
+                    ForEach(SidebarItem.sidebarSections) { section in
+                        Section(section.title) {
+                            ForEach(section.items.filter(isVisible)) { item in
+                                sidebarListRow(item, count: badgeCount(for: item))
+                            }
                         }
                     }
                 }
@@ -278,6 +258,16 @@ struct DashboardSidebar: View {
                 selection = .overview
             }
         }
+    }
+
+    /// SwiftMesh is the one row that hides itself — a standalone bot has no
+    /// cluster to show.
+    private func isVisible(_ item: SidebarItem) -> Bool {
+        item != .swiftMesh || !shouldHideSwiftMesh
+    }
+
+    private func badgeCount(for item: SidebarItem) -> Int? {
+        item == .recordings ? app.recentMediaCount24h : nil
     }
 
     @ViewBuilder

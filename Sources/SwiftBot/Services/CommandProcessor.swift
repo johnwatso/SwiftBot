@@ -61,6 +61,8 @@ final class CommandProcessor {
         var announceCommand: (String, [String: DiscordJSON]) async -> (ok: Bool, message: String)
         var randomTeamsCommand: (Int, Int?, [String: DiscordJSON]) async -> (ok: Bool, message: String)
         var lookupUserTimeZone: (String) -> String?
+        var rewindCommand: (String, [String: DiscordJSON]) async
+            -> (ok: Bool, message: String, embed: [String: Any]?)
     }
 
     private let dependencies: Dependencies
@@ -300,6 +302,15 @@ final class CommandProcessor {
             let action = Self.slashOptionString(named: "action", in: data) ?? "status"
             let ok = await dependencies.clusterCommand(action, context.channelId)
             return statusEmbed(title: "Cluster", ok: ok)
+        case "rewind":
+            let result = await dependencies.rewindCommand(
+                Self.slashOptionString(named: "query", in: data) ?? "",
+                context.rawLikeMessage
+            )
+            if let payload = result.embed {
+                return (content: nil, embeds: [payload])
+            }
+            return embed(title: "Rewind", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "sweep":
             let action = Self.slashOptionString(named: "action", in: data) ?? "status"
             let result = await dependencies.sweepCommand(action)

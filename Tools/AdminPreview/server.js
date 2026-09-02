@@ -61,6 +61,7 @@ async function handleAPI(req, res, pathname) {
       case '/api/overview': return sendJSON(res, fixtures.overview);
       case '/api/status': return sendJSON(res, fixtures.status);
       case '/api/analytics': return sendJSON(res, fixtures.analytics);
+      case '/api/rewind': return sendJSON(res, fixtures.rewind);
       case '/api/announcer': return sendJSON(res, announcer);
       default:
         // Everything the announcer work does not exercise (patchy, sweep,

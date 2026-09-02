@@ -31,6 +31,7 @@ final class AdminWebCopyTests: XCTestCase {
             .voice: "announcer",
             .recordings: "recordings",
             .analytics: "analytics",
+            .rewind: "rewind",
             .swiftMesh: "swiftmesh",
             .sweep: "sweep",
             .gameTracker: "gametracker"

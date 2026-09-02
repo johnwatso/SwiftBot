@@ -272,6 +272,12 @@ extension AppModel {
         // own self-message skip (see `forwardMessageToVoiceAnnouncer`).
         await forwardMessageToVoiceAnnouncer(event)
 
+        // Rewind archives guild message text. It sits above the bot guard so the
+        // `includeBotMessages` setting can actually see bot traffic, and above
+        // every early return below so a watched music link or an AI reply path
+        // can't silently drop a message from the archive.
+        recordRewindMessage(event: event, isDirectMessage: isDMChannel)
+
         // Ignore messages from bots (including this bot) to prevent reply loops.
         if isBot {
             return

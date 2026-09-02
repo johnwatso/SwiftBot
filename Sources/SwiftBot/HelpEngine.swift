@@ -205,6 +205,15 @@ struct CommandCatalog {
                 isAdminOnly: false
             ),
             CommandEntry(
+                name: "rewind",
+                aliases: [],
+                usage: "/rewind <query>",
+                description: "Counts how often a word or phrase has been used in this server, and who says it most.",
+                examples: ["/rewind query:gg guys", "/rewind query:how often is"],
+                category: .general,
+                isAdminOnly: false
+            ),
+            CommandEntry(
                 name: "cluster",
                 aliases: ["worker"],
                 usage: "\(prefix)cluster [status | test | probe]",

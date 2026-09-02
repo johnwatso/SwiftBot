@@ -385,6 +385,7 @@ struct BotSettings: Codable, Hashable {
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
     var voice = VoiceSettings()
+    var rewind = RewindSettings()
 
     var swiftMeshSettings: SwiftMeshSettings {
         get {

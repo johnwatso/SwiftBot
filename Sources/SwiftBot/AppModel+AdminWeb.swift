@@ -259,6 +259,70 @@ extension AppModel {
         )
     }
 
+    /// Read-only Rewind snapshot for the admin web UI. Deliberately excludes
+    /// every collection toggle and any message text: the web surface reports
+    /// what the archive holds, it does not turn archiving on or read the
+    /// archive back out.
+    func adminWebRewindSnapshot() async -> AdminWebRewindPayload {
+        let stats = await rewindStore.archiveStats()
+        let filterStopWords = settings.rewind.filterStopWords
+        let currentYear = Calendar.current.component(.year, from: Date())
+
+        var guilds: [AdminWebRewindGuildPayload] = []
+        for (guildID, guildName) in connectedServers.sorted(by: { $0.value < $1.value }) {
+            let years = await rewindStore.availableYears(guildID: guildID)
+            let year = years.first ?? currentYear
+            let summary = await rewindStore.yearSummary(
+                guildID: guildID,
+                year: year,
+                filterStopWords: filterStopWords
+            )
+            guard !summary.isEmpty else { continue }
+
+            guilds.append(
+                AdminWebRewindGuildPayload(
+                    id: guildID,
+                    name: guildName,
+                    years: years,
+                    year: year,
+                    totalMessages: summary.totalMessages,
+                    totalWords: summary.totalWords,
+                    activeDays: summary.activeDays,
+                    busiestDay: summary.busiestDay?.day,
+                    peakHour: summary.peakHour.map { hour in
+                        let suffix = hour < 12 ? "am" : "pm"
+                        let display = hour.isMultiple(of: 12) ? 12 : hour % 12
+                        return "\(display)\(suffix)"
+                    },
+                    topUsers: summary.topUsers.prefix(5).map {
+                        AdminWebRewindTermPayload(label: $0.userName, count: $0.count)
+                    },
+                    topWords: summary.topWords.prefix(8).map {
+                        AdminWebRewindTermPayload(label: $0.term, count: $0.count)
+                    },
+                    topPhrases: summary.topBigrams.prefix(5).map {
+                        AdminWebRewindTermPayload(label: $0.term, count: $0.count)
+                    },
+                    topEmoji: summary.topEmoji.prefix(8).map {
+                        AdminWebRewindTermPayload(label: $0.term, count: $0.count)
+                    }
+                )
+            )
+        }
+
+        return AdminWebRewindPayload(
+            generatedAt: Date(),
+            isEnabled: settings.rewind.isEnabled,
+            retainsContent: settings.rewind.retainMessageContent,
+            retentionDays: settings.rewind.retentionDays,
+            messageCount: stats.messageCount,
+            diskBytes: Int(stats.diskBytes),
+            earliestDay: stats.earliestDay,
+            latestDay: stats.latestDay,
+            guilds: guilds
+        )
+    }
+
     func adminWebAnalyticsSnapshot() async -> AdminWebAnalyticsPayload {
         async let daily = voiceSessionStore.getVoiceActivityLast7Days()
         async let hourly = voiceSessionStore.getVoiceActivityByHour()
@@ -1538,6 +1602,12 @@ extension AppModel {
                     return AdminWebAnalyticsPayload.empty
                 }
                 return await model.adminWebAnalyticsSnapshot()
+            },
+            rewindProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebRewindPayload.empty
+                }
+                return await model.adminWebRewindSnapshot()
             },
             connectedGuildIDsProvider: { [weak self] in
                 guard let model = self else { return [] }

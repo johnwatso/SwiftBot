@@ -66,6 +66,9 @@ extension AppModel {
                     ["name": "disconnect (pause auto-reconnect for 1 hour)", "value": "disconnect"]
                 ]]
             ]],
+            ["name": "rewind", "description": "Count how often a word or phrase has been used", "type": 1, "options": [
+                ["type": 3, "name": "query", "description": "Word or phrase to count, e.g. gg guys", "required": true]
+            ]],
             ["name": "sweep", "description": "Run, preview, or pause Sweep rules", "type": 1, "options": [
                 ["type": 3, "name": "action", "description": "run | preview | pause | resume | status", "required": false, "choices": [
                     ["name": "run", "value": "run"],

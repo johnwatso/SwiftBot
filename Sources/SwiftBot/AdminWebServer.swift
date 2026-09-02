@@ -243,6 +243,54 @@ struct AdminWebSweepRunReportPayload: Codable {
     let report: SweepRunReport
 }
 
+struct AdminWebRewindTermPayload: Codable {
+    let label: String
+    let count: Int
+}
+
+struct AdminWebRewindGuildPayload: Codable {
+    let id: String
+    let name: String
+    let years: [Int]
+    let year: Int
+    let totalMessages: Int
+    let totalWords: Int
+    let activeDays: Int
+    let busiestDay: String?
+    let peakHour: String?
+    let topUsers: [AdminWebRewindTermPayload]
+    let topWords: [AdminWebRewindTermPayload]
+    let topPhrases: [AdminWebRewindTermPayload]
+    let topEmoji: [AdminWebRewindTermPayload]
+}
+
+/// Read-only mirror of the native Rewind screen. Collection settings stay
+/// native-only on purpose: switching on a message archive is not something the
+/// web surface should be able to do remotely.
+struct AdminWebRewindPayload: Codable {
+    let generatedAt: Date
+    let isEnabled: Bool
+    let retainsContent: Bool
+    let retentionDays: Int
+    let messageCount: Int
+    let diskBytes: Int
+    let earliestDay: String?
+    let latestDay: String?
+    let guilds: [AdminWebRewindGuildPayload]
+
+    static let empty = AdminWebRewindPayload(
+        generatedAt: Date(),
+        isEnabled: false,
+        retainsContent: false,
+        retentionDays: 0,
+        messageCount: 0,
+        diskBytes: 0,
+        earliestDay: nil,
+        latestDay: nil,
+        guilds: []
+    )
+}
+
 struct AdminWebAnalyticsPayload: Codable {
     let generatedAt: Date
     let peakActivityLabel: String
@@ -878,6 +926,7 @@ actor AdminWebServer {
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
     private var analyticsProvider: (@Sendable () async -> AdminWebAnalyticsPayload)?
+    private var rewindProvider: (@Sendable () async -> AdminWebRewindPayload)?
     private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
     private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
     private var updateRemoteRule: (@Sendable (Rule) async -> Bool)?
@@ -1007,6 +1056,7 @@ actor AdminWebServer {
         updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
         analyticsProvider: @escaping @Sendable () async -> AdminWebAnalyticsPayload,
+        rewindProvider: @escaping @Sendable () async -> AdminWebRewindPayload,
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
         updatePrefix: @escaping @Sendable (String) async -> Bool,
@@ -1093,6 +1143,7 @@ actor AdminWebServer {
         self.updateRemoteSettings = updateRemoteSettings
         self.overviewProvider = overviewProvider
         self.analyticsProvider = analyticsProvider
+        self.rewindProvider = rewindProvider
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
         self.currentPrefixProvider = currentPrefixProvider
         self.updatePrefix = updatePrefix
@@ -1829,6 +1880,19 @@ actor AdminWebServer {
                 return unauthorizedResponse()
             }
             let payload = await analyticsProvider?() ?? AdminWebAnalyticsPayload.empty
+            return codableResponse(payload)
+        case ("GET", "/api/rewind"):
+            // Admin-only, unlike /api/analytics. Rewind's "top words" and "top
+            // phrases" are verbatim fragments of members' messages, not
+            // operational metrics — a viewer session should not read them, and
+            // this endpoint is reachable over the public tunnel when that is on.
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            let payload = await rewindProvider?() ?? AdminWebRewindPayload.empty
             return codableResponse(payload)
         case ("GET", "/api/me"):
             guard let session = authenticatedSession(for: request) else {

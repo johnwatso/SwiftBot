@@ -209,6 +209,8 @@ extension AppModel {
         self.weeklyPlugin = weekly
         Task { await pluginManager.add(weekly) }
 
+        startRewindIfNeeded()
+
         await service.connect(token: token)
         logs.append("Connecting to Discord Gateway")
     }

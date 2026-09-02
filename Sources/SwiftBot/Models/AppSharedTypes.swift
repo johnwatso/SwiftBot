@@ -135,6 +135,14 @@ enum PromptComposer {
 
 // MARK: - Navigation Models
 
+/// One titled group of sidebar rows.
+struct SidebarItemGroup: Identifiable {
+    let title: String
+    let items: [SidebarItem]
+
+    var id: String { title }
+}
+
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case patchy = "Patchy"
@@ -148,6 +156,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case voice = "Announcer"
     case recordings = "Recordings"
     case analytics = "Analytics"
+    case rewind = "Rewind"
     case swiftMesh = "SwiftMesh"
     case sweep = "Sweep"
     case gameTracker = "Game Tracker"
@@ -168,11 +177,31 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .voice: return "person.wave.2.fill"
         case .recordings: return "video.fill"
         case .analytics: return "chart.line.uptrend.xyaxis"
+        case .rewind: return "arrow.counterclockwise.circle.fill"
         case .swiftMesh: return "point.3.filled.connected.trianglepath.dotted"
         case .sweep: return "rectangle.stack.fill.badge.minus"
         case .gameTracker: return "gamecontroller.fill"
         }
     }
+
+    /// The order and grouping the dashboard sidebar renders.
+    ///
+    /// The sidebar is driven by this list rather than hand-written rows so a new
+    /// `SidebarItem` cannot be added to the enum, given a detail view, and then
+    /// silently never appear in the app. `SidebarLayoutTests` asserts every case
+    /// is listed exactly once.
+    static let sidebarSections: [SidebarItemGroup] = [
+        SidebarItemGroup(title: "Dashboard", items: [.overview]),
+        SidebarItemGroup(title: "Workflows", items: [.commands, .welcomeFlow, .automations, .moderation]),
+        SidebarItemGroup(
+            title: "Services",
+            items: [.gameTracker, .patchy, .sweep, .wikiBridge, .voice, .recordings]
+        ),
+        SidebarItemGroup(
+            title: "System",
+            items: [.appleIntelligence, .analytics, .rewind, .activity, .swiftMesh]
+        )
+    ]
 }
 
 // MARK: - Automation Models

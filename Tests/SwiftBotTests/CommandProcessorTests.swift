@@ -668,7 +668,10 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 announceCommand: announceCommand,
                 randomTeamsCommand: randomTeamsCommand,
-                lookupUserTimeZone: { _ in nil }
+                lookupUserTimeZone: { _ in nil },
+                rewindCommand: { _, _ in
+                    (ok: true, message: "Rewind result", embed: ["title": "Rewind"])
+                }
             )
         )
     }

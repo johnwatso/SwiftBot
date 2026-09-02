@@ -300,6 +300,14 @@ final class AppModel: ObservableObject {
     lazy var commandProcessor = makeCommandProcessor()
     let voicePresenceStore = VoicePresenceStore()
     let voiceSessionStore = VoiceSessionStore()
+    /// Rewind's message archive (see AppModel+Rewind.swift). Kept out of
+    /// `AnalyticsRuntimeStore` on purpose: that one rewrites its whole file per
+    /// append, which does not survive message volume.
+    let rewindStore = RewindStore()
+    /// Progress for a running historical import, nil when none is in flight.
+    @Published var rewindBackfillProgress: RewindBackfillProgress?
+    var rewindBackfillTask: Task<Void, Never>?
+    var rewindRetentionTask: Task<Void, Never>?
 
     // Voice playback / announcement pipeline (see AppModel+Voice.swift).
     var voicePlaybackServiceStorage: VoicePlaybackService?
@@ -1150,6 +1158,7 @@ final class AppModel: ObservableObject {
         uptimeTask?.cancel()
         uptime = nil
         await clearVoicePresence()
+        await stopRewind()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         lastGatewayEventName = "-"

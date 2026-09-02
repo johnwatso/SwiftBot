@@ -823,6 +823,78 @@ actor DiscordService {
         try await messageRESTClient.deleteMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
+    // MARK: Rewind helpers
+
+    /// Rewind entry point — fetch one page of a channel's history for the
+    /// archive backfill. Read-only; not gated by `outputAllowed`.
+    ///
+    /// Content is returned verbatim rather than humanized the way Sweep's fetch
+    /// does it. Backfilled text has to tokenize identically to what the gateway
+    /// delivers live, or a phrase would be counted differently either side of
+    /// the import boundary.
+    ///
+    /// Returns the page plus the oldest ID in it, which the caller feeds back as
+    /// `before` to walk further into the past. A nil cursor means the channel is
+    /// exhausted.
+    func rewindFetchMessagePage(
+        guildId: String,
+        channelId: String,
+        limit: Int,
+        before: String?
+    ) async throws -> (messages: [RewindMessage], nextCursor: String?) {
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(
+                domain: "DiscordService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Bot is not connected."]
+            )
+        }
+
+        let page = try await messageRESTClient.fetchRecentMessages(
+            channelId: channelId,
+            limit: max(1, min(100, limit)),
+            token: token,
+            before: before
+        )
+        guard !page.isEmpty else { return ([], nil) }
+
+        let messages = page.compactMap { raw -> RewindMessage? in
+            guard case let .string(id)? = raw["id"] else { return nil }
+
+            var authorID = ""
+            var authorName = ""
+            var isBot = false
+            if case let .object(author)? = raw["author"] {
+                if case let .string(value)? = author["id"] { authorID = value }
+                if case let .string(value)? = author["global_name"], !value.isEmpty { authorName = value }
+                if authorName.isEmpty, case let .string(value)? = author["username"] { authorName = value }
+                if case let .bool(value)? = author["bot"] { isBot = value }
+            }
+            guard !authorID.isEmpty else { return nil }
+
+            let content: String = {
+                if case let .string(value)? = raw["content"] { return value }
+                return ""
+            }()
+
+            return RewindMessage(
+                id: id,
+                guildID: guildId,
+                channelID: channelId,
+                authorID: authorID,
+                authorName: authorName,
+                isBot: isBot,
+                content: content,
+                createdAt: Self.messageCreatedDate(fromSnowflake: id) ?? Date()
+            )
+        }
+
+        // Discord returns newest-first, so the last entry is the oldest.
+        var cursor: String?
+        if case let .string(id)? = page.last?["id"] { cursor = id }
+        return (messages, cursor)
+    }
+
     // MARK: Sweep helpers
 
     /// Sweep entry point — fetch recent messages, using the cached bot token.
