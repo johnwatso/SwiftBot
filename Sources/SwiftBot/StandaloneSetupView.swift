@@ -151,15 +151,11 @@ struct StandaloneSetupView: View {
 
     private var proceedingView: some View {
         VStack(spacing: 20) {
-            ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.12))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(Color.green)
-            }
+            Image(systemName: "checkmark")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(Color.green)
+                .symbolEffect(.bounce, options: .nonRepeating)
+                .accessibilityHidden(true)
             
             VStack(spacing: 8) {
                 if let username = app.lastTokenValidationResult?.username {
