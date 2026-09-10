@@ -1532,7 +1532,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.26.1;
+				MARKETING_VERSION = 1.26.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1770,7 +1770,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.26.1;
+				MARKETING_VERSION = 1.26.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
