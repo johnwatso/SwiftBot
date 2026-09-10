@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prepare SwiftBot 1.26.2 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Prepare SwiftBot 1.26.2</h1>
+    <p class="meta">Version 1.26.2</p>
+    <p>Prepare SwiftBot 1.26.2</p>
+<p>Renders SwiftMiner's new friend invitations. A SwiftMiner operator can now<br>pick someone from the connected Discord server and have SwiftBot deliver<br>an invitation to connect their own Twitch account.</p>
+<p>This is the one DM whose recipient may never have heard of SwiftMiner, so<br>it leads with what SwiftMiner is, carries the invitation link as its<br>primary button and an explainer as a secondary one, and says plainly that<br>signing in happens on Twitch and shares no credentials with the inviter.<br>No activation code or Twitch activation URL appears in the message.</p>
+<p>It also never falls back to advertising the operator's dashboard, which<br>the recipient cannot sign in to, and the per-type notification<br>preferences do not gate it: those describe ongoing alerts for an existing<br>miner, and none of them should silence a one-off invitation sent by hand.</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/bcbb4186c62a8a7a9309d68226be9d8ef83089e7">bcbb418</a></p>
+  </main>
+</body>
+</html>
