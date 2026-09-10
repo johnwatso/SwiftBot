@@ -274,6 +274,69 @@ enum SwiftMinerDMEmbedBuilders {
         )
     }
 
+    // MARK: - Friend Invitation
+
+    /// The one DM whose recipient may have no SwiftMiner relationship at all.
+    /// It therefore leads with what SwiftMiner is, says plainly what signing in
+    /// does and does not hand over, and links the explainer written for exactly
+    /// this reader. No activation code appears: the invitation link carries it
+    /// in a URL fragment, and the setup page is where that fallback belongs.
+    static func buildFriendInvitationEmbed(
+        discordName: String?,
+        inviterDisplayName: String?,
+        activationURL: String?,
+        activationExpiresInMinutes: Int?,
+        activationExpiresAt: Date? = nil,
+        debug: Bool,
+        theme: SwiftMinerDMTheme = .default
+    ) -> [String: Any] {
+        var fields: [[String: Any]] = []
+
+        if let url = activationURL, !url.isEmpty {
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.friendInvitationLinkTitle,
+                value: "[\(theme.friendInvitationLinkLabel)](\(url))"
+            ))
+        }
+
+        fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+            title: theme.friendInvitationSecurityLabel,
+            value: theme.friendInvitationSecurityValue
+        ))
+
+        // Same preference as setup: an absolute instant lets Discord render a
+        // live countdown, so a DM opened an hour later still reads correctly.
+        if let expiresAt = activationExpiresAt {
+            let unix = Int(expiresAt.timeIntervalSince1970)
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.setupExpiresLabel,
+                value: "This invitation expires <t:\(unix):R>.\n\(theme.friendInvitationExpiredHint)"
+            ))
+        } else if let minutes = activationExpiresInMinutes, minutes > 0 {
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.setupExpiresLabel,
+                value: "This invitation expires in \(minutes) minute\(minutes == 1 ? "" : "s").\n\(theme.friendInvitationExpiredHint)"
+            ))
+        }
+
+        let description: String
+        if let inviter = inviterDisplayName, !inviter.isEmpty {
+            description = String(format: theme.friendInvitationDescription, inviter)
+        } else {
+            description = theme.friendInvitationDescriptionNoInviter
+        }
+
+        return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
+            title: "✉️ You've been invited to SwiftMiner",
+            description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + description,
+            style: .info,
+            fields: fields,
+            footer: theme.friendInvitationFooter,
+            debug: debug,
+            theme: theme
+        )
+    }
+
     // MARK: - Linked (Twitch Connected)
 
     static func buildLinkedEmbed(

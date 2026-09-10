@@ -19,6 +19,7 @@ enum SwiftMinerDMMessageType: String, Codable, CaseIterable, Sendable, Identifia
     case accountActionRequired = "account_action_required"
     case prioritisedGameNeedsLinking = "prioritised_game_needs_linking"
     case webDashboardAvailable = "web_dashboard_available"
+    case friendInvitation = "friend_invitation"
 
     var id: String { rawValue }
 
@@ -36,6 +37,7 @@ enum SwiftMinerDMMessageType: String, Codable, CaseIterable, Sendable, Identifia
         case .accountActionRequired: return "Needs a Look"
         case .prioritisedGameNeedsLinking: return "Link Twitch to Claim Drops"
         case .webDashboardAvailable: return "Web Dashboard Live"
+        case .friendInvitation: return "Friend Invitation"
         }
     }
 }
@@ -78,6 +80,10 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let campaignId: String?
     /// Public help article on swiftminer.app covering this situation.
     let helpURL: String?
+    /// Who is inviting the recipient, already formatted as "@name". Only set on
+    /// `friend_invitation`, where the DM is about a Twitch account the recipient
+    /// has not connected yet rather than one of their own.
+    let inviterDisplayName: String?
 
     init(
         messageType: SwiftMinerDMMessageType,
@@ -101,7 +107,8 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         portalDestination: SwiftMinerPortalDestination? = nil,
         issueKind: SwiftMinerIssueKind? = nil,
         campaignId: String? = nil,
-        helpURL: String? = nil
+        helpURL: String? = nil,
+        inviterDisplayName: String? = nil
     ) {
         self.messageType = messageType
         self.debug = debug
@@ -125,6 +132,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.issueKind = issueKind
         self.campaignId = campaignId
         self.helpURL = helpURL
+        self.inviterDisplayName = inviterDisplayName
     }
 
     init(from decoder: Decoder) throws {
@@ -161,6 +169,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
             .flatMap(SwiftMinerIssueKind.init(rawValue:))
         self.campaignId = try container.decodeIfPresent(String.self, forKey: .campaignId)
         self.helpURL = try container.decodeIfPresent(String.self, forKey: .helpURL)
+        self.inviterDisplayName = try container.decodeIfPresent(String.self, forKey: .inviterDisplayName)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -186,6 +195,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case issueKind = "issue_kind"
         case campaignId = "campaign_id"
         case helpURL = "help_url"
+        case inviterDisplayName = "inviter_display_name"
     }
 }
 

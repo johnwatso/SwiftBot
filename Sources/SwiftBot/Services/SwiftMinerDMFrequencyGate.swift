@@ -36,6 +36,12 @@ actor SwiftMinerDMNotificationFilter {
             // One-time announcement, sent only when the dashboard first goes
             // live — always allowed through.
             return true
+        case .friendInvitation:
+            // Hand-sent by an operator who picked this person deliberately, and
+            // often the recipient's first contact with SwiftMiner at all. These
+            // preferences describe ongoing mining notifications for an existing
+            // miner, so none of them should silence a one-off invitation.
+            return true
         }
     }
 }

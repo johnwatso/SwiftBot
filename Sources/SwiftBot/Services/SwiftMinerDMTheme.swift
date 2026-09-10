@@ -69,6 +69,18 @@ struct SwiftMinerDMTheme: Sendable {
     var setupExpiresLabel: String = "⏱️ Expires"
     var setupExpiredHint: String = "If it expires, run `/miner action:setup` for a new one."
 
+    // A friend invitation is the one DM whose recipient may never have heard of
+    // SwiftMiner, so it says what it is and links the explainer rather than
+    // assuming the reader is already onboarded.
+    var friendInvitationDescription: String = "**%@** has invited you to connect your Twitch account to SwiftMiner — an app that watches eligible streams for you and claims Twitch Drops as they complete."
+    var friendInvitationDescriptionNoInviter: String = "Someone has invited you to connect your Twitch account to SwiftMiner — an app that watches eligible streams for you and claims Twitch Drops as they complete."
+    var friendInvitationLinkTitle: String = "🟣 Open your invitation"
+    var friendInvitationLinkLabel: String = "Connect to SwiftMiner"
+    var friendInvitationSecurityLabel: String = "🔒 What you're approving"
+    var friendInvitationSecurityValue: String = "You sign in directly with Twitch. Your password and credentials are never shared with the person who invited you, and you can disconnect at any time."
+    var friendInvitationExpiredHint: String = "If it expires, ask them to send a new invitation."
+    var friendInvitationFooter: String = "Only accept invitations from people you know"
+
     var reauthDescription: String = "Your Twitch session expired, so SwiftMiner can't claim Drops until you reconnect."
     var reauthWhyLabel: String = "❓ Reason"
     var reauthHowLabel: String = "🛠️ Next step"

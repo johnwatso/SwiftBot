@@ -51,6 +51,87 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertFalse(hasField(result, matching: { _, value in value.contains("15 minute") }))
     }
 
+    // MARK: - Friend Invitation
+
+    func testFriendInvitationLeadsWithTheInviterAndTheInvitationLink() {
+        let result = router.route(
+            request: .init(
+                messageType: .friendInvitation,
+                activationExpiresInMinutes: 30,
+                activationURL: "https://swiftminer.app/setup/?from=ruffcrumble#invitation=v1.abc",
+                helpURL: "https://swiftminer.app/help/invited-to-swiftminer/",
+                inviterDisplayName: "@ruffcrumble"
+            ),
+            discordName: "Taylor"
+        )
+
+        let description = (result.embed["description"] as? String) ?? ""
+        XCTAssertTrue(description.contains("@ruffcrumble"))
+        // The recipient may never have heard of SwiftMiner, so the DM says what it is.
+        XCTAssertTrue(description.lowercased().contains("twitch drops"))
+        XCTAssertTrue(hasField(result, matching: { _, value in value.contains("never shared") }))
+        XCTAssertTrue(hasField(result, matching: { _, value in value.contains("30 minute") }))
+
+        // The invitation link is the primary button; the explainer is secondary.
+        let buttons = buttonLabels(result)
+        XCTAssertEqual(buttons, ["Connect to SwiftMiner", "What is SwiftMiner?"])
+
+        // An invitation is not onboarding progress for the person who sent it.
+        XCTAssertFalse(result.shouldTrackWelcome)
+        XCTAssertFalse(result.shouldTrackCompletion)
+    }
+
+    func testFriendInvitationNeverNamesADeviceCodeOrTwitchActivationURL() {
+        let result = router.route(
+            request: .init(
+                messageType: .friendInvitation,
+                activationCode: "ABCD-EFGH",
+                activationExpiresInMinutes: 30,
+                activationURL: "https://swiftminer.app/setup/#invitation=v1.abc",
+                inviterDisplayName: "@ruffcrumble"
+            ),
+            discordName: nil
+        )
+
+        // Even if a code is supplied, the invitation DM must not surface it —
+        // the setup page owns that fallback.
+        let rendered = String(describing: result.embed) + String(describing: result.components)
+        XCTAssertFalse(rendered.contains("ABCD-EFGH"))
+        XCTAssertFalse(rendered.contains("twitch.tv/activate"))
+    }
+
+    func testFriendInvitationUsesDiscordRelativeTimestampWhenAbsoluteExpirySupplied() {
+        let expiresAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let result = router.route(
+            request: .init(
+                messageType: .friendInvitation,
+                activationExpiresInMinutes: 30,
+                activationExpiresAt: expiresAt,
+                activationURL: "https://swiftminer.app/setup/#invitation=v1.abc",
+                inviterDisplayName: "@ruffcrumble"
+            ),
+            discordName: nil
+        )
+
+        XCTAssertTrue(hasField(result, matching: { _, value in value.contains("<t:1800000000:R>") }))
+        // The absolute instant wins; the frozen minute count must not also appear.
+        XCTAssertFalse(hasField(result, matching: { _, value in value.contains("30 minutes.") }))
+    }
+
+    func testFriendInvitationNeverAdvertisesTheOperatorsDashboard() {
+        let router = SwiftMinerDMRouter(dashboardURL: "https://miner.example.com")
+        let result = router.route(
+            request: .init(messageType: .friendInvitation, inviterDisplayName: "@ruffcrumble"),
+            discordName: nil
+        )
+
+        // No invitation URL means no buttons — but the recipient still cannot
+        // sign in to the operator's dashboard, so it must not be offered.
+        XCTAssertTrue(result.components.isEmpty)
+        let description = (result.embed["description"] as? String) ?? ""
+        XCTAssertFalse(description.contains("miner.example.com"))
+    }
+
     func testLinkedRouteRanksPriorityGamesWithMedalsAndNumbers() {
         let result = router.route(
             request: .init(
@@ -631,5 +712,12 @@ final class SwiftMinerDMRouterTests: XCTestCase {
 
     private func embedColorMatches(_ result: SwiftMinerDMResult, style: SwiftMinerDMStyle) -> Bool {
         embedColor(result) == style.color
+    }
+
+    private func buttonLabels(_ result: SwiftMinerDMResult) -> [String] {
+        result.components
+            .compactMap { $0["components"] as? [[String: Any]] }
+            .flatMap { $0 }
+            .compactMap { $0["label"] as? String }
     }
 }

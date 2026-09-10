@@ -33,8 +33,12 @@ struct SwiftMinerDMRouter: Sendable {
     func route(request: SwiftMinerDMRequest, discordName: String?) -> SwiftMinerDMResult {
         var embed: [String: Any]
         // Interactive controls still live on the web dashboard; the only
-        // components a DM carries are link buttons out to it.
-        let components: [[String: Any]] = Self.portalComponents(for: request)
+        // components a DM carries are link buttons out to it. A friend
+        // invitation is the exception: its recipient has no miner and no portal
+        // yet, so the invitation link itself is the primary button.
+        let components: [[String: Any]] = request.messageType == .friendInvitation
+            ? Self.friendInvitationComponents(for: request)
+            : Self.portalComponents(for: request)
         var shouldTrackWelcome = false
         var shouldTrackCompletion = false
         let analyticsDescription: String
@@ -154,6 +158,18 @@ struct SwiftMinerDMRouter: Sendable {
             )
             analyticsDescription = "prioritised_game_needs_linking"
 
+        case .friendInvitation:
+            embed = SwiftMinerDMEmbedBuilders.buildFriendInvitationEmbed(
+                discordName: discordName,
+                inviterDisplayName: request.inviterDisplayName,
+                activationURL: request.activationURL,
+                activationExpiresInMinutes: request.activationExpiresInMinutes,
+                activationExpiresAt: request.activationExpiresAt,
+                debug: request.debug,
+                theme: theme
+            )
+            analyticsDescription = "friend_invitation"
+
         case .webDashboardAvailable:
             embed = [
                 "title": (request.debug ? "[TEST] " : "") + "🌐 Your web dashboard is live",
@@ -164,7 +180,12 @@ struct SwiftMinerDMRouter: Sendable {
 
         // Fallback only. A DM that already has a deep-linked button must not
         // also advertise the dashboard root — the specific route is better.
-        if components.isEmpty, let dashboardURL, !dashboardURL.isEmpty {
+        // A friend invitation never gets it: that dashboard belongs to the
+        // operator who sent the invitation, and the recipient cannot sign in to
+        // it, so offering it would send them somewhere they cannot go.
+        if components.isEmpty,
+           request.messageType != .friendInvitation,
+           let dashboardURL, !dashboardURL.isEmpty {
             var description = (embed["description"] as? String) ?? ""
             description += "\n\n🌐 Manage your miner: \(dashboardURL)"
             embed["description"] = description
@@ -206,6 +227,36 @@ struct SwiftMinerDMRouter: Sendable {
                 "type": 2,
                 "style": 5,
                 "label": "Learn More",
+                "url": helpURL
+            ])
+        }
+
+        return buttons.isEmpty ? [] : [["type": 1, "components": buttons]]
+    }
+
+    /// An invitation's buttons: the swiftminer.app setup link SwiftMiner
+    /// generated, plus the explainer written for the person receiving it.
+    ///
+    /// Unlike `portalComponents`, the help article is offered even without a
+    /// primary button — a recipient who cannot open the invitation is exactly
+    /// the person most likely to want to know what they were sent.
+    static func friendInvitationComponents(for request: SwiftMinerDMRequest) -> [[String: Any]] {
+        var buttons: [[String: Any]] = []
+
+        if let invitationURL = request.activationURL, isRenderableLink(invitationURL) {
+            buttons.append([
+                "type": 2,
+                "style": 5,
+                "label": "Connect to SwiftMiner",
+                "url": invitationURL
+            ])
+        }
+
+        if let helpURL = request.helpURL, isRenderableLink(helpURL) {
+            buttons.append([
+                "type": 2,
+                "style": 5,
+                "label": "What is SwiftMiner?",
                 "url": helpURL
             ])
         }
