@@ -75,7 +75,7 @@ struct UnifiedRootView: View {
         // selection highlight, keyboard navigation, and column resizing.
         NavigationSplitView(columnVisibility: $columnVisibility) {
             DashboardSidebar(selection: $selection)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 320)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
         } detail: {
             detailView
                 .padding(.top, isSidebarCollapsed ? Self.collapsedSidebarTopInset : 0)
@@ -167,39 +167,63 @@ struct DashboardSidebar: View {
     @EnvironmentObject var app: AppModel
     @Binding var selection: SidebarItem
 
+    /// The user's Sidebar icon size setting, which the rows follow — but never
+    /// below Medium: this is SwiftBot's primary navigation, not a dense source list.
+    @Environment(\.sidebarRowSize) private var systemRowSize
+    @FocusState private var isListFocused: Bool
+    @State private var isConfirmingStop = false
+
     var body: some View {
         List(selection: $selection) {
             ForEach(SidebarItem.sidebarSections) { section in
-                Section(section.title) {
-                    ForEach(section.items.filter(isVisible)) { item in
-                        Label(item.rawValue, systemImage: item.icon)
-                            .badge(badgeCount(for: item))
-                            // Neutral glyphs rather than the accent tint a
-                            // sidebar applies by default, as SwiftBot has always
-                            // drawn them.
-                            .listItemTint(.fixed(.primary))
-                            .tag(item)
+                if let title = section.title {
+                    Section {
+                        rows(for: section)
+                    } header: {
+                        // Readable group labels, with room above each group so
+                        // spacing rather than dividers separates them.
+                        Text(title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 12)
+                            .padding(.bottom, 2)
                     }
+                } else {
+                    Section { rows(for: section) }
                 }
             }
         }
         .listStyle(.sidebar)
-        // Bars rather than plain insets: only a safe-area bar registers with
-        // the scroll edge effect, so rows fade out beneath the header and the
-        // service button instead of drawing sharply behind them.
+        .environment(\.sidebarRowSize, systemRowSize == .small ? .medium : systemRowSize)
+        // Taking focus on appear opens on the accent selection highlight
+        // (`defaultFocus` leaves a sidebar list unfocused). Once focus moves
+        // into a page the system dims the highlight, and the selected row's
+        // accent glyph keeps it the anchor.
+        .focused($isListFocused)
+        .task { isListFocused = true }
+        // A bar rather than a plain inset: only a safe-area bar registers with
+        // the scroll edge effect, so rows fade out beneath the header instead
+        // of drawing sharply behind it.
         .safeAreaBar(edge: .top, spacing: 0) {
             DashboardSidebarHeader(
+                name: app.resolvedBotUsername,
                 avatarURL: app.botAvatarURL,
-                statusText: app.primaryServiceStatusText,
-                isOnline: app.primaryServiceIsOnline,
-                clusterMode: sidebarModeLabel,
-                clusterIcon: clusterIcon
+                statusText: presence.text,
+                statusTint: presence.tint,
+                startTitle: isPrimaryServiceRunning ? nil : startButtonTitle,
+                startHelp: startStopHelpText,
+                onStart: { Task { await app.startBot() } },
+                actions: { botActions }
             )
         }
-        .safeAreaBar(edge: .bottom, spacing: 0) {
-            serviceControl
-        }
         .scrollEdgeEffectStyle(.soft, for: .all)
+        .confirmationDialog("Stop \(app.resolvedBotUsername)?", isPresented: $isConfirmingStop) {
+            Button(stopButtonTitle, role: .destructive) {
+                Task { await app.stopBot() }
+            }
+        } message: {
+            Text(stopConfirmationMessage)
+        }
         .onAppear {
             if shouldHideSwiftMesh && selection == .swiftMesh {
                 selection = .overview
@@ -212,31 +236,39 @@ struct DashboardSidebar: View {
         }
     }
 
+    private func rows(for section: SidebarItemGroup) -> some View {
+        ForEach(section.items.filter(isVisible)) { item in
+            let isSelected = selection == item
+            Label(item.rawValue, systemImage: item.icon)
+                .symbolVariant(isSelected ? .fill : .none)
+                .badge(badgeCount(for: item))
+                // Monochrome glyphs sit behind their titles; the selected
+                // row's glyph takes the accent.
+                .listItemTint(isSelected ? .fixed(.accentColor) : .monochrome)
+                .tag(item)
+        }
+    }
+
+    /// Shared by the header's menu and its context menu.
     @ViewBuilder
-    private var serviceControl: some View {
-        Group {
-            if !isPrimaryServiceRunning {
-                Button {
-                    Task { await app.startBot() }
-                } label: {
-                    Label(startButtonTitle, systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
+    private var botActions: some View {
+        Section(sidebarModeLabel) {
+            if isPrimaryServiceRunning {
+                Button("\(stopButtonTitle)…", systemImage: "stop.fill", role: .destructive) {
+                    isConfirmingStop = true
                 }
-                .buttonStyle(.borderedProminent)
             } else {
-                Button {
-                    Task { await app.stopBot() }
-                } label: {
-                    Label(stopButtonTitle, systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
+                Button(startButtonTitle, systemImage: "play.fill") {
+                    Task { await app.startBot() }
                 }
-                .buttonStyle(.bordered)
             }
         }
-        .controlSize(.large)
-        .help(startStopHelpText)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+
+        Section {
+            SettingsLink {
+                Label("Settings…", systemImage: "gear")
+            }
+        }
     }
 
     /// SwiftMesh is the one row that hides itself — a standalone bot has no
@@ -254,25 +286,28 @@ struct DashboardSidebar: View {
         app.settings.clusterMode == .worker ? app.isWorkerServiceRunning : app.status != .stopped
     }
 
-    /// Sidebar mode label that surfaces in-flight transitions (Promoting…,
-    /// Demoting…, Isolated, Recovering) instead of the steady-state role
-    /// during the transition window. Falls back to the snapshot's mode when
-    /// runtime state is idle.
+    /// A bot mid-connection reads as connecting rather than flipping straight
+    /// from Offline to Online.
+    private var presence: (text: String, tint: Color) {
+        if app.runtimeClusterMode != .worker {
+            switch app.status {
+            case .connecting: return ("Connecting…", .orange)
+            case .reconnecting: return ("Reconnecting…", .orange)
+            case .running, .stopped: break
+            }
+        }
+        return (app.primaryServiceStatusText, app.primaryServiceIsOnline ? .green : .secondary)
+    }
+
+    /// Node role for the actions menu, surfacing in-flight transitions
+    /// (Promoting…, Demoting…, Isolated, Recovering) instead of the
+    /// steady-state role during the transition window.
     private var sidebarModeLabel: String {
         let runtime = app.clusterSnapshot.runtimeState
         if runtime != .idle {
             return runtime.displayName
         }
         return app.clusterSnapshot.mode.rawValue
-    }
-
-    private var clusterIcon: String {
-        switch app.settings.clusterMode {
-        case .standalone: return "desktopcomputer"
-        case .leader: return "point.3.connected.trianglepath.dotted"
-        case .worker: return "cpu"
-        case .standby: return "arrow.triangle.2.circlepath"
-        }
     }
 
     private var shouldHideSwiftMesh: Bool {
@@ -295,6 +330,17 @@ struct DashboardSidebar: View {
         }
     }
 
+    private var stopConfirmationMessage: String {
+        switch app.settings.clusterMode {
+        case .standby:
+            return "This Mac stops watching the Primary and won’t take over if the Primary goes down."
+        case .worker:
+            return "This Mac leaves the cluster and stops running jobs offloaded by the Primary."
+        default:
+            return "The bot disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again."
+        }
+    }
+
     private var startStopHelpText: String {
         switch app.settings.clusterMode {
         case .standby:
@@ -307,58 +353,86 @@ struct DashboardSidebar: View {
     }
 }
 
-/// The bot's identity card, centred above the navigation rows. It sits in the
-/// list's top safe-area bar, so the system scroll edge effect fades rows
-/// passing beneath it.
-private struct DashboardSidebarHeader: View {
+/// The bot's identity: avatar, name and presence, with runtime actions behind a
+/// menu and on right-click. Detailed runtime state belongs to the Overview.
+private struct DashboardSidebarHeader<Actions: View>: View {
+    let name: String
     let avatarURL: URL?
     let statusText: String
-    let isOnline: Bool
-    let clusterMode: String
-    let clusterIcon: String
+    let statusTint: Color
+    /// Set while the bot is stopped. Starting is the one thing a stopped bot
+    /// needs, so it sits beside the status as well as in the menu.
+    let startTitle: String?
+    let startHelp: String
+    let onStart: () -> Void
+    @ViewBuilder let actions: () -> Actions
 
     var body: some View {
-        VStack(spacing: 8) {
-            SidebarAvatarView(avatarURL: avatarURL, isOnline: isOnline)
+        HStack(spacing: 12) {
+            SidebarAvatarView(avatarURL: avatarURL)
 
-            VStack(spacing: 3) {
-                Text("SwiftBot – Dev")
-                    .font(.system(size: 15, weight: .semibold))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name)
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                HStack(spacing: 5) {
-                    Text(statusText)
-                    Text("•")
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                    Image(systemName: clusterIcon)
-                        .font(.system(size: 10, weight: .semibold))
-                        .accessibilityHidden(true)
-                    Text(clusterMode)
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(statusTint)
+                            .frame(width: 7, height: 7)
+                        Text(statusText)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    if let startTitle {
+                        Button("Start", action: onStart)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .help(startHelp)
+                            .accessibilityLabel(startTitle)
+                    }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
             }
+
+            Spacer(minLength: 0)
+
+            Menu {
+                actions()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+            }
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .controlSize(.small)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Bot Actions")
+            .accessibilityLabel("Bot Actions")
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
+        .padding(.leading, 16)
+        .padding(.trailing, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
+        .contentShape(Rectangle())
+        .contextMenu { actions() }
     }
 }
 
 private struct SidebarAvatarView: View {
     let avatarURL: URL?
-    let isOnline: Bool
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private let size: CGFloat = 56
+    private let size: CGFloat = 44
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
+        RoundedRectangle(cornerRadius: 11, style: .continuous)
     }
 
     var body: some View {
@@ -387,14 +461,7 @@ private struct SidebarAvatarView: View {
         .overlay(
             shape.strokeBorder(.white.opacity(colorScheme == .dark ? 0.12 : 0.30), lineWidth: 1)
         )
-        .overlay(alignment: .bottomTrailing) {
-            Circle()
-                .fill(isOnline ? Color.green : Color.secondary)
-                .frame(width: 12, height: 12)
-                .overlay(Circle().strokeBorder(.background.opacity(0.85), lineWidth: 2))
-                .offset(x: 2, y: 2)
-                .accessibilityHidden(true)
-        }
+        .accessibilityHidden(true)
     }
 
     private func placeholder(progress: Bool = false) -> some View {
@@ -413,7 +480,7 @@ private struct SidebarAvatarView: View {
                     .tint(.white)
             } else {
                 Image(systemName: "cpu.fill")
-                    .font(.system(size: 23, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }

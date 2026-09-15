@@ -24,12 +24,19 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(Set(listed).count, listed.count, "A sidebar item appears in more than one section")
     }
 
-    func testSidebarSectionsAreTitledAndPopulated() {
+    func testSidebarSectionsArePopulated() {
         XCTAssertFalse(SidebarItem.sidebarSections.isEmpty)
         for section in SidebarItem.sidebarSections {
-            XCTAssertFalse(section.title.isEmpty, "A sidebar section has no title")
-            XCTAssertFalse(section.items.isEmpty, "Sidebar section \(section.title) has no rows")
+            XCTAssertFalse(section.items.isEmpty, "Sidebar section \(section.id) has no rows")
         }
+    }
+
+    /// Only the leading Overview group goes without a header; every other
+    /// group needs one to read as a group.
+    func testOnlyOverviewIsUntitled() {
+        let untitled = SidebarItem.sidebarSections.filter { $0.title?.isEmpty ?? true }
+        XCTAssertEqual(untitled.map(\.items), [[.overview]])
+        XCTAssertEqual(SidebarItem.sidebarSections.first?.items, [.overview])
     }
 
     func testRewindSitsWithTheOtherAnalyticsSurfaces() {

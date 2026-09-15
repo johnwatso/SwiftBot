@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.example
   deploymentTarget:
     macOS: "26.0"
-  xcodeVersion: "26.5"
+  xcodeVersion: "27.0"
   developmentLanguage: en
   groupSortPosition: top
   generateEmptyDirectories: true

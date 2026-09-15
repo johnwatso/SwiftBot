@@ -41,12 +41,13 @@ final class AutomationDrafter {
 
     private let logger = Logger(subsystem: "com.swiftbot", category: "automations.drafter")
 
-    /// True when on-device Apple Intelligence can produce a rule.
+    /// True when Private Cloud Compute or the on-device model can produce a rule.
     var isAvailable: Bool {
-        SystemLanguageModel.default.availability == .available
+        FoundationModelRouter.isAvailable
     }
 
     var unavailabilityReason: String? {
+        if FoundationModelRouter.isPrivateCloudComputeAvailable { return nil }
         switch SystemLanguageModel.default.availability {
         case .available:
             return nil
@@ -69,18 +70,18 @@ final class AutomationDrafter {
         }
 
         // Pull any channels and roles the user explicitly mentioned by name
-        // forward in the context list, so they survive the prefix(8)/prefix(6)
+        // forward in the context list, so they survive the channel/role
         // truncation when the prompt is built.
         let prioritised = Self.prioritiseContext(context, basedOn: prompt)
 
-        let session = LanguageModelSession(instructions: Self.systemInstructions(context: prioritised))
+        let transcript = Transcript(entries: [
+            FoundationModelRouter.instructions(Self.systemInstructions(context: prioritised))
+        ])
 
         do {
-            let response = try await session.respond(
-                to: prompt,
-                generating: Automations.Rule.self
-            )
-            var rule = response.content
+            var rule = try await FoundationModelRouter.run(transcript: transcript) { session in
+                try await session.respond(to: prompt, generating: Automations.Rule.self).content
+            }
             // Ensure a fresh ID — the model may copy an example ID.
             rule.id = UUID().uuidString
             // Ensure each step has a unique ID for SwiftUI list identity.
@@ -238,7 +239,7 @@ final class AutomationDrafter {
     private static func systemInstructions(context: ServerContext) -> String {
         var lines: [String] = []
 
-        // Tight: the on-device model has ~4K context. Keep this small.
+        // Sized for the on-device fallback: ~4K context on macOS 26, larger on 27.
         lines.append("""
         You turn a user's request into one Discord automation Rule.
         Pick trigger.kind. Add filters[] only for conditions the user explicitly mentioned.
@@ -276,13 +277,15 @@ final class AutomationDrafter {
         Name: 2-4 words.
         """)
 
-        // Cap channel/role hints aggressively — these eat tokens fastest.
+        // Channel/role hints eat tokens fastest. Allow 8 channels / 6 roles per
+        // 4K of fallback context, capped so a large server can't flood the prompt.
+        let scale = max(1, FoundationModelRouter.fallbackContextSize / 4096)
         if !context.channels.isEmpty {
-            let sample = context.channels.prefix(8).map { "\($0.id)=\($0.name)" }.joined(separator: ", ")
+            let sample = context.channels.prefix(min(8 * scale, 40)).map { "\($0.id)=\($0.name)" }.joined(separator: ", ")
             lines.append("Channels: \(sample)")
         }
         if !context.roles.isEmpty {
-            let sample = context.roles.prefix(6).map { "\($0.id)=\($0.name)" }.joined(separator: ", ")
+            let sample = context.roles.prefix(min(6 * scale, 30)).map { "\($0.id)=\($0.name)" }.joined(separator: ", ")
             lines.append("Roles: \(sample)")
         }
 

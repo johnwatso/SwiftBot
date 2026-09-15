@@ -146,6 +146,8 @@ final class AppModel: ObservableObject {
     /// falls back to mesh-only failure detection.
     @Published var peerPrimaryPublicURL: String = ""
     @Published var appleIntelligenceOnline = false
+    /// "Private Cloud Compute" or "On-device · <variant>"; nil when offline.
+    @Published var appleIntelligenceModelName: String?
     @Published var recentMediaCount24h = 0
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
@@ -634,7 +636,7 @@ final class AppModel: ObservableObject {
             }
         }
 
-        Task {
+        Task { [self] in
             guard !Self.isRunningUnderXCTest else {
                 isOnboardingComplete = onboardingCompleted(for: settings)
                 updateProvider()
@@ -1130,6 +1132,7 @@ final class AppModel: ObservableObject {
 
     func refreshAIStatus() async {
         appleIntelligenceOnline = await aiService.currentAIStatus()
+        appleIntelligenceModelName = DiscordAIService.activeAIModelName()
     }
 
     // MARK: - Patchy (see AppModel+Patchy.swift)

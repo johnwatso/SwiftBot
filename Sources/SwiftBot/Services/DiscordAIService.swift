@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -60,14 +61,105 @@ func cleanAIOutput(_ raw: String) -> String {
     return cleaned
 }
 
+#if canImport(FoundationModels)
+/// Picks the language model for every Apple Intelligence request.
+///
+/// On macOS 27 requests go to Private Cloud Compute first and fall back to the
+/// on-device model when PCC is unavailable, over quota, offline, or fails for
+/// any other reason the on-device model could recover from. Refusals and
+/// guardrail violations are not retried — the on-device model would refuse too.
+enum FoundationModelRouter {
+    enum RouterError: Error, LocalizedError {
+        case unavailable
+
+        var errorDescription: String? { "No Apple Intelligence model is available" }
+    }
+
+    private static let logger = Logger(subsystem: "com.swiftbot", category: "ai.router")
+
+    static var isAvailable: Bool {
+        isPrivateCloudComputeAvailable || SystemLanguageModel.default.availability == .available
+    }
+
+    static var isPrivateCloudComputeAvailable: Bool {
+        if #available(macOS 27.0, *) {
+            return PrivateCloudComputeLanguageModel().isAvailable
+        }
+        return false
+    }
+
+    /// Name of the model requests go to first, or nil when none is available.
+    static var activeModelName: String? {
+        if isPrivateCloudComputeAvailable { return "Private Cloud Compute" }
+        let model = SystemLanguageModel.default
+        guard model.availability == .available else { return nil }
+        if #available(macOS 27.0, *) {
+            return "On-device · \(model.variant.displayName)"
+        }
+        return "On-device"
+    }
+
+    /// Context window of the on-device fallback (4096 before macOS 27). Prompts
+    /// are sized to fit it so a request that falls back from PCC still runs.
+    static var fallbackContextSize: Int {
+        SystemLanguageModel.default.contextSize
+    }
+
+    static func instructions(_ text: String) -> Transcript.Entry {
+        .instructions(
+            Transcript.Instructions(
+                segments: [.text(Transcript.TextSegment(content: text))],
+                toolDefinitions: []
+            )
+        )
+    }
+
+    /// Runs `body` against Private Cloud Compute, then the on-device model.
+    nonisolated(nonsending) static func run<T>(
+        transcript: Transcript,
+        _ body: (LanguageModelSession) async throws -> T
+    ) async throws -> T {
+        if #available(macOS 27.0, *) {
+            let pcc = PrivateCloudComputeLanguageModel()
+            if pcc.isAvailable {
+                do {
+                    return try await body(LanguageModelSession(model: pcc, transcript: transcript))
+                } catch let error where shouldFallBack(from: error) {
+                    logger.notice("Private Cloud Compute failed, using on-device model: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+        let model = SystemLanguageModel.default
+        guard case .available = model.availability else { throw RouterError.unavailable }
+        return try await body(LanguageModelSession(model: model, transcript: transcript))
+    }
+
+    private static func shouldFallBack(from error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let error = error as? LanguageModelSession.GenerationError {
+            switch error {
+            case .guardrailViolation, .refusal: return false
+            default: return true
+            }
+        }
+        if #available(macOS 27.0, *), let error = error as? LanguageModelError {
+            switch error {
+            case .guardrailViolation, .refusal: return false
+            default: return true
+            }
+        }
+        return true
+    }
+}
+#endif
+
 struct AppleIntelligenceEngine: AIEngine {
     let defaultSystemPrompt: String
 
     func generate(messages: [Message]) async -> String? {
 #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            guard case .available = model.availability else { return nil }
+            guard FoundationModelRouter.isAvailable else { return nil }
             let engineMessages = messages.toEngineMessages()
             guard let lastUserIndex = engineMessages.lastIndex(where: { $0.role == .user }) else { return nil }
 
@@ -77,14 +169,7 @@ struct AppleIntelligenceEngine: AIEngine {
             let prompt = engineMessages[lastUserIndex].content
             guard !prompt.isEmpty else { return nil }
 
-            var transcriptEntries: [Transcript.Entry] = [
-                .instructions(
-                    Transcript.Instructions(
-                        segments: [.text(Transcript.TextSegment(content: instructions))],
-                        toolDefinitions: []
-                    )
-                )
-            ]
+            var transcriptEntries: [Transcript.Entry] = [FoundationModelRouter.instructions(instructions)]
             for message in engineMessages.prefix(lastUserIndex) {
                 switch message.role {
                 case .system:
@@ -109,13 +194,11 @@ struct AppleIntelligenceEngine: AIEngine {
                 }
             }
 
-            let session = LanguageModelSession(
-                model: model,
-                transcript: Transcript(entries: transcriptEntries)
-            )
             do {
-                let response = try await session.respond(to: prompt)
-                let content = cleanAIOutput(response.content)
+                let raw = try await FoundationModelRouter.run(transcript: Transcript(entries: transcriptEntries)) { session in
+                    try await session.respond(to: prompt).content
+                }
+                let content = cleanAIOutput(raw)
                 return content.isEmpty ? nil : content
             } catch {
                 return nil
@@ -363,13 +446,18 @@ actor DiscordAIService {
 
     nonisolated static func isAppleIntelligenceAvailable() -> Bool {
 #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            if case .available = model.availability {
-                return true
-            }
-        }
-#endif
+        return FoundationModelRouter.isAvailable
+#else
         return false
+#endif
+    }
+
+    /// Name of the model Apple Intelligence requests go to first, for display.
+    nonisolated static func activeAIModelName() -> String? {
+#if canImport(FoundationModels)
+        return FoundationModelRouter.activeModelName
+#else
+        return nil
+#endif
     }
 }

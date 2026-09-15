@@ -135,12 +135,12 @@ enum PromptComposer {
 
 // MARK: - Navigation Models
 
-/// One titled group of sidebar rows.
+/// One group of sidebar rows. A group without a title renders headerless.
 struct SidebarItemGroup: Identifiable {
-    let title: String
+    let title: String?
     let items: [SidebarItem]
 
-    var id: String { title }
+    var id: String { title ?? items.first?.rawValue ?? "" }
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
@@ -163,24 +163,26 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Outline glyphs. The sidebar fills the selected row's glyph, which is the
+    /// form each page's header uses.
     var icon: String {
         switch self {
-        case .overview: return "square.grid.2x2.fill"
-        case .patchy: return "square.and.arrow.down.badge.checkmark.fill"
+        case .overview: return "square.grid.2x2"
+        case .patchy: return "square.and.arrow.down.badge.checkmark"
         case .welcomeFlow: return "person.crop.circle.badge.plus"
-        case .automations: return "bolt.badge.automatic.fill"
-        case .moderation: return "shield.lefthalf.filled"
-        case .commands: return "terminal.fill"
-        case .activity: return "list.bullet.clipboard.fill"
+        case .automations: return "bolt.badge.automatic"
+        case .moderation: return "shield"
+        case .commands: return "terminal"
+        case .activity: return "list.bullet.clipboard"
         case .wikiBridge: return "rectangle.and.text.magnifyingglass"
         case .appleIntelligence: return "apple.intelligence"
-        case .voice: return "person.wave.2.fill"
-        case .recordings: return "video.fill"
+        case .voice: return "person.wave.2"
+        case .recordings: return "video"
         case .analytics: return "chart.line.uptrend.xyaxis"
-        case .rewind: return "arrow.counterclockwise.circle.fill"
-        case .swiftMesh: return "point.3.filled.connected.trianglepath.dotted"
-        case .sweep: return "rectangle.stack.fill.badge.minus"
-        case .gameTracker: return "gamecontroller.fill"
+        case .rewind: return "arrow.counterclockwise.circle"
+        case .swiftMesh: return "point.3.connected.trianglepath.dotted"
+        case .sweep: return "rectangle.stack.badge.minus"
+        case .gameTracker: return "gamecontroller"
         }
     }
 
@@ -189,12 +191,12 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     /// The sidebar is driven by this list rather than hand-written rows so a new
     /// `SidebarItem` cannot be added to the enum, given a detail view, and then
     /// silently never appear in the app. `SidebarLayoutTests` asserts every case
-    /// is listed exactly once.
+    /// is listed exactly once. Every destination is a direct row.
     static let sidebarSections: [SidebarItemGroup] = [
-        SidebarItemGroup(title: "Dashboard", items: [.overview]),
-        SidebarItemGroup(title: "Workflows", items: [.commands, .welcomeFlow, .automations, .moderation]),
+        SidebarItemGroup(title: nil, items: [.overview]),
+        SidebarItemGroup(title: "Bot", items: [.commands, .welcomeFlow, .automations, .moderation]),
         SidebarItemGroup(
-            title: "Services",
+            title: "Features",
             items: [.gameTracker, .patchy, .sweep, .wikiBridge, .voice, .recordings]
         ),
         SidebarItemGroup(

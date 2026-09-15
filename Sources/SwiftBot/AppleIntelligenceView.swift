@@ -82,7 +82,9 @@ struct AppleIntelligenceView: View {
             DashboardMetricCard(
                 title: "Apple Intelligence",
                 value: app.appleIntelligenceOnline ? "Online" : "Offline",
-                subtitle: app.appleIntelligenceOnline ? "System model ready" : "Unavailable on this Mac",
+                subtitle: app.appleIntelligenceOnline
+                    ? (app.appleIntelligenceModelName ?? "System model ready")
+                    : "Unavailable on this Mac",
                 symbol: "apple.intelligence",
                 color: app.appleIntelligenceOnline ? .green : .secondary,
                 appleIntelligenceGlowEnabled: true
@@ -475,7 +477,7 @@ enum AppleIntelligenceDashboardSummary {
             value: app.appleIntelligenceOnline ? "Online" : "Offline",
             subtitle: "Primary engine",
             symbol: "apple.intelligence",
-            detail: "System-native",
+            detail: app.appleIntelligenceModelName ?? "System-native",
             color: app.appleIntelligenceOnline ? .green : .secondary,
             appleIntelligenceGlowEnabled: true
         )
