@@ -57,20 +57,37 @@ struct UnifiedRootView: View {
     @Binding var selection: SidebarItem
     @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    /// Detail content runs up into the titlebar. With the sidebar showing, the
+    /// traffic lights sit over the sidebar; once it collapses they (and the
+    /// system's sidebar reveal button) would land on the page header, so the
+    /// content drops below them.
+    private static let collapsedSidebarTopInset: CGFloat = 36
+
+    private var isSidebarCollapsed: Bool {
+        columnVisibility == .detailOnly
+    }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            detailView
-                .padding(.leading, 292)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        // The system split view owns the sidebar's Liquid Glass material,
+        // row metrics (which follow the user's Sidebar icon size setting),
+        // selection highlight, keyboard navigation, and column resizing.
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             DashboardSidebar(selection: $selection)
-                .frame(width: 280)
-                .zIndex(1)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 320)
+        } detail: {
+            detailView
+                .padding(.top, isSidebarCollapsed ? Self.collapsedSidebarTopInset : 0)
+                .animation(.easeInOut(duration: 0.2), value: isSidebarCollapsed)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .top)
+                .background(SwiftBotGlassBackground())
+                .dashboardMetricGlowLayer()
         }
-        .ignoresSafeArea(.container, edges: .top)
-        .background(SwiftBotGlassBackground())
-        .dashboardMetricGlowLayer()
+        // The window has no toolbar and the View menu omits the sidebar
+        // commands, matching the remote dashboard's split view.
+        .toolbar(removing: .sidebarToggle)
         .overlay(alignment: .topTrailing) {
             if app.isBetaBuild {
                 BetaBadgeView()
@@ -146,108 +163,43 @@ private struct BetaBadgeView: View {
     }
 }
 
-private struct SidebarHeaderHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
 struct DashboardSidebar: View {
     @EnvironmentObject var app: AppModel
     @Binding var selection: SidebarItem
-    @Namespace private var selectionHighlightNamespace
-    @State private var headerHeight: CGFloat = 120
 
     var body: some View {
-        ZStack {
-            SwiftBotSidebarMaterialBackground()
-
-            VStack(spacing: 0) {
-                ZStack(alignment: .top) {
-                List {
-                    ForEach(SidebarItem.sidebarSections) { section in
-                        Section(section.title) {
-                            ForEach(section.items.filter(isVisible)) { item in
-                                sidebarListRow(item, count: badgeCount(for: item))
-                            }
-                        }
+        List(selection: $selection) {
+            ForEach(SidebarItem.sidebarSections) { section in
+                Section(section.title) {
+                    ForEach(section.items.filter(isVisible)) { item in
+                        Label(item.rawValue, systemImage: item.icon)
+                            .badge(badgeCount(for: item))
+                            // Neutral glyphs rather than the accent tint a
+                            // sidebar applies by default, as SwiftBot has always
+                            // drawn them.
+                            .listItemTint(.fixed(.primary))
+                            .tag(item)
                     }
                 }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-                .padding(.top, headerHeight)
-                .fadingEdges(top: 0, bottom: 20)
-
-                    DashboardSidebarHeader(
-                        avatarURL: app.botAvatarURL,
-                        statusText: app.primaryServiceStatusText,
-                        isOnline: app.primaryServiceIsOnline,
-                        clusterMode: sidebarModeLabel,
-                        clusterIcon: clusterIcon
-                    )
-                    .padding(.top, 44)
-                    .frame(maxWidth: .infinity)
-                    .background(alignment: .top) {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .mask(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: .black, location: 0),
-                                        .init(color: .black, location: 0.7),
-                                        .init(color: .clear, location: 1)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .allowsHitTesting(false)
-                    }
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: SidebarHeaderHeightKey.self, value: proxy.size.height)
-                        }
-                    )
-                    .onPreferenceChange(SidebarHeaderHeightKey.self) { headerHeight = $0 }
-                }
-
-                Group {
-                    if !isPrimaryServiceRunning {
-                        Button {
-                            Task { await app.startBot() }
-                        } label: {
-                            Label(startButtonTitle, systemImage: "play.circle.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .help(startStopHelpText)
-                    } else {
-                        Button {
-                            Task { await app.stopBot() }
-                        } label: {
-                            Label(stopButtonTitle, systemImage: "stop.circle.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.secondary)
-                        .help(startStopHelpText)
-                    }
-                }
-                .controlSize(.large)
-                .buttonBorderShape(.capsule)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 12)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(SidebarGlassEdgeOverlay(cornerRadius: 18))
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 12)
-        .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 2)
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
-        .padding(.vertical, 8)
+        .listStyle(.sidebar)
+        // Bars rather than plain insets: only a safe-area bar registers with
+        // the scroll edge effect, so rows fade out beneath the header and the
+        // service button instead of drawing sharply behind them.
+        .safeAreaBar(edge: .top, spacing: 0) {
+            DashboardSidebarHeader(
+                avatarURL: app.botAvatarURL,
+                statusText: app.primaryServiceStatusText,
+                isOnline: app.primaryServiceIsOnline,
+                clusterMode: sidebarModeLabel,
+                clusterIcon: clusterIcon
+            )
+        }
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            serviceControl
+        }
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             if shouldHideSwiftMesh && selection == .swiftMesh {
                 selection = .overview
@@ -260,57 +212,42 @@ struct DashboardSidebar: View {
         }
     }
 
+    @ViewBuilder
+    private var serviceControl: some View {
+        Group {
+            if !isPrimaryServiceRunning {
+                Button {
+                    Task { await app.startBot() }
+                } label: {
+                    Label(startButtonTitle, systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button {
+                    Task { await app.stopBot() }
+                } label: {
+                    Label(stopButtonTitle, systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .controlSize(.large)
+        .help(startStopHelpText)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
     /// SwiftMesh is the one row that hides itself — a standalone bot has no
     /// cluster to show.
     private func isVisible(_ item: SidebarItem) -> Bool {
         item != .swiftMesh || !shouldHideSwiftMesh
     }
 
-    private func badgeCount(for item: SidebarItem) -> Int? {
-        item == .recordings ? app.recentMediaCount24h : nil
-    }
-
-    @ViewBuilder
-    private func sidebarListRow(_ item: SidebarItem, count: Int? = nil) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: item.icon)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 18, alignment: .center)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(item.rawValue)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(1)
-            Spacer(minLength: 0)
-            if let count, count > 0 {
-                Text("\(count)")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
-            }
-        }
-        .font(.system(size: 14, weight: selection == item ? .semibold : .regular))
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if selection == item {
-                SidebarSelectionHighlight()
-                    .matchedGeometryEffect(id: "sidebarSelectionHighlight", in: selectionHighlightNamespace)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                selection = item
-            }
-        }
-        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
-        .listRowBackground(Color.clear)
+    /// A zero badge is not drawn.
+    private func badgeCount(for item: SidebarItem) -> Int {
+        item == .recordings ? app.recentMediaCount24h : 0
     }
 
     private var isPrimaryServiceRunning: Bool {
@@ -370,126 +307,9 @@ struct DashboardSidebar: View {
     }
 }
 
-struct SidebarRow: View {
-    let item: SidebarItem
-    @Binding var selection: SidebarItem
-    let selectionHighlightNamespace: Namespace.ID
-    var count: Int?
-    var isChild: Bool = false
-
-    var body: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                selection = item
-            }
-        } label: {
-            HStack(spacing: 10) {
-                if isChild {
-                    Image(systemName: "arrow.turn.down.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 12)
-                }
-                Image(systemName: item.icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 18)
-                Text(item.rawValue)
-                    .font(.system(size: 14, weight: selection == item ? .semibold : .medium))
-                    .lineLimit(1)
-                Spacer()
-                if let count, count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor, in: Capsule())
-                }
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, isChild ? 22 : 12)
-            .padding(.vertical, 9)
-            .background {
-                if selection == item {
-                    SidebarSelectionHighlight()
-                        .matchedGeometryEffect(id: "sidebarSelectionHighlight", in: selectionHighlightNamespace)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .tag(item)
-    }
-}
-
-private struct SidebarSelectionHighlight: View {
-    @Environment(\.controlActiveState) private var controlActiveState
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(.primary.opacity(controlActiveState == .active ? 0.08 : 0.045))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.primary.opacity(controlActiveState == .active ? 0.045 : 0.025), lineWidth: 1)
-            )
-    }
-}
-
-private struct SidebarGlassEdgeOverlay: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let cornerRadius: CGFloat
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-    }
-
-    var body: some View {
-        shape
-            .strokeBorder(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(colorScheme == .dark ? 0.26 : 0.55),
-                        Color.white.opacity(colorScheme == .dark ? 0.11 : 0.28),
-                        Color.black.opacity(colorScheme == .dark ? 0.20 : 0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
-            .overlay(
-                shape
-                    .inset(by: 1)
-                    .strokeBorder(.white.opacity(colorScheme == .dark ? 0.045 : 0.16), lineWidth: 1)
-            )
-            .overlay(
-                shape
-                    .strokeBorder(.black.opacity(colorScheme == .dark ? 0.18 : 0.05), lineWidth: 0.5)
-                    .blendMode(.multiply)
-            )
-    }
-}
-
-struct SidebarSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .textCase(.uppercase)
-
-            VStack(alignment: .leading, spacing: 2) {
-                content
-            }
-        }
-    }
-}
-
+/// The bot's identity card, centred above the navigation rows. It sits in the
+/// list's top safe-area bar, so the system scroll edge effect fades rows
+/// passing beneath it.
 private struct DashboardSidebarHeader: View {
     let avatarURL: URL?
     let statusText: String
@@ -497,36 +317,36 @@ private struct DashboardSidebarHeader: View {
     let clusterMode: String
     let clusterIcon: String
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         VStack(spacing: 8) {
-                SidebarAvatarView(avatarURL: avatarURL, isOnline: isOnline)
+            SidebarAvatarView(avatarURL: avatarURL, isOnline: isOnline)
 
-                VStack(spacing: 3) {
-                    Text("SwiftBot – Dev")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    HStack(spacing: 5) {
-                        Text(statusText)
-                        Text("•")
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
-                        Image(systemName: clusterIcon)
-                            .font(.system(size: 10, weight: .semibold))
-                            .accessibilityHidden(true)
-                        Text(clusterMode)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 3) {
+                Text("SwiftBot – Dev")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
+
+                HStack(spacing: 5) {
+                    Text(statusText)
+                    Text("•")
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                    Image(systemName: clusterIcon)
+                        .font(.system(size: 10, weight: .semibold))
+                        .accessibilityHidden(true)
+                    Text(clusterMode)
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
         }
         .padding(.horizontal, 12)
+        .padding(.top, 8)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -536,19 +356,22 @@ private struct SidebarAvatarView: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    private let size: CGFloat = 56
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+    }
+
     var body: some View {
         Group {
             if let avatarURL {
                 AsyncImage(url: avatarURL) { phase in
                     switch phase {
-                    case .empty:
-                        placeholder(progress: true)
                     case .success(let image):
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    case .empty:
+                        placeholder(progress: true)
                     case .failure:
                         placeholder()
                     @unknown default:
@@ -559,10 +382,10 @@ private struct SidebarAvatarView: View {
                 placeholder()
             }
         }
-        .frame(width: 56, height: 56)
+        .frame(width: size, height: size)
+        .clipShape(shape)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(colorScheme == .dark ? 0.12 : 0.30), lineWidth: 1)
+            shape.strokeBorder(.white.opacity(colorScheme == .dark ? 0.12 : 0.30), lineWidth: 1)
         )
         .overlay(alignment: .bottomTrailing) {
             Circle()
@@ -576,14 +399,13 @@ private struct SidebarAvatarView: View {
 
     private func placeholder(progress: Bool = false) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [.blue.opacity(0.85), .indigo.opacity(0.85)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+            shape.fill(
+                LinearGradient(
+                    colors: [.blue.opacity(0.85), .indigo.opacity(0.85)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
+            )
 
             if progress {
                 ProgressView()
@@ -595,54 +417,6 @@ private struct SidebarAvatarView: View {
                     .foregroundStyle(.white)
             }
         }
-    }
-}
-
-private struct SwiftBotSidebarMaterialBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        ZStack {
-            SwiftBotVisualEffectMaterialView(material: .sidebar, blendingMode: .behindWindow)
-
-            Color(nsColor: colorScheme == .dark ? .black : .windowBackgroundColor)
-                .opacity(colorScheme == .dark ? 0.20 : 0.28)
-
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.07 : 0.15),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            HStack {
-                Spacer()
-                Rectangle()
-                    .fill(.primary.opacity(colorScheme == .dark ? 0.08 : 0.06))
-                    .frame(width: 1)
-            }
-        }
-    }
-}
-
-private struct SwiftBotVisualEffectMaterialView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.state = .active
-        view.material = material
-        view.blendingMode = blendingMode
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-        nsView.state = .active
     }
 }
 

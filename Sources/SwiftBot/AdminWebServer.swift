@@ -96,12 +96,34 @@ struct AdminWebDiscordUser: Codable, Sendable {
     let displayName: String
     let username: String?
     let avatarURL: String?
+    /// Stated rather than implied: `/v1/users` already leaves bots out, and
+    /// saying so lets SwiftMiner drop one on its own should a future caller of
+    /// this payload ever include them.
+    var isBot: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case discordId = "discord_id"
         case displayName = "display_name"
         case username
         case avatarURL = "avatar_url"
+        case isBot = "bot"
+    }
+
+    init(discordId: String, displayName: String, username: String?, avatarURL: String?, isBot: Bool = false) {
+        self.discordId = discordId
+        self.displayName = displayName
+        self.username = username
+        self.avatarURL = avatarURL
+        self.isBot = isBot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        discordId = try container.decode(String.self, forKey: .discordId)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        avatarURL = try container.decodeIfPresent(String.self, forKey: .avatarURL)
+        isBot = try container.decodeIfPresent(Bool.self, forKey: .isBot) ?? false
     }
 }
 

@@ -14,6 +14,7 @@
 		0372BF2E29EAD1A885063455 /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9322EE2A34F232A29B8A8553 /* AcknowledgementsView.swift */; };
 		05601F3C8B4085B5885E7F7F /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E0E173784A375131974B77D /* WikiBridgeView.swift */; };
 		05DAF7617637001E7E821C3B /* BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFF451AC4C1D5CFCA486E92 /* BotDataProvider.swift */; };
+		060C6B90C4538CEDD9108904 /* DiscordCacheMemberFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E20E80CC95B2F0B2196D98 /* DiscordCacheMemberFilterTests.swift */; };
 		061C6ABACF516840BA8D9CD1 /* RecordingsKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 886361EEFCD726EB521500E6 /* RecordingsKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		0684186AD516210645A6083C /* MeshFailoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C61277F888422928536026 /* MeshFailoverTests.swift */; };
 		06C6439A15BD380DC000C53E /* ModerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1709507FD08B81C2129D7753 /* ModerationView.swift */; };
@@ -346,6 +347,7 @@
 		016C280F1D848F712E8A4529 /* ThirdPartyNoticesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyNoticesTests.swift; sourceTree = "<group>"; };
 		02F8C6D82B63AC2D6CBF3707 /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
 		04C6A83789CC85FA2F410946 /* AuditModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditModels.swift; sourceTree = "<group>"; };
+		04E20E80CC95B2F0B2196D98 /* DiscordCacheMemberFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordCacheMemberFilterTests.swift; sourceTree = "<group>"; };
 		0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationAITransformTests.swift; sourceTree = "<group>"; };
 		060ADA82554C3C1D4E85BC2B /* GameTrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameTrackerView.swift; sourceTree = "<group>"; };
 		065194D2E3D936D71940B85C /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandaloneSetupView.swift; sourceTree = "<group>"; };
@@ -686,6 +688,7 @@
 				AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */,
 				1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */,
 				8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */,
+				04E20E80CC95B2F0B2196D98 /* DiscordCacheMemberFilterTests.swift */,
 				9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */,
 				2C8FA234EDBAE756493F5CF9 /* DiscordGuildRESTClientTests.swift */,
 				15DCEE4759A584388ABAC846 /* DiscordMessageRESTClientDMTests.swift */,
@@ -1421,6 +1424,7 @@
 				A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */,
 				7AEEABF5EE4F1E8741511E4D /* DMTimeoutTests.swift in Sources */,
 				D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */,
+				060C6B90C4538CEDD9108904 /* DiscordCacheMemberFilterTests.swift in Sources */,
 				749CCBC0FB596535E6607CC8 /* DiscordGatewayConnectionTests.swift in Sources */,
 				F75C623FEA429EA1ABE94A3C /* DiscordGuildRESTClientTests.swift in Sources */,
 				3C1C26B9F698198C1D340768 /* DiscordMessageRESTClientDMTests.swift in Sources */,
@@ -1913,7 +1917,7 @@
 			repositoryURL = "https://github.com/johnwatso/libdave-swift.git";
 			requirement = {
 				kind = exactVersion;
-				version = 3.0.1;
+				version = 4.0.0;
 			};
 		};
 		3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {

@@ -100,6 +100,38 @@ final class VoiceUntilEmptyTests: XCTestCase {
     }
 
     @MainActor
+    func testIntroducesHumanWhoseArrivalInterruptsTheVoiceSession() async throws {
+        // An arrival rolls the DAVE group over. When that fails the session,
+        // recovery can begin before the JOIN reaches the announcer — and has
+        // already cleared the pending channel by the time it does.
+        let app = makeConnectedApp()
+        app.settings.voice.guildID = "guild-1"
+        app.settings.voice.voiceChannelID = "voice-1"
+        app.voiceRecovery = VoiceRecoveryBackoff(schedule: [.seconds(60)])
+        _ = app.voiceRecovery.beginAttempt()
+        app.voiceConnectionStatus = .recovering("Rejoining after voice drop…")
+        app.voicePendingGuildID = nil
+        app.voicePendingChannelID = nil
+        let announcer = try XCTUnwrap(app.voiceAnnouncementService)
+
+        await app.announceMemberVoiceJoin(
+            userID: "sam",
+            displayName: "Sam",
+            channelID: "voice-1",
+            guildID: "guild-1"
+        )
+        await app.announceMemberVoiceJoin(
+            userID: "ollie",
+            displayName: "Ollie",
+            channelID: "voice-2",
+            guildID: "guild-1"
+        )
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Sam has joined."])
+    }
+
+    @MainActor
     func testAnnouncesHumanWhoLeavesAnActiveAnnouncerChannel() async throws {
         let app = makeConnectedApp()
         let announcer = try XCTUnwrap(app.voiceAnnouncementService)

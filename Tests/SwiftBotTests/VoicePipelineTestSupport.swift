@@ -37,7 +37,14 @@ func makeRenderedBuffer(frames: AVAudioFrameCount = 960) -> SendableAudioBuffer 
 }
 
 func makeVoiceServerInfo() -> VoiceServerInfo {
-    VoiceServerInfo(guildID: "100", userID: "200", sessionID: "sess", token: "tok", endpoint: "voice.example.com")
+    VoiceServerInfo(
+        guildID: "100",
+        channelID: "300",
+        userID: "200",
+        sessionID: "sess",
+        token: "tok",
+        endpoint: "voice.example.com"
+    )
 }
 
 // MARK: - Fakes

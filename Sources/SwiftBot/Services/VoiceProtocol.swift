@@ -67,7 +67,13 @@ enum VoiceEncryptionMode: String, Sendable, CaseIterable {
 }
 
 struct VoiceServerInfo: Sendable, Equatable {
+    /// The voice gateway's `server_id`.
     let guildID: String
+    /// Discord's DAVE MLS group ID. It is the voice channel, not the guild:
+    /// libdave silently ignores every commit for any other group ID, so a
+    /// mismatch still joins by Welcome but falls an epoch behind — inaudible
+    /// to listeners — at the first membership change.
+    let channelID: String
     let userID: String
     let sessionID: String
     let token: String

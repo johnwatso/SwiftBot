@@ -173,6 +173,50 @@ final class VoicePlaybackServiceTests: XCTestCase {
         await playback.disconnect()
     }
 
+    func testFreshSessionDiscardsIdleRefreshArmedByEarlierFailure() async throws {
+        let clock = TestDateClock()
+        let server = makeVoiceServerInfo()
+        let firstGateway = FakeVoiceGateway(server: server)
+        let secondGateway = FakeVoiceGateway(server: server)
+        let firstTransport = FakeVoiceTransport()
+        let secondTransport = FakeVoiceTransport()
+        let pipeline = SequencedVoicePipeline(
+            gateways: [firstGateway, secondGateway],
+            transports: [firstTransport, secondTransport]
+        )
+        let playback = VoicePlaybackService(
+            gatewayFactory: { session, info in pipeline.makeGateway(session, info) },
+            transportFactory: { host, port in pipeline.makeTransport(host, port) },
+            daveTransitionGateProgressTimeout: .milliseconds(50),
+            recoveredDaveIdleRefreshInterval: 60,
+            now: clock.now
+        )
+
+        try await connect(playback, firstGateway)
+        await firstGateway.emitPrepareEpoch(version: 1, epoch: 1, transitionId: 19)
+        await waitUntil(timeout: 1) {
+            if case .failed = await playback.currentStatus { return true }
+            return false
+        }
+        var diagnostics = await playback.diagnosticsSnapshot()
+        XCTAssertTrue(diagnostics.recoveredDaveIdleRefreshArmed)
+
+        await playback.disconnect()
+        await playback.discardRecoveredDaveIdleRefresh()
+        try await connect(playback, secondGateway)
+        try await playback.speak(pcm: makeRenderedBuffer())
+        let firstPacketCount = await secondTransport.sentPackets.count
+        clock.advance(by: 61)
+        try await playback.speak(pcm: makeRenderedBuffer())
+
+        diagnostics = await playback.diagnosticsSnapshot()
+        let finalPacketCount = await secondTransport.sentPackets.count
+        XCTAssertEqual(diagnostics.status, "connected")
+        XCTAssertFalse(diagnostics.recoveredDaveIdleRefreshArmed)
+        XCTAssertGreaterThan(finalPacketCount, firstPacketCount)
+        await playback.disconnect()
+    }
+
     func testRecoveredDaveFailureRefreshesMediaOnceAfterLongIdle() async throws {
         let clock = TestDateClock()
         let server = makeVoiceServerInfo()
@@ -637,6 +681,25 @@ final class VoicePlaybackServiceTests: XCTestCase {
         XCTAssertEqual(status, .connecting, "a pre-group proposal must not fail the pending DAVE handshake")
         XCTAssertTrue(commitWelcomes.isEmpty, "pre-group proposals must not generate an MLS commit/welcome")
         XCTAssertTrue(packets.isEmpty)
+
+        await playback.disconnect()
+        _ = await connectTask.result
+    }
+
+    func testDaveGroupIsTheVoiceChannelNotTheGuild() async throws {
+        // libdave ignores every Commit whose group differs from the one it was
+        // initialised with. A guild-ID group still joined by Welcome, then fell
+        // an epoch behind — inaudible to listeners — at the next arrival.
+        let (playback, gateway, _) = makePipeline()
+        let connectTask = Task { try await playback.connect(server: gateway.server) }
+        await waitUntil { await gateway.connectCount == 1 }
+        await gateway.emitReady()
+        await gateway.emitSessionDescription(daveProtocolVersion: 1)
+        await waitUntil { await playback.getDaveDiagnostics() != nil }
+
+        let diagnostics = await playback.getDaveDiagnostics()
+        let configured = diagnostics?.recentEvents.first { $0.kind == .sessionConfigured }
+        XCTAssertEqual(configured?.detail, "group \(gateway.server.channelID), protocol 1")
 
         await playback.disconnect()
         _ = await connectTask.result

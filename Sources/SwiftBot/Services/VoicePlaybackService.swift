@@ -1322,7 +1322,7 @@ actor VoicePlaybackService {
                     generation: generation
                 )
             }
-            await daveLog("DAVE negotiated version \(daveVersion); preparing MLS session for guild \(gateway.server.guildID).")
+            await daveLog("DAVE negotiated version \(daveVersion); preparing MLS group for voice channel \(gateway.server.channelID).")
         } else {
             daveMediaRequired = false
             await daveLog("DAVE not negotiated for this voice session; media is transport-encrypted only.")
@@ -1342,9 +1342,9 @@ actor VoicePlaybackService {
         generation: UInt64
     ) async {
         guard isCurrentConnection(generation), let gateway else { return }
-        guard let groupId = UInt64(gateway.server.guildID), groupId > 0 else {
+        guard let groupId = UInt64(gateway.server.channelID), groupId > 0 else {
             await failIfCurrent(
-                "DAVE requires a non-zero numeric guild ID; received \(gateway.server.guildID)",
+                "DAVE requires a non-zero numeric voice channel ID; received \(gateway.server.channelID)",
                 generation: generation
             )
             return
@@ -2055,6 +2055,13 @@ actor VoicePlaybackService {
             generation: generation
         )
         throw VoicePipelineError.socketClosed
+    }
+
+    /// A fresh Announcer session is not a recovery from the failure that armed
+    /// the post-DAVE idle rebuild. Without this, a failure from an earlier
+    /// session forced a reconnect on the first long-idle read of a clean join.
+    func discardRecoveredDaveIdleRefresh() {
+        recoveredDaveIdleRefreshArmed = false
     }
 
     private func scheduleDaveReadinessObservation(reason: String, generation: UInt64) {

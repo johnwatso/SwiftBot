@@ -161,6 +161,31 @@ actor DiscordCache {
             }
     }
 
+    /// The people SwiftMiner may act on: cached users confirmed to be members
+    /// of a connected guild, minus bots and webhooks.
+    ///
+    /// Membership is the load-bearing half. The bot flag is only ever set when
+    /// a payload carrying `user.bot` happens to pass through, so anything
+    /// cached before that — or seen down a path without the field — would stay
+    /// "human" forever. Bots are never marked as guild members, and neither are
+    /// strangers seen only in a DM, so requiring membership excludes both.
+    /// `alsoIncluding` carries accounts already linked to SwiftMiner, which are
+    /// members by definition even when no gateway event has said so yet.
+    func humanGuildMembers(alsoIncluding linkedUserIDs: Set<String> = []) -> [DiscordCachedUser] {
+        snapshot.usernamesById
+            .filter { id, _ in
+                guard !snapshot.botUserIds.contains(id) else { return false }
+                return snapshot.guildMemberIds.contains(id) || linkedUserIDs.contains(id)
+            }
+            .map { id, displayName in
+                DiscordCachedUser(
+                    id: id,
+                    displayName: displayName,
+                    username: snapshot.rawUsernamesById[id]
+                )
+            }
+    }
+
     func markBot(id userID: String) {
         guard !snapshot.botUserIds.contains(userID) else { return }
         snapshot.botUserIds.insert(userID)

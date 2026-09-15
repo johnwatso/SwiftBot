@@ -582,16 +582,20 @@ extension AppModel {
         return result
     }
 
+    /// The member list SwiftMiner's account and invitation pickers are built
+    /// from. It has to be people: a bot cannot accept an invitation, and a
+    /// stranger cached from a DM is not on the server at all.
     func swiftMinerDiscordUsers() async -> [AdminWebDiscordUser] {
-        await hydrateRegisteredSwiftMinerDiscordUsers()
-        let users = await discordCache.humanUsers()
+        let linkedUserIDs = await hydrateRegisteredSwiftMinerDiscordUsers()
+        let users = await discordCache.humanGuildMembers(alsoIncluding: linkedUserIDs)
         return users.map { user in
             let avatar = avatarURL(forUserId: user.id) ?? fallbackAvatarURL(forUserId: user.id)
             return AdminWebDiscordUser(
                 discordId: user.id,
                 displayName: user.displayName,
                 username: user.username,
-                avatarURL: avatar?.absoluteString
+                avatarURL: avatar?.absoluteString,
+                isBot: false
             )
         }
     }
@@ -600,17 +604,22 @@ extension AppModel {
     /// only those accounts through Discord REST when the gateway has not yet
     /// supplied an avatar hash; this avoids probing every member of a large
     /// server while making linked pictures deterministic immediately at launch.
-    private func hydrateRegisteredSwiftMinerDiscordUsers() async {
+    ///
+    /// Returns the registered IDs so the caller can keep linked accounts in the
+    /// member list even when the gateway has never confirmed their membership.
+    @discardableResult
+    private func hydrateRegisteredSwiftMinerDiscordUsers() async -> Set<String> {
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { return }
+        guard !token.isEmpty else { return [] }
 
         let swiftMinerClient = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
-        guard let registeredIDs = try? await swiftMinerClient.registeredUserIds() else { return }
+        guard let registeredIDs = try? await swiftMinerClient.registeredUserIds() else { return [] }
+        let linkedUserIDs = Set(registeredIDs)
 
-        let unresolvedIDs = Set(registeredIDs).filter {
+        let unresolvedIDs = linkedUserIDs.filter {
             avatarURL(forUserId: $0) == nil && !resolvedSwiftMinerDiscordUserIDs.contains($0)
         }
-        guard !unresolvedIDs.isEmpty else { return }
+        guard !unresolvedIDs.isEmpty else { return linkedUserIDs }
 
         let identityClient = identityRESTClient
         let identities = await withTaskGroup(
@@ -632,7 +641,7 @@ extension AppModel {
             return resolved
         }
 
-        guard !identities.isEmpty else { return }
+        guard !identities.isEmpty else { return linkedUserIDs }
         let existingUsers = Dictionary(
             uniqueKeysWithValues: (await discordCache.humanUsers()).map { ($0.id, $0) }
         )
@@ -650,6 +659,7 @@ extension AppModel {
             )
         }
         scheduleDiscordCacheSave()
+        return linkedUserIDs
     }
 
     // MARK: - SwiftMiner Typed DM Pipeline

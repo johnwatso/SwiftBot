@@ -197,6 +197,11 @@ extension AppModel {
         voiceConnectionStatus = recovering
             ? .recovering("Rejoining voice channel…")
             : .connecting
+        if !recovering {
+            // A fresh join is not a recovery from whatever DAVE failure armed
+            // the post-failure idle rebuild in an earlier session.
+            await voicePlaybackService.discardRecoveredDaveIdleRefresh()
+        }
         // Warm the TTS engine in parallel with the voice handshake so the
         // first announcement doesn't pay voice-asset loading.
         if let announcer = voiceAnnouncementService {
@@ -864,6 +869,7 @@ extension AppModel {
 
     private func beginVoicePipelineIfReady() async {
         guard let guildID = voicePendingGuildID,
+              let channelID = voicePendingChannelID,
               let sessionID = voicePendingSessionID,
               let token = voicePendingServerToken,
               let endpoint = voicePendingServerEndpoint,
@@ -882,6 +888,7 @@ extension AppModel {
         }
         let info = VoiceServerInfo(
             guildID: guildID,
+            channelID: channelID,
             userID: userID,
             sessionID: sessionID,
             token: token,
@@ -1655,6 +1662,22 @@ extension AppModel {
         voiceConnectionStatus.isConnected && voicePendingChannelID == channelID
     }
 
+    /// Whether member arrivals and departures in `channelID` belong in the
+    /// Announcer queue: the pipeline is live there, or a controlled rejoin is
+    /// bringing it back. A membership change is what rolls Discord's DAVE group
+    /// over, so the arrival that trips a recovery must not be lost to it;
+    /// `speakAnnouncement` holds the read until the rejoin resumes the queue.
+    private func isAnnouncerSessionLive(guildID: String, channelID: String) -> Bool {
+        if voiceConnectionStatus.isConnected {
+            return voicePendingGuildID == guildID && voicePendingChannelID == channelID
+        }
+        guard voiceRecovery.inProgress, voiceConnectionStatus.canQueueAnnouncements else { return false }
+        // `disconnectVoice` clears the pending IDs partway through a rejoin;
+        // recovery targets the configured channel in that window.
+        return (voicePendingGuildID ?? settings.voice.guildID) == guildID
+            && (voicePendingChannelID ?? settings.voice.voiceChannelID) == channelID
+    }
+
     /// Announces a human arrival only when Announcer is already live in that
     /// exact configured channel. The arrival which triggers an automatic join
     /// is scheduled by `handleAutoJoin` and spoken once the media path is live.
@@ -1666,8 +1689,7 @@ extension AppModel {
     ) async {
         let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
         guard !botIDs.contains(userID),
-              voicePendingGuildID == guildID,
-              isVoiceConnected(to: channelID),
+              isAnnouncerSessionLive(guildID: guildID, channelID: channelID),
               settings.voice.announcerConfigs.contains(where: {
                   $0.enabled && $0.voiceChannelID == channelID
               })
@@ -1693,8 +1715,7 @@ extension AppModel {
     ) async {
         let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
         guard !botIDs.contains(userID),
-              voicePendingGuildID == guildID,
-              isVoiceConnected(to: channelID),
+              isAnnouncerSessionLive(guildID: guildID, channelID: channelID),
               settings.voice.announcerConfigs.contains(where: {
                   $0.enabled && $0.voiceChannelID == channelID
               })
