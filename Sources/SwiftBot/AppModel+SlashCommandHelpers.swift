@@ -69,6 +69,17 @@ extension AppModel {
             ["name": "rewind", "description": "Count how often a word or phrase has been used", "type": 1, "options": [
                 ["type": 3, "name": "query", "description": "Word or phrase to count, e.g. gg guys", "required": true]
             ]],
+            ["name": "replay", "description": "Your Replay: your messages and voice time on this server", "type": 1, "options": [
+                ["type": 3, "name": "period", "description": "Which recap", "required": false, "choices": [
+                    ["name": "This year", "value": "year"],
+                    ["name": "This month", "value": "month"],
+                    ["name": "Last month", "value": "last-month"]
+                ]],
+                ["type": 3, "name": "dms", "description": "Get your Replay by DM when recaps go out", "required": false, "choices": [
+                    ["name": "Stop sending me Replay DMs", "value": "stop"],
+                    ["name": "Send me Replay DMs", "value": "start"]
+                ]]
+            ]],
             ["name": "sweep", "description": "Run, preview, or pause Sweep rules", "type": 1, "options": [
                 ["type": 3, "name": "action", "description": "run | preview | pause | resume | status", "required": false, "choices": [
                     ["name": "run", "value": "run"],

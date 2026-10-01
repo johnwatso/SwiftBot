@@ -365,13 +365,18 @@ struct BotSettings: Codable, Hashable {
     // Intelligence (FoundationModels) exclusively; previous multi-provider
     // fields are preserved in Archive/MultiProviderAI.swift.
     var localAIDMReplyEnabled: Bool = false
+    /// Lets AI replies answer questions about members' activity ("when is
+    /// sam usually on?") from voice history and the Rewind archive.
+    var aiActivityAnswersEnabled: Bool = true
     /// Per-Discord-user IANA timezone identifier (e.g. "America/New_York")
     /// used to interpret natural-language times in `/timestamp`.
     /// Missing entries fall back to the bot host's `TimeZone.current`.
     var userTimezones: [String: String] = [:]
 
     var aiMemoryNotes: [AIMemoryNote] = []
-    var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
+    /// The Casual personality, used until someone writes their own.
+    static let defaultAISystemPrompt = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
+    var localAISystemPrompt: String = BotSettings.defaultAISystemPrompt
     var behavior = BotBehaviorSettings()
     var welcomeFlow = WelcomeFlowSettings()
     var wikiBot = WikiBotSettings()
@@ -437,6 +442,7 @@ struct BotSettings: Codable, Hashable {
         case clusterLastHandoverTestOK
         case clusterNodeIconOverrides
         case localAIDMReplyEnabled
+        case aiActivityAnswersEnabled
         case aiMemoryNotes
         case localAISystemPrompt
         case behavior
@@ -452,6 +458,7 @@ struct BotSettings: Codable, Hashable {
         case help
         case adminWebUI
         case voice
+        case rewind
     }
 
     init() {}
@@ -490,8 +497,9 @@ struct BotSettings: Codable, Hashable {
         clusterLastHandoverTestOK = try container.decodeIfPresent(Bool.self, forKey: .clusterLastHandoverTestOK) ?? false
         clusterNodeIconOverrides = try container.decodeIfPresent([String: String].self, forKey: .clusterNodeIconOverrides) ?? [:]
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
+        aiActivityAnswersEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiActivityAnswersEnabled) ?? true
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
-        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
+        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? BotSettings.defaultAISystemPrompt
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         welcomeFlow = try container.decodeIfPresent(WelcomeFlowSettings.self, forKey: .welcomeFlow)
             ?? WelcomeFlowSettings(legacyBehavior: behavior)
@@ -514,6 +522,7 @@ struct BotSettings: Codable, Hashable {
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
         voice = try container.decodeIfPresent(VoiceSettings.self, forKey: .voice) ?? VoiceSettings()
+        rewind = try container.decodeIfPresent(RewindSettings.self, forKey: .rewind) ?? RewindSettings()
         remoteMode.normalize()
     }
 
@@ -544,6 +553,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterLastHandoverTestOK, forKey: .clusterLastHandoverTestOK)
         try container.encode(clusterNodeIconOverrides, forKey: .clusterNodeIconOverrides)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
+        try container.encode(aiActivityAnswersEnabled, forKey: .aiActivityAnswersEnabled)
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)
@@ -558,6 +568,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)
         try container.encode(voice, forKey: .voice)
+        try container.encode(rewind, forKey: .rewind)
     }
 }
 

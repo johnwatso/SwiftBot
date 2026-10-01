@@ -177,6 +177,12 @@ extension AppModel {
                         return (ok: false, message: "Rewind is unavailable right now.", embed: nil)
                     }
                     return await self.rewindCommand(query: query, raw: raw)
+                },
+                replayCommand: { [weak self] period, dms, raw in
+                    guard let self else {
+                        return (ok: false, message: "Replay is unavailable right now.", embed: nil)
+                    }
+                    return await self.replayCommand(periodOption: period, dmsOption: dms, raw: raw)
                 }
             )
         )

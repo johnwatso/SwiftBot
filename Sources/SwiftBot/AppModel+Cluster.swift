@@ -585,7 +585,7 @@ extension AppModel {
         // Failover itself just pushed up and reconciled back down).
         automationStore.load()
         await aiService.configureLocalAIDMReplies(
-            enabled: settings.localAIDMReplyEnabled,
+            enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
             systemPrompt: settings.localAISystemPrompt
         )
         configurePatchyMonitoring()

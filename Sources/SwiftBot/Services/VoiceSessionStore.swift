@@ -56,6 +56,13 @@ struct VoicePeriodReport: Sendable {
     var currentStreak: (username: String, days: Int)?
 }
 
+struct VoiceUserReport: Sendable {
+    var seconds = 0
+    var sessions = 0
+    var longestSessionSeconds = 0
+    var favouriteChannel: String?
+}
+
 actor VoiceSessionStore {
     private let activeURL: URL
     private let historyURL: URL
@@ -158,6 +165,19 @@ actor VoiceSessionStore {
         trimHistory()
         persistActive()
         persistHistory()
+    }
+
+    /// A member's sessions that started on or after `start`, plus any still
+    /// running, oldest first. All servers when `guildId` is nil.
+    func sessions(userId: String, guildId: String?, since start: Date) -> [VoiceSession] {
+        allSessions()
+            .filter { $0.userId == userId && (guildId == nil || $0.guildId == guildId) && ($0.joinedAt >= start || $0.leftAt == nil) }
+            .sorted { $0.joinedAt < $1.joinedAt }
+    }
+
+    /// Every session that started on or after `start`, for server-wide patterns.
+    func sessions(guildId: String?, since start: Date) -> [VoiceSession] {
+        allSessions().filter { (guildId == nil || $0.guildId == guildId) && $0.joinedAt >= start }
     }
 
     /// Returns the persisted join date for a user if an active session exists.
@@ -292,11 +312,30 @@ actor VoiceSessionStore {
     }
 
     func report(period: AnalyticsPeriod, now: Date = Date(), topLimit: Int = 5) -> VoicePeriodReport {
+        report(
+            window: period.window(now: now),
+            buckets: period.buckets(now: now),
+            previous: period.previousWindow(now: now),
+            now: now,
+            topLimit: topLimit
+        )
+    }
+
+    /// Voice activity over any window (Analytics periods, Replay months and
+    /// years), optionally limited to one guild and leaving out some users.
+    func report(
+        window: DateInterval,
+        buckets: [AnalyticsBucket],
+        previous: DateInterval?,
+        guildId: String? = nil,
+        excludingUsers excluded: Set<String> = [],
+        now: Date = Date(),
+        topLimit: Int = 5
+    ) -> VoicePeriodReport {
         let calendar = Calendar.current
-        let buckets = period.buckets(now: now, calendar: calendar)
-        let window = period.window(now: now, calendar: calendar)
-        let previous = period.previousWindow(now: now, calendar: calendar)
-        let sessions = allSessions()
+        let sessions = allSessions().filter { session in
+            (guildId == nil || session.guildId == guildId) && !excluded.contains(session.userId)
+        }
 
         // Seconds a session spent inside [start, end).
         func overlap(_ session: VoiceSession, _ start: Date, _ end: Date) -> Int {
@@ -330,7 +369,7 @@ actor VoiceSessionStore {
                     bucketSeconds[index] += seconds
                 }
             }
-            let inPrevious = overlap(session, previous.start, previous.end)
+            let inPrevious = previous.map { overlap(session, $0.start, $0.end) } ?? 0
             if inPrevious > 0 {
                 report.previousTotalSeconds += inPrevious
                 report.previousSessionCount += 1
@@ -360,6 +399,24 @@ actor VoiceSessionStore {
                 return streak > 1 ? (name, streak) : nil
             }
             .max { $0.days != $1.days ? $0.days < $1.days : $0.username > $1.username }
+        return report
+    }
+
+    /// One member's voice time over a window, for Personal Replay.
+    func userReport(userId: String, guildId: String?, window: DateInterval, now: Date = Date()) -> VoiceUserReport {
+        var report = VoiceUserReport()
+        var channels: [String: Int] = [:]
+        for session in allSessions() where session.userId == userId && (guildId == nil || session.guildId == guildId) {
+            let from = max(session.joinedAt, window.start)
+            let to = min(session.leftAt ?? now, window.end, now)
+            let seconds = max(0, Int(to.timeIntervalSince(from)))
+            guard seconds > 0 else { continue }
+            report.seconds += seconds
+            report.sessions += 1
+            report.longestSessionSeconds = max(report.longestSessionSeconds, seconds)
+            if !session.channelName.isEmpty { channels[session.channelName, default: 0] += seconds }
+        }
+        report.favouriteChannel = channels.max { $0.value < $1.value }?.key
         return report
     }
 

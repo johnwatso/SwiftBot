@@ -54,6 +54,7 @@
       --nav-icon-bg: rgba(255, 255, 255, 0.05);
       --section-title-color: rgba(255, 255, 255, 0.82);
       --mesh-node-bg: rgba(30, 30, 30, 0.85);
+      --mesh-node-solid: #1f1f22;
       --mesh-node-stroke: rgba(255, 255, 255, 0.12);
     }
 
@@ -175,6 +176,7 @@
         --nav-icon-bg: rgba(0, 0, 0, 0.04);
         --section-title-color: #1d1d1f;
         --mesh-node-bg: rgba(255, 255, 255, 0.94);
+        --mesh-node-solid: #ffffff;
         --mesh-node-stroke: rgba(0, 0, 0, 0.08);
         --bg-grid-dot: #000000;
         --bg-symbols-color: rgba(0, 0, 0, 0.55);
@@ -207,6 +209,7 @@
       --nav-icon-bg: rgba(0, 0, 0, 0.04);
       --section-title-color: #1d1d1f;
       --mesh-node-bg: rgba(255, 255, 255, 0.94);
+      --mesh-node-solid: #ffffff;
       --mesh-node-stroke: rgba(0, 0, 0, 0.08);
       --bg-grid-dot: #000000;
       --bg-symbols-color: rgba(0, 0, 0, 0.55);
@@ -229,6 +232,7 @@
       --nav-icon-bg: rgba(255, 255, 255, 0.05);
       --section-title-color: rgba(255, 255, 255, 0.82);
       --mesh-node-bg: rgba(30, 30, 30, 0.85);
+      --mesh-node-solid: #1f1f22;
       --mesh-node-stroke: rgba(255, 255, 255, 0.12);
     }
 
@@ -1611,89 +1615,7 @@
       grid-column: 1 / -1;
     }
 
-    /* AI Bots — mirrors the native Apple Intelligence surface. */
-    #aibotsTop {
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    }
-
-    .ai-tile-grid {
-      display: grid;
-      gap: 10px;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    }
-
-    .ai-personality {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      text-align: left;
-      padding: 12px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--glass-stroke);
-      background: var(--glass-bottom);
-      color: var(--text);
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .ai-personality:hover {
-      background: var(--glass-top);
-    }
-
-    .ai-personality-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .ai-personality-icon {
-      width: 30px;
-      height: 30px;
-      border-radius: 999px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .ai-personality-title {
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .ai-personality-desc,
-    .ai-capability-desc {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.35;
-    }
-
-    .ai-personality-preview {
-      font-size: 12px;
-      color: var(--muted);
-      padding: 8px;
-      border-radius: var(--radius-sm);
-      background: var(--glass-bottom);
-      border: 1px solid var(--glass-stroke);
-    }
-
-    .ai-capability {
-      display: flex;
-      gap: 10px;
-      padding: 10px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--glass-stroke);
-      background: var(--glass-bottom);
-    }
-
-    .ai-capability-title {
-      font-size: 13px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
+    /* Apple Intelligence (Settings): personality dialog and Try it. */
     .ai-status-chip {
       font-size: 10px;
       font-weight: 700;
@@ -1704,29 +1626,95 @@
       white-space: nowrap;
     }
 
-    .ai-memory-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 10px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--glass-stroke);
-      background: var(--glass-bottom);
+    .ai-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+    .ai-try-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    #modalOverlay .ai-try-chip {
+      font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer;
+      padding: 5px 11px; border-radius: 999px; border: 1px solid var(--glass-stroke); background: var(--glass-bottom);
     }
+    #modalOverlay .ai-try-chip:hover { background: var(--glass-top); }
+    #modalOverlay .ai-preset {
+      display: flex; align-items: center; gap: 10px; min-width: 0;
+      padding: 10px 12px; border-radius: 12px; text-align: left; cursor: pointer;
+      font: inherit; color: var(--text);
+      border: 1px solid var(--glass-stroke); background: var(--glass-bottom);
+    }
+    #modalOverlay .ai-preset:hover { background: var(--glass-top); }
+    #modalOverlay .ai-preset.is-selected {
+      border-color: var(--tint);
+      box-shadow: 0 0 0 1px var(--tint);
+      background: color-mix(in srgb, var(--tint) 10%, var(--glass-bottom));
+    }
+    .ai-preset-icon {
+      width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 999px;
+      color: var(--tint); background: color-mix(in srgb, var(--tint) 16%, transparent);
+    }
+    .ai-preset-icon svg { width: 16px; height: 16px; }
+    .ai-preset-text { display: grid; gap: 1px; min-width: 0; }
+    .ai-preset-title { font-size: 13.5px; font-weight: 600; }
+    .ai-preset-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 900px) { .ai-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 480px) { .ai-presets { grid-template-columns: minmax(0, 1fr); } }
+    .ai-prompt-kind { font-weight: 500; color: var(--muted); }
+    #modalOverlay #aiPromptInput { min-height: 132px; resize: vertical; line-height: 1.45; }
+    .ai-try { display: flex; gap: 8px; }
+    .ai-try .field-input { flex: 1; min-width: 0; }
+    .ai-try-output { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .ai-try-bubble {
+      max-width: 85%;
+      padding: 9px 13px;
+      border-radius: 16px;
+      font-size: 13.5px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .ai-try-bubble.is-you { align-self: flex-end; background: #0a84ff; color: #fff; border-bottom-right-radius: 5px; }
+    .ai-try-bubble.is-bot { align-self: flex-start; background: var(--ub-fill, var(--glass-bottom)); border: 1px solid var(--glass-stroke); border-bottom-left-radius: 5px; }
+    .ai-try-bubble.is-thinking { color: var(--muted); animation: ai-pulse 1.2s ease-in-out infinite; }
+    @keyframes ai-pulse { 50% { opacity: 0.45; } }
 
-    .ai-memory-row .ai-memory-name {
-      font-size: 13px;
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    /* SwiftMesh page */
+    #appShell #swiftmeshPanels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+    .mesh-banner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 18px; }
+    .mesh-banner .ub-row-desc strong { font-variant-numeric: tabular-nums; color: var(--text); }
+    .mesh-ok { color: var(--success); font-weight: 600; }
+    .mesh-bad { color: var(--error, #ff453a); font-weight: 600; }
+    .mesh-muted { color: var(--muted); }
+    .mesh-live-chip { font-size: 12px; font-weight: 650; color: #fff; background: #ff9f0a; padding: 4px 10px; border-radius: 999px; animation: ai-pulse 1.4s ease-in-out infinite; }
+    .mesh-map-card { padding: 6px; border-radius: 18px; }
+    .mesh-map-card .mesh-map-panel { margin-top: 0; border: 0; background: transparent; }
+    .mesh-facts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+    .mesh-facts .mesh-status-dot { margin-right: 4px; display: inline-block; vertical-align: middle; }
+    .mesh-sep { color: var(--muted); opacity: 0.6; }
+    .mesh-latency { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #appShell .ub-list .mesh-item { padding: 12px 16px; gap: 12px; align-items: center; }
+    #appShell .ub-list .mesh-item + .mesh-item { border-top: 1px solid var(--ub-divider); }
+    .mesh-item .ub-item-text { display: grid; gap: 3px; }
+    .mesh-item .ub-item-title { flex-wrap: wrap; }
+    @media (max-width: 640px) {
+    }
+    .mesh-diag { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .mesh-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    #appShell .mesh-choice {
+      display: grid; gap: 8px; justify-items: start; text-align: left; padding: 18px; border-radius: 18px;
+      font: inherit; color: var(--text); cursor: pointer; border: 1px solid var(--glass-stroke);
+    }
+    #appShell .mesh-choice:hover { border-color: var(--accent, #0a84ff); }
+    .mesh-choice-title { font-size: 15px; font-weight: 650; }
+    .mesh-choice-desc { font-size: 13px; color: var(--muted); line-height: 1.4; }
+    .mesh-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .mesh-field { display: grid; gap: 6px; }
+    @media (max-width: 640px) {
+      .mesh-choices { grid-template-columns: minmax(0, 1fr); }
+      .mesh-banner { flex-wrap: wrap; }
+      .mesh-banner > button, .mesh-banner > .mesh-live-chip { margin-left: 44px; }
     }
 
     .mesh-map-panel {
       border-radius: var(--radius-xl);
       border: 1px solid var(--glass-stroke);
       background: var(--glass-bottom);
-      min-height: 360px;
       position: relative;
       overflow: hidden;
       margin-top: 12px;
@@ -1746,38 +1734,51 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
-      overflow: visible;
     }
 
-    .mesh-link-pulse {
-      fill: none;
-      stroke-linecap: round;
-      stroke-width: 3;
-      stroke-dasharray: 220 4000;
-      animation: meshPulseRun 2.6s linear infinite;
-      opacity: 1;
-    }
+    .mesh-link { fill: none; stroke-width: 2; stroke-linecap: round; opacity: 0.55; }
+    .mesh-link.is-off { stroke-dasharray: 4 6; opacity: 0.45; }
+    .mesh-packet { filter: drop-shadow(0 0 3px currentColor); }
 
-    @keyframes meshPulseRun {
-      from { stroke-dashoffset: 0; }
-      to { stroke-dashoffset: -460; }
+    .mesh-map-layout {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 220px) minmax(0, 260px);
+      justify-content: space-between;
+      align-items: center;
+      gap: 56px;
+      padding: 28px;
+    }
+    .mesh-map-layout.is-solo { grid-template-columns: minmax(0, 240px); justify-content: center; }
+    .mesh-map-others { display: grid; gap: 14px; }
+    @media (max-width: 640px) {
+      .mesh-map-layout { gap: 22px; padding: 18px 14px; grid-template-columns: minmax(0, 1fr); }
+      .mesh-map-layout .mesh-node.leader { width: 70%; }
+      .mesh-map-others { padding-left: 24%; }
     }
 
     .mesh-node {
-      position: absolute;
+      position: relative;
       border-radius: var(--radius-md);
       border: 1px solid var(--mesh-node-stroke);
       background: var(--mesh-node-bg);
-      backdrop-filter: blur(20px) saturate(1.1);
-      -webkit-backdrop-filter: blur(20px) saturate(1.1);
       padding: 10px 12px;
-      min-width: 180px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
     }
+    /* Opaque so the links and packets pass fully behind the cards. */
+    .mesh-map-layout .mesh-node { background: var(--mesh-node-solid); }
+    .mesh-node.is-off .mesh-node-header, .mesh-node.is-off .mesh-node-sub { opacity: 0.6; }
 
-    .mesh-node.leader {
-      min-width: 200px;
-      border-color: rgba(255, 215, 0, 0.2);
+    .mesh-map-layout .mesh-node {
+      border-color: color-mix(in srgb, var(--role) 55%, var(--mesh-node-stroke));
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--role) 18%, transparent), 0 6px 22px color-mix(in srgb, var(--role) 16%, transparent);
+    }
+    .mesh-map-layout .mesh-node.is-off { border-color: var(--mesh-node-stroke); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    .mesh-map-layout .mesh-node .mesh-node-icon { color: var(--role); }
+    .mesh-map-layout .mesh-node .mesh-node-role {
+      color: var(--role);
+      border-color: color-mix(in srgb, var(--role) 45%, transparent);
+      background: color-mix(in srgb, var(--role) 12%, transparent);
     }
 
     .mesh-node-header {
@@ -3031,18 +3032,18 @@
     /* Buttons — primary / secondary tuned to Canvas blues */
     #appShell .primary-action,
     #modalOverlay .primary-action {
-      background: linear-gradient(180deg, #2563eb, #1d4ed8);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 88%, #fff), var(--accent, #2563eb));
       color: #fff;
       border: 0;
       border-radius: 12px;
       padding: 10px 18px;
       font-weight: 600;
       font-size: 14px;
-      box-shadow: 0 10px 20px -8px rgba(37, 99, 235, 0.45);
+      box-shadow: 0 10px 20px -8px color-mix(in srgb, var(--accent, #2563eb) 45%, transparent);
       transition: transform 0.15s ease, background 0.2s ease;
     }
     #appShell .primary-action:hover,
-    #modalOverlay .primary-action:hover { background: linear-gradient(180deg, #3b82f6, #2563eb); }
+    #modalOverlay .primary-action:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 75%, #fff), color-mix(in srgb, var(--accent, #2563eb) 92%, #fff)); }
     #appShell .primary-action:active,
     #modalOverlay .primary-action:active { transform: scale(0.97); }
 
@@ -4306,6 +4307,9 @@
     }
     #appShell .sidebar-scroll.can-scroll-up { --sidebar-fade-top: 28px; }
     #appShell .sidebar-scroll.can-scroll-down { --sidebar-fade-bottom: 40px; }
+    /* No scrollbar: the edge fades already show there's more. */
+    #appShell .sidebar-scroll { scrollbar-width: none; scrollbar-gutter: auto; }
+    #appShell .sidebar-scroll::-webkit-scrollbar { display: none; width: 0; }
 
     /* ---- Overview: operational status / activity / attention ---- */
     /* At-a-glance chips under the greeting. */
@@ -4769,7 +4773,7 @@
       border-radius: 999px;
       padding: 9px 18px;
       font-size: 14px;
-      box-shadow: 0 8px 20px -10px rgba(37, 99, 235, 0.7);
+      box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent, #2563eb) 70%, transparent);
     }
     #appShell .secondary-action,
     #appShell .mini-btn,
@@ -4789,7 +4793,7 @@
     #appShell .mini-btn:hover,
     #modalOverlay .secondary-action:hover,
     #modalOverlay .mini-btn:hover { background: var(--ub-fill-hover); }
-    #appShell .primary-action.mini-btn { background: linear-gradient(180deg, #2563eb, #1d4ed8); border: 0; color: #fff; }
+    #appShell .primary-action.mini-btn { background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 88%, #fff), var(--accent, #2563eb)); border: 0; color: #fff; }
     #appShell .mini-btn svg,
     #appShell .secondary-action svg,
     #appShell .primary-action svg { width: 15px; height: 15px; }
@@ -5179,6 +5183,99 @@
     .mesh-join-actions { display: flex; gap: 8px; flex: 0 0 auto; }
     #appShell #swiftmeshPanels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 
+    /* ---- Preferences ---- */
+    :root[data-accent] #appShell { --cv-sidebar-accent: color-mix(in srgb, var(--accent) 80%, var(--text)); }
+    :root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+      animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+    }
+    .prefs-profile { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-radius: 20px; }
+    .prefs-profile-avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; background: var(--glass-bottom); }
+    .prefs-profile-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+    .prefs-profile-name { font-size: 19px; font-weight: 700; color: var(--text); }
+    .prefs-profile-handle { font-size: 13px; color: var(--muted); }
+    .prefs-profile-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .prefs-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); padding: 3px 9px; border-radius: 999px; background: var(--glass-bottom); border: 1px solid var(--glass-stroke); }
+    .prefs-chip svg { width: 13px; height: 13px; }
+    .ub-row.prefs-block { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 0; }
+    .prefs-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 520px; }
+    #appShell .prefs-theme, #appShell .prefs-wallpaper {
+      appearance: none; border: 0; background: none; padding: 0; font: inherit; color: var(--text); cursor: pointer;
+      display: grid; gap: 7px; justify-items: center;
+    }
+    .prefs-theme-preview {
+      width: 100%; aspect-ratio: 16 / 10; border-radius: 12px; display: flex; overflow: hidden;
+      border: 1px solid var(--glass-stroke); box-shadow: 0 0 0 2px transparent; transition: box-shadow 0.15s ease;
+    }
+    .prefs-theme-preview.is-light { background: #f3f1f7; }
+    .prefs-theme-preview.is-dark { background: #14141c; }
+    .prefs-theme-preview.is-auto { background: linear-gradient(105deg, #f3f1f7 50%, #14141c 50%); }
+    .ptp-side { width: 28%; margin: 7% 0 7% 6%; border-radius: 6px; background: rgba(255,255,255,0.75); }
+    .is-dark .ptp-side { background: rgba(255,255,255,0.10); }
+    .is-auto .ptp-side { background: rgba(255,255,255,0.8); }
+    .ptp-main { flex: 1; display: grid; align-content: start; gap: 8%; padding: 9% 8%; }
+    .ptp-main span { height: 7px; border-radius: 4px; background: rgba(0,0,0,0.10); }
+    .ptp-main span:first-child { width: 55%; background: var(--accent, #2563eb); opacity: 0.85; }
+    .is-dark .ptp-main span, .is-auto .ptp-main span:not(:first-child) { background: rgba(255,255,255,0.14); }
+    .prefs-theme.is-selected .prefs-theme-preview,
+    .prefs-wallpaper.is-selected .prefs-wallpaper-swatch { box-shadow: 0 0 0 2px var(--accent, #2563eb); border-color: transparent; }
+    .prefs-theme-label, .prefs-wallpaper-name { font-size: 12.5px; color: var(--muted); }
+    .prefs-theme.is-selected .prefs-theme-label, .prefs-wallpaper.is-selected .prefs-wallpaper-name { color: var(--text); font-weight: 600; }
+    .prefs-wallpapers { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; }
+    .prefs-wallpaper-swatch {
+      position: relative; overflow: hidden; display: block;
+      width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; border: 1px solid var(--glass-stroke); transition: box-shadow 0.15s ease;
+    }
+    .pw-layer { position: absolute; inset: 0; }
+    /* Every swatch shows both versions: light top-left, dark bottom-right. */
+    .pw-layer.is-dark:nth-child(2) { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+    .pw-layer.is-light:nth-child(2) { clip-path: polygon(0 0, 100% 0, 0 100%); }
+    .pw-mark {
+      position: absolute; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+      opacity: 0; transform: scale(0.6); transition: opacity 0.25s ease 0.25s, transform 0.25s ease 0.25s;
+    }
+    .pw-mark svg { width: 11px; height: 11px; }
+    .pw-mark.is-light { top: 6px; left: 6px; background: rgba(255, 255, 255, 0.85); color: #b45309; }
+    .pw-mark.is-dark { bottom: 6px; right: 6px; background: rgba(20, 20, 30, 0.75); color: #e0e7ff; }
+    .prefs-wallpaper.is-selected .pw-mark,
+    .prefs-wallpaper:hover .pw-mark { opacity: 1; transform: none; transition-delay: 0s; }
+    .prefs-wallpaper.is-revealing .pw-mark { animation: pw-mark-in 0.3s ease 0.35s both; }
+    @keyframes pw-mark-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+    .prefs-accents { display: flex; flex-wrap: wrap; gap: 10px; }
+    #appShell .prefs-accent {
+      appearance: none; width: 26px; height: 26px; border-radius: 50%; padding: 0; cursor: pointer;
+      background: var(--swatch); border: 2px solid color-mix(in srgb, var(--swatch) 70%, #000);
+    }
+    #appShell .prefs-accent.is-selected { box-shadow: 0 0 0 2px var(--glass-top, #fff), 0 0 0 4px var(--swatch); }
+    .prefs-seg { flex: 0 0 auto; }
+    /* Segmented controls: a soft track with a raised pill, in both themes. */
+    #appShell .segmented, #modalOverlay .segmented {
+      padding: 2px; gap: 2px; border: 0; border-radius: 10px;
+      background: rgba(118, 118, 128, 0.14);
+    }
+    #appShell .segmented button, #modalOverlay .segmented button {
+      border-radius: 8px; padding: 5px 12px; font-size: 12.5px; font-weight: 500; color: var(--text); opacity: 0.75;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+    #appShell .segmented button:hover, #modalOverlay .segmented button:hover { opacity: 1; }
+    #appShell .segmented button.active, #modalOverlay .segmented button.active {
+      opacity: 1; font-weight: 600; background: #fff; color: #111;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+    }
+    :root[data-theme="dark"] #appShell .segmented button.active,
+    :root[data-theme="dark"] #modalOverlay .segmented button.active { background: rgba(255, 255, 255, 0.18); color: #fff; box-shadow: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) #appShell .segmented button.active,
+      :root:not([data-theme="light"]) #modalOverlay .segmented button.active { background: rgba(255, 255, 255, 0.18); color: #fff; box-shadow: none; }
+    }
+    .prefs-note { margin: 8px 4px 0; }
+    #appShell .ub-inline-link { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: var(--accent, #2563eb); cursor: pointer; text-decoration: underline; }
+    @media (max-width: 640px) {
+      .prefs-profile { flex-wrap: wrap; }
+      .prefs-profile > .secondary-action { width: 100%; }
+      .ub-row:has(.prefs-seg), .ub-row:has(.prefs-accents) { flex-wrap: wrap; }
+      .ub-row:has(.prefs-seg) .ub-row-text, .ub-row:has(.prefs-accents) .ub-row-text { flex-basis: 100%; }
+      .prefs-wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    }
     .prefs-avatar { width: 40px; height: 40px; border-radius: 12px; object-fit: cover; flex: 0 0 auto; }
     .prefs-control { width: 160px; flex: 0 0 auto; }
     input[type="range"].prefs-control { accent-color: #2f7cf6; }
@@ -5330,12 +5427,30 @@
     .an-period { display: inline-flex; }
     .an-body.is-loading { opacity: 0.55; transition: opacity 120ms ease; }
     .an-series { display: inline-flex; }
-    .an-cols { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 3px; align-items: end; }
-    .an-col { display: flex; gap: 1px; align-items: flex-end; height: 100%; }
-    .an-col-bar { flex: 1; height: var(--h); min-height: 0; border-radius: 3px 3px 1px 1px; background: var(--c); opacity: 0.85; }
-    .an-col:hover .an-col-bar { opacity: 1; }
-    .an-cols-axis { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 3px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-    .an-cols-axis span { overflow: visible; }
+    .an-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; height: var(--chart-h); padding-top: 14px; }
+    .an-yaxis { position: relative; width: 32px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .an-yaxis span { position: absolute; right: 0; transform: translateY(50%); line-height: 1; }
+    .an-plot { position: relative; min-width: 0; }
+    .an-gridline { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--ub-divider); }
+    .an-gridline.is-base { border-top-style: solid; border-color: var(--ub-stroke); }
+    .an-cols { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 4px; align-items: end; }
+    .an-col { display: flex; gap: 3px; align-items: flex-end; justify-content: center; height: 100%; border-radius: 6px; }
+    .an-col:hover { background: color-mix(in srgb, var(--ub-fill) 70%, transparent); }
+    .an-col-bar {
+      position: relative; flex: 0 1 40px; max-width: 40px; min-width: 3px; height: var(--h);
+      border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, var(--c), color-mix(in srgb, var(--c) 55%, transparent));
+      opacity: 0.8; transition: opacity 120ms ease;
+    }
+    .an-col-bar.is-paired { flex-basis: 18px; max-width: 18px; }
+    .an-col:hover .an-col-bar, .an-col.is-highlight .an-col-bar { opacity: 1; }
+    .an-col.is-highlight .an-col-bar { box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent), 0 4px 14px color-mix(in srgb, var(--c) 40%, transparent); }
+    .an-col:not(.is-highlight) .an-col-bar { filter: saturate(0.9); }
+    .an-col-bar em {
+      position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -3px); font-style: normal;
+      font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+    }
+    .an-cols-axis { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 4px; margin-left: 42px; padding-top: 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .an-cols-axis span { text-align: center; overflow: visible; }
     .an-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
     .an-legend > span { width: 9px; height: 9px; border-radius: 3px; background: var(--c); margin-left: 6px; }
     .an-highlights { display: grid; gap: 6px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--ub-divider); }
@@ -5365,6 +5480,113 @@
     @media (min-width: 1600px) { .an-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     .settings-host-note { display: flex; gap: 8px; align-items: flex-start; margin: 4px 4px 0; }
     .settings-host-note svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
+    /* Rewind & Replay */
+    .rw-picker { width: auto; min-width: 0; max-width: 220px; }
+    .rw-body { display: flex; flex-direction: column; gap: 22px; }
+    .rw-hero {
+      position: relative; overflow: hidden; border-radius: 24px; padding: 28px 30px; color: #fff;
+      background: radial-gradient(120% 140% at 0% 0%, #ff5ea8 0%, transparent 55%), radial-gradient(120% 140% at 100% 0%, #7a5cff 0%, transparent 60%), linear-gradient(135deg, #3b1d8f, #1c1146);
+      box-shadow: 0 18px 50px rgba(76, 29, 149, 0.35);
+    }
+    .rw-hero.is-off { background: linear-gradient(135deg, #3a3a4a, #20202b); box-shadow: none; }
+    .rw-hero p { max-width: 640px; opacity: 0.85; line-height: 1.5; margin: 10px 0 0; }
+    .rw-hero code { background: rgba(255,255,255,0.15); padding: 1px 6px; border-radius: 6px; }
+    .rw-hero-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
+    .rw-hero-title { font-size: 40px; font-weight: 800; line-height: 1.05; margin-top: 6px; letter-spacing: -0.01em; }
+    .rw-so-far { font-size: 15px; font-weight: 600; opacity: 0.7; vertical-align: middle; }
+    .rw-hero-stats { display: flex; flex-wrap: wrap; gap: 14px 34px; margin-top: 22px; }
+    .rw-hero-stats div { display: grid; }
+    .rw-hero-stats strong { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .rw-hero-stats span { font-size: 12.5px; opacity: 0.75; }
+    .rw-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .rw-play {
+      all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 20px;
+      border-radius: 999px; background: #fff; color: #3b1d8f; font-weight: 700; font-size: 14.5px; cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.25); transition: transform 120ms ease;
+    }
+    .rw-play:hover { transform: translateY(-1px); }
+    .rw-play:disabled { opacity: 0.5; cursor: default; transform: none; }
+    .rw-play svg { width: 16px; height: 16px; fill: currentColor; }
+    #appShell .rw-hero-secondary { background: rgba(255,255,255,0.16); color: #fff; border-color: rgba(255,255,255,0.25); }
+    .rw-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    #appShell .rw-highlight { padding: 14px 16px; border-radius: 16px; display: grid; gap: 2px; }
+    .rw-highlight svg { width: 18px; height: 18px; color: #bf5af2; margin-bottom: 6px; }
+    .rw-hl-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .rw-hl-value { font-size: 17px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rw-hl-sub { font-size: 12px; color: var(--muted); }
+    .rw-hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+    .rw-clickable { cursor: pointer; border-radius: 10px; }
+    .rw-clickable:hover .ub-item-title { color: var(--accent, #0a84ff); }
+    .rw-clickable:focus-visible { outline: 2px solid var(--ub-focus, rgba(10,132,255,0.5)); }
+    .rw-phrase-form { display: flex; gap: 8px; }
+    .rw-phrase-search { flex: 1; }
+    #appShell .rw-phrase-search input { width: 100%; }
+    .rw-phrase-empty { font-size: 13.5px; color: var(--muted); padding: 6px 0; }
+    .rw-phrase-head { display: grid; gap: 4px; margin: 6px 0 8px; }
+    .rw-phrase-big { font-size: 30px; font-weight: 800; color: var(--text); }
+    .rw-phrase-users { display: grid; gap: 6px; }
+    .rw-phrase-user { display: grid; grid-template-columns: minmax(80px, 160px) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+    .rw-phrase-user .an-bar { margin: 0; }
+    .rw-phrase-user em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .rw-post-preview { margin-top: 12px; }
+    .rw-warn { color: #c77c02; }
+    .rw-progress { max-width: 320px; margin-top: 6px; }
+    .rw-me { display: grid; gap: 16px; }
+    .rw-me-head { display: flex; gap: 14px; align-items: center; padding: 18px; border-radius: 18px; color: #fff;
+      background: radial-gradient(120% 140% at 0% 0%, #ff5ea8 0%, transparent 55%), linear-gradient(135deg, #5b2bd6, #241458); }
+    .rw-me-avatar { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; background: rgba(255,255,255,0.2); flex: none; }
+    .rw-me-name { font-size: 24px; font-weight: 800; }
+    .rw-me-rank { font-size: 13px; opacity: 0.85; }
+    .rw-me-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .rw-me-tile { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--ub-fill); border: 1px solid var(--ub-stroke); }
+    .rw-me-tile svg { width: 16px; height: 16px; color: #bf5af2; }
+    .rw-me-tile strong { font-size: 20px; font-weight: 800; color: var(--text); }
+    .rw-me-tile span { font-size: 12px; color: var(--muted); }
+    .rw-me-facts { display: grid; gap: 6px; font-size: 13.5px; }
+    .rw-me-facts div { display: flex; gap: 8px; align-items: center; }
+    .rw-me-facts svg { width: 15px; height: 15px; color: var(--muted); }
+    /* Replay story */
+    .rs-overlay { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; background: rgba(6, 4, 18, 0.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); animation: rs-fade 160ms ease; }
+    @keyframes rs-fade { from { opacity: 0; } to { opacity: 1; } }
+    .rs-card { position: relative; width: min(420px, 92vw); height: min(740px, 88vh); border-radius: 28px; overflow: hidden; color: #fff; box-shadow: 0 30px 80px rgba(0,0,0,0.5); display: flex; animation: rs-in 260ms cubic-bezier(.2,.8,.2,1); }
+    @keyframes rs-in { from { transform: scale(0.96) translateY(8px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+    .rs-violet { background: radial-gradient(110% 80% at 0% 0%, #ff5ea8, transparent 60%), radial-gradient(110% 80% at 100% 100%, #7a5cff, transparent 60%), #2a1466; }
+    .rs-blue { background: radial-gradient(110% 80% at 100% 0%, #5ac8fa, transparent 60%), linear-gradient(160deg, #0a3d91, #061a44); }
+    .rs-orange { background: radial-gradient(110% 80% at 0% 100%, #ffcc00, transparent 60%), linear-gradient(160deg, #ff7a18, #8a2b00); }
+    .rs-pink { background: radial-gradient(110% 80% at 100% 0%, #ffb3d9, transparent 55%), linear-gradient(160deg, #e3317d, #5b0b33); }
+    .rs-green { background: radial-gradient(110% 80% at 0% 0%, #a7f3d0, transparent 55%), linear-gradient(160deg, #0f9d58, #063b23); }
+    .rs-teal { background: radial-gradient(110% 80% at 100% 100%, #7ee8fa, transparent 55%), linear-gradient(160deg, #0f766e, #062e2b); }
+    .rs-indigo { background: radial-gradient(110% 80% at 0% 0%, #c4b5fd, transparent 55%), linear-gradient(160deg, #4338ca, #1e1b4b); }
+    .rs-red { background: radial-gradient(110% 80% at 100% 0%, #fca5a5, transparent 55%), linear-gradient(160deg, #dc2626, #450a0a); }
+    .rs-progress { position: absolute; top: 14px; left: 16px; right: 56px; display: flex; gap: 4px; z-index: 2; }
+    .rs-progress span { flex: 1; height: 3px; border-radius: 3px; background: rgba(255,255,255,0.3); overflow: hidden; position: relative; }
+    .rs-progress span.is-done { background: rgba(255,255,255,0.95); }
+    .rs-progress span.is-now::after { content: ""; position: absolute; inset: 0; background: #fff; transform-origin: left; animation: rs-progress 7s linear forwards; }
+    .rs-overlay:hover .rs-progress span.is-now::after { animation-play-state: paused; }
+    @keyframes rs-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .rs-close { all: unset; position: absolute; top: 8px; right: 12px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; z-index: 3; background: rgba(0,0,0,0.2); }
+    .rs-close svg, .rs-nav svg { width: 18px; height: 18px; }
+    .rs-content { flex: 1; min-width: 0; margin: auto 0; padding: 40px 32px; display: grid; gap: 10px; animation: rs-up 380ms cubic-bezier(.2,.8,.2,1); }
+    @keyframes rs-up { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .rs-kicker { font-size: 14px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.8; }
+    .rs-title { font-size: 40px; font-weight: 850; line-height: 1.05; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+    .rs-big { font-size: 72px; font-weight: 900; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .rs-sub { font-size: 17px; line-height: 1.4; opacity: 0.9; }
+    .rs-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; counter-reset: rs; }
+    .rs-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 16px; padding: 8px 12px; border-radius: 12px; background: rgba(255,255,255,0.12); counter-increment: rs; }
+    .rs-list li span::before { content: counter(rs) ". "; opacity: 0.6; }
+    .rs-list em { font-style: normal; opacity: 0.8; font-variant-numeric: tabular-nums; }
+    .rs-emoji { display: flex; gap: 10px; font-size: 34px; margin-top: 10px; }
+    .rs-nav { all: unset; position: absolute; bottom: 18px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; background: rgba(255,255,255,0.18); z-index: 2; }
+    .rs-nav:disabled { opacity: 0.3; cursor: default; }
+    .rs-prev { left: 18px; }
+    .rs-next { right: 18px; background: rgba(255,255,255,0.92); color: #111; }
+    .rs-nav:focus-visible, .rs-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    @media (max-width: 600px) {
+      .rw-hero { padding: 22px; } .rw-hero-title { font-size: 30px; } .rw-hero-stats strong { font-size: 22px; }
+      .rs-card { width: 100vw; height: 100dvh; border-radius: 0; } .rs-big { font-size: 58px; } .rs-title { font-size: 34px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .rs-card, .rs-content, .rs-overlay { animation: none; } .rs-progress span.is-now::after { animation: none; transform: scaleX(1); } }
     /* Welcome Flow */
     .wf-step-icon { position: relative; }
     .wf-step-number {
@@ -5817,10 +6039,6 @@
 
             <div class="nav-section">
               <div class="nav-heading">System</div>
-              <button class="nav-link" data-view="aibots" type="button">
-                <span class="nav-icon"><i data-tabler="robot"></i></span>
-                <span class="nav-text">Apple Intelligence</span>
-              </button>
               <button class="nav-link" data-view="analytics" type="button">
                 <span class="nav-icon"><i data-tabler="activity"></i></span>
                 <span class="nav-text">Analytics</span>
@@ -6014,32 +6232,13 @@
           <div class="section-sticky">
             <div class="section-sticky-row">
               <div class="section-mini-title"><i class="lucide" data-lucide="rotate-ccw"></i> Rewind</div>
-              <div id="rewindUpdated" class="command-desc">Message archive</div>
+              <div class="section-actions">
+                <select id="rewindGuild" class="field-select rw-picker hidden" aria-label="Server"></select>
+                <select id="rewindPeriod" class="field-select rw-picker" aria-label="Period"></select>
+              </div>
             </div>
           </div>
-          <div class="analytics-shell">
-            <section id="rewindPulse" class="analytics-pulse glass"></section>
-            <section class="analytics-main">
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Year in Review</div>
-                <div id="rewindSummary" class="analytics-health-grid"></div>
-              </article>
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="type"></i> Top Words &amp; Phrases</div>
-                <div id="rewindTerms" class="analytics-health-grid"></div>
-              </article>
-            </section>
-            <section class="analytics-diagnostics">
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="users"></i> Most Talkative</div>
-                <div id="rewindUsers" class="analytics-health-grid"></div>
-              </article>
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="smile"></i> Most-Used Emoji</div>
-                <div id="rewindEmoji" class="analytics-health-grid"></div>
-              </article>
-            </section>
-          </div>
+          <div class="gt-shell"><div id="rewindBody" class="rw-body"></div></div>
         </section>
 
         <section id="patchyView" class="view hidden">
@@ -6091,15 +6290,6 @@
           </div>
         </section>
 
-        <section id="aibotsView" class="view hidden">
-          <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="bot"></i> Apple Intelligence</div>
-          </div>
-          <div class="settings-shell">
-            <section id="aibotsTop" class="ub-status glass"></section>
-            <section id="aibotsPanels" class="settings-panels"></section>
-          </div>
-        </section>
 
         <section id="recordingsView" class="view hidden">
           <div class="section-sticky">
@@ -6177,7 +6367,7 @@
 
         <section id="userPrefsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="user-cog"></i> User Settings</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="user-cog"></i> Preferences</div>
           </div>
           <div class="settings-shell">
             <section id="userPrefsTop" class="hidden"></section>
@@ -6419,7 +6609,7 @@
     }, true);
     let currentUser = null;
     let authOptions = { discordEnabled: true, localEnabled: false };
-    let userPrefs = { theme: 'auto', backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
+    let userPrefs = { theme: 'auto', wallpaper: 'aurora', accent: 'blue', compactMode: false, motion: 'system', startPage: 'last' };
     let currentView = 'overview';
     let dashboardStatus = null;
     let dashboardOverview = null;
@@ -6686,26 +6876,95 @@
     function loadUserPrefs() {
       const key = prefsStorageKey();
       if (!key) return;
-      try {
-        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
-        userPrefs = {
-          theme: ['auto', 'light', 'dark'].includes(parsed.theme) ? parsed.theme : 'auto',
-          backgroundAnimation: parsed.backgroundAnimation !== false,
-          backgroundOpacity: (typeof parsed.backgroundOpacity === 'number' && parsed.backgroundOpacity >= 0 && parsed.backgroundOpacity <= 1)
-            ? parsed.backgroundOpacity
-            : 0.72,
-          rememberLastTab: parsed.rememberLastTab !== false,
-          compactMode: parsed.compactMode === true
-        };
-      } catch {
-        userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
-      }
+      let parsed = {};
+      try { parsed = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch {}
+      userPrefs = {
+        theme: ['auto', 'light', 'dark'].includes(parsed.theme) ? parsed.theme : 'auto',
+        wallpaper: PREF_WALLPAPERS[parsed.wallpaper] ? parsed.wallpaper : 'aurora',
+        accent: PREF_ACCENTS[parsed.accent] ? parsed.accent : 'blue',
+        compactMode: parsed.compactMode === true,
+        motion: ['system', 'reduce', 'full'].includes(parsed.motion) ? parsed.motion : 'system',
+        // Older saves had a "remember last page" switch instead.
+        startPage: typeof parsed.startPage === 'string' ? parsed.startPage : (parsed.rememberLastTab === false ? 'overview' : 'last')
+      };
+    }
+
+    function defaultUserPrefs() {
+      return { theme: 'auto', wallpaper: 'aurora', accent: 'blue', compactMode: false, motion: 'system', startPage: 'last' };
     }
 
     function saveUserPrefs() {
       const key = prefsStorageKey();
       if (!key) return;
-      localStorage.setItem(key, JSON.stringify(userPrefs));
+      try { localStorage.setItem(key, JSON.stringify(userPrefs)); } catch {}
+    }
+
+    // Wallpapers: four soft colour blobs over a base gradient, in a light
+    // and a dark version. Aurora is the stylesheet's own default.
+    const PREF_WALLPAPERS = {
+      // Same colours as the stylesheet's --home-wallpaper, which stays in charge for Aurora.
+      aurora: {
+        name: 'Aurora',
+        isDefault: true,
+        dark: { blobs: ['72,146,255,0.42', '166,92,255,0.34', '255,120,150,0.24', '40,200,190,0.24'], base: ['#0b1330', '#140c2b', '#0a0a14'] },
+        light: { blobs: ['120,180,255,0.60', '205,160,255,0.55', '255,180,196,0.50', '140,230,215,0.50'], base: ['#e9eefc', '#f3ecfb', '#f7f3f5'] }
+      },
+      sunset: {
+        name: 'Sunset',
+        dark: { blobs: ['255,140,80,0.40', '255,90,150,0.34', '170,90,255,0.26', '255,200,90,0.20'], base: ['#1f0f1a', '#230f24', '#0f0a12'] },
+        light: { blobs: ['255,180,130,0.62', '255,160,200,0.55', '200,160,255,0.45', '255,220,150,0.50'], base: ['#fdf0ea', '#fbeaf2', '#f8f2f5'] }
+      },
+      ocean: {
+        name: 'Ocean',
+        dark: { blobs: ['40,130,255,0.42', '30,200,230,0.32', '60,90,255,0.28', '20,220,180,0.20'], base: ['#06152e', '#071d33', '#050b16'] },
+        light: { blobs: ['110,170,255,0.60', '120,220,240,0.55', '150,170,255,0.48', '130,235,210,0.48'], base: ['#e8f1fd', '#e7f6fb', '#f2f6fa'] }
+      },
+      forest: {
+        name: 'Forest',
+        dark: { blobs: ['50,200,120,0.34', '20,160,150,0.30', '160,210,80,0.20', '40,120,90,0.26'], base: ['#07170f', '#0a1a16', '#060c0a'] },
+        light: { blobs: ['140,225,170,0.60', '120,210,200,0.52', '200,235,150,0.48', '150,210,180,0.45'], base: ['#ebf7ef', '#e9f5f2', '#f3f7f2'] }
+      },
+      rose: {
+        name: 'Rose',
+        dark: { blobs: ['255,90,140,0.38', '255,140,180,0.26', '200,80,200,0.26', '255,120,120,0.20'], base: ['#1e0a14', '#1c0b1c', '#100810'] },
+        light: { blobs: ['255,160,190,0.62', '255,200,215,0.60', '230,170,235,0.48', '255,185,175,0.48'], base: ['#fdecf2', '#fbeef8', '#f9f3f5'] }
+      },
+      graphite: {
+        name: 'Graphite',
+        dark: { blobs: ['140,150,170,0.18', '110,120,140,0.16', '160,160,175,0.12', '90,100,120,0.14'], base: ['#121317', '#15161b', '#0b0b0e'] },
+        light: { blobs: ['200,205,215,0.55', '215,218,225,0.50', '190,195,205,0.42', '225,225,230,0.45'], base: ['#f1f2f5', '#f3f3f6', '#f6f6f8'] }
+      }
+    };
+
+    const PREF_ACCENTS = {
+      blue: { name: 'Blue', color: '#2563eb' },
+      purple: { name: 'Purple', color: '#8b5cf6' },
+      pink: { name: 'Pink', color: '#ec4899' },
+      orange: { name: 'Orange', color: '#f97316' },
+      green: { name: 'Green', color: '#16a34a' },
+      teal: { name: 'Teal', color: '#0d9488' },
+      graphite: { name: 'Graphite', color: '#4b5563' }
+    };
+
+    function resolvedTheme() {
+      if (userPrefs.theme === 'light' || userPrefs.theme === 'dark') return userPrefs.theme;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function wallpaperCSS(id, theme) {
+      const variant = PREF_WALLPAPERS[id]?.[theme];
+      if (!variant) return null;
+      const spots = ['60% 55% at 12% 18%', '50% 50% at 88% 12%', '55% 60% at 80% 88%', '50% 55% at 18% 92%'];
+      const blobs = variant.blobs.map((rgba, i) => `radial-gradient(${spots[i]}, rgba(${rgba}) 0%, transparent 70%)`);
+      return {
+        image: [...blobs, `linear-gradient(160deg, ${variant.base[0]} 0%, ${variant.base[1]} 55%, ${variant.base[2]} 100%)`].join(', '),
+        base: variant.base[2]
+      };
+    }
+
+    // Anything that animates checks this (the stylesheet handles CSS motion).
+    function prefersReducedMotion() {
+      return document.documentElement.dataset.motion === 'reduce';
     }
 
     function applyUserPrefs() {
@@ -6718,9 +6977,33 @@
       }
       const bg = document.getElementById('bgStream');
       if (bg) bg.style.display = 'none';
-      root.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
-      if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
+
+      const wallpaper = PREF_WALLPAPERS[userPrefs.wallpaper]?.isDefault ? null : wallpaperCSS(userPrefs.wallpaper, resolvedTheme());
+      if (wallpaper) {
+        root.style.setProperty('--home-wallpaper', wallpaper.image);
+        root.style.setProperty('--home-wallpaper-base', wallpaper.base);
+      } else {
+        root.style.removeProperty('--home-wallpaper');
+        root.style.removeProperty('--home-wallpaper-base');
+      }
+
+      const accent = PREF_ACCENTS[userPrefs.accent] || PREF_ACCENTS.blue;
+      root.style.setProperty('--accent', accent.color);
+      if (userPrefs.accent && userPrefs.accent !== 'blue') root.setAttribute('data-accent', userPrefs.accent);
+      else root.removeAttribute('data-accent');
+
+      const reduce = userPrefs.motion === 'reduce'
+        || (userPrefs.motion === 'system' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if (reduce) root.setAttribute('data-motion', 'reduce');
+      else root.removeAttribute('data-motion');
+
+      if (body) body.classList.toggle('compact-density', !!userPrefs.compactMode);
     }
+
+    // Follow the system when the theme or motion preference is "System".
+    ['(prefers-color-scheme: dark)', '(prefers-reduced-motion: reduce)'].forEach(query => {
+      try { window.matchMedia(query).addEventListener('change', () => { applyUserPrefs(); if (currentView === 'userprefs') renderUserPrefsView(); }); } catch {}
+    });
 
     // Called once when a dialog closes without its own save path clearing it,
     // so editors that change state as you go can undo on Cancel.
@@ -7018,7 +7301,7 @@
       cluster: 'network', debug: 'stethoscope', notifystatus: 'bell-ring', setchannel: 'hash', ignorechannel: 'volume-x',
       weekly: 'calendar-clock', image: 'image', music: 'music', playlist: 'list-music', miner: 'pickaxe', compare: 'columns-2',
       meta: 'crown', steam: 'gamepad-2', timestamp: 'clock', announce: 'megaphone', randomteams: 'users', rewind: 'history',
-      sweep: 'layers'
+      sweep: 'layers', replay: 'clapperboard'
     };
     const COMMAND_GROUPS = [
       ['General', '#0a84ff', 'settings-2'],
@@ -7321,20 +7604,53 @@
       `;
     }
 
-    // Columns for one or two series. Labels show every few columns so 30
-    // days still reads; hover gives each column's exact numbers.
-    function anColumnChart(buckets, series, { height = 120 } = {}) {
-      const max = Math.max(1, ...buckets.flatMap(b => series.map(sr => sr.value(b))));
-      const every = buckets.length > 14 ? Math.ceil(buckets.length / 8) : 1;
+    // Round axis maximum and step: 0, 10, 20, 30 rather than 0, 9.5, 19…
+    function anNiceScale(max, tickCount = 4) {
+      if (max <= 0) return { max: 4, step: 1 };
+      const rough = max / tickCount;
+      const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+      const step = [1, 2, 2.5, 5, 10].map(m => m * magnitude).find(s => s >= rough) || 10 * magnitude;
+      return { max: Math.ceil(max / step) * step, step };
+    }
+
+    function anCompact(n) {
+      return Math.abs(n) >= 10000 ? `${Math.round(n / 1000)}k` : Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${n}`;
+    }
+
+    // Column chart for one or two series, with a y-axis and gridlines.
+    // Bars keep a sensible width instead of filling their slot; values show
+    // above the bars when there are few of them, and on hover otherwise.
+    function anColumnChart(buckets, series, { height = 160, highlight = -1, labelEvery } = {}) {
+      const values = buckets.flatMap(b => series.map(sr => sr.value(b)));
+      const scale = anNiceScale(Math.max(0, ...values));
+      const ticks = [];
+      for (let v = 0; v <= scale.max + 1e-9; v += scale.step) ticks.push(v);
+      const showValues = buckets.length <= 12;
+      const every = labelEvery || (buckets.length > 14 ? Math.ceil(buckets.length / 8) : 1);
+      const pct = (v) => (v / scale.max) * 100;
       return `
-        <div class="an-cols" style="--cols:${buckets.length};height:${height}px;">
-          ${buckets.map(b => `
-            <div class="an-col" title="${escapeHTML(b.label)} · ${series.map(sr => `${sr.value(b).toLocaleString()} ${sr.name}`).join(' · ')}">
-              ${series.map(sr => `<span class="an-col-bar" style="--h:${Math.max(sr.value(b) ? 3 : 0, Math.round(sr.value(b) / max * 100))}%;--c:${sr.color};"></span>`).join('')}
-            </div>`).join('')}
+        <div class="an-chart" style="--chart-h:${height}px;">
+          <div class="an-yaxis">${ticks.map(t => `<span style="bottom:${pct(t)}%;">${anCompact(t)}</span>`).join('')}</div>
+          <div class="an-plot">
+            ${ticks.map(t => `<span class="an-gridline${t === 0 ? ' is-base' : ''}" style="bottom:${pct(t)}%;"></span>`).join('')}
+            <div class="an-cols" style="--cols:${buckets.length};">
+              ${buckets.map((b, i) => `
+                <div class="an-col${i === highlight ? ' is-highlight' : ''}" title="${escapeHTML(b.label)} · ${series.map(sr => `${sr.value(b).toLocaleString()} ${sr.name}`).join(' · ')}">
+                  ${series.map(sr => {
+                    const v = sr.value(b);
+                    return `<span class="an-col-bar${series.length > 1 ? ' is-paired' : ''}" style="--h:${pct(v)}%;--c:${sr.color};">${showValues && v ? `<em>${anCompact(v)}</em>` : ''}</span>`;
+                  }).join('')}
+                </div>`).join('')}
+            </div>
+          </div>
         </div>
         <div class="an-cols-axis" style="--cols:${buckets.length};">
-          ${buckets.map((b, i) => `<span>${i % every === 0 || i === buckets.length - 1 ? escapeHTML(b.label) : ''}</span>`).join('')}
+          ${buckets.map((b, i) => {
+            const last = buckets.length - 1;
+            // Always label the last column; skip a regular label that would crowd it.
+            const show = i === last || (i % every === 0 && last - i >= Math.ceil(every / 2));
+            return `<span>${show ? escapeHTML(b.label) : ''}</span>`;
+          }).join('')}
         </div>`;
     }
 
@@ -7469,11 +7785,13 @@
         ${group(`Activity · ${escapeHTML(p.label)}`, `
           <div class="ub-group-card glass an-chart-card">
             <div class="an-chart-head"><div class="segmented an-series">${seriesTabs}</div></div>
-            ${anColumnChart(p.buckets, [seriesDefs[analyticsSeries]], { height: 140 })}
+            ${anColumnChart(p.buckets, [seriesDefs[analyticsSeries]], { height: 170 })}
             <div class="an-chart-head" style="margin-top:6px;"><span class="ub-row-title">By hour of day</span>${maxHour ? `<span class="ub-row-desc">Peak around ${hourLabel(peakIndex)}</span>` : ''}</div>
-            ${maxHour ? `
-              <div class="an-hours">${hours.map((c, h) => `<span class="an-hour${c === maxHour ? ' is-peak' : ''}" style="--h:${Math.max(3, Math.round(c / maxHour * 100))}%;" title="${hourLabel(h)} · ${c.toLocaleString()}"></span>`).join('')}</div>
-              <div class="an-hours-axis"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>`
+            ${maxHour ? anColumnChart(
+                hours.map((count, h) => ({ label: hourLabel(h), count })),
+                [{ name: analyticsSeries === 'messages' ? 'messages' : 'voice sessions', color: seriesDefs[analyticsSeries].color, value: b => b.count }],
+                { height: 110, highlight: peakIndex, labelEvery: 6 }
+              )
               : '<div class="ub-row-desc">Nothing yet for this period.</div>'}
             ${highlights ? `<div class="an-highlights">${highlights}</div>` : ''}
           </div>`)}
@@ -7506,7 +7824,7 @@
             ${t.joins || t.leaves ? anColumnChart(p.buckets, [
               { name: 'joined', color: '#30d158', value: b => b.joins },
               { name: 'left', color: '#ff453a', value: b => b.leaves }
-            ], { height: 90 }) : '<div class="ub-row-desc">No joins or leaves recorded in this period. Counting started with this version of SwiftBot.</div>'}
+            ], { height: 110 }) : '<div class="ub-row-desc">No joins or leaves recorded in this period. Counting started with this version of SwiftBot.</div>'}
           </div>`)}
         <div class="an-grid">
           ${(p.rankSeries || []).length ? group('Ranked progress', `<div class="ub-list glass">${p.rankSeries.map(series => {
@@ -7607,18 +7925,6 @@
       return dashboardRewind;
     }
 
-    function rewindTermList(entries, emptyLabel) {
-      if (!entries || !entries.length) {
-        return `<div class="placeholder">${emptyLabel}</div>`;
-      }
-      return entries.map(entry => `
-        <article class="analytics-card">
-          <div class="label">${escapeHTML(entry.label)}</div>
-          <div class="value">${Number(entry.count).toLocaleString()}</div>
-        </article>
-      `).join('');
-    }
-
     function rewindBytes(bytes) {
       const value = Number(bytes) || 0;
       if (value < 1024) return `${value} B`;
@@ -7632,92 +7938,458 @@
       return `${scaled.toFixed(1)} ${units[unit]}`;
     }
 
+    // ---- Rewind & Replay -------------------------------------------------
+    // dashboardRewind (/api/rewind) carries archive status; the Replay for the
+    // chosen server and period comes from /api/rewind/replay.
+    const rewindState = { guildID: '', period: '', replay: null, recaps: null, phrase: null, loading: false };
+
+    async function loadRewindReplay() {
+      if (!rewindState.recaps) {
+        const r = await fetch('/api/rewind/recaps');
+        if (r.ok) rewindState.recaps = await r.json();
+      }
+      const guilds = rewindState.recaps?.guilds || [];
+      if (!rewindState.guildID || !guilds.some(g => g.id === rewindState.guildID)) {
+        rewindState.guildID = (dashboardRewind?.guilds || [])[0]?.id || guilds[0]?.id || '';
+      }
+      if (!rewindState.period) rewindState.period = String(new Date().getFullYear());
+      if (!rewindState.guildID) { rewindState.replay = null; return; }
+      rewindState.loading = true;
+      const r = await fetch(`/api/rewind/replay?guild=${encodeURIComponent(rewindState.guildID)}&period=${encodeURIComponent(rewindState.period)}`);
+      rewindState.replay = r.ok ? await r.json() : null;
+      rewindState.loading = false;
+    }
+
+    function rwPeriodLabel(key) {
+      if (/^\d{4}$/.test(key)) return key;
+      const [y, m] = key.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    }
+    function rwDay(key) {
+      if (!key) return '';
+      const [y, m, d] = key.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    const rwHour = (h) => `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`;
+
     function renderRewindView() {
-      const updated = document.getElementById('rewindUpdated');
-      const pulse = document.getElementById('rewindPulse');
-      const summaryNode = document.getElementById('rewindSummary');
-      const termsNode = document.getElementById('rewindTerms');
-      const usersNode = document.getElementById('rewindUsers');
-      const emojiNode = document.getElementById('rewindEmoji');
-
+      const body = document.getElementById('rewindBody');
+      if (!body) return;
       const data = dashboardRewind;
-      if (!data) {
-        if (pulse) pulse.innerHTML = `<div class="placeholder">Loading the Rewind archive…</div>`;
+      if (!data) { body.innerHTML = '<div class="placeholder">Loading Rewind…</div>'; return; }
+      if (!rewindState.replay && !rewindState.loading && data.isEnabled) {
+        loadRewindReplay().then(renderRewindView).catch(() => {});
+      }
+      const recaps = rewindState.recaps;
+      const guilds = recaps?.guilds || [];
+
+      // Pickers
+      const guildSelect = document.getElementById('rewindGuild');
+      const periodSelect = document.getElementById('rewindPeriod');
+      if (guildSelect) {
+        guildSelect.classList.toggle('hidden', guilds.length < 2);
+        guildSelect.innerHTML = guilds.map(g => `<option value="${escapeHTML(g.id)}" ${g.id === rewindState.guildID ? 'selected' : ''}>${escapeHTML(g.name)}</option>`).join('');
+        guildSelect.onchange = async () => { rewindState.guildID = guildSelect.value; rewindState.replay = null; rewindState.phrase = null; await loadRewindReplay(); renderRewindView(); };
+      }
+      if (periodSelect) {
+        const months = recaps?.months || [];
+        const thisYear = String(new Date().getFullYear());
+        const years = [...new Set([thisYear, ...months.map(m => m.slice(0, 4))])].sort().reverse();
+        periodSelect.innerHTML = years.map(y => `
+          <optgroup label="${y}">
+            <option value="${y}" ${rewindState.period === y ? 'selected' : ''}>${y} · whole year</option>
+            ${months.filter(m => m.startsWith(y)).map(m => `<option value="${m}" ${rewindState.period === m ? 'selected' : ''}>${rwPeriodLabel(m)}</option>`).join('')}
+          </optgroup>`).join('');
+        periodSelect.onchange = async () => { rewindState.period = periodSelect.value; rewindState.replay = null; await loadRewindReplay(); renderRewindView(); };
+      }
+
+      const archiveCard = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Archive</h2></div>
+          <div class="ub-group-card glass">
+            <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Collecting</div><div class="ub-row-desc">${data.isEnabled ? (data.retainsContent ? 'Counting messages and keeping their text for phrase search' : 'Counting messages only (text isn’t kept)') : 'Off'}</div></div><span class="ub-row-value"><span class="ops-dot" data-state="${data.isEnabled ? 'healthy' : 'neutral'}"></span> ${data.isEnabled ? 'On' : 'Off'}</span></div>
+            <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Messages archived</div><div class="ub-row-desc">${data.earliestDay ? `${escapeHTML(rwDay(data.earliestDay))} → ${escapeHTML(rwDay(data.latestDay))}` : 'Nothing yet'}</div></div><span class="ub-row-value">${Number(data.messageCount || 0).toLocaleString()}</span></div>
+            <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">On disk</div><div class="ub-row-desc">Message text kept ${data.retentionDays ? `for ${data.retentionDays} days` : 'forever'}</div></div><span class="ub-row-value">${rewindBytes(data.diskBytes)}</span></div>
+          </div>
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Turning Rewind on, what it keeps, opt-outs and ignored channels are set in the SwiftBot app on the Mac, on purpose: a message archive shouldn’t be switched on remotely.</p>
+        </section>`;
+
+      if (!data.isEnabled) {
+        body.innerHTML = `
+          <div class="rw-hero is-off">
+            <div class="rw-hero-kicker">Replay</div>
+            <div class="rw-hero-title">Your server’s year, wrapped</div>
+            <p>Turn on Rewind in the SwiftBot app to start collecting. Replay then recaps each month and year: who talked most, the busiest day, words of the year, voice time and more. Members get their own with <code>/replay</code>.</p>
+          </div>
+          ${archiveCard}`;
+        refreshIcons();
         return;
       }
 
-      if (updated) {
-        updated.textContent = data.isEnabled
-          ? `Archiving on · updated ${relativeTime(data.generatedAt) || 'just now'}`
-          : 'Archiving is switched off in the SwiftBot app';
-      }
+      const r = rewindState.replay;
+      if (!r) { body.innerHTML = `<div class="placeholder">${rewindState.loading ? 'Building your Replay…' : 'No Replay available yet.'}</div>${archiveCard}`; refreshIcons(); return; }
+      const guildRecap = guilds.find(g => g.id === rewindState.guildID);
+      const group = (title, inner, action = '') => `<section class="ub-group"><div class="ub-group-head"><h2>${title}</h2>${action}</div>${inner}</section>`;
+      const emptyCard = (text) => `<div class="ub-group-card glass"><div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">${text}</div></div></div></div>`;
+      const ranked = (items, fmt, { clickable = false } = {}) => {
+        if (!items?.length) return emptyCard('Nothing yet for this period.');
+        const max = Math.max(...items.map(i => i.count), 1);
+        return `<div class="ub-list glass">${items.map((item, i) => `
+          <div class="ub-item an-rank${clickable && item.id ? ' rw-clickable' : ''}" ${clickable && item.id ? `data-member="${escapeHTML(item.id)}" role="button" tabindex="0"` : ''}>
+            <span class="an-rank-n">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
+            <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(item.title)}</span><span class="an-bar"><span style="width:${Math.max(4, Math.round(item.count / max * 100))}%;"></span></span></span>
+            <span class="an-rank-count">${fmt(item.count)}</span>
+            ${clickable && item.id ? '<i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>' : ''}
+          </div>`).join('')}</div>`;
+      };
+      const unit = r.isYear ? 'month' : 'day';
+      const cloud = (items, cls = '') => items?.length ? `<div class="an-cloud ${cls}">${items.map(w => `<span class="an-word" title="${w.count.toLocaleString()} times">${escapeHTML(w.title)}<em>${w.count.toLocaleString()}</em></span>`).join('')}</div>` : '';
+      const highlights = [
+        r.busiestDay ? ['calendar-heart', 'Busiest day', rwDay(r.busiestDay), `${r.busiestDayMessages.toLocaleString()} messages`] : null,
+        r.peakHour != null ? ['clock', 'Most active', `around ${rwHour(r.peakHour)}`, 'when chat peaks'] : null,
+        r.topChannels?.[0] ? ['hash', 'Busiest channel', r.topChannels[0].title, `${r.topChannels[0].count.toLocaleString()} messages`] : null,
+        r.topVoiceChannels?.[0] ? ['volume-2', 'Favourite voice', r.topVoiceChannels[0].title, anDuration(r.topVoiceChannels[0].count)] : null,
+        r.topWords?.[0] ? ['quote', `Word of the ${r.isYear ? 'year' : 'month'}`, `“${r.topWords[0].title}”`, `${r.topWords[0].count.toLocaleString()} times`] : null,
+        r.joins ? ['user-plus', 'New members', `+${r.joins}`, `${r.leaves || 0} left`] : null
+      ].filter(Boolean);
 
-      if (pulse) {
-        const coverage = (data.earliestDay && data.latestDay)
-          ? `${data.earliestDay} → ${data.latestDay}`
-          : 'No messages yet';
-        pulse.innerHTML = `
-          <article class="analytics-card">
-            <div class="label">Messages Archived</div>
-            <div class="value">${Number(data.messageCount || 0).toLocaleString()}</div>
-            <div class="detail">${escapeHTML(coverage)}</div>
-          </article>
-          <article class="analytics-card">
-            <div class="label">On Disk</div>
-            <div class="value">${rewindBytes(data.diskBytes)}</div>
-            <div class="detail">${data.retainsContent ? 'Message text kept' : 'Counts only'}</div>
-          </article>
-          <article class="analytics-card">
-            <div class="label">Retention</div>
-            <div class="value">${data.retentionDays > 0 ? `${data.retentionDays}d` : 'Forever'}</div>
-            <div class="detail">${data.isEnabled ? 'Collecting' : 'Paused'}</div>
-          </article>
-        `;
-      }
+      body.innerHTML = `
+        <div class="rw-hero">
+          <div class="rw-hero-kicker">${escapeHTML(r.guildName)} · Replay</div>
+          <div class="rw-hero-title">${escapeHTML(r.periodTitle)}${r.isComplete ? '' : ' <span class="rw-so-far">so far</span>'}</div>
+          <div class="rw-hero-stats">
+            <div><strong>${r.messages.toLocaleString()}</strong><span>messages</span></div>
+            <div><strong>${anDuration(r.voiceSeconds)}</strong><span>in voice</span></div>
+            <div><strong>${r.chattingMembers.toLocaleString()}</strong><span>people chatting</span></div>
+            <div><strong>${r.activeDays}</strong><span>active days</span></div>
+          </div>
+          <div class="rw-hero-actions">
+            <button id="rwPlay" class="rw-play" type="button" ${r.messages || r.voiceSeconds ? '' : 'disabled'}><i class="lucide" data-lucide="play"></i> Play Replay</button>
+            <button id="rwPost" class="secondary-action rw-hero-secondary" type="button"><i class="lucide" data-lucide="send"></i> ${guildRecap?.channelID ? 'Post to Discord' : 'Set up recap drops'}</button>
+          </div>
+        </div>
+        ${highlights.length ? `<div class="rw-highlights">${highlights.map(([icon, label, value, sub]) => `
+          <div class="rw-highlight glass"><i class="lucide" data-lucide="${icon}"></i><span class="rw-hl-label">${label}</span><span class="rw-hl-value">${escapeHTML(value)}</span><span class="rw-hl-sub">${escapeHTML(sub)}</span></div>`).join('')}</div>` : ''}
+        ${group(`By ${unit}`, `<div class="ub-group-card glass an-chart-card">${anColumnChart(r.timeline.map(b => ({ label: b.label, messages: b.messages, voice: b.voiceMinutes })), [
+            { name: 'messages', color: '#bf5af2', value: b => b.messages }
+          ], { height: 150 })}</div>`)}
+        <div class="an-grid">
+          ${group('Most talkative', ranked(r.topMembers, n => `${n.toLocaleString()} msgs`, { clickable: true }), '<span class="rw-hint">Click someone for their Replay</span>')}
+          ${group('Most time in voice', ranked(r.topVoiceMembers, anDuration, { clickable: true }))}
+        </div>
+        ${r.topWords?.length || r.topEmoji?.length ? group('What people said', `<div class="ub-group-card glass an-chart-card">
+          ${r.topWords?.length ? `<div class="ub-row-title">Top words</div>${cloud(r.topWords)}` : ''}
+          ${r.topPhrases?.length ? `<div class="ub-row-title">Top phrases</div>${cloud(r.topPhrases)}` : ''}
+          ${r.topEmoji?.length ? `<div class="ub-row-title">Top emoji</div>${cloud(r.topEmoji, 'is-emoji')}` : ''}
+        </div>`) : ''}
+        ${group('Phrase explorer', `<div class="ub-group-card glass an-chart-card">
+          ${data.retainsContent ? `
+            <form id="rwPhraseForm" class="rw-phrase-form">
+              <label class="cmd-search rw-phrase-search"><i class="lucide" data-lucide="search"></i><input id="rwPhrase" type="search" placeholder="How often has someone said… e.g. gg guys" value="${escapeHTML(rewindState.phrase?.phrase || '')}" autocomplete="off"></label>
+              <button class="primary-action" type="submit">Count</button>
+            </form>
+            <div id="rwPhraseResult">${rwPhraseHTML(rewindState.phrase)}</div>`
+          : '<div class="ub-row-desc">Phrase search needs Rewind to keep message text. Switch on “Keep message text” in the SwiftBot app.</div>'}
+        </div>`)}
+        ${rwRecapDropsHTML(guildRecap)}
+        ${archiveCard}
+      `;
 
-      const guild = (data.guilds || [])[0];
-      if (!guild) {
-        const empty = `<div class="placeholder">Nothing archived yet. Turn Rewind on in the SwiftBot app.</div>`;
-        if (summaryNode) summaryNode.innerHTML = empty;
-        if (termsNode) termsNode.innerHTML = empty;
-        if (usersNode) usersNode.innerHTML = empty;
-        if (emojiNode) emojiNode.innerHTML = empty;
-        return;
-      }
+      body.querySelector('#rwPlay')?.addEventListener('click', () => openReplayStory(r));
+      body.querySelector('#rwPost')?.addEventListener('click', () => guildRecap?.channelID ? confirmPostReplay(r, guildRecap) : body.querySelector('#rwDrops')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      body.querySelectorAll('[data-member]').forEach(row => {
+        const open = () => openPersonalReplay(row.dataset.member);
+        row.addEventListener('click', open);
+        row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      });
+      body.querySelector('#rwPhraseForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const q = body.querySelector('#rwPhrase').value.trim();
+        if (!q) return;
+        const out = body.querySelector('#rwPhraseResult');
+        out.innerHTML = '<div class="ub-row-desc">Searching the archive…</div>';
+        try {
+          const res = await fetch(`/api/rewind/phrase?guild=${encodeURIComponent(rewindState.guildID)}&q=${encodeURIComponent(q)}`);
+          rewindState.phrase = res.ok ? await res.json() : null;
+          out.innerHTML = rwPhraseHTML(rewindState.phrase) || '<div class="ub-row-desc">Couldn’t search right now.</div>';
+          refreshIcons();
+        } catch { out.innerHTML = '<div class="ub-row-desc">Couldn’t search right now.</div>'; }
+      });
+      bindRecapDrops(guildRecap);
+      refreshIcons();
+    }
 
-      if (summaryNode) {
-        summaryNode.innerHTML = `
-          <article class="analytics-card">
-            <div class="label">${escapeHTML(guild.name)} · ${guild.year}</div>
-            <div class="value">${Number(guild.totalMessages).toLocaleString()}</div>
-            <div class="detail">messages</div>
-          </article>
-          <article class="analytics-card">
-            <div class="label">Words</div>
-            <div class="value">${Number(guild.totalWords).toLocaleString()}</div>
-            <div class="detail">${guild.activeDays} active days</div>
-          </article>
-          <article class="analytics-card">
-            <div class="label">Busiest Day</div>
-            <div class="value">${escapeHTML(guild.busiestDay || '--')}</div>
-            <div class="detail">Peak hour ${escapeHTML(guild.peakHour || '--')}</div>
-          </article>
-        `;
-      }
+    function rwPhraseHTML(p) {
+      if (!p) return '';
+      if (!p.total) return `<div class="rw-phrase-empty">“${escapeHTML(p.phrase)}” has never been said here. Searched ${p.scanned.toLocaleString()} messages.</div>`;
+      const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+      const max = Math.max(...p.byUser.map(u => u.count), 1);
+      return `
+        <div class="rw-phrase-head">
+          <div><span class="rw-phrase-big">${p.total.toLocaleString()}</span> times <span class="ub-row-desc">in ${p.messages.toLocaleString()} messages, out of ${p.scanned.toLocaleString()}</span></div>
+          <div class="ub-row-desc">First ${fmtDate(p.firstSeen)} · latest ${fmtDate(p.lastSeen)}${p.topChannel ? ` · mostly in ${escapeHTML(p.topChannel)}` : ''}</div>
+        </div>
+        ${p.byMonth.length > 1 ? anColumnChart(p.byMonth.map(m => ({ label: rwPeriodLabel(m.title).replace(/ \d{4}$/, ''), count: m.count })), [{ name: 'times', color: '#bf5af2', value: b => b.count }], { height: 100 }) : ''}
+        <div class="ub-row-title" style="margin-top:6px;">Who says it most</div>
+        <div class="rw-phrase-users">${p.byUser.map(u => `<div class="rw-phrase-user"><span>${escapeHTML(u.title)}</span><span class="an-bar"><span style="width:${Math.round(u.count / max * 100)}%;"></span></span><em>${u.count.toLocaleString()}</em></div>`).join('')}</div>`;
+    }
 
-      if (termsNode) {
-        const words = rewindTermList(guild.topWords, 'No words counted yet');
-        const phrases = rewindTermList(guild.topPhrases, 'No phrases counted yet');
-        termsNode.innerHTML = words + phrases;
-      }
+    function rwRecapDropsHTML(g) {
+      if (!g) return '';
+      const recaps = rewindState.recaps || {};
+      const sw = (id, on, disabled) => `<label class="switch"><input id="${id}" type="checkbox" ${on ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>`;
+      const now = new Date();
+      const nextMonthly = new Date(now.getFullYear(), now.getMonth() + 1, 1).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+      const scheduled = g.monthly || g.yearly;
+      const progress = recaps.dmProgress && recaps.dmProgress.guildID === g.id ? recaps.dmProgress : null;
+      const sending = progress && !progress.finishedAt;
+      const deliveries = [g.channelID ? `posted in #${escapeHTML(g.channels.find(c => c.id === g.channelID)?.name || 'channel')}` : '', g.personalDMs ? 'DMed to each member' : ''].filter(Boolean).join(' and ');
+      return `
+        <section class="ub-group" id="rwDrops">
+          <div class="ub-group-head"><h2>Recap drops</h2></div>
+          <div class="ub-group-card glass">
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">Monthly Replay</div><div class="ub-row-desc">Last month’s recap on the 1st at 9am${g.monthly ? ` · next on ${nextMonthly}` : ''}.</div></div>
+              ${sw('rwDropMonthly', g.monthly)}
+            </div>
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">Year Replay</div><div class="ub-row-desc">The whole year’s recap on 1 January at 9am.</div></div>
+              ${sw('rwDropYearly', g.yearly)}
+            </div>
+            <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text"><div class="ub-row-title">Post the server Replay in</div><div class="ub-row-desc">The server-wide recap everyone sees.</div></div>
+              <select id="rwDropChannel" class="field-select rw-picker"><option value="">Don’t post</option>${g.channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === g.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>
+            </div>
+            <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text">
+                <div class="ub-row-title">DM each member their own Replay</div>
+                <div class="ub-row-desc">Everyone active in the period gets a personal recap: their messages, voice time, rank and how they compare with the period before. Each DM has a “Stop sending me Replays” button${recaps.dmOptOutCount ? ` · ${recaps.dmOptOutCount} ${recaps.dmOptOutCount === 1 ? 'member has' : 'members have'} turned them off` : ''}.</div>
+              </div>
+              ${sw('rwDropDMs', g.personalDMs)}
+            </div>
+            ${scheduled && !deliveries ? '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc rw-warn">Choose a channel or turn on DMs, or nothing will be sent.</div></div></div>' : ''}
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Send ${escapeHTML(rwPeriodLabel(rewindState.period))} DMs now</div>
+                <div class="ub-row-desc">${sending ? `Sending… ${progress.processed ?? progress.sent} of ${progress.total}${progress.failed ? ` · ${progress.failed} with DMs closed` : ''}` : progress ? `Last run: ${progress.sent} sent${progress.failed ? `, ${progress.failed} had DMs closed` : ''}, ${escapeHTML(relativeTime(progress.finishedAt))}` : 'Send this period’s personal Replays right away, without waiting for the schedule.'}</div>
+                ${sending ? `<span class="an-bar rw-progress"><span style="width:${Math.round((progress.processed ?? progress.sent) / Math.max(1, progress.total) * 100)}%;"></span></span>` : ''}
+              </div>
+              <button id="rwSendDMs" class="secondary-action" type="button" ${sending ? 'disabled' : ''}><i class="lucide" data-lucide="mail"></i> Send DMs</button>
+            </div>
+          </div>
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="refresh-cw"></i> ${recaps.catchUpAvailable
+            ? `Rewind records messages as they’re posted, and catches up nightly at 4am on anything missed while SwiftBot was offline${recaps.lastCatchUpAt ? ` · last catch-up ${escapeHTML(relativeTime(recaps.lastCatchUpAt))}` : ''}.`
+            : 'Nightly catch-up needs “Keep message text” switched on in the SwiftBot app; without it, messages posted while SwiftBot is offline aren’t counted.'}</p>
+        </section>`;
+    }
 
-      if (usersNode) {
-        usersNode.innerHTML = rewindTermList(guild.topUsers, 'No members counted yet');
+    function bindRecapDrops(g) {
+      if (!g) return;
+      const save = async (patch) => {
+        const body = { guildID: g.id, channelID: g.channelID, monthly: g.monthly, yearly: g.yearly, personalDMs: g.personalDMs, ...patch };
+        try {
+          await postJSON('/api/rewind/recaps/update', body);
+          rewindState.recaps = null;
+          await loadRewindReplay();
+          renderRewindView();
+        } catch (error) {
+          setMessage('Couldn’t save recap drops.', 'error');
+          renderRewindView();
+        }
+      };
+      document.getElementById('rwDropChannel')?.addEventListener('change', e => save({ channelID: e.target.value }));
+      document.getElementById('rwDropMonthly')?.addEventListener('change', e => save({ monthly: e.target.checked }));
+      document.getElementById('rwDropYearly')?.addEventListener('change', e => save({ yearly: e.target.checked }));
+      document.getElementById('rwDropDMs')?.addEventListener('change', e => save({ personalDMs: e.target.checked }));
+      document.getElementById('rwSendDMs')?.addEventListener('click', () => confirmSendReplayDMs(g));
+      // While DMs are going out, refresh progress every few seconds.
+      const progress = rewindState.recaps?.dmProgress;
+      clearTimeout(window.__rwProgressTimer);
+      if (progress && !progress.finishedAt) {
+        window.__rwProgressTimer = setTimeout(async () => {
+          if (currentView !== 'rewind') return;
+          const r = await fetch('/api/rewind/recaps');
+          if (r.ok) { rewindState.recaps = await r.json(); renderRewindView(); }
+        }, 3000);
       }
+    }
 
-      if (emojiNode) {
-        emojiNode.innerHTML = rewindTermList(guild.topEmoji, 'No emoji counted yet');
+    async function confirmSendReplayDMs(g) {
+      const label = rwPeriodLabel(rewindState.period);
+      showModal('Send personal Replays?', '<div class="placeholder">Counting who’d get one…</div>', `
+        <span id="rwDMHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="rwDMConfirm" class="primary-action" type="button" disabled><i class="lucide" data-lucide="mail"></i> Send</button>
+      `);
+      refreshIcons();
+      let count = 0;
+      try {
+        const r = await fetch(`/api/rewind/recipients?guild=${encodeURIComponent(g.id)}&period=${encodeURIComponent(rewindState.period)}`);
+        count = (await r.json()).count || 0;
+      } catch {}
+      document.getElementById('modalBody').innerHTML = count
+        ? `<p class="ub-help" style="margin-top:0;">SwiftBot will DM <strong>${count} ${count === 1 ? 'member' : 'members'}</strong> of ${escapeHTML(g.name)} their own <strong>${escapeHTML(label)}</strong> Replay. It sends one at a time, so a big server takes a few minutes. Members who opted out of Rewind or of Replay DMs are skipped, and each DM has a button to stop future ones.</p>`
+        : `<p class="ub-help" style="margin-top:0;">Nobody was active in ${escapeHTML(label)}, so there’s nothing to send.</p>`;
+      const confirm = document.getElementById('rwDMConfirm');
+      confirm.disabled = !count;
+      confirm.addEventListener('click', async () => {
+        confirm.disabled = true;
+        try {
+          await postJSON('/api/rewind/recaps/dm', { guildID: g.id, period: rewindState.period });
+          hideModal();
+          setMessage(`Sending ${label} Replays to ${count} members…`, 'success');
+          rewindState.recaps = null;
+          await loadRewindReplay();
+          renderRewindView();
+        } catch {
+          confirm.disabled = false;
+          document.getElementById('rwDMHint').textContent = 'A DM run is already in progress.';
+        }
+      });
+    }
+
+    function confirmPostReplay(r, g) {
+      const channel = g.channels.find(c => c.id === g.channelID)?.name || 'the recap channel';
+      showModal('Post this Replay?', `
+        <p class="ub-help" style="margin-top:0;">SwiftBot will post the <strong>${escapeHTML(r.periodTitle)}</strong> Replay for ${escapeHTML(r.guildName)} to <strong>#${escapeHTML(channel)}</strong>${r.isComplete ? '' : `. ${escapeHTML(r.periodTitle)} isn’t over yet, so it’s a recap so far`}. Everyone in that channel will see it.</p>
+        <div class="rw-post-preview">
+          <div class="wf-preview"><div class="wf-preview-where">#${escapeHTML(channel)}</div>
+            <div class="wf-message"><span class="wf-avatar is-bot"><i class="lucide" data-lucide="bot"></i></span>
+              <div class="wf-message-main"><div class="wf-author">SwiftBot <span class="wf-bot-tag">APP</span></div>
+                <div class="wf-embed" style="--embed:#bf5af2;"><div class="wf-embed-main">
+                  <div class="wf-embed-title">📼 ${escapeHTML(r.guildName)} · ${escapeHTML(r.periodTitle)} Replay</div>
+                  <div class="wf-embed-text">💬 <strong>${r.messages.toLocaleString()}</strong> messages from <strong>${r.chattingMembers}</strong> people<br>🔊 <strong>${anDuration(r.voiceSeconds)}</strong> in voice${r.busiestDay ? `<br>📅 Busiest day: <strong>${escapeHTML(rwDay(r.busiestDay))}</strong>` : ''}</div>
+                  <div class="wf-embed-footer">+ top members, channels, words and games</div>
+                </div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `, `
+        <span id="rwPostHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="rwPostConfirm" class="primary-action" type="button"><i class="lucide" data-lucide="send"></i> Post</button>
+      `);
+      refreshIcons();
+      document.getElementById('rwPostConfirm').addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await postJSON('/api/rewind/recaps/post', { guildID: g.id, period: r.periodKey });
+          hideModal();
+          setMessage(`Posted the ${r.periodTitle} Replay to #${channel}.`, 'success');
+        } catch {
+          e.currentTarget.disabled = false;
+          document.getElementById('rwPostHint').textContent = 'Discord didn’t accept the post. Check SwiftBot can send messages in that channel.';
+        }
+      });
+    }
+
+    async function openPersonalReplay(userID) {
+      showModal('Replay', '<div class="placeholder">Loading…</div>', '<button class="secondary-action" type="button" data-action="hideModal">Close</button>', { wide: true });
+      try {
+        const res = await fetch(`/api/rewind/member?guild=${encodeURIComponent(rewindState.guildID)}&user=${encodeURIComponent(userID)}&period=${encodeURIComponent(rewindState.period)}`);
+        const p = await res.json();
+        // Same rule as PersonalReplay.topPercent (computed, so not in the JSON).
+        p.topPercent = p.rank && p.rankedMembers >= 10 ? Math.max(1, Math.ceil(p.rank / p.rankedMembers * 100)) : null;
+        document.getElementById('modalTitle') && (document.getElementById('modalTitle').textContent = `${p.name}’s Replay`);
+        const tile = (icon, value, label) => `<div class="rw-me-tile"><i class="lucide" data-lucide="${icon}"></i><strong>${value}</strong><span>${label}</span></div>`;
+        document.getElementById('modalBody').innerHTML = p.optedOut
+          ? '<div class="placeholder">This member has opted out of Rewind.</div>'
+          : `
+            <div class="rw-me">
+              <div class="rw-me-head">
+                <span class="rw-me-avatar">${escapeHTML((p.name || '?').charAt(0).toUpperCase())}</span>
+                <div><div class="rw-hero-kicker">${escapeHTML(p.guildName)} · ${escapeHTML(p.periodTitle)}</div><div class="rw-me-name">${escapeHTML(p.name)}</div>
+                ${p.rank ? `<div class="rw-me-rank">#${p.rank} of ${p.rankedMembers} most talkative${p.topPercent && p.topPercent <= 25 ? ` · top ${p.topPercent}%` : ''}</div>` : ''}</div>
+              </div>
+              <div class="rw-me-grid">
+                ${tile('message-square', p.messages.toLocaleString(), 'messages')}
+                ${tile('text', p.words.toLocaleString(), 'words')}
+                ${tile('calendar-days', p.activeDays, 'active days')}
+                ${tile('volume-2', anDuration(p.voiceSeconds), `in voice${p.voiceRank ? ` · #${p.voiceRank}` : ''}`)}
+                ${p.voiceSessions ? tile('timer', anDuration(p.longestSessionSeconds), 'longest session') : ''}
+                ${p.commands != null ? tile('terminal', p.commands, 'commands') : ''}
+              </div>
+              <div class="rw-me-facts">
+                ${p.busiestDay ? `<div><i class="lucide" data-lucide="flame"></i> Biggest day: <strong>${escapeHTML(rwDay(p.busiestDay))}</strong> · ${p.busiestDayMessages} messages</div>` : ''}
+                ${p.favouriteVoiceChannel ? `<div><i class="lucide" data-lucide="house"></i> Favourite spot: <strong>${escapeHTML(p.favouriteVoiceChannel)}</strong></div>` : ''}
+                ${p.messages ? `<div><i class="lucide" data-lucide="type"></i> About ${Math.round(p.words / Math.max(1, p.messages))} words a message</div>` : ''}
+              </div>
+              <p class="ub-help">This is what ${escapeHTML(p.name)} gets by DM when personal Replays go out. Members can also see theirs any time with <code>/replay</code>, and only they see it.</p>
+            </div>`;
+        refreshIcons();
+      } catch {
+        document.getElementById('modalBody').innerHTML = '<div class="placeholder">Couldn’t load this Replay.</div>';
       }
+    }
+
+    // Full-screen, swipe-through Replay story.
+    function openReplayStory(r) {
+      const cards = [];
+      const big = (n) => `<div class="rs-big">${n}</div>`;
+      cards.push({ tone: 'violet', html: `<div class="rs-kicker">${escapeHTML(r.guildName)}</div><div class="rs-title">${escapeHTML(r.periodTitle)}<br>Replay</div><div class="rs-sub">${r.isComplete ? 'Let’s look back.' : 'So far, anyway.'}</div>` });
+      if (r.messages) cards.push({ tone: 'blue', html: `<div class="rs-kicker">You all sent</div>${big(r.messages.toLocaleString())}<div class="rs-sub">messages, from ${r.chattingMembers} people, across ${r.activeDays} days.</div>` });
+      if (r.busiestDay) cards.push({ tone: 'orange', html: `<div class="rs-kicker">The busiest day was</div><div class="rs-title">${escapeHTML(rwDay(r.busiestDay))}</div><div class="rs-sub">${r.busiestDayMessages.toLocaleString()} messages${r.peakHour != null ? `, and chat usually peaks around ${rwHour(r.peakHour)}` : ''}.</div>` });
+      if (r.topMembers?.length) cards.push({ tone: 'pink', html: `<div class="rs-kicker">Most talkative</div><div class="rs-title">${escapeHTML(r.topMembers[0].title)}</div><div class="rs-sub">${r.topMembers[0].count.toLocaleString()} messages</div><ol class="rs-list" style="counter-reset: rs 1;">${r.topMembers.slice(1, 5).map(m => `<li><span>${escapeHTML(m.title)}</span><em>${m.count.toLocaleString()}</em></li>`).join('')}</ol>` });
+      if (r.voiceSeconds) cards.push({ tone: 'green', html: `<div class="rs-kicker">Time in voice</div>${big(anDuration(r.voiceSeconds))}<div class="rs-sub">over ${r.voiceSessions.toLocaleString()} sessions${r.topVoiceMembers?.[0] ? `. <strong>${escapeHTML(r.topVoiceMembers[0].title)}</strong> was there the most, at ${anDuration(r.topVoiceMembers[0].count)}` : ''}.</div>` });
+      if (r.topChannels?.length) cards.push({ tone: 'teal', html: `<div class="rs-kicker">Where it happened</div><div class="rs-title">${escapeHTML(r.topChannels[0].title)}</div><ol class="rs-list" style="counter-reset: rs 1;">${r.topChannels.slice(1, 4).map(c => `<li><span>${escapeHTML(c.title)}</span><em>${c.count.toLocaleString()}</em></li>`).join('')}</ol>` });
+      if (r.topWords?.length) cards.push({ tone: 'indigo', html: `<div class="rs-kicker">Word of the ${r.isYear ? 'year' : 'month'}</div><div class="rs-title">“${escapeHTML(r.topWords[0].title)}”</div><div class="rs-sub">said ${r.topWords[0].count.toLocaleString()} times</div>${r.topEmoji?.length ? `<div class="rs-emoji">${r.topEmoji.slice(0, 5).map(e => `<span>${escapeHTML(e.title)}</span>`).join('')}</div>` : ''}` });
+      if (r.clipsByGame?.length || r.rankChanges?.length) cards.push({ tone: 'red', html: `<div class="rs-kicker">Games</div>${r.clipsByGame?.length ? `<div class="rs-title">${escapeHTML(r.clipsByGame[0].title)}</div><div class="rs-sub">${r.clipsByGame[0].count} clips recorded</div>` : ''}${r.rankChanges?.length ? `<ol class="rs-list">${r.rankChanges.slice(0, 3).map(c => `<li><span>${escapeHTML(c.name)}</span><em>${c.to - c.from >= 0 ? '+' : ''}${(c.to - c.from).toLocaleString()} SR</em></li>`).join('')}</ol>` : ''}` });
+      if (r.joins) cards.push({ tone: 'blue', html: `<div class="rs-kicker">New faces</div>${big(`+${r.joins}`)}<div class="rs-sub">people joined the server.</div>` });
+      cards.push({ tone: 'violet', html: `<div class="rs-kicker">That was</div><div class="rs-title">${escapeHTML(r.periodTitle)}</div><div class="rs-sub">Members can see their own Replay with <strong>/replay</strong>.</div>` });
+
+      let index = 0, timer = null;
+      const overlay = document.createElement('div');
+      overlay.className = 'rs-overlay';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-label', `${r.periodTitle} Replay`);
+      const render = () => {
+        const card = cards[index];
+        overlay.innerHTML = `
+          <div class="rs-card rs-${card.tone}">
+            <div class="rs-progress">${cards.map((_, i) => `<span class="${i < index ? 'is-done' : i === index ? 'is-now' : ''}"></span>`).join('')}</div>
+            <button class="rs-close" type="button" aria-label="Close"><i class="lucide" data-lucide="x"></i></button>
+            <div class="rs-content">${card.html}</div>
+            <button class="rs-nav rs-prev" type="button" aria-label="Previous" ${index ? '' : 'disabled'}><i class="lucide" data-lucide="chevron-left"></i></button>
+            <button class="rs-nav rs-next" type="button" aria-label="Next"><i class="lucide" data-lucide="${index === cards.length - 1 ? 'check' : 'chevron-right'}"></i></button>
+          </div>`;
+        overlay.querySelector('.rs-close').onclick = close;
+        overlay.querySelector('.rs-prev').onclick = () => go(-1);
+        overlay.querySelector('.rs-next').onclick = () => go(1);
+        refreshIcons();
+        clearTimeout(timer);
+        timer = setTimeout(() => go(1), 7000);
+      };
+      const go = (step) => {
+        const next = index + step;
+        if (next >= cards.length) return close();
+        index = Math.max(0, next);
+        render();
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') close();
+        else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(1); }
+        else if (e.key === 'ArrowLeft') go(-1);
+      };
+      let touchX = null;
+      overlay.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
+      overlay.addEventListener('touchend', e => {
+        if (touchX == null) return;
+        const dx = e.changedTouches[0].clientX - touchX;
+        if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+        touchX = null;
+      });
+      overlay.addEventListener('mouseenter', () => clearTimeout(timer));
+      overlay.addEventListener('mouseleave', () => { clearTimeout(timer); timer = setTimeout(() => go(1), 7000); });
+      function close() {
+        clearTimeout(timer);
+        document.removeEventListener('keydown', onKey);
+        overlay.remove();
+      }
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(overlay);
+      render();
+      overlay.querySelector('.rs-next')?.focus();
     }
 
     async function loadOverview() {
@@ -9445,10 +10117,6 @@
       }
       if (currentView === 'diagnostics') {
         renderDiagnosticsView();
-        return;
-      }
-      if (currentView === 'aibots') {
-        renderAppleIntelligenceView();
         return;
       }
       if (currentView === 'recordings') {
@@ -12423,9 +13091,6 @@
           <div class="ub-group-card glass">${rows}</div>
         </section>`;
 
-      const ai = cfg.appleIntelligence;
-      const aiSummary = [ai.localAIDMReplyEnabled ? 'DM replies' : '', ai.useAIInGuildChannels ? 'mention replies' : '']
-        .filter(Boolean).join(' & ') || 'Replies off';
       const mesh = cfg.swiftMesh;
       const meshMode = mesh.mode ? mesh.mode.charAt(0).toUpperCase() + mesh.mode.slice(1) : '';
       const meshSummary = [meshMode, mesh.nodeName].filter(Boolean).join(' · ');
@@ -12446,6 +13111,7 @@
           ${group('General', `
             ${switchRow('setAutoStart', 'Start automatically', 'Connect to Discord when SwiftBot launches.', cfg.general.autoStart)}
             ${switchRow('setCmdEnabled', 'Commands', 'Turn off to remove every command from Discord’s / menu.', cfg.commands.enabled && cfg.commands.slashEnabled)}
+            ${switchRow('setAllowDMs', 'Accept direct messages', 'When off, SwiftBot answers any DM by pointing people to /help in a server.', cfg.appleIntelligence?.allowDMs)}
             <button id="setEditTimezones" class="ub-row ub-row-link" type="button">
               <div class="ub-row-text">
                 <div class="ub-row-title">User timezones</div>
@@ -12472,8 +13138,8 @@
               </div>` : ''}
             </div>
           `)}
+          ${aiSettingsGroupHTML(group, switchRow, cfg)}
           ${group('Features', `
-            ${linkRow('aibots', 'bot', 'Apple Intelligence', aiSummary)}
             ${linkRow('swiftmesh', 'network', 'SwiftMesh', meshSummary || 'Standalone')}
             ${linkRow('wikibridge', 'scan-search', 'Lookup', cfg.wikiBridge.enabled ? `On · ${cfg.wikiBridge.enabledSources} of ${cfg.wikiBridge.totalSources} sources` : 'Off')}
             ${linkRow('patchy', 'wrench', 'Patchy', cfg.patchy.monitoringEnabled ? `On · ${cfg.patchy.enabledTargets} of ${cfg.patchy.totalTargets} targets` : 'Off')}
@@ -12508,6 +13174,7 @@
       });
       panels.querySelector('#setEditTimezones')?.addEventListener('click', () => openTimezoneEditor(timezones, tzMembers));
       panels.querySelector('#setEditAccess')?.addEventListener('click', openAccessEditor);
+      bindAISettings(panels);
       if (!accessData) loadAccess().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
       panels.querySelector('#setCopyInvite')?.addEventListener('click', async (e) => {
         const button = e.currentTarget;
@@ -12688,201 +13355,226 @@
       });
     }
 
-    function aiStatusChipHTML(status) {
-      const styles = {
-        active: { label: 'Active', color: 'var(--success)' },
-        ready: { label: 'Ready', color: 'var(--blue-a)' },
-        off: { label: 'Off', color: 'var(--muted)' }
-      };
-      const style = styles[status] || styles.off;
-      return `<span class="ai-status-chip" style="color:${style.color};background:color-mix(in srgb, ${style.color} 16%, transparent);">${style.label}</span>`;
-    }
-
-    function aiRuleRowHTML({ id, icon, tint, title, desc, enabled, disabled }) {
-      const hex = getTintHex(tint);
-      return `
-        <div class="setting-row">
-          <div class="left" style="flex-direction:row;align-items:center;gap:10px;">
-            <i class="lucide" data-lucide="${icon}" style="color:${enabled ? hex : 'var(--muted)'};width:16px;height:16px;flex:0 0 auto;"></i>
-            <div>
-              <div class="title">${escapeHTML(title)}</div>
-              <div class="desc">${escapeHTML(desc)}</div>
-            </div>
-          </div>
-          <label class="switch"><input id="${id}" type="checkbox" ${enabled ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
-      `;
-    }
-
-    // Mirrors the native Apple Intelligence view: status cards, personality
-    // presets, reply rules, conversation memory and capability tiles.
-    function renderAppleIntelligenceView() {
-      const top = document.getElementById('aibotsTop');
-      const panels = document.getElementById('aibotsPanels');
-      if (!top || !panels) return;
-      if (!aiBotsData) {
-        top.innerHTML = '';
-        panels.innerHTML = '<div class="placeholder">Loading Apple Intelligence…</div>';
-        return;
-      }
-
+    // Apple Intelligence lives in Settings: a status row, the two reply
+    // switches, and Personality / Memory rows that open dialogs. The features
+    // that use it (Patchy summaries, Announcer, automation AI steps, Sweep
+    // digests) keep their own switches on their own pages.
+    function aiSettingsGroupHTML(group, switchRow, cfg) {
+      const ai = cfg.appleIntelligence || {};
       const data = aiBotsData;
-      const memory = data.memory || { totalMessages: 0, conversations: [] };
+      const online = !!data?.online;
+      const memory = data?.memory || { totalMessages: 0, conversations: [] };
       const conversations = memory.conversations || [];
-      const personalities = data.personalities || [];
-      const capabilities = data.capabilities || [];
-      const selected = personalities.find(item => item.isSelected) || null;
-      const readOnly = !!data.isFailoverManagedNode;
-      const disabledAttr = readOnly ? 'disabled' : '';
-
-      top.innerHTML = [
-        ubStatusCell(data.online ? 'Apple Intelligence online' : 'Apple Intelligence offline',
-          data.online ? 'System model ready' : 'Unavailable on this Mac', data.online ? 'healthy' : 'warning'),
-        ubStatusCell(`Replies: ${escapeHTML(data.replyScope || 'paused')}`, data.allowDMs ? 'Open to DMs from anyone' : 'DMs limited to known users'),
-        ubStatusCell(`Personality: ${escapeHTML(selected ? selected.title : 'Custom')}`, escapeHTML(selected ? selected.summary : 'Custom prompt'))
-      ].join('');
-
-      const personalityTiles = personalities.map(item => {
-        const hex = getTintHex(item.tint);
-        const selectedStyle = item.isSelected ? `border-color:${hex}73;background:${hex}14;` : '';
-        return `
-          <button class="ai-personality" type="button" data-personality-id="${escapeHTML(item.id)}" ${disabledAttr} style="${selectedStyle}">
-            <div class="ai-personality-head">
-              <span class="ai-personality-icon" style="background:${hex}24;color:${hex};"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
-              <i class="lucide" data-lucide="${item.isSelected ? 'check-circle-2' : 'circle'}" style="color:${item.isSelected ? hex : 'var(--muted)'};width:16px;height:16px;"></i>
-            </div>
-            <div class="ai-personality-title">${escapeHTML(item.title)}</div>
-            <div class="ai-personality-desc">${escapeHTML(item.description)}</div>
-            <div class="ai-personality-preview">${escapeHTML(item.preview)}</div>
-          </button>
-        `;
-      }).join('');
-
-      const capabilityCards = capabilities.map(item => {
-        const hex = getTintHex(item.tint);
-        const dimmed = item.status === 'off';
-        return `
-          <div class="ai-capability">
-            <span class="ai-personality-icon" style="background:${dimmed ? 'var(--glass-top)' : `${hex}24`};color:${dimmed ? 'var(--muted)' : hex};flex:0 0 auto;"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
-            <div style="min-width:0;display:flex;flex-direction:column;gap:4px;">
-              <div class="ai-capability-title">${escapeHTML(item.title)}${aiStatusChipHTML(item.status)}</div>
-              <div class="ai-capability-desc">${escapeHTML(item.description)}</div>
-            </div>
+      const statusColor = online ? 'var(--success)' : 'var(--muted)';
+      const linkRow = (id, title, desc, value) => `
+        <button id="${id}" class="ub-row ub-row-link" type="button" ${data ? '' : 'disabled'}>
+          <div class="ub-row-text"><div class="ub-row-title">${title}</div><div class="ub-row-desc">${desc}</div></div>
+          <span class="ub-row-value">${escapeHTML(value)}</span>
+          <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
+        </button>`;
+      return group('Apple Intelligence', `
+        <div class="ub-row">
+          <span class="ub-row-icon" style="${homeGradientStyle('aibots')}"><i class="lucide" data-lucide="sparkles"></i></span>
+          <div class="ub-row-text">
+            <div class="ub-row-title">${data ? (online ? 'Online' : 'Offline') : 'Checking…'}</div>
+            <div class="ub-row-desc">${data ? (online ? escapeHTML(data.modelName || 'System model ready') : 'Not available on this Mac. Replies and summaries are skipped until Apple Intelligence is turned on in System Settings.') : ''}</div>
           </div>
-        `;
-      }).join('');
+          ${data ? `<span class="ai-status-chip" style="color:${statusColor};background:color-mix(in srgb, ${statusColor} 16%, transparent);">${online ? 'Ready' : 'Off'}</span>` : ''}
+        </div>
+        ${switchRow('setAIMentions', 'Reply when mentioned', 'Answer when someone @mentions SwiftBot in a server channel.', ai.useAIInGuildChannels)}
+        ${switchRow('setAIDMs', 'Reply to DMs', ai.allowDMs ? 'Chat with people who message SwiftBot directly.' : 'SwiftBot isn’t accepting DMs. Turn on Accept direct messages above first.', ai.localAIDMReplyEnabled, ai.allowDMs || ai.localAIDMReplyEnabled ? '' : 'disabled')}
+        ${switchRow('setAIActivity', 'Answer questions about members', 'Lets SwiftBot answer things like “when is Sam usually on?” from voice history and Rewind. Members who opt out of Rewind are left out.', data ? data.activityAnswersEnabled : true, data ? '' : 'disabled')}
+        ${linkRow('setAIPersonality', 'Personality', 'How SwiftBot talks when it replies.', (data?.personalities || []).find(p => p.isSelected)?.title || 'Custom')}
+        ${linkRow('setAIMemory', 'Memory', 'Recent messages kept so replies follow the conversation.', memory.totalMessages ? `${memory.totalMessages.toLocaleString()} messages · ${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}` : 'Empty')}
+      `);
+    }
 
-      const memoryRows = conversations.length
-        ? conversations.map(item => `
-            <div class="ai-memory-row">
-              <i class="lucide" data-lucide="message-square" style="color:${getTintHex('indigo')};width:16px;height:16px;flex:0 0 auto;"></i>
-              <div class="ai-memory-name" style="flex:1;">${escapeHTML(item.title)}</div>
-              <span class="ai-status-chip" style="color:var(--muted);background:var(--glass-bottom);">${item.messageCount}</span>
-              <button class="mini-btn ai-memory-clear" type="button" data-scope-id="${escapeHTML(item.scopeID)}" data-scope-type="${escapeHTML(item.scopeType)}" ${disabledAttr}>Clear</button>
-            </div>
-          `).join('')
-        : `<div class="placeholder">Memory is ready. Recent channels and direct messages appear here after Apple Intelligence replies.</div>`;
+    function bindAISettings(panels) {
+      panels.querySelector('#setAllowDMs')?.addEventListener('change', e => saveConfigPatch({ allowDMs: e.target.checked }));
+      panels.querySelector('#setAIMentions')?.addEventListener('change', e => saveConfigPatch({ useAIInGuildChannels: e.target.checked }));
+      panels.querySelector('#setAIDMs')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+      panels.querySelector('#setAIActivity')?.addEventListener('change', e => saveConfigPatch({ aiActivityAnswersEnabled: e.target.checked }));
+      panels.querySelector('#setAIPersonality')?.addEventListener('click', openPersonalityEditor);
+      panels.querySelector('#setAIMemory')?.addEventListener('click', openAIMemory);
+      if (!aiBotsData) loadAIBots().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
+    }
 
-      panels.innerHTML = `
-        ${readOnly ? '<div class="placeholder full-span" style="grid-column:1 / -1;">Read-only on Failover nodes. Apple Intelligence settings sync from Primary.</div>' : ''}
-        <section class="settings-panel glass full-span">
-          <div class="panel-title"><i class="lucide" data-lucide="user-cog"></i> Personality</div>
-          <div class="ai-tile-grid">${personalityTiles}</div>
-        </section>
+    function openPersonalityEditor() {
+      const data = aiBotsData;
+      if (!data) return;
+      const saved = (data.systemPrompt || '').trim();
+      const presets = data.personalities || [];
+      let prompt = data.systemPrompt || '';
+      const matching = () => presets.find(p => p.prompt.trim() === prompt.trim());
+      // Custom brings back your own instructions (saved or typed this time).
+      let lastCustom = matching() ? '' : prompt;
+      const someone = (dashboardConfig?.userTimezones?.members || []).find(m => m.name)?.name?.split(' ')[0] || 'Sam';
+      const suggestions = [`When is ${someone} usually on?`, 'When is the server busiest?', 'How much have I been in voice?'];
 
-        <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Reply Rules</div>
-          ${aiRuleRowHTML({
-            id: 'aiGuild',
-            icon: 'at-sign',
-            tint: 'blue',
-            title: 'Reply when mentioned',
-            desc: 'Answer direct mentions in server text channels.',
-            enabled: data.guildMentionRepliesEnabled,
-            disabled: readOnly
-          })}
-          ${aiRuleRowHTML({
-            id: 'aiDm',
-            icon: 'mail',
-            tint: 'teal',
-            title: 'Reply to DMs',
-            desc: 'Use Apple Intelligence for direct message conversations.',
-            enabled: data.dmRepliesEnabled,
-            disabled: readOnly
-          })}
-          ${aiRuleRowHTML({
-            id: 'aiAllowDMs',
-            icon: 'users',
-            tint: 'purple',
-            title: 'Allow DMs from anyone',
-            desc: 'Accept direct messages beyond known server context.',
-            enabled: data.allowDMs,
-            disabled: readOnly
-          })}
-          <div class="setting-row">
-            <div class="left" style="flex-direction:row;align-items:center;gap:10px;">
-              <i class="lucide" data-lucide="shield-check" style="color:${getTintHex('green')};width:16px;height:16px;flex:0 0 auto;"></i>
-              <div>
-                <div class="title">Ignore bot accounts</div>
-                <div class="desc">Always skips bot-authored messages to avoid reply loops.</div>
-              </div>
-            </div>
-            <span class="ai-status-chip" style="color:var(--success);background:color-mix(in srgb, var(--success) 16%, transparent);">Always On</span>
-          </div>
-        </section>
+      showModal('Personality', `
+        <div class="automation-editor-section">
+          ${presets.length ? `<div class="ai-presets" role="group" aria-label="Start from">
+            ${presets.map(p => `
+              <button class="ai-preset" type="button" data-preset="${escapeHTML(p.id)}" style="--tint:${getTintHex(p.tint)};" aria-pressed="false">
+                <span class="ai-preset-icon"><i class="lucide" data-lucide="${escapeHTML(p.icon)}"></i></span>
+                <span class="ai-preset-text"><span class="ai-preset-title">${escapeHTML(p.title)}</span><span class="ai-preset-sub">${escapeHTML(p.summary)}</span></span>
+              </button>`).join('')}
+            <button class="ai-preset" type="button" data-preset="custom" style="--tint:${getTintHex('purple')};" aria-pressed="false">
+              <span class="ai-preset-icon"><i class="lucide" data-lucide="pencil"></i></span>
+              <span class="ai-preset-text"><span class="ai-preset-title">Custom</span><span class="ai-preset-sub">Your own words</span></span>
+            </button>
+          </div>` : ''}
+          <h3><i class="lucide" data-lucide="align-left"></i> Instructions <span id="aiPromptKind" class="ai-prompt-kind"></span></h3>
+          <textarea id="aiPromptInput" class="field-input" rows="6" maxlength="4000" spellcheck="true" placeholder="Describe how SwiftBot should talk. For example: You're the friendly bot for our THE FINALS squad. Keep it short, hype people up after wins, and never use more than one emoji.">${escapeHTML(prompt)}</textarea>
+          <div class="ub-help">Pick a starting point, then change anything: tone, length, what to avoid. Edited instructions count as Custom.</div>
+        </div>
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="message-circle"></i> Try it</h3>
+          ${data.online ? `
+            <form id="aiTryForm" class="ai-try">
+              <input id="aiTryInput" class="field-input" type="text" maxlength="1000" placeholder="Ask what your members would ask…" autocomplete="off">
+              <button id="aiTrySend" class="secondary-action" type="submit"><i class="lucide" data-lucide="send"></i> Send</button>
+            </form>
+            <div class="ai-try-suggestions">${suggestions.map(q => `<button class="ai-try-chip" type="button" data-try="${escapeHTML(q)}">${escapeHTML(q)}</button>`).join('')}</div>
+            <div id="aiTryOutput" class="ai-try-output hidden"></div>
+            <div class="ub-help">Uses the instructions above, even before you save${data.activityAnswersEnabled ? ', plus the same activity facts a real reply gets' : ''}. Nothing is posted to Discord or remembered.</div>
+          ` : '<div class="placeholder">Apple Intelligence is offline on this Mac, so replies can’t be tried here.</div>'}
+        </div>
+      `, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="aiPromptSave" class="primary-action" type="button">Save</button>
+      `, { wide: true });
 
-        <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="brain"></i> Conversation Memory</div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-            <span class="ai-status-chip" style="color:var(--muted);background:var(--glass-bottom);">${memory.totalMessages} messages</span>
-            <span class="ai-status-chip" style="color:var(--muted);background:var(--glass-bottom);">${conversations.length} conversations</span>
-            <span style="flex:1;"></span>
-            <button id="aiMemoryClearAll" class="mini-btn" type="button" ${conversations.length && !readOnly ? '' : 'disabled'}><i class="lucide" data-lucide="trash-2"></i> Clear All</button>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">${memoryRows}</div>
-        </section>
-
-        <section class="settings-panel glass full-span">
-          <div class="panel-title"><i class="lucide" data-lucide="layout-grid"></i> Capabilities</div>
-          <div class="ai-tile-grid">${capabilityCards}</div>
-        </section>
-
-        <section class="settings-panel glass full-span">
-          <div class="panel-title"><i class="lucide" data-lucide="align-left"></i> Custom Prompt</div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Personality Prompt</label><textarea id="aiPrompt" class="field-input" rows="5" ${disabledAttr}>${escapeHTML(data.systemPrompt || '')}</textarea></div>
-          <button id="aiSavePrompt" class="mini-btn" type="button" ${disabledAttr}><i class="lucide" data-lucide="save"></i> Save Personality</button>
-        </section>
-      `;
-
-      if (!readOnly) {
-        panels.querySelectorAll('.ai-personality').forEach(button => {
-          button.addEventListener('click', () => {
-            const match = personalities.find(item => item.id === button.dataset.personalityId);
-            if (!match) return;
-            saveConfigPatch({ localAISystemPrompt: match.prompt });
-          });
+      const input = document.getElementById('aiPromptInput');
+      const update = () => {
+        const trimmed = prompt.trim();
+        const match = matching();
+        document.getElementById('aiPromptKind').textContent = `· ${match ? match.title : 'Custom'}`;
+        document.querySelectorAll('[data-preset]').forEach(btn => {
+          const on = btn.dataset.preset === (match ? match.id : 'custom');
+          btn.classList.toggle('is-selected', on);
+          btn.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
-        panels.querySelector('#aiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
-        panels.querySelector('#aiGuild')?.addEventListener('change', e => saveConfigPatch({ useAIInGuildChannels: e.target.checked }));
-        panels.querySelector('#aiAllowDMs')?.addEventListener('change', e => saveConfigPatch({ allowDMs: e.target.checked }));
-        panels.querySelector('#aiSavePrompt')?.addEventListener('click', () => saveConfigPatch({ localAISystemPrompt: panels.querySelector('#aiPrompt')?.value || '' }));
-        panels.querySelectorAll('.ai-memory-clear').forEach(button => {
-          button.addEventListener('click', async () => {
-            if (!confirm('Memory for this conversation will be permanently deleted.')) return;
-            await postJSON('/api/aibots/memory/clear', { scopeID: button.dataset.scopeId, scopeType: button.dataset.scopeType });
-            await loadAIBots();
-            renderAppleIntelligenceView();
-          });
-        });
-        panels.querySelector('#aiMemoryClearAll')?.addEventListener('click', async () => {
-          if (!confirm('All conversation memory will be permanently deleted.')) return;
-          await postJSON('/api/aibots/memory/clear', {});
-          await loadAIBots();
-          renderAppleIntelligenceView();
-        });
-      }
-
+        document.getElementById('aiPromptSave').disabled = !trimmed || trimmed === saved;
+      };
+      input.addEventListener('input', () => {
+        prompt = input.value;
+        if (!matching()) lastCustom = prompt;
+        update();
+      });
+      document.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => {
+        if (btn.dataset.preset === 'custom') {
+          prompt = lastCustom;
+          input.value = prompt;
+          update();
+          input.focus();
+          return;
+        }
+        const preset = presets.find(p => p.id === btn.dataset.preset);
+        if (!preset) return;
+        prompt = preset.prompt;
+        input.value = prompt;
+        update();
+      }));
+      document.querySelectorAll('[data-try]').forEach(chip => chip.addEventListener('click', () => {
+        document.getElementById('aiTryInput').value = chip.dataset.try;
+        document.getElementById('aiTryForm').requestSubmit();
+      }));
+      update();
       refreshIcons();
+
+      document.getElementById('aiTryForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const tryInput = document.getElementById('aiTryInput');
+        const send = document.getElementById('aiTrySend');
+        const output = document.getElementById('aiTryOutput');
+        const message = tryInput.value.trim();
+        if (!message) return;
+        send.disabled = true;
+        output.classList.remove('hidden');
+        output.innerHTML = `
+          <div class="ai-try-bubble is-you">${escapeHTML(message)}</div>
+          <div class="ai-try-bubble is-bot is-thinking">Thinking…</div>`;
+        const bot = output.querySelector('.is-bot');
+        try {
+          const result = await postJSON('/api/aibots/try', { message, prompt });
+          bot.textContent = result.reply;
+        } catch {
+          bot.textContent = 'No reply came back. Try a shorter message.';
+        } finally {
+          bot.classList.remove('is-thinking');
+          send.disabled = false;
+        }
+      });
+
+      document.getElementById('aiPromptSave').addEventListener('click', async () => {
+        const save = document.getElementById('aiPromptSave');
+        save.disabled = true;
+        try {
+          await saveConfigPatch({ localAISystemPrompt: prompt.trim() });
+          hideModal();
+        } catch {
+          save.disabled = false;
+          setMessage('Couldn’t save the personality.', 'error');
+        }
+      });
+      setTimeout(() => input.focus(), 50);
+    }
+
+    function openAIMemory() {
+      showModal('Memory', '<div id="aiMemoryBody"></div>', `
+        <button id="aiMemoryClearAll" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Clear All</button>
+        <button class="primary-action" type="button" data-action="hideModal">Done</button>
+      `);
+      // Clearing takes two clicks: the first turns the button into "Confirm".
+      const armed = new Set();
+      const clear = async (body) => {
+        try {
+          await postJSON('/api/aibots/memory/clear', body);
+          await loadAIBots();
+        } catch {
+          setMessage('Couldn’t clear memory.', 'error');
+        }
+        armed.clear();
+        render();
+        if (currentView === 'settings') renderSettingsView();
+      };
+      const render = () => {
+        const memory = aiBotsData?.memory || { totalMessages: 0, conversations: [] };
+        const conversations = memory.conversations || [];
+        document.getElementById('aiMemoryBody').innerHTML = conversations.length ? `
+          <p class="ub-help" style="margin-top:0;">SwiftBot keeps the latest messages from each conversation it has replied in, so its next reply follows on. Clearing one makes SwiftBot start that conversation fresh.</p>
+          <div class="ub-list">
+            ${conversations.map(item => {
+              const key = `${item.scopeType}:${item.scopeID}`;
+              const isDM = /dm|direct/i.test(item.scopeType);
+              return `
+                <div class="ub-item">
+                  <span class="ub-item-icon" style="--brand:${getTintHex(isDM ? 'teal' : 'indigo')};"><i class="lucide" data-lucide="${isDM ? 'mail' : 'hash'}"></i></span>
+                  <span class="ub-item-text">
+                    <span class="ub-item-title">${escapeHTML(item.title)}</span>
+                    <span class="ub-item-sub">${item.messageCount.toLocaleString()} ${item.messageCount === 1 ? 'message' : 'messages'}</span>
+                  </span>
+                  <button class="secondary-action${armed.has(key) ? ' is-destructive' : ''}" type="button" data-memory-clear="${escapeHTML(key)}">${armed.has(key) ? 'Confirm' : 'Clear'}</button>
+                </div>`;
+            }).join('')}
+          </div>` : '<div class="placeholder">Nothing remembered yet. Conversations appear here after SwiftBot replies in them.</div>';
+        const all = document.getElementById('aiMemoryClearAll');
+        all.disabled = !conversations.length;
+        all.innerHTML = armed.has('*') ? '<i class="lucide" data-lucide="trash-2"></i> Confirm Clear All' : '<i class="lucide" data-lucide="trash-2"></i> Clear All';
+        document.querySelectorAll('[data-memory-clear]').forEach(btn => btn.addEventListener('click', () => {
+          const key = btn.dataset.memoryClear;
+          if (!armed.has(key)) { armed.clear(); armed.add(key); render(); return; }
+          const item = conversations.find(c => `${c.scopeType}:${c.scopeID}` === key);
+          if (item) clear({ scopeID: item.scopeID, scopeType: item.scopeType });
+        }));
+        refreshIcons();
+      };
+      document.getElementById('aiMemoryClearAll').addEventListener('click', () => {
+        if (!armed.has('*')) { armed.clear(); armed.add('*'); render(); return; }
+        clear({});
+      });
+      render();
     }
 
     // The unified feed from /api/activity (ActivityFeed in the app). Filter
@@ -13777,148 +14469,145 @@
       return 'cpu';
     }
 
+    // Cluster map: the Primary on the left, the other nodes stacked on the
+    // right, joined by quiet curves (solid when healthy, dashed when not).
+    // Laid out with CSS so it fits any width; the curves are redrawn from
+    // the cards' positions whenever the map resizes.
+    let meshMapObserver = null;
     function renderSwiftMeshClusterMap(container, nodes) {
       if (!container) return;
-      container.innerHTML = '';
-
-      const connected = (nodes || []);
-      if (!connected.length) {
-        container.innerHTML = `<div class="placeholder">No cluster nodes available yet.</div>`;
-        return;
-      }
-
-      const leader = connected.find(node => String(node.role || '').toLowerCase() === 'leader') || connected[0];
-      const workers = connected.filter(node => node.id !== leader.id);
-      const mapHeight = workers.length <= 2 ? 286 : (workers.length <= 4 ? 340 : 400);
-      container.style.height = `${mapHeight}px`;
-
-      const width = Math.max(540, container.clientWidth || 540);
-      const leaderWidth = 190;
-      const workerWidth = 172;
-      const nodeHeight = 72;
-      const inset = 14;
-      const leaderLeft = inset;
-      const leaderTop = Math.round((mapHeight - nodeHeight) / 2);
-      const workerLeft = Math.max(leaderLeft + leaderWidth + 56, width - inset - workerWidth);
-      const workerTopList = workers.length <= 1
-        ? [Math.round((mapHeight - nodeHeight) / 2)]
-        : workers.map((_, idx) => {
-            const topRange = inset;
-            const bottomRange = mapHeight - inset - nodeHeight;
-            const step = (bottomRange - topRange) / Math.max(1, workers.length - 1);
-            return Math.round(topRange + idx * step);
-          });
-
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', 'mesh-map-svg');
-      svg.setAttribute('viewBox', `0 0 ${width} ${mapHeight}`);
-      svg.setAttribute('preserveAspectRatio', 'none');
-      container.appendChild(svg);
-      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      svg.appendChild(defs);
-
-      const createNode = (node, left, top, isLeader) => {
-        const el = document.createElement('article');
-        el.className = `mesh-node${isLeader ? ' leader' : ''}`;
-        el.style.left = `${left}px`;
-        el.style.top = `${top}px`;
+      const all = nodes || [];
+      const leader = all.find(node => String(node.role || '').toLowerCase() === 'leader') || all[0];
+      if (!leader) { container.innerHTML = ''; return; }
+      const others = all.filter(node => node !== leader);
+      const card = (node, isLeader) => {
         const status = String(node.status || 'disconnected').toLowerCase();
-        const role = String(node.role || '').toLowerCase();
-        const roleLabel = role === 'leader' ? 'Primary' : 'Worker';
-        const hasLatency = typeof node.latencyMs === 'number';
-        const latencyLabel = hasLatency ? `${Math.round(node.latencyMs)} ms` : '';
-        el.innerHTML = `
-          <div class="mesh-node-header">
-            <span class="mesh-node-icon"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
-            <span class="mesh-node-name">${escapeHTML(node.displayName || node.hostname || 'Node')}</span>
-            <span class="mesh-node-role">${escapeHTML(roleLabel)}</span>
-          </div>
-          <div class="mesh-node-sub">
-            <span class="mesh-status-dot" style="background:${meshStatusColor(status)};"></span>
-            <span>${escapeHTML(status)}</span>
-            ${hasLatency ? `<span>•</span><span>${latencyLabel}</span>` : ''}
-          </div>
-        `;
-        container.appendChild(el);
+        return `
+          <article class="mesh-node${isLeader ? ' leader' : ''}${status === 'disconnected' ? ' is-off' : ''}" data-node-id="${escapeHTML(node.id)}" style="--role:${meshRoleColor(node.role)};">
+            <div class="mesh-node-header">
+              <span class="mesh-node-icon"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
+              <span class="mesh-node-name">${escapeHTML(node.displayName || node.hostname || 'Node')}</span>
+              <span class="mesh-node-role">${escapeHTML(meshNodeRoleLabel(node.role))}</span>
+            </div>
+            <div class="mesh-node-sub">
+              <span class="mesh-status-dot" style="background:${meshStatusColor(status)};"></span>
+              <span>${escapeHTML(status.charAt(0).toUpperCase() + status.slice(1))}</span>
+              ${typeof node.latencyMs === 'number' ? `<span>·</span><span>${Math.round(node.latencyMs)} ms</span>` : ''}
+            </div>
+          </article>`;
       };
+      container.innerHTML = `
+        <svg class="mesh-map-svg" aria-hidden="true"></svg>
+        <div class="mesh-map-layout${others.length ? '' : ' is-solo'}">
+          <div class="mesh-map-col">${card(leader, true)}</div>
+          ${others.length ? `<div class="mesh-map-col mesh-map-others">${others.map(node => card(node, false)).join('')}</div>` : ''}
+        </div>`;
 
-      const buildPulsePath = (x1, y1, x2, y2) => {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const length = Math.max(1, Math.hypot(dx, dy));
-        const amp = Math.min(11, Math.max(5, length * 0.055));
-        const point = (t, up = 0) => {
-          const px = x1 + dx * t;
-          const py = y1 + dy * t - up;
-          return `${Math.round(px * 100) / 100} ${Math.round(py * 100) / 100}`;
-        };
-        return [
-          `M ${point(0)}`,
-          `L ${point(0.14)}`,
-          `L ${point(0.19, amp * 0.18)}`,
-          `L ${point(0.22, amp * 0.82)}`,
-          `L ${point(0.25, amp * 0.3)}`,
-          `L ${point(0.33)}`,
-          `L ${point(0.47)}`,
-          `L ${point(0.52, amp * 0.22)}`,
-          `L ${point(0.55, amp)}`,
-          `L ${point(0.58, amp * 0.36)}`,
-          `L ${point(0.66)}`,
-          `L ${point(0.76)}`,
-          `L ${point(0.80, amp * 0.16)}`,
-          `L ${point(0.83, amp * 0.72)}`,
-          `L ${point(0.86, amp * 0.28)}`,
-          `L ${point(0.91)}`,
-          `L ${point(1)}`
-        ].join(' ');
+      const svg = container.querySelector('svg');
+      const draw = () => {
+        const box = container.getBoundingClientRect();
+        if (!box.width) return;
+        svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+        const from = container.querySelector('.mesh-node.leader').getBoundingClientRect();
+        // Narrow screens stack the nodes under the Primary; curves then run downwards.
+        const firstOther = container.querySelector('.mesh-map-others .mesh-node')?.getBoundingClientRect();
+        const stacked = firstOther && firstOther.top >= from.bottom;
+        // Links run centre to centre, under the cards, so the packet slips
+        // behind each server at the ends of its trip.
+        const x1 = from.left + from.width / 2 - box.left;
+        const y1 = from.top + from.height / 2 - box.top;
+        const leaderEdge = from.right - box.left;
+        const calm = prefersReducedMotion();
+        svg.innerHTML = others.map((node, index) => {
+          const el = container.querySelector(`.mesh-node[data-node-id="${CSS.escape(node.id)}"]`);
+          if (!el) return '';
+          const to = el.getBoundingClientRect();
+          const status = String(node.status || '').toLowerCase();
+          const x2 = to.left + to.width / 2 - box.left;
+          const y2 = to.top + to.height / 2 - box.top;
+          let d;
+          if (stacked) {
+            // Down from the Primary, then across into the card.
+            d = `M ${x1} ${y1} C ${x1} ${y2}, ${x1} ${y2}, ${x2} ${y2}`;
+          } else {
+            const gapStart = leaderEdge;
+            const gapEnd = to.left - box.left;
+            const bend = Math.max(24, (gapEnd - gapStart) / 2);
+            d = `M ${x1} ${y1} L ${gapStart} ${y1} C ${gapStart + bend} ${y1}, ${gapEnd - bend} ${y2}, ${gapEnd} ${y2} L ${x2} ${y2}`;
+          }
+          // Healthy links fade from the Primary's green into the node's own
+          // colour; anything else shows its status colour.
+          const healthy = status === 'healthy';
+          const color = healthy ? meshRoleColor(node.role) : meshStatusColor(status);
+          const id = `meshLink${index}`;
+          const stroke = healthy ? `url(#${id}Fade)` : color;
+          const fade = healthy ? `<defs><linearGradient id="${id}Fade" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">
+              <stop offset="0" stop-color="${meshRoleColor('leader')}"/><stop offset="1" stop-color="${color}"/></linearGradient></defs>` : '';
+          const link = `${fade}<path id="${id}" class="mesh-link${status === 'disconnected' ? ' is-off' : ''}" d="${d}" stroke="${stroke}"/>`;
+          return link;
+        }).join('');
+
+        // Packets: a burst of three from the Primary to the node, a pause,
+        // then a burst back. They only move through the visible gap between
+        // the cards and wait just inside a card between bursts.
+        if (!calm) {
+          const leaderBox = container.querySelector('.mesh-node.leader').getBoundingClientRect();
+          const inside = (pt, r) => pt.x > r.left - box.left + 6 && pt.x < r.right - box.left - 6 && pt.y > r.top - box.top + 6 && pt.y < r.bottom - box.top - 6;
+          let packets = '';
+          others.forEach((node, index) => {
+            if (String(node.status || '').toLowerCase() === 'disconnected') return;
+            const path = svg.querySelector(`#meshLink${index}`);
+            const el = container.querySelector(`.mesh-node[data-node-id="${CSS.escape(node.id)}"]`);
+            if (!path || !el) return;
+            const nodeBox = el.getBoundingClientRect();
+            const total = path.getTotalLength();
+            if (!total) return;
+            // Where the path leaves the Primary's card and enters the node's.
+            let start = 0;
+            let finish = 1;
+            const steps = 160;
+            for (let i = 0; i <= steps; i++) {
+              if (!inside(path.getPointAtLength(total * i / steps), leaderBox)) { start = Math.max(0, (i - 1) / steps); break; }
+            }
+            for (let i = steps; i >= 0; i--) {
+              if (!inside(path.getPointAtLength(total * i / steps), nodeBox)) { finish = Math.min(1, (i + 1) / steps); break; }
+            }
+            const color = String(node.status || '').toLowerCase() === 'healthy' ? meshRoleColor(node.role) : meshStatusColor(node.status);
+            const busy = Number(node.jobsActive) > 0;
+            const travel = 2.6;          // seconds to cross the gap
+            const spacing = 0.5;         // between dots in a burst
+            const half = busy ? 4.5 : 5.5; // out burst, pause; then back
+            const cycle = half * 2;
+            const lead = (index * 1.3) % cycle;
+            for (let dot = 0; dot < 3; dot++) {
+              const o = dot * spacing + 0.01;
+              const times = [0, o, o + travel, half + o, half + o + travel, cycle].map(t => (t / cycle).toFixed(4));
+              const points = [start, start, finish, finish, start, start].map(v => v.toFixed(4));
+              packets += `
+                <circle class="mesh-packet" r="2.6" fill="${color}" style="color:${color}">
+                  <animateMotion dur="${cycle}s" begin="${lead}s" repeatCount="indefinite" calcMode="linear" keyPoints="${points.join(';')}" keyTimes="${times.join(';')}"><mpath href="#meshLink${index}"/></animateMotion>
+                </circle>`;
+            }
+          });
+          svg.insertAdjacentHTML('beforeend', packets);
+        }
+        // Keep packets on the same beat across redraws (resizes, the 10 s
+        // refresh) instead of restarting them.
+        if (typeof svg.setCurrentTime === 'function') svg.setCurrentTime((Date.now() / 1000) % 3600);
       };
+      meshMapObserver?.disconnect();
+      meshMapObserver = new ResizeObserver(draw);
+      meshMapObserver.observe(container);
+      draw();
+    }
 
-      const leaderCenter = {
-        x: leaderLeft + leaderWidth,
-        y: leaderTop + Math.round(nodeHeight / 2)
-      };
-      createNode(leader, leaderLeft, leaderTop, true);
-
-      workers.forEach((worker, index) => {
-        const top = workerTopList[index] || leaderTop;
-        const workerCenter = {
-          x: workerLeft,
-          y: top + Math.round(nodeHeight / 2)
-        };
-        const status = String(worker.status || 'disconnected').toLowerCase();
-        const color = meshStatusColor(status);
-        const jobs = Math.max(0, Number(worker.jobsActive || 0));
-        const duration = jobs > 0 ? 2.2 : 3.0;
-        const pulsePath = buildPulsePath(leaderCenter.x, leaderCenter.y, workerCenter.x, workerCenter.y);
-        const gradId = `meshPulseGrad-${index}`;
-        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-        gradient.setAttribute('id', gradId);
-        gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
-        gradient.setAttribute('x1', String(leaderCenter.x));
-        gradient.setAttribute('y1', String(leaderCenter.y));
-        gradient.setAttribute('x2', String(workerCenter.x));
-        gradient.setAttribute('y2', String(workerCenter.y));
-        const stopA = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        stopA.setAttribute('offset', '0%');
-        stopA.setAttribute('stop-color', color);
-        stopA.setAttribute('stop-opacity', '0');
-        const stopB = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        stopB.setAttribute('offset', '100%');
-        stopB.setAttribute('stop-color', color);
-        stopB.setAttribute('stop-opacity', jobs > 0 ? '0.92' : '0.68');
-        gradient.appendChild(stopA);
-        gradient.appendChild(stopB);
-        defs.appendChild(gradient);
-
-        const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        pulse.setAttribute('d', pulsePath);
-        pulse.setAttribute('class', 'mesh-link-pulse');
-        pulse.setAttribute('stroke', `url(#${gradId})`);
-        pulse.style.animationDuration = `${duration}s`;
-        svg.appendChild(pulse);
-
-        createNode(worker, workerLeft, top, false);
-      });
+    // Primary green, Fail Over neon purple, Worker blue.
+    function meshRoleColor(role) {
+      switch (String(role || '').toLowerCase()) {
+        case 'leader': return '#30d158';
+        case 'standby': return '#bf5af2';
+        default: return '#0a84ff';
+      }
     }
 
     function meshModeLabel(mode) {
@@ -13958,37 +14647,113 @@
     }
 
     function meshNodeRoleLabel(role) {
-      return String(role || '').toLowerCase() === 'leader' ? 'Primary' : 'Worker';
+      switch (String(role || '').toLowerCase()) {
+        case 'leader': return 'Primary';
+        case 'standby': return 'Fail Over';
+        default: return 'Worker';
+      }
+    }
+
+    // ---- SwiftMesh page ----
+    // Reads /api/swiftmesh (the native SwiftMesh view's state) and refreshes
+    // every 10 seconds while open, like the native view's polling.
+    let swiftMeshData = null;
+    let swiftMeshPollTimer = null;
+    let swiftMeshTickTimer = null;
+
+    async function loadSwiftMesh() {
+      const response = await fetch('/api/swiftmesh');
+      if (!response.ok) throw new Error('SwiftMesh unavailable');
+      swiftMeshData = await response.json();
+      return swiftMeshData;
+    }
+
+    function meshCountdown(target) {
+      const seconds = Math.max(0, Math.round((new Date(target).getTime() - Date.now()) / 1000));
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function meshDuration(seconds) {
+      const total = Math.max(0, Math.round(Number(seconds) || 0));
+      const d = Math.floor(total / 86400);
+      const h = Math.floor((total % 86400) / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    function meshBytes(bytes) {
+      const gb = Number(bytes || 0) / 1073741824;
+      return gb >= 1 ? `${Math.round(gb)} GB` : '';
+    }
+
+    const MESH_MODES = {
+      Standalone: { title: 'Standalone', icon: 'circle', desc: 'This Mac runs SwiftBot on its own.' },
+      Leader: { title: 'Primary', icon: 'crown', desc: 'Runs the bot. Other Macs can stand by as a Fail Over or take shared work.' },
+      Standby: { title: 'Fail Over', icon: 'shield', desc: 'Stays in sync with a Primary and takes over if it goes quiet.' }
+    };
+
+    function startSwiftMeshPolling() {
+      clearInterval(swiftMeshPollTimer);
+      clearInterval(swiftMeshTickTimer);
+      swiftMeshPollTimer = setInterval(async () => {
+        if (currentView !== 'swiftmesh') { clearInterval(swiftMeshPollTimer); return; }
+        // Don't redraw under an open dialog.
+        if (document.getElementById('modalOverlay')?.classList.contains('active')) return;
+        try { await loadSwiftMesh(); renderSwiftMeshView(); } catch {}
+      }, 10000);
+      swiftMeshTickTimer = setInterval(() => {
+        if (currentView !== 'swiftmesh') { clearInterval(swiftMeshTickTimer); return; }
+        document.querySelectorAll('[data-countdown]').forEach(el => { el.textContent = meshCountdown(el.dataset.countdown); });
+      }, 1000);
     }
 
     function renderSwiftMeshView() {
-      if (!dashboardOverview || !dashboardConfig || !dashboardStatus) return;
       const top = document.getElementById('swiftmeshTop');
       const panels = document.getElementById('swiftmeshPanels');
       if (!top || !panels) return;
-      const mesh = dashboardConfig.swiftMesh;
-      const cluster = dashboardOverview.cluster;
-      const clusterNodes = dashboardOverview.clusterNodes || [];
-      const latency = meshAverageLatency(clusterNodes);
-      const modeLabel = meshModeLabel(mesh.mode);
-      const runtimeLabel = meshModeLabel(cluster.mode || mesh.mode);
-      const configuredRuntimeDetail = modeLabel === runtimeLabel
-        ? `Configured ${modeLabel}`
-        : `Configured ${modeLabel} · Runtime ${runtimeLabel}`;
-      const isStandalone = String(mesh.mode || '').toLowerCase() === 'standalone';
-      const healthySummary = meshHealthySummary(clusterNodes);
-      const topologyText = isStandalone
-        ? 'Cluster mode is disabled. Enable Primary or Fail Over mode to use SwiftMesh.'
-        : 'Waiting for /cluster/status ...';
-      const workerOption = mesh.mode === 'Worker'
-        ? '<option value="Worker" selected>Worker (Deprecated)</option>'
-        : '';
+      const mesh = swiftMeshData;
+      if (!mesh) {
+        top.innerHTML = '';
+        panels.innerHTML = '<div class="placeholder">Loading SwiftMesh…</div>';
+        loadSwiftMesh().then(() => { if (currentView === 'swiftmesh') { renderSwiftMeshView(); startSwiftMeshPolling(); } })
+          .catch(() => { panels.innerHTML = '<div class="placeholder">SwiftMesh status isn’t available right now.</div>'; });
+        return;
+      }
+      if (!swiftMeshPollTimer) startSwiftMeshPolling();
+
+      const configured = mesh.configuredMode;
+      const isStandalone = configured === 'Standalone';
+      const isLeader = configured === 'Leader';
+      const isStandby = configured === 'Standby';
+      const nodes = mesh.nodes || [];
+      const latency = meshAverageLatency(nodes);
+      const healthy = nodes.filter(n => n.status === 'healthy').length;
+      const runtimeLabel = meshModeLabel(mesh.runtimeMode);
+      const configuredLabel = meshModeLabel(configured);
+      const transition = mesh.runtimeState && mesh.runtimeState !== 'idle' ? mesh.runtimeState : '';
+      const roleState = isStandalone ? 'neutral'
+        : ['failed', 'stopped'].includes(mesh.server.state) ? 'critical'
+        : nodes.some(n => n.status !== 'healthy') || transition ? 'warning' : 'healthy';
+
+      // How far apart the Discord connections are on each node.
+      const peerLatencies = nodes.map(n => n.follower?.discordLatencyMs).filter(v => typeof v === 'number');
+      const worstPeer = peerLatencies.length ? Math.max(...peerLatencies) : null;
+      const local = mesh.localGatewayLatencyMs;
 
       top.innerHTML = [
-        ubStatusCell(escapeHTML(runtimeLabel), escapeHTML(configuredRuntimeDetail),
-          ({ 'var(--success)': 'healthy', '#ff9500': 'warning', 'var(--error)': 'critical' })[meshRuntimeTone(cluster.mode || mesh.mode, clusterNodes)] || 'neutral'),
-        ubStatusCell(`${cluster.connectedNodes || 0} node${cluster.connectedNodes === 1 ? '' : 's'} connected`, escapeHTML(healthySummary)),
-        ubStatusCell(`Latency ${escapeHTML(latency.value)}`, escapeHTML(latency.subtitle))
+        ubStatusCell(escapeHTML(isStandalone ? 'Standalone' : runtimeLabel),
+          escapeHTML(isStandalone ? 'SwiftMesh is off'
+            : transition ? transition.charAt(0).toUpperCase() + transition.slice(1) + '…'
+            : configuredLabel !== runtimeLabel ? `Set up as ${configuredLabel}` : `Term ${mesh.leaderTerm}`), roleState),
+        isStandalone ? '' : ubStatusCell(`${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`, nodes.length ? `${healthy} of ${nodes.length} healthy` : 'None connected'),
+        isStandalone ? '' : ubStatusCell(`Latency ${escapeHTML(latency.value)}`, escapeHTML(latency.subtitle)),
+        isStandalone || local == null || worstPeer == null ? '' : ubStatusCell(`Discord drift ${Math.abs(local - worstPeer)} ms`, `This Mac ${local} ms · slowest peer ${worstPeer} ms`,
+          Math.abs(local - worstPeer) >= 120 ? 'critical' : Math.abs(local - worstPeer) >= 40 ? 'warning' : 'healthy')
       ].join('');
 
       const row = (title, desc, control) => `
@@ -13996,180 +14761,345 @@
           <div class="ub-row-text"><div class="ub-row-title">${title}</div>${desc ? `<div class="ub-row-desc">${desc}</div>` : ''}</div>
           ${control}
         </div>`;
+      const valueRow = (title, value, desc = '') => row(title, desc, `<span class="ub-row-value">${escapeHTML(value)}</span>`);
       const switchRow = (id, title, desc, on) => row(title, desc,
         `<label class="switch"><input id="${id}" type="checkbox" ${on ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>`);
+      const group = (title, body, action = '') => `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>${title}</h2>${action}</div>
+          <div class="ub-group-card glass">${body}</div>
+        </section>`;
 
-      panels.innerHTML = `
-        ${isStandalone ? `
-        <section class="ub-empty glass">
-          <div class="ub-empty-title">SwiftMesh is off</div>
-          <div class="ub-empty-sub">This Mac runs SwiftBot on its own. Choose <strong>Primary</strong> or <strong>Fail Over</strong> below to share work with other Macs or keep a standby ready.</div>
-        </section>` : `
-        <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="share-2"></i> Cluster Map</div>
-          <div id="meshTopologyMap" class="mesh-map-panel"></div>
-          <div id="meshTopologyEmpty" class="placeholder hidden">${escapeHTML(topologyText)}</div>
-        </section>
-        <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="cpu"></i> Nodes</div>
-          <div id="meshNodesList" class="mesh-node-list"></div>
-          <div class="info-list" style="margin-top:8px;">
-            <div class="info-row"><span class="label">Primary</span><span class="value">${escapeHTML(cluster.leader || '—')}</span></div>
-            <div class="info-row"><span class="label">Bot on this node</span><span class="value">${escapeHTML(dashboardStatus.botStatus || '—')}</span></div>
+      // The one thing to do on this node: test failover, or promote.
+      const h = mesh.handover || {};
+      let banner = '';
+      if (isLeader) {
+        let desc;
+        let control;
+        if (h.isActive) {
+          desc = `The Fail Over has control. It hands back in <strong data-countdown="${escapeHTML(h.endsAt || '')}">${h.endsAt ? meshCountdown(h.endsAt) : '—'}</strong>.`;
+          control = '<span class="mesh-live-chip">Running</span>';
+        } else if (h.scheduledAt) {
+          desc = `Starts in <strong data-countdown="${escapeHTML(h.scheduledAt)}">${meshCountdown(h.scheduledAt)}</strong>. The Fail Over learns about it on its next sync, takes over for 60 seconds, then hands back.`;
+          control = '<button id="meshCancelTest" class="secondary-action" type="button">Cancel</button>';
+        } else {
+          desc = h.lastRunAt
+            ? `Last run ${escapeHTML(relativeTime(h.lastRunAt))}: <span class="${h.lastRunOK ? 'mesh-ok' : 'mesh-bad'}">${h.lastRunOK ? 'handed over and back' : 'didn’t complete'}</span>.`
+            : 'Hands Primary to the Fail Over for 60 seconds, then takes it back, so you know failover works before you need it.';
+          if (!h.canRun) desc += ' <span class="mesh-muted">Needs a Fail Over node connected.</span>';
+          control = `<button id="meshRunTest" class="primary-action" type="button" ${h.canRun ? '' : 'disabled'}><i class="lucide" data-lucide="repeat"></i> Run test</button>`;
+        }
+        banner = `
+          <section class="mesh-banner glass">
+            <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="repeat"></i></span>
+            <div class="ub-row-text"><div class="ub-row-title">Failover test</div><div class="ub-row-desc">${desc}</div></div>
+            ${control}
+          </section>`;
+      } else if (isStandby) {
+        const acting = mesh.runtimeMode === 'Leader';
+        const desc = h.isActive
+          ? `Handover test: this Mac is acting as Primary${h.endsAt ? ` for <strong data-countdown="${escapeHTML(h.endsAt)}">${meshCountdown(h.endsAt)}</strong> more` : ''}.`
+          : acting ? 'This Mac has taken over as Primary.'
+          : `Takes over automatically if the Primary goes quiet.${mesh.autoReclaimRemainingSeconds > 0 ? ` Hands back to the original Primary in <strong data-countdown="${new Date(Date.now() + mesh.autoReclaimRemainingSeconds * 1000).toISOString()}">${meshCountdown(Date.now() + mesh.autoReclaimRemainingSeconds * 1000)}</strong>.` : ''}`;
+        banner = `
+          <section class="mesh-banner glass">
+            <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="shield"></i></span>
+            <div class="ub-row-text"><div class="ub-row-title">${acting ? 'Acting as Primary' : 'Standing by'}</div><div class="ub-row-desc">${desc}</div></div>
+            ${h.isActive || acting ? '' : '<button id="meshPromote" class="secondary-action" type="button"><i class="lucide" data-lucide="arrow-up-circle"></i> Promote</button>'}
+          </section>`;
+      }
+
+      const nodeRows = nodes.map(node => {
+        const f = node.follower;
+        const statusColor = meshStatusColor(node.status);
+        const facts = [
+          `<span class="mesh-status-dot" style="background:${statusColor};"></span>${escapeHTML(node.status.charAt(0).toUpperCase() + node.status.slice(1))}`,
+          escapeHTML(node.hostname || ''),
+          node.uptimeSeconds ? `up ${meshDuration(node.uptimeSeconds)}` : '',
+          escapeHTML([node.cpuName, meshBytes(node.memoryBytes)].filter(Boolean).join(' · ')),
+          node.jobsActive ? `${node.jobsActive} ${node.jobsActive === 1 ? 'job' : 'jobs'} running` : ''
+        ].filter(Boolean);
+        const followerFacts = f ? [
+          f.outputAllowed ? (f.gatewayConnected ? 'Connected to Discord' : 'Discord disconnected') : 'Standing by, not sending',
+          `${f.activeVoiceMembers} in voice`,
+          f.lastEventAt ? `last event ${relativeTime(f.lastEventAt)}` : ''
+        ].filter(Boolean) : [];
+        return `
+          <div class="ub-item mesh-item${node.status === 'disconnected' ? ' is-off' : ''}">
+            <span class="ub-item-icon" style="--brand:${node.status === 'disconnected' ? 'var(--muted)' : meshRoleColor(node.role)};"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
+            <span class="ub-item-text">
+              <span class="ub-item-title">${escapeHTML(node.displayName || node.hostname || 'Node')}${node.isThisNode ? ' <span class="badge">This Mac</span>' : ''} <span class="mesh-role-chip">${escapeHTML(meshNodeRoleLabel(node.role))}</span></span>
+              <span class="ub-item-sub mesh-facts">${facts.join('<span class="mesh-sep">·</span>')}</span>
+              ${followerFacts.length ? `<span class="ub-item-sub">${escapeHTML(followerFacts.join(' · '))}</span>` : ''}
+            </span>
+            ${node.status === 'disconnected' && !node.isThisNode
+              ? `<button class="secondary-action" type="button" data-mesh-forget="${escapeHTML(node.displayName)}">Forget</button>`
+              : `<span class="mesh-latency">${typeof node.latencyMs === 'number' ? `${Math.round(node.latencyMs)} ms` : ''}</span>`}
+          </div>`;
+      }).join('');
+
+      const lastJob = mesh.lastJobRoute === 'local' && /no remote jobs/i.test(mesh.lastJobSummary || '')
+        ? 'None yet'
+        : `${mesh.lastJobRoute.charAt(0).toUpperCase() + mesh.lastJobRoute.slice(1)} · ${mesh.lastJobNode}`;
+
+      panels.innerHTML = isStandalone ? `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Set up SwiftMesh</h2></div>
+          <div class="mesh-choices">
+            ${['Leader', 'Standby'].map(mode => `
+              <button class="mesh-choice glass" type="button" data-mesh-setup="${mode}">
+                <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[mode].icon}"></i></span>
+                <span class="mesh-choice-title">Make this Mac the ${MESH_MODES[mode].title}</span>
+                <span class="mesh-choice-desc">${mode === 'Leader'
+                  ? 'Keep running the bot here. Another Mac can join as a Fail Over that takes over if this one goes down.'
+                  : 'Pair with a Mac that already runs SwiftBot. This one stays in sync and takes over if it goes down.'}</span>
+              </button>`).join('')}
           </div>
-        </section>`}
+        </section>
+        ${group('This Mac', `
+          <button id="meshEdit" class="ub-row ub-row-link" type="button">
+            <div class="ub-row-text"><div class="ub-row-title">Node name</div><div class="ub-row-desc">How this Mac appears to other nodes.</div></div>
+            <span class="ub-row-value">${escapeHTML(mesh.nodeName || '—')}</span>
+            <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
+          </button>`)}
+      ` : `
+        ${banner}
+        <section class="ub-group mesh-map-group">
+          <div class="ub-group-head"><h2>Cluster map</h2></div>
+          <div class="glass mesh-map-card"><div id="meshTopologyMap" class="mesh-map-panel"></div></div>
+        </section>
         <section class="ub-group">
           <div class="ub-group-head">
-            <h2>Configuration</h2>
+            <h2>Nodes · ${nodes.length}</h2>
             <button id="meshRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
           </div>
-          <div class="ub-group-card glass">
-            ${row('Mode', '', `<select id="meshMode" class="field-select prefs-control"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Primary</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Fail Over</option>${workerOption}</select>`)}
-            ${row('Node name', 'How this Mac appears to other nodes.', `<input id="meshNode" class="field-input prefs-control" value="${escapeHTML(mesh.nodeName || '')}">`)}
-            <div class="mesh-cluster-fields${isStandalone ? ' hidden' : ''}">
-              ${row('Primary host', 'Address of the primary Mac.', `<input id="meshLeader" class="field-input prefs-control" value="${escapeHTML(mesh.leaderAddress || '')}" spellcheck="false">`)}
-              ${row('Primary port', '', `<input id="meshLeaderPort" class="field-input prefs-control" type="number" min="1" value="${escapeHTML(mesh.leaderPort || 0)}">`)}
-              ${row('Listen port', 'Port this Mac accepts cluster traffic on.', `<input id="meshPort" class="field-input prefs-control" type="number" min="1" value="${escapeHTML(mesh.listenPort || 0)}">`)}
-              ${switchRow('meshWorkerOffload', 'Worker offload', 'Let supported work run on other nodes.', mesh.workerOffloadEnabled)}
-              ${switchRow('meshOffloadAI', 'Offload AI replies', 'When primary, send AI replies to workers.', mesh.offloadAIReplies)}
-              ${switchRow('meshOffloadWiki', 'Offload Lookup', 'When primary, send wiki lookups to workers.', mesh.offloadWikiLookups)}
-              ${row('Auto-reclaim after', 'Hours before the primary takes work back. 0 turns this off.', `<input id="meshAutoReclaim" class="field-input prefs-control" type="number" min="0" max="72" value="${escapeHTML(mesh.autoReclaimAfterHours || 0)}">`)}
-            </div>
-            <div class="ub-row ub-row-actions"><button id="meshSave" class="primary-action" type="button">Save</button></div>
-          </div>
+          ${nodes.length ? `<div class="ub-list glass">${nodeRows}</div>` : `
+            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Copy the join code below and paste it into SwiftMesh on the other Mac.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
         </section>
-        ${mesh.mode === 'Leader' ? `
-        <section class="ub-group">
-          <div class="ub-group-head"><h2>Add a node</h2></div>
-          <div class="ub-group-card glass">
-            ${row('Join code', 'Copy it here and paste it in SwiftMesh preferences on the standby Mac, or open it directly if this browser is on the standby. Rotate the shared secret from the macOS app.',
-              `<span class="mesh-join-actions">
-                 <button id="meshJoinCopy" class="secondary-action" type="button"><i class="lucide" data-lucide="copy"></i> Copy</button>
-                 <button id="meshJoinOpen" class="secondary-action" type="button"><i class="lucide" data-lucide="external-link"></i> Open</button>
-               </span>`)}
-            <div id="meshJoinFeedback" class="ub-help hidden" style="margin:0 0 12px;"></div>
-          </div>
-        </section>` : ''}
+        ${isLeader ? group('Work sharing', `
+          ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
+          ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
+          ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
+        `) : ''}
+        ${isLeader ? group('Add a node', row('Join code', 'Paste it into SwiftMesh on the other Mac, or open it here if this browser is on that Mac. It contains the mesh’s shared secret, so treat it like a password.',
+          `<span class="mesh-join-actions">
+             <button id="meshJoinCopy" class="secondary-action" type="button"><i class="lucide" data-lucide="copy"></i> Copy</button>
+             <button id="meshJoinOpen" class="secondary-action" type="button"><i class="lucide" data-lucide="external-link"></i> Open</button>
+           </span>`) + '<div id="meshJoinFeedback" class="ub-help hidden" style="margin:0 0 12px;"></div>') : ''}
+        ${group('Configuration', `
+          <button id="meshEdit" class="ub-row ub-row-link" type="button">
+            <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
+            <div class="ub-row-text">
+              <div class="ub-row-title">${escapeHTML(configuredLabel)} · ${escapeHTML(mesh.nodeName || 'This Mac')}</div>
+              <div class="ub-row-desc">${escapeHTML([isStandby ? `Primary ${mesh.leaderAddress || '—'}:${mesh.leaderPort}` : '', `listens on port ${mesh.listenPort}`, isStandby ? (mesh.autoReclaimAfterHours ? `hands back after ${mesh.autoReclaimAfterHours} h` : 'never hands back') : ''].filter(Boolean).join(' · '))}</div>
+            </div>
+            <span class="ub-row-value">Edit</span>
+            <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
+          </button>
+        `)}
+        ${group('Details', `
+          ${valueRow('Mesh server', mesh.server.text)}
+          ${valueRow('Connection', mesh.worker.text)}
+          ${isLeader ? valueRow('Registered nodes', String(mesh.registeredWorkers)) : ''}
+          ${valueRow('Last job', lastJob, lastJob === 'None yet' ? '' : escapeHTML(mesh.lastJobSummary || ''))}
+          <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Diagnostics</div><div class="ub-row-desc mesh-diag">${escapeHTML(mesh.diagnostics || '—')}</div></div></div>
+        `)}
       `;
 
-      panels.querySelector('#meshMode')?.addEventListener('change', (e) => {
-        panels.querySelector('.mesh-cluster-fields')?.classList.toggle('hidden', e.target.value === 'Standalone');
-      });
+      const mapNode = panels.querySelector('#meshTopologyMap');
+      if (mapNode) {
+          if (!nodes.length) panels.querySelector('.mesh-map-group')?.classList.add('hidden');
+        else renderSwiftMeshClusterMap(mapNode, nodes);
+      }
 
-      panels.querySelector('#meshSave')?.addEventListener('click', () => {
-        saveConfigPatch({
-          clusterMode: panels.querySelector('#meshMode')?.value || 'Standalone',
-          clusterNodeName: panels.querySelector('#meshNode')?.value || '',
-          clusterLeaderAddress: panels.querySelector('#meshLeader')?.value || '',
-          clusterLeaderPort: Number(panels.querySelector('#meshLeaderPort')?.value || 0),
-          clusterListenPort: Number(panels.querySelector('#meshPort')?.value || 0),
-          clusterWorkerOffloadEnabled: !!panels.querySelector('#meshWorkerOffload')?.checked,
-          clusterOffloadAIReplies: !!panels.querySelector('#meshOffloadAI')?.checked,
-          clusterOffloadWikiLookups: !!panels.querySelector('#meshOffloadWiki')?.checked,
-          clusterAutoReclaimAfterHours: Number(panels.querySelector('#meshAutoReclaim')?.value || 0)
+      const act = async (action, node) => {
+        try {
+          await postJSON('/api/swiftmesh/action', node ? { action, node } : { action });
+        } catch (e) {
+          let message = 'That didn’t work.';
+          try { message = JSON.parse(e.message).error || message; } catch {}
+          setMessage(message, 'error');
+        }
+        await loadSwiftMesh().catch(() => {});
+        renderSwiftMeshView();
+      };
+      const confirmThen = (title, body, label, onYes, destructive = true) => {
+        showModal(title, `<p class="ub-help" style="margin-top:0;">${body}</p>`, `
+          <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+          <button id="meshConfirm" class="${destructive ? 'primary-action' : 'primary-action'}" type="button">${label}</button>`);
+        document.getElementById('meshConfirm').addEventListener('click', async (e) => {
+          e.currentTarget.disabled = true;
+          hideModal();
+          await onYes();
         });
-      });
-      panels.querySelector('#meshRefresh')?.addEventListener('click', async () => {
-        await postJSON('/api/swiftmesh/refresh', {});
-        await Promise.all([loadOverview(), loadConfig(), loadStatus(), loadMediaData()]);
+      };
+
+      panels.querySelector('#meshRunTest')?.addEventListener('click', () => confirmThen('Run a failover test?',
+        'In about 90 seconds the Fail Over takes over as Primary for 60 seconds, then hands back automatically. Discord replies may pause briefly while roles swap.',
+        'Run Test', () => act('handoverTest')));
+      panels.querySelector('#meshCancelTest')?.addEventListener('click', () => act('cancelHandoverTest'));
+      panels.querySelector('#meshPromote')?.addEventListener('click', () => confirmThen('Promote this Mac to Primary?',
+        'This Mac starts running the bot. The current Primary steps down on its next sync. Discord replies may pause briefly while roles change.',
+        'Promote', () => act('promote')));
+      panels.querySelectorAll('[data-mesh-forget]').forEach(btn => btn.addEventListener('click', () => confirmThen(`Forget ${btn.dataset.meshForget}?`,
+        'It’s removed from the map until it connects again.', 'Forget', () => act('forget', btn.dataset.meshForget))));
+      panels.querySelector('#meshRefresh')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        await postJSON('/api/swiftmesh/refresh', {}).catch(() => {});
+        await loadSwiftMesh().catch(() => {});
         renderSwiftMeshView();
       });
+      [['meshWorkerOffload', 'clusterWorkerOffloadEnabled'], ['meshOffloadAI', 'clusterOffloadAIReplies'], ['meshOffloadWiki', 'clusterOffloadWikiLookups']].forEach(([id, key]) => {
+        panels.querySelector(`#${id}`)?.addEventListener('change', async (e) => {
+          await saveConfigPatch({ [key]: e.target.checked });
+          await loadSwiftMesh().catch(() => {});
+          renderSwiftMeshView();
+        });
+      });
+      panels.querySelector('#meshEdit')?.addEventListener('click', () => openSwiftMeshEditor(configured));
+      panels.querySelectorAll('[data-mesh-setup]').forEach(btn => btn.addEventListener('click', () => openSwiftMeshEditor(btn.dataset.meshSetup)));
 
       const joinFeedback = panels.querySelector('#meshJoinFeedback');
-      const joinCopy = panels.querySelector('#meshJoinCopy');
-      const joinOpen = panels.querySelector('#meshJoinOpen');
-
       const showJoinFeedback = (message, isError = false) => {
         if (!joinFeedback) return;
         joinFeedback.textContent = message;
         joinFeedback.classList.remove('hidden');
         joinFeedback.style.color = isError ? 'var(--danger,#d33)' : '';
-        if (!isError) {
-          setTimeout(() => joinFeedback.classList.add('hidden'), 2500);
-        }
+        if (!isError) setTimeout(() => joinFeedback.classList.add('hidden'), 2500);
       };
-
       const fetchJoinCode = async () => {
         const res = await fetch('/api/swiftmesh/join-code', { headers: { 'Accept': 'application/json' } });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || `Failed to fetch Join Code (${res.status}).`);
-        }
-        const data = await res.json();
-        if (!data.code) throw new Error('Server returned an empty Join Code.');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.code) throw new Error(data.message || 'Couldn’t get a join code.');
         return data.code;
       };
-
-      joinCopy?.addEventListener('click', async () => {
-        joinCopy.disabled = true;
+      panels.querySelector('#meshJoinCopy')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        button.disabled = true;
         try {
-          const code = await fetchJoinCode();
-          await navigator.clipboard.writeText(code);
-          showJoinFeedback('Join Code copied to clipboard. Paste it in SwiftMesh preferences on the standby Mac.');
-        } catch (e) {
-          showJoinFeedback(String(e.message || e), true);
+          await navigator.clipboard.writeText(await fetchJoinCode());
+          showJoinFeedback('Copied. Paste it into SwiftMesh on the other Mac.');
+        } catch (err) {
+          showJoinFeedback(String(err.message || err), true);
         } finally {
-          joinCopy.disabled = false;
+          button.disabled = false;
         }
       });
-
-      joinOpen?.addEventListener('click', async () => {
-        joinOpen.disabled = true;
+      panels.querySelector('#meshJoinOpen')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        button.disabled = true;
         try {
-          const code = await fetchJoinCode();
-          // The swiftmesh:// scheme is registered by the macOS app, which shows
-          // a confirmation sheet before applying. Safe to launch directly.
-          window.location.href = code;
-        } catch (e) {
-          showJoinFeedback(String(e.message || e), true);
+          // swiftmesh:// is handled by the macOS app, which asks before applying.
+          window.location.href = await fetchJoinCode();
+        } catch (err) {
+          showJoinFeedback(String(err.message || err), true);
         } finally {
-          joinOpen.disabled = false;
+          button.disabled = false;
         }
       });
-
-
-      const mapNode = panels.querySelector('#meshTopologyMap');
-      const emptyNode = panels.querySelector('#meshTopologyEmpty');
-      if (isStandalone || !clusterNodes.length) {
-        mapNode?.classList.add('hidden');
-        emptyNode?.classList.remove('hidden');
-      } else {
-        mapNode?.classList.remove('hidden');
-        emptyNode?.classList.add('hidden');
-        renderSwiftMeshClusterMap(mapNode, clusterNodes);
-      }
-
-      const listNode = panels.querySelector('#meshNodesList');
-      if (listNode) {
-        if (!clusterNodes.length) {
-          listNode.innerHTML = `<div class="placeholder">No nodes available.</div>`;
-        } else {
-          listNode.innerHTML = clusterNodes.map(node => `
-            <div class="mesh-node-row">
-              <div class="mesh-node-main">
-                <i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i>
-                <div class="mesh-node-text">
-                  <div class="mesh-node-title">
-                    <span>${escapeHTML(node.displayName || node.hostname || 'Node')}</span>
-                    <span class="mesh-role-chip">${escapeHTML(meshNodeRoleLabel(node.role))}</span>
-                  </div>
-                  <div class="mesh-node-meta">
-                    <span class="mesh-status-dot" style="background:${meshStatusColor(String(node.status || '').toLowerCase())};"></span>
-                    <span>${escapeHTML(String(node.status || '').toLowerCase() || 'unknown')}</span>
-                    <span>•</span>
-                    <span>${escapeHTML(node.hostname || '—')}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="mesh-node-latency">
-                ${typeof node.latencyMs === 'number' ? `${Math.round(node.latencyMs)} ms` : ''}
-              </div>
-            </div>
-          `).join('');
-        }
-      }
       refreshIcons();
     }
+
+    function openSwiftMeshEditor(initialMode) {
+      const mesh = swiftMeshData;
+      if (!mesh) return;
+      const draft = {
+        mode: initialMode || mesh.configuredMode,
+        nodeName: mesh.nodeName || '',
+        leaderAddress: mesh.leaderAddress || '',
+        leaderPort: mesh.leaderPort || 38787,
+        listenPort: mesh.listenPort || 38787,
+        autoReclaim: mesh.autoReclaimAfterHours || 0
+      };
+      showModal('SwiftMesh', '<div id="meshEditorBody"></div>', `
+        <span id="meshEditorHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="meshEditorSave" class="primary-action" type="button">Save</button>
+      `, { wide: true });
+
+      const issue = () => {
+        if (!draft.nodeName.trim()) return 'Give this Mac a name.';
+        if (draft.mode === 'Standby' && !draft.leaderAddress.trim()) return 'Enter the Primary’s address.';
+        const ports = [draft.listenPort, ...(draft.mode === 'Standby' ? [draft.leaderPort] : [])];
+        if (ports.some(p => !Number.isInteger(Number(p)) || Number(p) < 1 || Number(p) > 65535)) return 'Ports are numbers from 1 to 65535.';
+        return '';
+      };
+      const render = () => {
+        const field = (id, label, value, attrs = '') => `
+          <label class="mesh-field"><span class="field-label">${label}</span><input id="${id}" class="field-input" value="${escapeHTML(value)}" ${attrs}></label>`;
+        document.getElementById('meshEditorBody').innerHTML = `
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="network"></i> Role</h3>
+            <div class="access-modes">
+              ${['Standalone', 'Leader', 'Standby'].map(mode => `
+                <label class="access-mode${draft.mode === mode ? ' is-selected' : ''}">
+                  <input type="radio" name="meshMode" value="${mode}" ${draft.mode === mode ? 'checked' : ''}>
+                  <span><span class="access-mode-title">${MESH_MODES[mode].title}</span><span class="access-mode-desc">${MESH_MODES[mode].desc}</span></span>
+                </label>`).join('')}
+            </div>
+            ${draft.mode !== mesh.configuredMode ? '<div class="ub-help">Changing the role restarts SwiftMesh on this Mac. Discord replies may pause for a moment.</div>' : ''}
+          </div>
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="server"></i> This Mac</h3>
+            <div class="mesh-fields">
+              ${field('meshEdName', 'Node name', draft.nodeName, 'maxlength="60"')}
+              ${draft.mode === 'Standalone' ? '' : field('meshEdListen', 'Listens on port', draft.listenPort, 'type="number" min="1" max="65535"')}
+            </div>
+          </div>
+          ${draft.mode === 'Standby' ? `
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="crown"></i> Primary</h3>
+            <div class="mesh-fields">
+              ${field('meshEdLeader', 'Address', draft.leaderAddress, 'spellcheck="false" placeholder="192.168.1.20 or primary.local"')}
+              ${field('meshEdLeaderPort', 'Port', draft.leaderPort, 'type="number" min="1" max="65535"')}
+              ${field('meshEdReclaim', 'Hand back after (hours)', draft.autoReclaim, 'type="number" min="0" max="72"')}
+            </div>
+            <div class="ub-help">After this Mac takes over, the original Primary gets control back after this many hours. 0 never hands back. The easiest way to fill these in is to open a join code from the Primary.</div>
+          </div>` : ''}
+        `;
+        const hint = issue();
+        document.getElementById('meshEditorHint').textContent = hint;
+        document.getElementById('meshEditorSave').disabled = !!hint;
+        document.querySelectorAll('input[name="meshMode"]').forEach(radio => radio.addEventListener('change', () => { draft.mode = radio.value; render(); }));
+        const bind = (id, key, numeric) => document.getElementById(id)?.addEventListener('input', e => {
+          draft[key] = numeric ? Number(e.target.value) : e.target.value;
+          const message = issue();
+          document.getElementById('meshEditorHint').textContent = message;
+          document.getElementById('meshEditorSave').disabled = !!message;
+        });
+        bind('meshEdName', 'nodeName');
+        bind('meshEdListen', 'listenPort', true);
+        bind('meshEdLeader', 'leaderAddress');
+        bind('meshEdLeaderPort', 'leaderPort', true);
+        bind('meshEdReclaim', 'autoReclaim', true);
+        refreshIcons();
+      };
+      render();
+
+      document.getElementById('meshEditorSave').addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await saveConfigPatch({
+            clusterMode: draft.mode,
+            clusterNodeName: draft.nodeName.trim(),
+            clusterLeaderAddress: draft.leaderAddress.trim(),
+            clusterLeaderPort: Number(draft.leaderPort),
+            clusterListenPort: Number(draft.listenPort),
+            clusterAutoReclaimAfterHours: Number(draft.autoReclaim)
+          });
+          hideModal();
+          await loadSwiftMesh().catch(() => {});
+          renderSwiftMeshView();
+        } catch {
+          e.currentTarget.disabled = false;
+          setMessage('Couldn’t save SwiftMesh settings.', 'error');
+        }
+      });
+    }
+
+    // Set for the one render after a wallpaper is picked, so its sun and
+    // moon pop in then and not every time the page redraws.
+    let prefsRevealWallpaper = false;
 
     function renderUserPrefsView() {
       if (!currentUser) return;
@@ -14180,77 +15110,123 @@
       const handle = currentUser.discriminator && currentUser.discriminator !== '0'
         ? `${currentUser.username || 'user'}#${currentUser.discriminator}`
         : `@${currentUser.username || 'user'}`;
-
       const avatar = document.getElementById('sidebarAvatar')?.getAttribute('src') || '';
+      const viaPassword = currentUser.signInMethod === 'password' || String(currentUser.id || '').startsWith('local:');
+      const expires = currentUser.sessionExpiresAt ? new Date(currentUser.sessionExpiresAt) : null;
+      const theme = resolvedTheme();
       top.innerHTML = '';
-      const group = (title, rows) => `
+
+      const group = (title, rows, note = '') => `
         <section class="ub-group">
           <div class="ub-group-head"><h2>${title}</h2></div>
           <div class="ub-group-card glass">${rows}</div>
+          ${note ? `<p class="ub-help prefs-note">${note}</p>` : ''}
         </section>`;
-      const switchRow = (id, title, desc, on) => `
-        <div class="ub-row">
-          <div class="ub-row-text"><div class="ub-row-title">${title}</div><div class="ub-row-desc">${desc}</div></div>
-          <label class="switch"><input id="${id}" type="checkbox" ${on ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+      const segmented = (id, value, options) => `
+        <div class="segmented prefs-seg" id="${id}" role="radiogroup">
+          ${options.map(([v, label]) => `<button type="button" role="radio" data-value="${v}" class="${v === value ? 'active' : ''}" aria-checked="${v === value}">${label}</button>`).join('')}
         </div>`;
+      const pages = [...document.querySelectorAll('#sidebar .nav-link[data-view]')]
+        .map(link => [link.dataset.view, link.querySelector('.nav-text')?.textContent.trim() || link.dataset.view]);
+
+      const themeTile = (value, label) => `
+        <button class="prefs-theme${userPrefs.theme === value ? ' is-selected' : ''}" type="button" data-theme-choice="${value}" aria-pressed="${userPrefs.theme === value}">
+          <span class="prefs-theme-preview is-${value}" aria-hidden="true">
+            <span class="ptp-side"></span><span class="ptp-main"><span></span><span></span><span></span></span>
+          </span>
+          <span class="prefs-theme-label">${label}</span>
+        </button>`;
+      // Each swatch shows both versions, split diagonally.
+      const wallpaperTile = (id) => {
+        const layer = (variant) => {
+          const css = wallpaperCSS(id, variant);
+          return `<span class="pw-layer is-${variant}" style="background:${css.image};background-color:${css.base};"></span>`;
+        };
+        const selected = userPrefs.wallpaper === id;
+        const other = theme === 'dark' ? 'light' : 'dark';
+        return `
+          <button class="prefs-wallpaper${selected ? ' is-selected' : ''}${selected && prefsRevealWallpaper ? ' is-revealing' : ''}" type="button" data-wallpaper="${id}" aria-pressed="${selected}" title="${PREF_WALLPAPERS[id].name}">
+            <span class="prefs-wallpaper-swatch">
+              ${layer(theme)}${layer(other)}
+              <span class="pw-mark is-light" aria-hidden="true"><i class="lucide" data-lucide="sun"></i></span>
+              <span class="pw-mark is-dark" aria-hidden="true"><i class="lucide" data-lucide="moon"></i></span>
+            </span>
+            <span class="prefs-wallpaper-name">${PREF_WALLPAPERS[id].name}</span>
+          </button>`;
+      };
 
       panels.innerHTML = `
         <div class="ub-settings">
-          ${group('Account', `
-            <div class="ub-row">
-              ${avatar ? `<img class="prefs-avatar" src="${escapeHTML(avatar)}" alt="">` : ''}
-              <div class="ub-row-text"><div class="ub-row-title">${escapeHTML(display)}</div><div class="ub-row-desc">${escapeHTML(handle)}</div></div>
-              <button id="prefsLogout" class="secondary-action" type="button"><i class="lucide" data-lucide="log-out"></i> Log out</button>
-            </div>`)}
+          <section class="prefs-profile glass">
+            <img class="prefs-profile-avatar" src="${escapeHTML(avatar)}" alt="">
+            <div class="prefs-profile-text">
+              <div class="prefs-profile-name">${escapeHTML(display)}</div>
+              <div class="prefs-profile-handle">${escapeHTML(handle)}</div>
+              <div class="prefs-profile-chips">
+                <span class="prefs-chip"><i class="lucide" data-lucide="${viaPassword ? 'key-round' : 'shield-check'}"></i>${viaPassword ? 'Signed in with password' : 'Signed in with Discord'}</span>
+                ${expires && !isNaN(expires) ? `<span class="prefs-chip"><i class="lucide" data-lucide="clock"></i>Session ends ${escapeHTML(expires.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }))}</span>` : ''}
+              </div>
+            </div>
+            <button id="prefsLogout" class="secondary-action" type="button"><i class="lucide" data-lucide="log-out"></i> Log out</button>
+          </section>
+
           ${group('Appearance', `
-            <div class="ub-row">
+            <div class="ub-row prefs-block">
               <div class="ub-row-text"><div class="ub-row-title">Theme</div></div>
-              <select id="prefsTheme" class="field-select prefs-control">
-                <option value="auto" ${userPrefs.theme === 'auto' ? 'selected' : ''}>System</option>
-                <option value="light" ${userPrefs.theme === 'light' ? 'selected' : ''}>Light</option>
-                <option value="dark" ${userPrefs.theme === 'dark' ? 'selected' : ''}>Dark</option>
+              <div class="prefs-themes">${themeTile('auto', 'System')}${themeTile('light', 'Light')}${themeTile('dark', 'Dark')}</div>
+            </div>
+            <div class="ub-row prefs-block">
+              <div class="ub-row-text"><div class="ub-row-title">Wallpaper</div></div>
+              <div class="prefs-wallpapers">${Object.keys(PREF_WALLPAPERS).map(wallpaperTile).join('')}</div>
+            </div>
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">Accent colour</div><div class="ub-row-desc">Buttons and the selected page in the sidebar.</div></div>
+              <div class="prefs-accents" role="radiogroup">
+                ${Object.entries(PREF_ACCENTS).map(([id, a]) => `<button class="prefs-accent${userPrefs.accent === id ? ' is-selected' : ''}" type="button" data-accent="${id}" style="--swatch:${a.color};" title="${a.name}" aria-label="${a.name}" aria-pressed="${userPrefs.accent === id}"></button>`).join('')}
+              </div>
+            </div>
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">Density</div><div class="ub-row-desc">Compact fits more on screen.</div></div>
+              ${segmented('prefsDensity', userPrefs.compactMode ? 'compact' : 'comfortable', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
+            </div>
+          `)}
+
+          ${group('Motion', `
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">Reduce motion</div><div class="ub-row-desc">Stops animations like the SwiftMesh packets and fading panels.</div></div>
+              ${segmented('prefsMotion', userPrefs.motion, [['system', 'System'], ['reduce', 'On'], ['full', 'Off']])}
+            </div>
+          `)}
+
+          ${group('Start page', `
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">When you sign in, open</div></div>
+              <select id="prefsStartPage" class="field-select prefs-control">
+                <option value="last" ${userPrefs.startPage === 'last' ? 'selected' : ''}>Where I left off</option>
+                ${pages.map(([view, label]) => `<option value="${escapeHTML(view)}" ${userPrefs.startPage === view ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('')}
               </select>
             </div>
-            <div class="ub-row">
-              <div class="ub-row-text"><div class="ub-row-title">Background icons</div><div class="ub-row-desc">How visible the animated icon pattern is.</div></div>
-              <input id="prefsBgOpacity" class="prefs-control" type="range" min="0" max="100" step="1" value="${Math.round((userPrefs.backgroundOpacity ?? 0.72) * 100)}" aria-label="Background icon opacity">
-            </div>
-            ${switchRow('prefsCompact', 'Compact density', 'Tighter spacing for cards and rows.', userPrefs.compactMode)}`)}
-          ${group('Behaviour', `
-            ${switchRow('prefsRememberTab', 'Remember last page', 'Open where you left off next time you sign in.', userPrefs.rememberLastTab)}
-            <div class="ub-row">
-              <div class="ub-row-text"><div class="ub-row-title">Reset preferences</div><div class="ub-row-desc">Restore these settings to their defaults.</div></div>
-              <button id="prefsReset" class="secondary-action" type="button"><i class="lucide" data-lucide="rotate-ccw"></i> Reset</button>
-            </div>`)}
+          `, 'Preferences are saved in this browser for your account, so other admins keep their own. <button id="prefsReset" class="ub-inline-link" type="button">Reset to defaults</button>')}
         </div>
       `;
 
-      panels.querySelector('#prefsTheme')?.addEventListener('change', e => {
-        userPrefs.theme = e.target.value;
+      const update = (change) => {
+        Object.assign(userPrefs, change);
         saveUserPrefs();
         applyUserPrefs();
         renderUserPrefsView();
-      });
-      panels.querySelector('#prefsBgOpacity')?.addEventListener('input', e => {
-        userPrefs.backgroundOpacity = Math.max(0, Math.min(1, Number(e.target.value || 72) / 100));
-        saveUserPrefs();
-        applyUserPrefs();
-      });
-      panels.querySelector('#prefsCompact')?.addEventListener('change', e => {
-        userPrefs.compactMode = e.target.checked;
-        saveUserPrefs();
-        applyUserPrefs();
-      });
-      panels.querySelector('#prefsRememberTab')?.addEventListener('change', e => {
-        userPrefs.rememberLastTab = e.target.checked;
-        saveUserPrefs();
-      });
-      panels.querySelector('#prefsReset')?.addEventListener('click', () => {
-        userPrefs = { theme: 'auto', backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
-        saveUserPrefs();
-        applyUserPrefs();
-        renderUserPrefsView();
-      });
+      };
+      panels.querySelectorAll('[data-theme-choice]').forEach(b => b.addEventListener('click', () => update({ theme: b.dataset.themeChoice })));
+      prefsRevealWallpaper = false;
+      panels.querySelectorAll('[data-wallpaper]').forEach(b => b.addEventListener('click', () => {
+        prefsRevealWallpaper = b.dataset.wallpaper !== userPrefs.wallpaper;
+        update({ wallpaper: b.dataset.wallpaper });
+      }));
+      panels.querySelectorAll('[data-accent]').forEach(b => b.addEventListener('click', () => update({ accent: b.dataset.accent })));
+      panels.querySelectorAll('#prefsDensity button').forEach(b => b.addEventListener('click', () => update({ compactMode: b.dataset.value === 'compact' })));
+      panels.querySelectorAll('#prefsMotion button').forEach(b => b.addEventListener('click', () => update({ motion: b.dataset.value })));
+      panels.querySelector('#prefsStartPage')?.addEventListener('change', e => update({ startPage: e.target.value }));
+      panels.querySelector('#prefsReset')?.addEventListener('click', () => update(defaultUserPrefs()));
       panels.querySelector('#prefsLogout')?.addEventListener('click', logout);
       refreshIcons();
     }
@@ -14379,7 +15355,7 @@
 
     function isFailoverWebLocked(view) {
       if (!dashboardStatus || !dashboardStatus.isFailoverManagedNode) return false;
-      const locked = ['settings', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'aibots', 'patchy', 'sweep', 'wikibridge', 'recordings', 'swiftmesh'];
+      const locked = ['settings', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'aibots', 'patchy', 'sweep', 'wikibridge', 'recordings'];
       return locked.includes(view);
     }
 
@@ -14410,7 +15386,7 @@
 
       renderEvents('sectionEvents', [
         { description: 'Settings are synchronized from Primary while in Failover mode.', timeText: '' },
-        { description: 'Open SwiftMesh in the native app to test connection, promote, or adjust node role.', timeText: '' }
+        { description: 'Open SwiftMesh to promote this Mac or change its role.', timeText: '' }
       ], '', item => `
         <div class="event-item ok">
           <div class="event-title">${item.description}</div>
@@ -14628,6 +15604,8 @@
     }
 
     function selectView(view) {
+      // Apple Intelligence moved into Settings.
+      if (view === 'aibots') view = 'settings';
       currentView = view;
       if (view === 'overview') updateHomeGreeting();
       updateSidebarAlerts();
@@ -14648,7 +15626,7 @@
       const wikibridge = document.getElementById('wikibridgeView');
       const settings = document.getElementById('settingsView');
       const diagnostics = document.getElementById('diagnosticsView');
-      const aibots = document.getElementById('aibotsView');
+      const aibots = { classList: { add() {}, remove() {} } };
       const recordings = document.getElementById('recordingsView');
       const activity = document.getElementById('activityView');
       const swiftmesh = document.getElementById('swiftmeshView');
@@ -14815,27 +15793,6 @@
         renderDiagnosticsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Diagnostics';
         setMessage('', '');
-      } else if (view === 'aibots') {
-        overview.classList.add('hidden');
-        commands.classList.add('hidden');
-        patchy.classList.add('hidden');
-        wikibridge.classList.add('hidden');
-        settings.classList.add('hidden');
-        diagnostics.classList.add('hidden');
-        aibots.classList.remove('hidden');
-        recordings.classList.add('hidden');
-        activity.classList.add('hidden');
-        swiftmesh.classList.add('hidden');
-        userprefs.classList.add('hidden');
-        voice.classList.add('hidden');
-        section.classList.add('hidden');
-        renderAppleIntelligenceView();
-        (async () => {
-          try { await loadAIBots(); } catch (e) { console.error(e); }
-          renderAppleIntelligenceView();
-        })();
-        if (mobileSubtitle) mobileSubtitle.textContent = 'AI Bots';
-        setMessage('', '');
       } else if (view === 'recordings') {
         overview.classList.add('hidden');
         commands.classList.add('hidden');
@@ -14884,6 +15841,7 @@
         voice.classList.add('hidden');
         section.classList.add('hidden');
         renderSwiftMeshView();
+        loadSwiftMesh().then(() => { if (currentView === 'swiftmesh') { renderSwiftMeshView(); startSwiftMeshPolling(); } }).catch(() => {});
         if (mobileSubtitle) mobileSubtitle.textContent = 'SwiftMesh';
         setMessage('', '');
       } else if (view === 'userprefs') {
@@ -14901,7 +15859,7 @@
         voice.classList.add('hidden');
         section.classList.add('hidden');
         renderUserPrefsView();
-        if (mobileSubtitle) mobileSubtitle.textContent = 'User Settings';
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Preferences';
         setMessage('', '');
       } else {
         overview.classList.add('hidden');
@@ -14923,7 +15881,7 @@
       }
 
       const lastKey = lastViewStorageKey();
-      if (lastKey && userPrefs.rememberLastTab && view !== 'userprefs') {
+      if (lastKey && view !== 'userprefs') {
         localStorage.setItem(lastKey, view);
       }
 
@@ -15347,8 +16305,13 @@
       loadOverviewLayout();
       showDashboard();
       await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadAIBots(), loadMediaData(), loadAnnouncer()]);
-      const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
+      let remembered = 'overview';
+      try {
+        remembered = userPrefs.startPage === 'last'
+          ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview')
+          : userPrefs.startPage;
+      } catch {}
+      const allowed = new Set([...document.querySelectorAll('#sidebar .nav-link[data-view]')].map(link => link.dataset.view));
       selectView(allowed.has(remembered) ? remembered : 'overview');
       
       // Load auth options in background for the "logout" logic/labels

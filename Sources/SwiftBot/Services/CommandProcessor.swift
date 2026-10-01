@@ -63,6 +63,9 @@ final class CommandProcessor {
         var lookupUserTimeZone: (String) -> String?
         var rewindCommand: (String, [String: DiscordJSON]) async
             -> (ok: Bool, message: String, embed: [String: Any]?)
+        /// `/replay` — the caller's own recap. Defaulted so existing callers compile.
+        var replayCommand: (String?, String?, [String: DiscordJSON]) async
+            -> (ok: Bool, message: String, embed: [String: Any]?) = { _, _, _ in (false, "Replay is unavailable right now.", nil) }
     }
 
     private let dependencies: Dependencies
@@ -311,6 +314,16 @@ final class CommandProcessor {
                 return (content: nil, embeds: [payload])
             }
             return embed(title: "Rewind", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
+        case "replay":
+            let result = await dependencies.replayCommand(
+                Self.slashOptionString(named: "period", in: data),
+                Self.slashOptionString(named: "dms", in: data),
+                context.rawLikeMessage
+            )
+            if let payload = result.embed {
+                return (content: nil, embeds: [payload])
+            }
+            return embed(title: "Replay", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "sweep":
             let action = Self.slashOptionString(named: "action", in: data) ?? "status"
             let result = await dependencies.sweepCommand(action)

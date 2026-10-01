@@ -10,19 +10,17 @@ import Darwin
 private extension AppleIntelligencePersonality {
     var webIcon: String {
         switch self {
-        case .friendlyCasual: return "smile"
-        case .community: return "users"
-        case .technicalSupport: return "life-buoy"
-        case .professional: return "briefcase"
+        case .casual: return "smile"
+        case .helpful: return "life-buoy"
+        case .playful: return "party-popper"
         }
     }
 
     var webTint: String {
         switch self {
-        case .friendlyCasual: return "green"
-        case .community: return "blue"
-        case .technicalSupport: return "indigo"
-        case .professional: return "teal"
+        case .casual: return "green"
+        case .helpful: return "blue"
+        case .playful: return "pink"
         }
     }
 }
@@ -984,6 +982,7 @@ extension AppModel {
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
         if let value = patch.useAIInGuildChannels { settings.behavior.useAIInGuildChannels = value }
         if let value = patch.allowDMs { settings.behavior.allowDMs = value }
+        if let value = patch.aiActivityAnswersEnabled { settings.aiActivityAnswersEnabled = value }
         if let value = patch.localAISystemPrompt {
             settings.localAISystemPrompt = value.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -1360,14 +1359,19 @@ extension AppModel {
             return online ? "ready" : "off"
         }
 
+
         return AdminWebAIBotsPayload(
             online: online,
+            modelName: online ? appleIntelligenceModelName : nil,
             replyScope: replyScope,
             dmRepliesEnabled: dmReplies,
             guildMentionRepliesEnabled: guildReplies,
             allowDMs: allowDMs,
             systemPrompt: settings.localAISystemPrompt,
-            selectedPersonalityID: selected.rawValue,
+            selectedPersonalityID: selected?.rawValue ?? "custom",
+            isCustomPrompt: selected == nil,
+            defaultPrompt: BotSettings.defaultAISystemPrompt,
+            activityAnswersEnabled: settings.aiActivityAnswersEnabled,
             isFailoverManagedNode: isFailoverManagedNode,
             personalities: AppleIntelligencePersonality.allCases.map { personality in
                 AdminWebAIBotsPayload.Personality(
@@ -1428,6 +1432,26 @@ extension AppModel {
                     )
                 }
             )
+        )
+    }
+
+    /// One reply for the Settings "Try it" box, using the instructions being
+    /// edited. Nothing is saved and conversation memory isn't touched.
+    func tryAdminWebAIReply(_ request: AdminWebAITryRequest) async -> String? {
+        let prompt = request.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = Message(
+            channelID: "admin-web-try",
+            userID: request.askerID ?? "admin-web",
+            username: "Admin",
+            content: request.message.trimmingCharacters(in: .whitespacesAndNewlines),
+            role: .user
+        )
+        // Same activity facts a real reply would get, across every server.
+        let facts = await aiActivityContext(question: message.content, askerID: request.askerID, guildID: nil)
+        let instructions = prompt.isEmpty ? settings.localAISystemPrompt : prompt
+        return await aiService.generateHelpReply(
+            messages: [message],
+            systemPrompt: facts.isEmpty ? instructions : instructions + "\n\n" + facts
         )
     }
 
@@ -2194,7 +2218,7 @@ extension AppModel {
                         guildMentionRepliesEnabled: false,
                         allowDMs: false,
                         systemPrompt: "",
-                        selectedPersonalityID: AppleIntelligencePersonality.friendlyCasual.rawValue,
+                        selectedPersonalityID: AppleIntelligencePersonality.casual.rawValue,
                         isFailoverManagedNode: false,
                         personalities: [],
                         capabilities: [],
@@ -2206,6 +2230,10 @@ extension AppModel {
             clearAIMemory: { [weak self] patch in
                 guard let model = self else { return false }
                 return await model.clearAdminWebAIMemory(patch)
+            },
+            tryAIReply: { [weak self] request in
+                guard let model = self else { return nil }
+                return await model.tryAdminWebAIReply(request)
             },
             wikiBridgeProvider: { [weak self] in
                 guard let model = self else {
@@ -2333,6 +2361,10 @@ extension AppModel {
                 guard let model = self else { return AdminWebActivityPayload(entries: [], totalCount: 0) }
                 return await MainActor.run { model.adminWebActivitySnapshot(limit: limit) }
             },
+            rewindHandler: { [weak self] request in
+                guard let model = self else { return .failure("rewind_unavailable") }
+                return await model.adminWebRewind(request)
+            },
             accessUpdater: { [weak self] update in
                 guard let model = self else { return false }
                 return await model.applyAdminWebAccessUpdate(update)
@@ -2450,6 +2482,14 @@ extension AppModel {
                 let isLeader = await MainActor.run { model.settings.clusterMode == .leader }
                 guard isLeader else { return nil }
                 return await model.generateSwiftMeshJoinCode()
+            },
+            swiftMeshProvider: { [weak self] in
+                guard let model = self else { return nil }
+                return await model.adminWebSwiftMeshSnapshot()
+            },
+            runSwiftMeshAction: { [weak self] action in
+                guard let model = self else { return "unavailable" }
+                return await model.runAdminWebSwiftMeshAction(action)
             },
             swiftMinerWebhookHandler: { [weak self] headers, body in
                 guard let model = self else {

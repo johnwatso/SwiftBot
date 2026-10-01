@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
             if status != oldValue {
                 configurePatchyMonitoring()
                 configureGameTrackingMonitoring()
+                configureReplayDrops()
             }
         }
     }
@@ -402,6 +403,13 @@ final class AppModel: ObservableObject {
     var patchyMonitorTask: Task<Void, Never>?
     var lastPatchyMonitoringSnapshot: PatchyMonitoringSnapshot?
     var gameTrackingMonitorTask: Task<Void, Never>?
+    /// Hourly check for due Replay recap drops.
+    var replayDropTask: Task<Void, Never>?
+    /// A personal-Replay DM run in progress, and its progress for the WebUI.
+    var replayDMTask: Task<Void, Never>?
+    var replayDMProgress: ReplayDMProgress?
+    /// Nightly Rewind catch-up for messages missed while offline.
+    var rewindCatchUpTask: Task<Void, Never>?
     var gameTrackingSettingsSaveTask: Task<Void, Never>?
     var lastGameTrackingMonitoringSnapshot: GameTrackingMonitoringSnapshot?
     var adminWebCertificateRenewalTask: Task<Void, Never>?
@@ -820,7 +828,7 @@ final class AppModel: ObservableObject {
                 }
             )
             await aiService.configureLocalAIDMReplies(
-                enabled: settings.localAIDMReplyEnabled,
+                enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
                 systemPrompt: settings.localAISystemPrompt
             )
             await cluster.applySettings(
@@ -999,6 +1007,7 @@ final class AppModel: ObservableObject {
             await configureServiceCallbacks()
             configurePatchyMonitoring()
             configureGameTrackingMonitoring()
+            configureReplayDrops()
             if settings.autoStart, !settings.token.isEmpty {
                 await startBot()
             }
@@ -1081,7 +1090,7 @@ final class AppModel: ObservableObject {
 
             if self.usesLocalRuntime {
                 await aiService.configureLocalAIDMReplies(
-                    enabled: settings.localAIDMReplyEnabled,
+                    enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
                     systemPrompt: settings.localAISystemPrompt
                 )
                 await applyClusterSettingsRuntime(

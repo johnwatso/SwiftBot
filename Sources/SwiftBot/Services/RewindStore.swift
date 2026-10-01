@@ -456,6 +456,115 @@ actor RewindStore {
         return summary
     }
 
+    /// Daily aggregates for one guild between two dates (inclusive), by day key.
+    private func aggregates(guildID: String, from start: Date, to end: Date) -> [String: RewindDailyAggregate] {
+        let startDay = RewindCalendar.dayKey(for: start)
+        let endDay = RewindCalendar.dayKey(for: end)
+        guard let startYear = RewindCalendar.year(from: startDay),
+              let endYear = RewindCalendar.year(from: endDay),
+              startYear <= endYear else { return [:] }
+        var result: [String: RewindDailyAggregate] = [:]
+        for year in startYear...endYear {
+            for (day, aggregate) in aggregates(guildID: guildID, year: year) where day >= startDay && day <= endDay {
+                result[day] = aggregate
+            }
+        }
+        return result
+    }
+
+    /// A guild's messages over any range, for Replay. `buckets` split the
+    /// range for the timeline (months of a year, days of a month).
+    func rangeSummary(
+        guildID: String,
+        start: Date,
+        end: Date,
+        buckets: [AnalyticsBucket],
+        excludingUsers excluded: Set<String>,
+        filterStopWords: Bool
+    ) -> RewindRangeSummary {
+        let days = aggregates(guildID: guildID, from: start, to: end)
+        var summary = RewindRangeSummary(bucketCounts: Array(repeating: 0, count: buckets.count))
+        var perUser: [String: Int] = [:]
+        var names: [String: String] = [:]
+        var words: [String: Int] = [:]
+        var bigrams: [String: Int] = [:]
+        var emoji: [String: Int] = [:]
+        var channels: [String: Int] = [:]
+        let bucketDays = buckets.map { (RewindCalendar.dayKey(for: $0.start), RewindCalendar.dayKey(for: $0.end)) }
+
+        for (day, aggregate) in days {
+            // Opted-out members are dropped at ingest; this also covers anyone
+            // who opted out after their messages were counted.
+            let removed = aggregate.messagesByUser.filter { excluded.contains($0.key) }.values.reduce(0, +)
+            let count = aggregate.messageCount - removed
+            guard count > 0 else { continue }
+            summary.totalMessages += count
+            summary.totalWords += aggregate.wordCount - aggregate.wordsByUser.filter { excluded.contains($0.key) }.values.reduce(0, +)
+            summary.activeDays += 1
+            if count > (summary.busiestDay?.count ?? 0) { summary.busiestDay = RewindDayCount(day: day, count: count) }
+            if let index = bucketDays.firstIndex(where: { day >= $0.0 && day < $0.1 }) {
+                summary.bucketCounts[index] += count
+            }
+            for (index, value) in aggregate.messagesByHour.enumerated() where index < 24 { summary.hourly[index] += value }
+            for (userID, value) in aggregate.messagesByUser where !excluded.contains(userID) { perUser[userID, default: 0] += value }
+            aggregate.userNames.forEach { names[$0.key] = $0.value }
+            aggregate.wordCounts.forEach { words[$0.key, default: 0] += $0.value }
+            aggregate.bigramCounts.forEach { bigrams[$0.key, default: 0] += $0.value }
+            aggregate.emojiCounts.forEach { emoji[$0.key, default: 0] += $0.value }
+            aggregate.messagesByChannel.forEach { channels[$0.key, default: 0] += $0.value }
+        }
+        if filterStopWords { words = words.filter { !RewindTokenizer.isStopWord($0.key) } }
+        let peak = summary.hourly.enumerated().max { $0.element < $1.element }
+        summary.peakHour = (peak?.element ?? 0) > 0 ? peak?.offset : nil
+        summary.memberCount = perUser.count
+        summary.topUsers = rankUsers(perUser, names: names, limit: 25)
+        summary.topWords = rankTerms(words, limit: 12)
+        summary.topBigrams = rankTerms(bigrams, limit: 6)
+        summary.topEmoji = rankTerms(emoji, limit: 8)
+        summary.topChannels = rankTerms(channels, limit: 5)
+        return summary
+    }
+
+    /// Everyone who posted in a guild over a range.
+    func activeUserIDs(guildID: String, start: Date, end: Date) -> Set<String> {
+        var ids: Set<String> = []
+        for aggregate in aggregates(guildID: guildID, from: start, to: end).values {
+            for (userID, count) in aggregate.messagesByUser where count > 0 { ids.insert(userID) }
+        }
+        return ids
+    }
+
+    /// One member's messages over a range, with where they rank.
+    func userRangeSummary(guildID: String, userID: String, start: Date, end: Date, excludingUsers excluded: Set<String>) -> RewindUserRangeSummary {
+        let days = aggregates(guildID: guildID, from: start, to: end)
+        var perUser: [String: Int] = [:]
+        var result = RewindUserRangeSummary()
+        for (day, aggregate) in days {
+            for (id, value) in aggregate.messagesByUser where !excluded.contains(id) { perUser[id, default: 0] += value }
+            if let name = aggregate.userNames[userID] { result.userName = name }
+            guard let mine = aggregate.messagesByUser[userID], mine > 0 else { continue }
+            result.messages += mine
+            result.words += aggregate.wordsByUser[userID] ?? 0
+            result.activeDays += 1
+            if mine > (result.busiestDay?.count ?? 0) { result.busiestDay = RewindDayCount(day: day, count: mine) }
+        }
+        let ranked = perUser.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+        if let index = ranked.firstIndex(where: { $0.key == userID }) { result.rank = index + 1 }
+        result.rankedMembers = ranked.count
+        return result
+    }
+
+    /// Months with at least one archived message, newest first ("2026-09").
+    func availableMonths(guildID: String) -> [String] {
+        var months: Set<String> = []
+        for year in availableYears(guildID: guildID) {
+            for (day, aggregate) in aggregates(guildID: guildID, year: year) where aggregate.messageCount > 0 {
+                months.insert(String(day.prefix(7)))
+            }
+        }
+        return months.sorted(by: >)
+    }
+
     /// Years holding data for a guild, newest first.
     func availableYears(guildID: String) -> [Int] {
         let folder = guildURL(guildID)

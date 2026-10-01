@@ -48,6 +48,44 @@ struct RewindSettings: Codable, Hashable, Sendable {
     /// that the archive cannot be restored from a backup after a disk failure.
     var excludeFromBackups: Bool = true
 
+    /// Replay recap drops, keyed by guild ID.
+    var recapDrops: [String: RewindRecapDrop] = [:]
+
+    /// Members who asked not to get personal Replay DMs (from the DM's button
+    /// or `/replay dms:stop`). Separate from `optedOutUserIDs`, which stops
+    /// their messages being archived at all.
+    var replayDMOptOutUserIDs: Set<String> = []
+
+    /// When the nightly catch-up last finished; the next one fetches from here.
+    var lastCatchUpAt: Date?
+
+    init() {}
+
+    /// Every field is optional on disk so settings written by an older build,
+    /// or before Rewind was persisted at all, load instead of resetting.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = RewindSettings()
+        isEnabled = try c.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? d.isEnabled
+        retainMessageContent = try c.decodeIfPresent(Bool.self, forKey: .retainMessageContent) ?? d.retainMessageContent
+        retentionDays = try c.decodeIfPresent(Int.self, forKey: .retentionDays) ?? d.retentionDays
+        includeBotMessages = try c.decodeIfPresent(Bool.self, forKey: .includeBotMessages) ?? d.includeBotMessages
+        optedOutUserIDs = try c.decodeIfPresent(Set<String>.self, forKey: .optedOutUserIDs) ?? d.optedOutUserIDs
+        ignoredChannelIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ignoredChannelIDs) ?? d.ignoredChannelIDs
+        filterStopWords = try c.decodeIfPresent(Bool.self, forKey: .filterStopWords) ?? d.filterStopWords
+        restrictToAdmins = try c.decodeIfPresent(Bool.self, forKey: .restrictToAdmins) ?? d.restrictToAdmins
+        excludeFromBackups = try c.decodeIfPresent(Bool.self, forKey: .excludeFromBackups) ?? d.excludeFromBackups
+        recapDrops = try c.decodeIfPresent([String: RewindRecapDrop].self, forKey: .recapDrops) ?? d.recapDrops
+        replayDMOptOutUserIDs = try c.decodeIfPresent(Set<String>.self, forKey: .replayDMOptOutUserIDs) ?? d.replayDMOptOutUserIDs
+        lastCatchUpAt = try c.decodeIfPresent(Date.self, forKey: .lastCatchUpAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled, retainMessageContent, retentionDays, includeBotMessages, optedOutUserIDs
+        case ignoredChannelIDs, filterStopWords, restrictToAdmins, excludeFromBackups, recapDrops
+        case replayDMOptOutUserIDs, lastCatchUpAt
+    }
+
     func collects(channelID: String) -> Bool {
         isEnabled && !ignoredChannelIDs.contains(channelID)
     }
@@ -56,6 +94,44 @@ struct RewindSettings: Codable, Hashable, Sendable {
         guard isEnabled else { return false }
         if isBot && !includeBotMessages { return false }
         return !optedOutUserIDs.contains(userID)
+    }
+}
+
+/// Where and when a guild's Replay recaps are posted to Discord.
+struct RewindRecapDrop: Codable, Hashable, Sendable {
+    var channelID: String = ""
+    var monthly: Bool = false
+    var yearly: Bool = false
+    /// Last period posted ("2026-09", "2026"), so a drop never repeats.
+    var lastMonthlyKey: String?
+    var lastYearlyKey: String?
+    /// Also DM each active member their own Replay on the same schedule.
+    var personalDMs: Bool = false
+    var lastPersonalMonthlyKey: String?
+    var lastPersonalYearlyKey: String?
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        channelID = try c.decodeIfPresent(String.self, forKey: .channelID) ?? ""
+        monthly = try c.decodeIfPresent(Bool.self, forKey: .monthly) ?? false
+        yearly = try c.decodeIfPresent(Bool.self, forKey: .yearly) ?? false
+        lastMonthlyKey = try c.decodeIfPresent(String.self, forKey: .lastMonthlyKey)
+        lastYearlyKey = try c.decodeIfPresent(String.self, forKey: .lastYearlyKey)
+        personalDMs = try c.decodeIfPresent(Bool.self, forKey: .personalDMs) ?? false
+        lastPersonalMonthlyKey = try c.decodeIfPresent(String.self, forKey: .lastPersonalMonthlyKey)
+        lastPersonalYearlyKey = try c.decodeIfPresent(String.self, forKey: .lastPersonalYearlyKey)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case channelID, monthly, yearly, lastMonthlyKey, lastYearlyKey
+        case personalDMs, lastPersonalMonthlyKey, lastPersonalYearlyKey
+    }
+
+    /// Something is scheduled: a channel post or member DMs, monthly or yearly.
+    var isScheduled: Bool {
+        (monthly || yearly) && (!channelID.isEmpty || personalDMs)
     }
 }
 
@@ -260,6 +336,35 @@ struct RewindPhraseReport: Sendable {
             sampleMessage: nil
         )
     }
+}
+
+/// A guild's messages over a Replay range.
+struct RewindRangeSummary: Sendable {
+    var totalMessages = 0
+    var totalWords = 0
+    var activeDays = 0
+    var memberCount = 0
+    var busiestDay: RewindDayCount?
+    var peakHour: Int?
+    var bucketCounts: [Int]
+    var hourly: [Int] = Array(repeating: 0, count: 24)
+    var topUsers: [RewindUserCount] = []
+    var topWords: [RewindTermCount] = []
+    var topBigrams: [RewindTermCount] = []
+    var topEmoji: [RewindTermCount] = []
+    /// Channel IDs; resolved to names by the caller.
+    var topChannels: [RewindTermCount] = []
+}
+
+/// One member's messages over a Replay range.
+struct RewindUserRangeSummary: Sendable {
+    var userName: String?
+    var messages = 0
+    var words = 0
+    var activeDays = 0
+    var busiestDay: RewindDayCount?
+    var rank: Int?
+    var rankedMembers = 0
 }
 
 /// Message activity over an Analytics period, across all archived servers.

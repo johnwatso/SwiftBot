@@ -137,6 +137,8 @@ const me = {
   id: '412378964087275541',
   username: 'Preview Admin',
   csrfToken: 'preview-csrf-token',
+  signInMethod: 'discord',
+  sessionExpiresAt: new Date(Date.now() + 6 * 86400000).toISOString(),
   avatarURL: '',
   isLocal: true
 };
@@ -213,8 +215,8 @@ const rewind = {
   latestDay: '2026-09-03',
   guilds: [
     {
-      id: '1',
-      name: 'Preview Server',
+      id: '1001',
+      name: 'Swift Lounge',
       years: [2026, 2025],
       year: 2026,
       totalMessages: 182441,
@@ -318,10 +320,10 @@ Object.assign(analytics, {
 
 const config = {
   commands: { enabled: true, prefixEnabled: true, slashEnabled: true, prefix: '!' },
-  appleIntelligence: { localAIDMReplyEnabled: true, useAIInGuildChannels: false, allowDMs: true, localAISystemPrompt: 'You are SwiftBot, a friendly Discord assistant.' },
+  appleIntelligence: { localAIDMReplyEnabled: true, useAIInGuildChannels: false, allowDMs: true, localAISystemPrompt: "You are a friendly, casual Discord bot. Keep replies short and conversational \u2014 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." },
   wikiBridge: { enabled: true, enabledSources: 2, totalSources: 2 },
   patchy: { monitoringEnabled: true, enabledTargets: 3, totalTargets: 4 },
-  swiftMesh: { mode: 'standalone', nodeName: 'Preview Mac', leaderAddress: '', leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: false, offloadAIReplies: false, offloadWikiLookups: false, autoReclaimAfterHours: 6 },
+  swiftMesh: { mode: 'Leader', nodeName: 'Preview Mac', leaderAddress: '', leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: true, offloadAIReplies: true, offloadWikiLookups: false, autoReclaimAfterHours: 6 },
   general: {
     autoStart: true, webUIEnabled: true, webUIBaseURL: 'http://127.0.0.1:4179',
     inviteURL: 'https://discord.com/oauth2/authorize?client_id=000000000000000000&permissions=8&scope=bot+applications.commands',
@@ -459,22 +461,19 @@ const patchy = {
   steamAppNames: { '2073850': 'THE FINALS' }, isFailoverManagedNode: false, botStatus: 'running', debugLogs: []
 };
 
+const aiPresets = [
+  ['casual', 'Casual', 'Short and chatty', 'smile', 'green', "You are a friendly, casual Discord bot. Keep replies short and conversational \u2014 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."],
+  ['helpful', 'Helpful', 'Step by step', 'life-buoy', 'blue', "You are a helpful Discord bot for answering questions and solving problems. Give clear, accurate answers. When there are steps, number them and keep each one short. If something important is missing, ask one short question instead of guessing. Skip small talk and don't pad replies."],
+  ['playful', 'Playful', 'Banter and emoji', 'party-popper', 'pink', "You are a playful Discord bot with a quick wit. Banter with people, tease them lightly when it fits, and use the occasional emoji. Keep replies short and punchy, 1 to 2 sentences. Never be mean, rude or offensive, and still give a real answer when someone actually needs help."]
+].map(([id, title, summary, icon, tint, prompt]) => ({ id, title, summary, description: '', preview: '', icon, tint, prompt, isSelected: id === 'casual' }));
 const aibots = {
-  online: true, replyScope: 'mentions', dmRepliesEnabled: true, guildMentionRepliesEnabled: true, allowDMs: true,
-  systemPrompt: 'You are SwiftBot, a friendly Discord assistant.', selectedPersonalityID: 'friendly', isFailoverManagedNode: false,
-  personalities: [
-    { id: 'friendly', title: 'Friendly', summary: 'Warm and helpful', description: 'Upbeat, concise answers.', preview: 'Happy to help! 😊', prompt: '', icon: 'smile', tint: 'blue', isSelected: true },
-    { id: 'dry', title: 'Deadpan', summary: 'Dry wit', description: 'Short, sardonic replies.', preview: 'Sure. Fascinating.', prompt: '', icon: 'meh', tint: 'gray', isSelected: false },
-    { id: 'pirate', title: 'Pirate', summary: 'Arr', description: 'Talks like a pirate.', preview: 'Ahoy, matey!', prompt: '', icon: 'anchor', tint: 'orange', isSelected: false }
-  ],
-  capabilities: [
-    { id: 'dm', title: 'DM Replies', description: 'Answer direct messages.', icon: 'message-circle', tint: 'blue', status: 'active' },
-    { id: 'mentions', title: 'Mention Replies', description: 'Reply when mentioned in servers.', icon: 'at-sign', tint: 'purple', status: 'active' },
-    { id: 'summaries', title: 'Patch Summaries', description: 'Summarise patch notes for Patchy.', icon: 'sparkles', tint: 'orange', status: 'ready' }
-  ],
+  online: true, modelName: 'Private Cloud Compute', replyScope: 'Mentions + DMs', dmRepliesEnabled: true, guildMentionRepliesEnabled: false, allowDMs: true,
+  systemPrompt: "You are a friendly, casual Discord bot. Keep replies short and conversational \u2014 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation.", defaultPrompt: "You are a friendly, casual Discord bot. Keep replies short and conversational \u2014 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation.", selectedPersonalityID: 'casual', isCustomPrompt: false, activityAnswersEnabled: true, isFailoverManagedNode: false,
+  personalities: aiPresets,
+  capabilities: [],
   memory: { totalMessages: 214, conversations: [
-    { id: 'c1', scopeID: 'u1', scopeType: 'dm', title: 'DM with sam', messageCount: 120 },
-    { id: 'c2', scopeID: 't100', scopeType: 'channel', title: '#general', messageCount: 94 }
+    { id: 'c1', scopeID: 'u1', scopeType: 'directMessageUser', title: 'DM with sam', messageCount: 120 },
+    { id: 'c2', scopeID: 't100', scopeType: 'guildTextChannel', title: '#general', messageCount: 94 }
   ] }
 };
 

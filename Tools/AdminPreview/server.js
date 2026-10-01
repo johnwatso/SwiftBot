@@ -129,6 +129,84 @@ function analyticsPeriodFixture(period) {
   };
 }
 
+function textChannelsForPreview() {
+  return (fixtures.sweep.textChannelsByServer['1001'] || []).slice(0, 12);
+}
+
+// Replay fixtures, mirroring ServerReplay / PersonalReplay / the recap APIs.
+const replayMembers = [['412378964087275541', 'jonwatso'], ['280129381292318720', 'Sam'], ['280129381292318721', 'Alex'], ['280129381292318722', 'Jordan'], ['280129381292318723', 'Taylor'], ['280129381292318724', 'Morgan']];
+const recapState = { channelID: 't101', monthly: true, yearly: false, lastMonthlyKey: null, lastYearlyKey: null, personalDMs: false };
+let dmProgress = null;
+// SwiftMesh: a Primary with one Fail Over, mirroring AdminWebSwiftMeshPayload.
+const meshState = { handoverScheduledAt: null, handoverEndsAt: null, lastRunAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRunOK: true, forgotten: new Set() };
+function swiftMeshFixture() {
+  const cfg = config.swiftMesh;
+  const mode = { leader: 'Leader', standby: 'Standby', standalone: 'Standalone' }[String(cfg.mode).toLowerCase()] || cfg.mode;
+  const now = Date.now();
+  if (meshState.handoverScheduledAt && new Date(meshState.handoverScheduledAt).getTime() <= now) {
+    meshState.handoverScheduledAt = null;
+    meshState.handoverEndsAt = new Date(now + 60000).toISOString();
+  }
+  if (meshState.handoverEndsAt && new Date(meshState.handoverEndsAt).getTime() <= now) {
+    meshState.handoverEndsAt = null;
+    meshState.lastRunAt = new Date().toISOString();
+    meshState.lastRunOK = true;
+  }
+  const nodes = mode === 'Standalone' ? [] : [
+    { id: 'n1', displayName: cfg.nodeName, hostname: 'preview-mac.local', role: mode === 'Leader' ? 'leader' : 'standby', status: 'healthy', hardwareModel: 'Mac16,10', cpuName: 'Apple M4 Pro', memoryBytes: 48 * 1073741824, uptimeSeconds: 4 * 86400 + 7200, jobsActive: 1, latencyMs: 3, isThisNode: true, follower: null },
+    { id: 'n2', displayName: 'Studio', hostname: 'studio.local', role: mode === 'Leader' ? 'standby' : 'leader', status: 'healthy', hardwareModel: 'Mac14,13', cpuName: 'Apple M2 Max', memoryBytes: 64 * 1073741824, uptimeSeconds: 12 * 86400, jobsActive: 0, latencyMs: 18,
+      isThisNode: false, follower: mode === 'Leader' ? { mode: 'standby', gatewayConnected: false, outputAllowed: false, lastEventAt: null, activeVoiceMembers: 4, discordLatencyMs: 61, collectedAt: new Date().toISOString() } : null },
+    { id: 'n3', displayName: 'Old MacBook', hostname: 'macbook.local', role: 'standby', status: 'disconnected', hardwareModel: 'MacBookPro18,3', cpuName: 'Apple M1 Pro', memoryBytes: 16 * 1073741824, uptimeSeconds: 0, jobsActive: 0, latencyMs: null, isThisNode: false, follower: null }
+  ].filter(n => !meshState.forgotten.has(n.displayName));
+  return {
+    configuredMode: mode, runtimeMode: meshState.handoverEndsAt && mode === 'Leader' ? 'Standby' : mode, runtimeState: 'idle',
+    nodeName: cfg.nodeName, leaderAddress: cfg.leaderAddress || 'studio.local', leaderPort: cfg.leaderPort, listenPort: cfg.listenPort, leaderTerm: 7,
+    workerOffloadEnabled: cfg.workerOffloadEnabled, offloadAIReplies: cfg.offloadAIReplies, offloadWikiLookups: cfg.offloadWikiLookups,
+    autoReclaimAfterHours: cfg.autoReclaimAfterHours, autoReclaimRemainingSeconds: mode === 'Standby' ? 5 * 3600 + 720 : null,
+    server: { state: mode === 'Standalone' ? 'inactive' : 'listening', text: mode === 'Standalone' ? 'Disabled' : `Listening on ${cfg.listenPort}` },
+    worker: { state: mode === 'Standalone' ? 'inactive' : 'connected', text: mode === 'Leader' ? '1 follower registered' : mode === 'Standby' ? 'Synced with Primary 8s ago' : 'Local only' },
+    diagnostics: mode === 'Standalone' ? 'No diagnostics yet' : 'Mesh sync healthy. Last pull from Studio 8s ago (14 files, 0 conflicts).',
+    lastJobRoute: 'remote', lastJobNode: 'Studio', lastJobSummary: 'AI reply via worker',
+    registeredWorkers: mode === 'Leader' ? nodes.filter(n => !n.isThisNode && n.status !== 'disconnected').length : 0,
+    localGatewayLatencyMs: 42,
+    handover: { isActive: !!meshState.handoverEndsAt, scheduledAt: meshState.handoverScheduledAt, endsAt: meshState.handoverEndsAt, lastRunAt: meshState.lastRunAt, lastRunOK: meshState.lastRunOK,
+      canRun: mode === 'Leader' && !meshState.handoverScheduledAt && !meshState.handoverEndsAt },
+    nodes
+  };
+}
+function replayFixture(periodKey) {
+  const isYear = /^\d{4}$/.test(periodKey);
+  const now = new Date();
+  const year = Number(periodKey.slice(0, 4));
+  const month = isYear ? null : Number(periodKey.slice(5, 7));
+  const scale = isYear ? 1 : 1 / 10;
+  const n = (v) => Math.max(0, Math.round(v * scale));
+  const timeline = isYear
+    ? Array.from({ length: 12 }, (_, i) => ({ label: new Date(year, i, 1).toLocaleDateString('en', { month: 'short' }), messages: year === now.getFullYear() && i > now.getMonth() ? 0 : 9000 + Math.round(6000 * Math.sin(i * 0.9 + 1)) + i * 300, voiceMinutes: 0 }))
+    : Array.from({ length: new Date(year, month, 0).getDate() }, (_, i) => ({ label: String(i + 1), messages: 120 + Math.round(240 * Math.abs(Math.sin(i * 0.7))) + (i % 7 === 5 ? 260 : 0), voiceMinutes: 0 }));
+  const messages = timeline.reduce((t, b) => t + b.messages, 0);
+  const title = isYear ? String(year) : new Date(year, month - 1, 1).toLocaleDateString('en', { month: 'long', year: 'numeric' });
+  return {
+    guildID: '1001', guildName: 'Swift Lounge', periodKey, periodTitle: title, isYear,
+    isComplete: isYear ? year < now.getFullYear() : (year < now.getFullYear() || month < now.getMonth() + 1),
+    messages, words: messages * 7, activeDays: isYear ? 274 : timeline.length - 2, chattingMembers: isYear ? 64 : 31,
+    busiestDay: isYear ? `${year}-03-14` : `${periodKey}-${String(Math.min(timeline.length, 13)).padStart(2, '0')}`, busiestDayMessages: isYear ? 2412 : 640, peakHour: 21,
+    timeline, hourly: [20,8,3,1,0,1,4,12,25,30,34,40,52,48,45,50,58,66,72,80,90,95,70,40],
+    topMembers: replayMembers.slice(0, 6).map(([id, title], i) => ({ id, title, count: n([24100, 19880, 12004, 8810, 5020, 2400][i]) })),
+    topChannels: [['#general', 61000], ['#game-chat', 38400], ['#stream-chat', 9100], ['#memes', 6200]].map(([title, c]) => ({ title, count: n(c) })),
+    topWords: [['finals', 4821], ['tonight', 3902], ['ranked', 3544], ['gg', 3302], ['stream', 2104], ['patch', 1980], ['cashout', 1702], ['lol', 1640], ['squad', 1288], ['vault', 990]].map(([title, c]) => ({ title, count: n(c) })),
+    topPhrases: [['gg guys', 812], ['one more', 640], ['good game', 410]].map(([title, c]) => ({ title, count: n(c) })),
+    topEmoji: [['😂', 5210], ['🔥', 2410], ['💀', 1890], ['👀', 1200], ['🎉', 1044]].map(([title, c]) => ({ title, count: n(c) })),
+    voiceSeconds: n(1_840_000), voiceSessions: n(2900),
+    topVoiceMembers: replayMembers.slice(0, 5).map(([id, title], i) => ({ id, title, count: n([402000, 351000, 219000, 140000, 92000][i]) })),
+    topVoiceChannels: [['General Voice', 1_200_000], ['Stream Room', 520_000], ['AFK', 40_000]].map(([title, c]) => ({ title, count: n(c) })),
+    commands: n(11716), topCommands: [{ title: '/announce', count: n(4100) }, { title: '/rank', count: n(2700) }],
+    joins: n(181), leaves: n(64),
+    clipsByGame: [{ title: 'THE FINALS', count: n(120) }, { title: 'Helldivers 2', count: n(64) }],
+    rankChanges: [{ name: 'jonwatso', game: 'THE FINALS', from: 21002, to: 28160, rankName: 'Gold' }, { name: 'sam', game: 'THE FINALS', from: 15100, to: 18420, rankName: 'Gold' }]
+  };
+}
+
 async function handleAPI(req, res, pathname, query) {
   if (req.method === 'GET') {
     switch (pathname) {
@@ -139,6 +217,34 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/status': return sendJSON(res, fixtures.status);
       case '/api/analytics': return sendJSON(res, { ...fixtures.analytics, period: analyticsPeriodFixture(query.get('period')) });
       case '/api/rewind': return sendJSON(res, fixtures.rewind);
+      case '/api/rewind/recaps': {
+        const now = new Date();
+        const months = Array.from({ length: 21 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+        return sendJSON(res, { guilds: [{ id: '1001', name: 'Swift Lounge', ...recapState, channels: textChannelsForPreview() }], months,
+          dmOptOutCount: 3, lastCatchUpAt: new Date(Date.now() - 5 * 3600000).toISOString(), catchUpAvailable: true, dmProgress });
+      }
+      case '/api/rewind/recipients': {
+        return sendJSON(res, { count: /^\d{4}$/.test(query.get('period') || '') ? 61 : 28 });
+      }
+      case '/api/rewind/replay': return sendJSON(res, replayFixture(query.get('period') || String(new Date().getFullYear())));
+      case '/api/rewind/member': {
+        const id = query.get('user');
+        const r = replayFixture(query.get('period') || String(new Date().getFullYear()));
+        const i = Math.max(0, replayMembers.findIndex(m => m[0] === id));
+        const msgs = r.topMembers[i]?.count || 0;
+        return sendJSON(res, { guildID: '1001', guildName: 'Swift Lounge', userID: id, name: replayMembers[i][1], periodKey: r.periodKey, periodTitle: r.periodTitle,
+          messages: msgs, words: msgs * 6, activeDays: r.isYear ? 201 - i * 20 : 22 - i, busiestDay: r.busiestDay, busiestDayMessages: Math.round(msgs / 30),
+          rank: i + 1, rankedMembers: r.chattingMembers, voiceSeconds: r.topVoiceMembers[i]?.count || 0, voiceSessions: 120 - i * 10, longestSessionSeconds: 17400 - i * 1800,
+          favouriteVoiceChannel: 'General Voice', voiceRank: i + 1, commands: 900 - i * 100, optedOut: false });
+      }
+      case '/api/rewind/phrase': {
+        const q = (query.get('q') || '').trim();
+        if (/^(zzz|nothing)/i.test(q)) return sendJSON(res, { phrase: q, total: 0, messages: 0, scanned: 182441, firstSeen: null, lastSeen: null, byUser: [], byMonth: [], topChannel: null });
+        return sendJSON(res, { phrase: q, total: 812, messages: 790, scanned: 182441, firstSeen: '2026-01-03T20:11:00Z', lastSeen: new Date().toISOString(),
+          byUser: replayMembers.slice(0, 5).map(([id, title], i) => ({ id, title, count: [301, 212, 140, 88, 41][i] })),
+          byMonth: Array.from({ length: 9 }, (_, i) => ({ title: `2026-${String(i + 1).padStart(2, '0')}`, count: 40 + Math.round(70 * Math.abs(Math.sin(i))) })),
+          topChannel: '#game-chat' });
+      }
       case '/api/announcer': return sendJSON(res, announcer);
       case '/api/config': return sendJSON(res, config);
       case '/api/settings': return sendJSON(res, { prefix: fixtures.config.commands.prefix });
@@ -152,6 +258,7 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/welcome-flow': return sendJSON(res, welcomeFlow);
       case '/api/patchy': return sendJSON(res, patchy);
       case '/api/aibots': return sendJSON(res, fixtures.aibots);
+      case '/api/swiftmesh': return sendJSON(res, swiftMeshFixture());
       case '/api/wikibridge': return sendJSON(res, wikibridge);
       case '/api/sweep': return sendJSON(res, sweep);
       case '/api/gametracker': return sendJSON(res, gametracker);
@@ -391,6 +498,28 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/rewind/recaps/update') {
+      Object.assign(recapState, { channelID: body.channelID || '', monthly: !!body.monthly, yearly: !!body.yearly, personalDMs: !!body.personalDMs });
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/rewind/recaps/dm') {
+      if (dmProgress && !dmProgress.finishedAt) return sendJSON(res, { error: 'already_sending' }, 400);
+      const total = /^\d{4}$/.test(body.period) ? 61 : 28;
+      dmProgress = { guildID: body.guildID, periodKey: body.period, total, processed: 0, sent: 0, failed: 0, startedAt: new Date().toISOString(), finishedAt: null };
+      const tick = setInterval(() => {
+        const step = Math.min(4, total - dmProgress.processed);
+        dmProgress.processed += step;
+        const closed = dmProgress.processed % 12 < step ? 1 : 0;
+        dmProgress.failed += closed;
+        dmProgress.sent += step - closed;
+        if (dmProgress.processed >= total) { dmProgress.finishedAt = new Date().toISOString(); clearInterval(tick); }
+      }, 1000);
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/rewind/recaps/post') {
+      return recapState.channelID ? sendJSON(res, { ok: true }) : sendJSON(res, { error: 'no_channel' }, 400);
+    }
+
     if (pathname === '/api/commands/toggle') {
       const item = fixtures.commands.items.find(i => i.name === body.name);
       if (!item) return sendJSON(res, { error: 'unknown_command' }, 404);
@@ -398,6 +527,53 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/swiftmesh/action') {
+      const mesh = swiftMeshFixture();
+      switch (body.action) {
+        case 'handoverTest':
+          if (!mesh.handover.canRun) return sendJSON(res, { error: 'A handover test is already scheduled or running.' }, 409);
+          meshState.handoverScheduledAt = new Date(Date.now() + 90000).toISOString();
+          break;
+        case 'cancelHandoverTest':
+          meshState.handoverScheduledAt = null;
+          break;
+        case 'promote':
+          if (mesh.configuredMode !== 'Standby') return sendJSON(res, { error: 'Only a Fail Over node can be promoted.' }, 409);
+          config.swiftMesh.mode = 'Leader';
+          break;
+        case 'forget':
+          meshState.forgotten.add(body.node);
+          break;
+        default:
+          return sendJSON(res, { error: 'Unknown action.' }, 400);
+      }
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/aibots/try') {
+      const message = String(body.message || '').trim();
+      if (!message) return sendJSON(res, { error: 'invalid_payload' }, 400);
+      const prompt = String(body.prompt || '');
+      // Activity questions answer from "records", like the app's facts block.
+      if (fixtures.aibots.activityAnswersEnabled && /usually|busiest|how much|how often|when/i.test(message)) {
+        await new Promise(r => setTimeout(r, 900));
+        const reply = /busiest/i.test(message) ? 'Evenings, mostly. Things usually kick off around 8:30 PM, and Fridays and Saturdays are the busiest.'
+          : /\b(i|me|my)\b/i.test(message) ? 'You’ve been in voice on 11 of the last 30 days, about 23 hours in total. Usually from around 9 PM.'
+          : `${(message.match(/is (\w+)/i) || [, 'They'])[1]}’s usually on around 8 PM, mostly on Fridays and Saturdays. Last seen in General last night.`;
+        return sendJSON(res, { reply });
+      }
+      const style = /solving problems/i.test(prompt) ? 'Two things to check:\n1. SwiftBot can see the channel.\n2. The command is switched on in Commands.\nWhich server is it in?'
+        : /playful/i.test(prompt) ? 'Bold of you to say hello after leaving me on read all week 💀'
+        : /pirate/i.test(prompt) ? 'Arr, that be a fine question, matey!'
+        : 'Ha, good one. Yeah, I can help with that.';
+      await new Promise(r => setTimeout(r, 900));
+      return sendJSON(res, { reply: style });
+    }
+    if (pathname === '/api/aibots/memory/clear') {
+      const memory = fixtures.aibots.memory;
+      memory.conversations = body.scopeID ? memory.conversations.filter(c => c.scopeID !== body.scopeID) : [];
+      memory.totalMessages = memory.conversations.reduce((t, c) => t + c.messageCount, 0);
+      return sendJSON(res, { ok: true });
+    }
     if (pathname === '/api/config') {
       // The Commands page reads these from the command catalog.
       const cmds = fixtures.commands;
@@ -411,11 +587,34 @@ async function handleAPI(req, res, pathname, query) {
         commandsEnabled: ['commands', 'enabled'],
         slashCommandsEnabled: ['commands', 'slashEnabled'],
         swiftMinerEnabled: ['swiftMiner', 'enabled'],
-        userTimezones: ['userTimezones', 'mappings']
+        userTimezones: ['userTimezones', 'mappings'],
+        allowDMs: ['appleIntelligence', 'allowDMs'],
+        useAIInGuildChannels: ['appleIntelligence', 'useAIInGuildChannels'],
+        localAIDMReplyEnabled: ['appleIntelligence', 'localAIDMReplyEnabled'],
+        localAISystemPrompt: ['appleIntelligence', 'localAISystemPrompt'],
+        clusterMode: ['swiftMesh', 'mode'],
+        clusterNodeName: ['swiftMesh', 'nodeName'],
+        clusterLeaderAddress: ['swiftMesh', 'leaderAddress'],
+        clusterLeaderPort: ['swiftMesh', 'leaderPort'],
+        clusterListenPort: ['swiftMesh', 'listenPort'],
+        clusterWorkerOffloadEnabled: ['swiftMesh', 'workerOffloadEnabled'],
+        clusterOffloadAIReplies: ['swiftMesh', 'offloadAIReplies'],
+        clusterOffloadWikiLookups: ['swiftMesh', 'offloadWikiLookups'],
+        clusterAutoReclaimAfterHours: ['swiftMesh', 'autoReclaimAfterHours']
       };
+      if ('aiActivityAnswersEnabled' in body) fixtures.aibots.activityAnswersEnabled = !!body.aiActivityAnswersEnabled;
       Object.entries(body).forEach(([key, value]) => {
         if (map[key]) config[map[key][0]][map[key][1]] = value;
       });
+      // Keep /api/aibots in step, as the app's snapshot would be.
+      const ai = fixtures.aibots;
+      ai.allowDMs = config.appleIntelligence.allowDMs;
+      ai.dmRepliesEnabled = config.appleIntelligence.localAIDMReplyEnabled;
+      ai.guildMentionRepliesEnabled = config.appleIntelligence.useAIInGuildChannels;
+      ai.systemPrompt = config.appleIntelligence.localAISystemPrompt;
+      const preset = ai.personalities.find(p => p.prompt.trim() === ai.systemPrompt.trim());
+      ai.isCustomPrompt = !preset;
+      ai.personalities.forEach(p => { p.isSelected = p === preset; });
       console.log('[config]', JSON.stringify(body));
       return sendJSON(res, { ok: true });
     }

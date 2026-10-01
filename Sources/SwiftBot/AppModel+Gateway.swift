@@ -325,11 +325,13 @@ extension AppModel {
                 }
 
                 let scope = MemoryScope.directMessageUser(userId)
-                let (messages, wikiContext) = await aiMessagesForScope(
+                let (messages, baseContext) = await aiMessagesForScope(
                     scope: scope,
                     currentUserID: userId,
                     currentContent: content
                 )
+                let activityContext = await aiActivityContext(question: content, askerID: userId, guildID: nil)
+                let wikiContext = [baseContext, activityContext].filter { !$0.isEmpty }.joined(separator: "\n\n")
 
                 var serverName: String?
                 if let gid = guildID {
@@ -379,7 +381,6 @@ extension AppModel {
 
 
         if isGuildTextChannel,
-           settings.localAIDMReplyEnabled,
            settings.behavior.useAIInGuildChannels,
            isMentioningBot(map) {
             let prompt = contentWithoutBotMention(content)
@@ -397,11 +398,13 @@ extension AppModel {
                 guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: false) else { return }
 
                 let scope = MemoryScope.guildTextChannel(channelId)
-                let (messages, wikiContext) = await aiMessagesForScope(
+                let (messages, baseContext) = await aiMessagesForScope(
                     scope: scope,
                     currentUserID: userId,
                     currentContent: prompt
                 )
+                let activityContext = await aiActivityContext(question: content, askerID: userId, guildID: guildID)
+                let wikiContext = [baseContext, activityContext].filter { !$0.isEmpty }.joined(separator: "\n\n")
                 var serverName: String?
                 if let gid = guildID {
                     serverName = await discordCache.guildName(for: gid)
@@ -482,10 +485,12 @@ extension AppModel {
             }
 
             do {
+                // Personal recaps are only shown to the member who asked.
+                let ackPayload: [String: Any] = slashName == "replay" ? ["type": 5, "data": ["flags": 64]] : ["type": 5]
                 try await service.respondToInteraction(
                     interactionID: event.interactionID,
                     interactionToken: event.interactionToken,
-                    payload: ["type": 5]
+                    payload: ackPayload
                 )
             } catch {
                 logs.append("❌ Failed ACK for slash command: \(error.localizedDescription)")
@@ -601,6 +606,13 @@ extension AppModel {
             }
             if customID == SwiftMinerDMEmbedBuilders.editGamesCustomID {
                 await handleSwiftMinerEditGamesButton(event: event, context: context)
+                return
+            }
+            if customID == Self.replayDMOptOutCustomID {
+                var userID = ""
+                if case let .object(author)? = context.rawLikeMessage["author"], case let .string(id)? = author["id"] { userID = id }
+                guard !userID.isEmpty else { return }
+                await handleReplayDMOptOutButton(event: event, userID: userID)
                 return
             }
             if customID == SwiftMinerDMEmbedBuilders.quietModeCustomID {

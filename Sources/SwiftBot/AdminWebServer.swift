@@ -72,6 +72,78 @@ struct AdminWebClusterNodePayload: Codable {
     let latencyMs: Double?
 }
 
+/// GET /api/swiftmesh: everything the native SwiftMesh view shows.
+struct AdminWebSwiftMeshPayload: Codable {
+    struct Status: Codable {
+        let state: String
+        let text: String
+    }
+    struct Follower: Codable {
+        let mode: String
+        let gatewayConnected: Bool
+        let outputAllowed: Bool
+        let lastEventAt: Date?
+        let activeVoiceMembers: Int
+        let discordLatencyMs: Int?
+        let collectedAt: Date
+    }
+    struct Node: Codable {
+        let id: String
+        let displayName: String
+        let hostname: String
+        let role: String
+        let status: String
+        let hardwareModel: String
+        let cpuName: String
+        let memoryBytes: UInt64
+        let uptimeSeconds: Double
+        let jobsActive: Int
+        let latencyMs: Double?
+        let isThisNode: Bool
+        let follower: Follower?
+    }
+    struct Handover: Codable {
+        let isActive: Bool
+        let scheduledAt: Date?
+        let endsAt: Date?
+        let lastRunAt: Date?
+        let lastRunOK: Bool
+        let canRun: Bool
+    }
+
+    let configuredMode: String
+    let runtimeMode: String
+    let runtimeState: String
+    let nodeName: String
+    let leaderAddress: String
+    let leaderPort: Int
+    let listenPort: Int
+    let leaderTerm: Int
+    let workerOffloadEnabled: Bool
+    let offloadAIReplies: Bool
+    let offloadWikiLookups: Bool
+    let autoReclaimAfterHours: Int
+    let autoReclaimRemainingSeconds: Double?
+    let server: Status
+    let worker: Status
+    let diagnostics: String
+    let lastJobRoute: String
+    let lastJobNode: String
+    let lastJobSummary: String
+    let registeredWorkers: Int
+    let localGatewayLatencyMs: Int?
+    let handover: Handover
+    let nodes: [Node]
+}
+
+/// POST /api/swiftmesh/action.
+struct AdminWebSwiftMeshAction: Codable {
+    /// "handoverTest", "cancelHandoverTest", "promote" or "forget".
+    let action: String
+    /// The node's display name, for "forget".
+    var node: String?
+}
+
 struct AdminWebRecentVoicePayload: Codable {
     let description: String
     let timeText: String
@@ -434,6 +506,72 @@ struct AdminWebRewindGuildPayload: Codable {
     let topEmoji: [AdminWebRewindTermPayload]
 }
 
+/// Replay requests from the Rewind page. One typed handler rather than a
+/// closure per route.
+enum AdminWebRewindRequest: Sendable {
+    case replay(guildID: String, period: ReplayPeriod)
+    case member(guildID: String, userID: String, period: ReplayPeriod)
+    case phrase(guildID: String, phrase: String)
+    case recaps
+    case updateRecap(AdminWebRewindRecapUpdate)
+    case postRecap(guildID: String, period: ReplayPeriod)
+    case recipients(guildID: String, period: ReplayPeriod)
+    case sendDMs(guildID: String, period: ReplayPeriod)
+}
+
+enum AdminWebRewindResult: Sendable {
+    case replay(ServerReplay)
+    case member(PersonalReplay)
+    case phrase(AdminWebRewindPhrasePayload)
+    case recaps(AdminWebRewindRecapsPayload)
+    case recipients(Int)
+    case ok
+    case failure(String)
+}
+
+struct AdminWebRewindPhrasePayload: Codable, Sendable {
+    let phrase: String
+    let total: Int
+    let messages: Int
+    let scanned: Int
+    let firstSeen: Date?
+    let lastSeen: Date?
+    let byUser: [ServerReplay.Ranked]
+    let byMonth: [ServerReplay.Ranked]
+    let topChannel: String?
+}
+
+struct AdminWebRewindRecapsPayload: Codable, Sendable {
+    struct Guild: Codable, Sendable {
+        let id: String
+        let name: String
+        let channelID: String
+        let monthly: Bool
+        let yearly: Bool
+        let lastMonthlyKey: String?
+        let lastYearlyKey: String?
+        let channels: [AdminWebSimpleOption]
+        var personalDMs: Bool = false
+    }
+    let guilds: [Guild]
+    /// Members who turned Replay DMs off.
+    var dmOptOutCount: Int = 0
+    var lastCatchUpAt: Date?
+    /// Whether the archive keeps text, which the nightly catch-up needs.
+    var catchUpAvailable: Bool = false
+    var dmProgress: ReplayDMProgress?
+    /// The months that have archived messages, newest first ("2026-09").
+    let months: [String]
+}
+
+struct AdminWebRewindRecapUpdate: Codable, Sendable {
+    let guildID: String
+    let channelID: String
+    let monthly: Bool
+    let yearly: Bool
+    var personalDMs: Bool?
+}
+
 /// Read-only mirror of the native Rewind screen. Collection settings stay
 /// native-only on purpose: switching on a message archive is not something the
 /// web surface should be able to do remotely.
@@ -668,6 +806,7 @@ struct AdminWebConfigPatch: Codable {
     var useAIInGuildChannels: Bool?
     var allowDMs: Bool?
     var localAISystemPrompt: String?
+    var aiActivityAnswersEnabled: Bool?
     var wikiBridgeEnabled: Bool?
     var patchyMonitoringEnabled: Bool?
     var clusterMode: String?
@@ -821,12 +960,20 @@ struct AdminWebAIBotsPayload: Codable {
     }
 
     let online: Bool
+    /// "Private Cloud Compute" or "On-device · …"; nil when offline.
+    var modelName: String?
     let replyScope: String
     let dmRepliesEnabled: Bool
     let guildMentionRepliesEnabled: Bool
     let allowDMs: Bool
     let systemPrompt: String
     let selectedPersonalityID: String
+    /// The saved instructions aren't one of the presets.
+    var isCustomPrompt = false
+    /// SwiftBot's built-in instructions, for "Reset to default".
+    var defaultPrompt = ""
+    /// Replies can answer "when is sam usually on?" from activity records.
+    var activityAnswersEnabled = false
     let isFailoverManagedNode: Bool
     let personalities: [Personality]
     let capabilities: [Capability]
@@ -835,6 +982,16 @@ struct AdminWebAIBotsPayload: Codable {
 
 /// Clears one conversation's memory, or every conversation when both
 /// fields are omitted.
+/// POST /api/aibots/try: one reply using `prompt` as the instructions,
+/// without saving them.
+struct AdminWebAITryRequest: Codable {
+    let message: String
+    let prompt: String
+    /// The signed-in admin's Discord ID, so "how much have I been in
+    /// voice?" is about them. Set by the server, never by the page.
+    var askerID: String?
+}
+
 struct AdminWebAIMemoryClearPatch: Codable {
     let scopeID: String?
     let scopeType: String?
@@ -1299,6 +1456,7 @@ actor AdminWebServer {
     private var runPatchyCheckNow: (@Sendable () async -> Bool)?
     private var aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)?
     private var clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)?
+    private var tryAIReply: (@Sendable (AdminWebAITryRequest) async -> String?)?
     private var wikiBridgeProvider: (@Sendable () async -> AdminWebWikiBridgePayload)?
     private var updateWikiBridgeState: (@Sendable (AdminWebWikiBridgeStatePatch) async -> Bool)?
     private var createWikiSource: (@Sendable () async -> WikiSource?)?
@@ -1325,6 +1483,7 @@ actor AdminWebServer {
     private var mediaGameArtworkProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var accessProvider: (@Sendable () async -> AdminWebAccessPayload)?
     private var activityProvider: (@Sendable (Int) async -> AdminWebActivityPayload)?
+    private var rewindHandler: (@Sendable (AdminWebRewindRequest) async -> AdminWebRewindResult)?
     private var accessUpdater: (@Sendable (AdminWebAccessUpdate) async -> Bool)?
     private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
     private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
@@ -1341,6 +1500,8 @@ actor AdminWebServer {
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var generateSwiftMeshJoinCode: (@Sendable () async -> String?)?
+    private var swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)?
+    private var runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     /// Registers a companion-app hostname (e.g. SwiftMiner's dashboard) on the
     /// Cloudflare tunnel. HMAC-authenticated inside the handler; fail-closed.
@@ -1428,6 +1589,7 @@ actor AdminWebServer {
         runPatchyCheckNow: @escaping @Sendable () async -> Bool,
         aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)? = nil,
         clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)? = nil,
+        tryAIReply: (@Sendable (AdminWebAITryRequest) async -> String?)? = nil,
         wikiBridgeProvider: @escaping @Sendable () async -> AdminWebWikiBridgePayload,
         updateWikiBridgeState: @escaping @Sendable (AdminWebWikiBridgeStatePatch) async -> Bool,
         createWikiSource: @escaping @Sendable () async -> WikiSource?,
@@ -1453,6 +1615,7 @@ actor AdminWebServer {
         mediaGameArtworkProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         accessProvider: @escaping @Sendable () async -> AdminWebAccessPayload,
         activityProvider: @escaping @Sendable (Int) async -> AdminWebActivityPayload,
+        rewindHandler: @escaping @Sendable (AdminWebRewindRequest) async -> AdminWebRewindResult,
         accessUpdater: @escaping @Sendable (AdminWebAccessUpdate) async -> Bool,
         sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
         setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
@@ -1470,6 +1633,8 @@ actor AdminWebServer {
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         generateSwiftMeshJoinCode: @escaping @Sendable () async -> String?,
+        swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)? = nil,
+        runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)? = nil,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))? = nil,
         swiftMinerTunnelInfoProvider: (@Sendable () async -> (status: String, body: Data))? = nil,
@@ -1520,6 +1685,7 @@ actor AdminWebServer {
         self.runPatchyCheckNow = runPatchyCheckNow
         self.aiBotsProvider = aiBotsProvider
         self.clearAIMemory = clearAIMemory
+        self.tryAIReply = tryAIReply
         self.wikiBridgeProvider = wikiBridgeProvider
         self.updateWikiBridgeState = updateWikiBridgeState
         self.createWikiSource = createWikiSource
@@ -1546,6 +1712,7 @@ actor AdminWebServer {
         self.mediaGameArtworkProvider = mediaGameArtworkProvider
         self.accessProvider = accessProvider
         self.activityProvider = activityProvider
+        self.rewindHandler = rewindHandler
         self.accessUpdater = accessUpdater
         self.setSweepGlobalPaused = setSweepGlobalPaused
         self.updateSweepPolicy = updateSweepPolicy
@@ -1562,6 +1729,8 @@ actor AdminWebServer {
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
         self.generateSwiftMeshJoinCode = generateSwiftMeshJoinCode
+        self.swiftMeshProvider = swiftMeshProvider
+        self.runSwiftMeshAction = runSwiftMeshAction
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.swiftMinerTunnelHostnameHandler = swiftMinerTunnelHostnameHandler
         self.swiftMinerTunnelInfoProvider = swiftMinerTunnelInfoProvider
@@ -2237,6 +2406,51 @@ actor AdminWebServer {
             let payload = await analyticsProvider?(AnalyticsPeriod(query: request.query["period"]), session.role == .admin)
                 ?? AdminWebAnalyticsPayload.empty
             return codableResponse(payload)
+        case ("GET", "/api/rewind/replay"), ("GET", "/api/rewind/member"), ("GET", "/api/rewind/phrase"), ("GET", "/api/rewind/recaps"), ("GET", "/api/rewind/recipients"):
+            // Admin-only like /api/rewind: replays and phrase counts are built
+            // from members' messages.
+            guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+            guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+            let guildID = request.query["guild"] ?? ""
+            let period = ReplayPeriod(key: request.query["period"] ?? "") ?? .year(Calendar.current.component(.year, from: Date()))
+            let rewindRequest: AdminWebRewindRequest
+            switch request.path {
+            case "/api/rewind/replay": rewindRequest = .replay(guildID: guildID, period: period)
+            case "/api/rewind/member": rewindRequest = .member(guildID: guildID, userID: request.query["user"] ?? "", period: period)
+            case "/api/rewind/phrase": rewindRequest = .phrase(guildID: guildID, phrase: request.query["q"] ?? "")
+            case "/api/rewind/recipients": rewindRequest = .recipients(guildID: guildID, period: period)
+            default: rewindRequest = .recaps
+            }
+            return rewindResponse(await rewindHandler?(rewindRequest) ?? .failure("rewind_unavailable"))
+        case ("POST", "/api/rewind/recaps/update"), ("POST", "/api/rewind/recaps/post"), ("POST", "/api/rewind/recaps/dm"):
+            guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+            guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            let result: AdminWebRewindResult
+            if request.path == "/api/rewind/recaps/update" {
+                guard let update = try? decoder.decode(AdminWebRewindRecapUpdate.self, from: request.body) else {
+                    return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+                }
+                result = await rewindHandler?(.updateRecap(update)) ?? .failure("rewind_unavailable")
+                audit(source: "Web Config", actor: actorLabel(session), action: "Updated Replay recap drops",
+                      detail: "monthly \(update.monthly ? "on" : "off") · yearly \(update.yearly ? "on" : "off")")
+            } else {
+                struct PostBody: Decodable { let guildID: String; let period: String }
+                guard let body = try? decoder.decode(PostBody.self, from: request.body),
+                      let period = ReplayPeriod(key: body.period) else {
+                    return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+                }
+                if request.path == "/api/rewind/recaps/dm" {
+                    result = await rewindHandler?(.sendDMs(guildID: body.guildID, period: period)) ?? .failure("rewind_unavailable")
+                    audit(source: "Web Config", actor: actorLabel(session), action: "Sent personal Replay DMs", detail: period.key)
+                } else {
+                    result = await rewindHandler?(.postRecap(guildID: body.guildID, period: period)) ?? .failure("rewind_unavailable")
+                    audit(source: "Web Config", actor: actorLabel(session), action: "Posted a Replay recap", detail: period.key)
+                }
+            }
+            return rewindResponse(result)
         case ("GET", "/api/rewind"):
             // Admin-only, unlike /api/analytics. Rewind's "top words" and "top
             // phrases" are verbatim fragments of members' messages, not
@@ -2263,7 +2477,10 @@ actor AdminWebServer {
                 "globalName": session.globalName ?? "",
                 "discriminator": session.discriminator ?? "",
                 "avatar": session.avatar ?? "",
-                "csrfToken": session.csrfToken
+                "csrfToken": session.csrfToken,
+                // For the Preferences page's account card.
+                "signInMethod": session.userID.hasPrefix("local:") ? "password" : "discord",
+                "sessionExpiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
             ])
         case ("GET", "/api/media/access-token"):
             guard let session = authenticatedSession(for: request) else {
@@ -3045,6 +3262,26 @@ actor AdminWebServer {
                 return jsonResponse(["error": "clear_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+        case ("POST", "/api/aibots/try"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard var tryRequest = try? decoder.decode(AdminWebAITryRequest.self, from: request.body),
+                  !tryRequest.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  tryRequest.message.count <= 1_000, tryRequest.prompt.count <= 4_000 else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            tryRequest.askerID = session.userID.hasPrefix("local:") ? nil : session.userID
+            guard let reply = await tryAIReply?(tryRequest) else {
+                return jsonResponse(["error": "no_reply"], status: "503 Service Unavailable")
+            }
+            return jsonResponse(["reply": reply])
         case ("GET", "/api/wikibridge"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -3381,6 +3618,33 @@ actor AdminWebServer {
             }
             _ = await refreshSwiftMesh?()
             await logger?("Admin Web UI requested SwiftMesh refresh")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/swiftmesh"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            guard let payload = await swiftMeshProvider?() else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            return codableResponse(payload)
+        case ("POST", "/api/swiftmesh/action"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let action = try? decoder.decode(AdminWebSwiftMeshAction.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            // nil means done; a string is the reason it couldn't be.
+            if let problem = await runSwiftMeshAction?(action) {
+                return jsonResponse(["error": problem], status: "409 Conflict")
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: "SwiftMesh \(action.action)\(action.node.map { " \($0)" } ?? "")")
             return jsonResponse(["ok": true])
         case ("GET", "/api/swiftmesh/join-code"):
             // The Join Code embeds the leader's shared secret, so treat it as
@@ -4654,6 +4918,18 @@ actor AdminWebServer {
         guard let data = try? encoder.encode(sessions),
               let serialized = String(data: data, encoding: .utf8) else { return }
         KeychainHelper.save(serialized, account: sessionsKeychainAccount)
+    }
+
+    private func rewindResponse(_ result: AdminWebRewindResult) -> Data {
+        switch result {
+        case .replay(let value): return codableResponse(value)
+        case .member(let value): return codableResponse(value)
+        case .phrase(let value): return codableResponse(value)
+        case .recaps(let value): return codableResponse(value)
+        case .recipients(let count): return jsonResponse(["count": count])
+        case .ok: return jsonResponse(["ok": true])
+        case .failure(let code): return jsonResponse(["error": code], status: "400 Bad Request")
+        }
     }
 
     private func codableResponse<T: Encodable>(_ value: T) -> Data {

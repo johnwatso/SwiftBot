@@ -71,6 +71,7 @@ enum SlashCommandGroup: String, CaseIterable {
         case "announce": return "speaker.wave.2.bubble.fill"
         case "randomteams": return "person.3.sequence.fill"
         case "rewind": return "clock.arrow.circlepath"
+        case "replay": return "play.rectangle.on.rectangle"
         case "sweep": return "rectangle.stack.fill.badge.minus"
         default: return "rectangle.and.text.magnifyingglass"
         }

@@ -3,7 +3,7 @@ import SwiftUI
 struct AppleIntelligenceView: View {
     @EnvironmentObject var app: AppModel
 
-    private var selectedPersonality: AppleIntelligencePersonality {
+    private var selectedPersonality: AppleIntelligencePersonality? {
         AppleIntelligencePersonality.matching(prompt: app.settings.localAISystemPrompt)
     }
 
@@ -107,10 +107,10 @@ struct AppleIntelligenceView: View {
             )
             DashboardMetricCard(
                 title: "Personality",
-                value: selectedPersonality.title,
-                subtitle: selectedPersonality.summaryValue,
-                symbol: selectedPersonality.symbol,
-                color: selectedPersonality.tint
+                value: selectedPersonality?.title ?? "Custom",
+                subtitle: selectedPersonality?.summaryValue ?? "Your own instructions",
+                symbol: selectedPersonality?.symbol ?? "text.quote",
+                color: selectedPersonality?.tint ?? .secondary
             )
         }
     }
@@ -484,114 +484,90 @@ enum AppleIntelligenceDashboardSummary {
     }
 }
 
+/// Starting points for the reply instructions. Each sounds clearly
+/// different: Casual chats, Helpful works through problems, Playful banters.
+/// Anything else is a custom prompt.
 enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
-    case friendlyCasual
-    case community
-    case technicalSupport
-    case professional
+    case casual
+    case helpful
+    case playful
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .friendlyCasual: return "Friendly Casual"
-        case .community: return "Community"
-        case .technicalSupport: return "Technical Support"
-        case .professional: return "Professional"
+        case .casual: return "Casual"
+        case .helpful: return "Helpful"
+        case .playful: return "Playful"
         }
     }
 
     var summaryValue: String {
         switch self {
-        case .friendlyCasual: return "Short and warm"
-        case .community: return "Server-aware"
-        case .technicalSupport: return "Structured help"
-        case .professional: return "Clear and calm"
+        case .casual: return "Short and chatty"
+        case .helpful: return "Step by step"
+        case .playful: return "Banter and emoji"
         }
     }
 
     var symbol: String {
         switch self {
-        case .friendlyCasual: return "face.smiling.fill"
-        case .community: return "person.3.fill"
-        case .technicalSupport: return "lifepreserver.fill"
-        case .professional: return "briefcase.fill"
+        case .casual: return "face.smiling.fill"
+        case .helpful: return "lifepreserver.fill"
+        case .playful: return "party.popper.fill"
         }
     }
 
     var tint: Color {
         switch self {
-        case .friendlyCasual: return .green
-        case .community: return .blue
-        case .technicalSupport: return .indigo
-        case .professional: return .teal
+        case .casual: return .green
+        case .helpful: return .blue
+        case .playful: return .pink
         }
     }
 
     var description: String {
         switch self {
-        case .friendlyCasual:
-            return "Short conversational replies for community servers."
-        case .community:
-            return "Warm replies that notice server context and recent conversation."
-        case .technicalSupport:
-            return "Structured and informative replies for support-focused channels."
-        case .professional:
-            return "Polished, concise responses for official or staff-led spaces."
+        case .casual:
+            return "Hangs out like another member of the server. The default."
+        case .helpful:
+            return "Answers questions properly, with numbered steps when there are some."
+        case .playful:
+            return "Quick wit and light teasing, but still helps when someone needs it."
         }
     }
 
     var preview: String {
         switch self {
-        case .friendlyCasual:
-            return "Yep, I can help with that. Try this first..."
-        case .community:
-            return "Looks like the group is deciding on a plan. Here is the short version."
-        case .technicalSupport:
-            return "First, check the token. Then confirm the channel permission."
-        case .professional:
-            return "The request is queued. I will report back when it completes."
+        case .casual:
+            return "Ha, yeah, the patch nerfed it. Try the shotgun instead."
+        case .helpful:
+            return "Two things to check: 1) SwiftBot can see the channel, 2) the command is on."
+        case .playful:
+            return "Bold of you to ask me that after going 2–14 last night 💀"
         }
     }
 
     var prompt: String {
         switch self {
-        case .friendlyCasual:
-            return "You are a friendly, casual Discord bot. Keep replies short and conversational, " +
-                "usually 1 to 3 sentences. Use contractions naturally. Do not restate what the user said. " +
-                "Match the energy of the conversation without being chaotic."
-        case .community:
-            return "You are a helpful community Discord bot. Keep replies warm, concise, and aware of " +
-                "the server conversation. Encourage useful next steps, avoid overexplaining, and make " +
-                "the channel feel welcoming."
-        case .technicalSupport:
-            return "You are a technical support Discord bot. Give clear, structured answers with " +
-                "practical steps. Be concise, ask for missing details only when needed, and prefer " +
-                "accurate troubleshooting over casual chatter."
-        case .professional:
-            return "You are a professional Discord assistant. Keep replies calm, polished, concise, " +
-                "and neutral. Use plain language, avoid slang, and focus on useful outcomes."
+        case .casual:
+            return BotSettings.defaultAISystemPrompt
+        case .helpful:
+            return "You are a helpful Discord bot for answering questions and solving problems. " +
+                "Give clear, accurate answers. When there are steps, number them and keep each one short. " +
+                "If something important is missing, ask one short question instead of guessing. " +
+                "Skip small talk and don't pad replies."
+        case .playful:
+            return "You are a playful Discord bot with a quick wit. Banter with people, tease them lightly " +
+                "when it fits, and use the occasional emoji. Keep replies short and punchy, 1 to 2 sentences. " +
+                "Never be mean, rude or offensive, and still give a real answer when someone actually needs help."
         }
     }
 
-    static func matching(prompt: String) -> AppleIntelligencePersonality {
-        if let exact = allCases.first(where: { $0.prompt == prompt }) {
-            return exact
-        }
-        let lowercased = prompt.lowercased()
-        if lowercased.contains("technical support") || lowercased.contains("troubleshooting") {
-            return .technicalSupport
-        }
-        if lowercased.contains("professional") || lowercased.contains("polished") {
-            return .professional
-        }
-        if lowercased.contains("announcement") || lowercased.contains("announcer") || lowercased.contains("spoken") {
-            return .professional
-        }
-        if lowercased.contains("community") || lowercased.contains("welcoming") {
-            return .community
-        }
-        return .friendlyCasual
+    /// The preset these instructions are, or nil for a custom prompt.
+    static func matching(prompt: String) -> AppleIntelligencePersonality? {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return allCases.first { $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed }
     }
 }
 
