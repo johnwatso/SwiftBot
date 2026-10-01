@@ -3964,12 +3964,9 @@
       box-shadow: none;
     }
 
-    /* The compact 8px above applies to every .glass surface,
-    but the Announcer's
-       stat cards are .commands-toggle-card (14px),
-    so its config cards read
-       squarer than the row directly above them. Match them to the stat cards.
-       Same specificity as the rule above,
+    /* The compact 8px above applies to every .glass surface, but the Announcer's
+       live-state card should match the stat cards' 14px radius.
+       Same specificity as the rule above, so this has to stay after it. */
     #appShell #announcerLiveState {
       border-radius: var(--radius-md);
     }
@@ -4806,7 +4803,8 @@
     #appShell .ai-status-chip,
     #appShell .mesh-role-chip,
     #appShell .mesh-node-role { border-radius: 999px; text-transform: none; letter-spacing: 0; }
-    #appShell .badge {
+    #appShell .badge,
+    #modalOverlay .badge {
       border-radius: 999px;
       text-transform: none;
       letter-spacing: 0;
@@ -5191,9 +5189,114 @@
     .ub-empty-sub { margin: 4px auto 0; max-width: 460px; font-size: 13px; color: var(--muted); line-height: 1.45; }
     .ub-empty .ub-tile-grid { margin-top: 18px; text-align: left; }
     .auto-draft { display: flex; gap: 10px; align-items: flex-start; }
+    .ub-tile-group-title { margin: 16px 2px 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+    .ub-empty-more { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
     .auto-draft textarea { flex: 1; min-width: 0; resize: vertical; }
     .auto-validation { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
     @media (max-width: 640px) { .auto-draft { flex-direction: column; align-items: stretch; } }
+
+    /* ---- Game Tracker ---- */
+    #appShell .gt-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; max-width: 980px; }
+    #appShell .gt-shell .ub-row-text { min-width: 0; }
+    #appShell .gt-notices { display: grid; gap: 10px; margin-bottom: 18px; }
+    .ub-notice { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; font-size: 13px; line-height: 1.45; }
+    .ub-notice > svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; color: var(--notice); }
+    .gt-score { display: grid; justify-items: end; gap: 2px; flex: 0 0 auto; }
+    #gametrackerPlayers { display: flex; flex-direction: column; gap: 22px; }
+    /* Commands */
+    .cmd-groups { display: flex; flex-direction: column; gap: 22px; transition: opacity 160ms ease; }
+    .cmd-groups.is-dimmed, #musicWatchChannels.is-dimmed { opacity: 0.5; }
+    .cmd-row-link {
+      all: unset; display: inline-flex; align-items: center; gap: 2px; flex: none; cursor: pointer;
+      font-size: 13.5px; color: var(--muted); padding: 4px 6px 4px 10px; border-radius: 999px;
+    }
+    .cmd-row-link:hover { background: var(--ub-fill); color: var(--text); }
+    .cmd-row-link:focus-visible { outline: 2px solid var(--ub-focus, rgba(10,132,255,0.5)); }
+    .cmd-row-link:disabled { cursor: default; }
+    .cmd-row-link svg { width: 15px; height: 15px; opacity: 0.6; }
+    .cmd-row-link.is-below { display: none; justify-self: start; margin: 2px 0 0 -10px; }
+    @media (max-width: 600px) {
+      .cmd-row-link.is-side { display: none; }
+      .cmd-row-link.is-below { display: inline-flex; }
+    }
+    .music-server + .music-server { margin-top: 12px; }
+    .music-filter { display: flex; margin-bottom: 12px; }
+    #modalOverlay .music-filter input { border: 0; border-radius: 0; box-shadow: none; padding: 0; height: 30px; min-height: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; outline: none; flex: 1; width: auto; }
+    #musicWatchChannels .patchy-role-list { max-height: 260px; overflow-y: auto; }
+    .cmd-item { cursor: default; }
+    #appShell .cmd-item .ub-item-title { white-space: normal; flex-wrap: wrap; align-items: center; row-gap: 4px; }
+    #appShell .cmd-item .ub-item-text { min-width: 0; }
+    #appShell .cmd-item .ub-item-sub { white-space: normal; }
+    .cmd-item:hover { background: transparent; }
+    .cmd-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; margin-right: 4px; }
+    .ub-item-title .cmd-opt, .ub-item-title .badge { margin-left: 4px; vertical-align: 1px; }
+    .cmd-opt {
+      display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); background: var(--ub-fill); border: 1px solid var(--ub-stroke);
+    }
+    .cmd-opt.is-optional { border-style: dashed; background: transparent; }
+    .cmd-search {
+      display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px;
+      background: var(--ub-fill); border: 1px solid var(--ub-stroke); color: var(--muted); min-width: 0;
+    }
+    .cmd-search svg { width: 15px; height: 15px; flex: none; }
+    #appShell .cmd-search input { border: 0; border-radius: 0; box-shadow: none; padding: 0; height: 30px; min-height: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; outline: none; width: 200px; min-width: 0; }
+    #appShell .cmd-search input:focus { box-shadow: none; outline: none; }
+    .cmd-search:focus-within { box-shadow: 0 0 0 3px var(--ub-focus, rgba(10,132,255,0.35)); }
+    .ub-row-button { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; min-height: 54px; padding: 10px 0; width: 100%; cursor: pointer; }
+    .ub-row + .ub-row-button { border-top: 1px solid var(--ub-divider); }
+    .ub-row-button:hover .ub-row-title { color: var(--accent, var(--text)); }
+    .ub-row-button:focus-visible { outline: 2px solid var(--ub-focus, rgba(10,132,255,0.5)); outline-offset: 2px; border-radius: 8px; }
+    @media (max-width: 880px) { .cmd-search input { width: 120px; } }
+    .gt-game-head { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+    .gt-game-head .ub-item-icon { width: 26px; height: 26px; border-radius: 8px; }
+    .gt-game-head .ub-item-icon svg { width: 15px; height: 15px; }
+    #appShell .gt-game-head h2 { font-size: 15px; font-weight: 700; color: var(--text); }
+    .gt-game-count { font-size: 12px; color: var(--muted); }
+    .gt-game-add {
+      margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 12px;
+      border-radius: 999px; border: 0; background: var(--ub-fill); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    }
+    .gt-game-add:hover { background: var(--ub-stroke); }
+    .gt-game-add svg { width: 14px; height: 14px; }
+    .gt-avatar {
+      width: 34px; height: 34px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: var(--text); background: var(--ub-fill); border: 1px solid var(--ub-stroke);
+    }
+    .ub-item.is-off .gt-avatar { opacity: 0.55; }
+    .gt-score strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+    .gt-score span { font-size: 12px; color: var(--muted); }
+    .gt-warn { color: #ff9f0a; }
+    .ub-row.is-dimmed { opacity: 0.5; }
+    .ub-item.gt-history { padding: 11px 0; }
+    .ub-item-time-only { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 0 auto; }
+    @media (max-width: 640px) { .gt-score span { display: none; } }
+
+    /* ---- Sweep ---- */
+    .sweep-suggestions { display: grid; gap: 10px; }
+    #appShell .sweep-suggestion { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+    .sweep-suggestion-text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+    .sweep-suggestion-actions { display: flex; gap: 8px; flex: 0 0 auto; align-self: center; }
+    .sweep-wrap { white-space: normal !important; }
+    .sweep-task { padding: 12px; border-radius: 12px; background: var(--ub-fill); margin-bottom: 10px; }
+    .sweep-task-head { display: flex; align-items: center; gap: 10px; }
+    .sweep-task-head .field-select { flex: 1; min-width: 0; }
+    .sweep-task-head .ub-item-icon { width: 32px; height: 32px; }
+    .sweep-task-params { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 8px; }
+    .sweep-task-params:empty { display: none; }
+    .sweep-param { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+    .sweep-segment { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--ub-fill); margin-bottom: 12px; }
+    .sweep-segment-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .sweep-segment-option span { display: inline-block; padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 550; cursor: pointer; color: var(--muted); }
+    .sweep-segment-option input:checked + span { background: var(--home-palette-bg); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
+    .sweep-segment-option input:focus-visible + span { outline: 2px solid var(--ub-focus); }
+    .sweep-inline { display: flex; gap: 8px; }
+    .sweep-report-stats { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+    @media (max-width: 640px) {
+      #appShell .sweep-suggestion { flex-wrap: wrap; }
+      .sweep-suggestion-actions { width: 100%; justify-content: flex-end; }
+      .sweep-report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    }
 
     /* Empty and placeholder states read as quiet, centered notes. */
     #appShell .placeholder {
@@ -5281,6 +5384,132 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .home-palette, .home-palette-panel { animation: none !important; transition: none !important; }
+    }
+
+    /* Recordings: thumbnail-first library and a theatre-style player. */
+    #recordingsView #mediaHeader { flex-wrap: wrap; row-gap: 10px; }
+    #mediaPanels > .media-library,
+    #mediaPanels > .media-player { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+    .media-library-head, .media-player-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex-wrap: wrap; }
+    .media-player-title { align-items: center; }
+    .media-subtle { font-size: 12px; color: var(--muted); }
+    .media-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .media-filter {
+      display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px 0 12px;
+      border-radius: 999px; background: var(--ub-fill); border: 1px solid var(--ub-stroke); color: var(--muted);
+    }
+    .media-filter .lucide, .media-filter svg { width: 14px; height: 14px; flex: none; }
+    .media-filter select {
+      appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: var(--text);
+      font: inherit; font-size: 13px; padding: 0 12px 0 0; height: 100%; cursor: pointer; max-width: 200px;
+    }
+    #appShell .media-filter select {
+      border: 0; border-radius: 0; box-shadow: none; background-color: transparent; height: 30px; min-height: 0;
+      padding: 0 26px 0 0; background-position: calc(100% - 6px) 50%; min-width: 0;
+    }
+    #appShell .media-filter select:focus { outline: none; box-shadow: none; }
+    .media-filter:focus-within { box-shadow: 0 0 0 3px var(--ub-focus, rgba(10,132,255,0.35)); }
+    .media-filter-clear {
+      display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border-radius: 999px;
+      border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+    }
+    .media-filter-clear:hover { color: var(--text); background: var(--ub-fill); }
+    .media-filter-clear svg { width: 14px; height: 14px; }
+
+    .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px 14px; }
+    .media-card {
+      all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; cursor: pointer; min-width: 0;
+    }
+    .media-thumb {
+      position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden;
+      background: var(--ub-fill); border: 1px solid var(--ub-stroke);
+      transition: transform 160ms ease, box-shadow 160ms ease;
+    }
+    .media-thumb img, .media-thumb .hover-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+    .media-thumb .hover-preview { display: none; }
+    .media-thumb-fallback {
+      position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--muted);
+      background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(14,165,233,0.12));
+    }
+    .media-thumb-fallback svg { width: 30px; height: 30px; opacity: 0.7; }
+    .media-badge {
+      position: absolute; bottom: 7px; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+      color: #fff; background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: none;
+    }
+    .media-badge.is-size { right: 7px; }
+    .media-badge.is-new { left: 7px; background: rgba(48, 209, 88, 0.85); }
+    .media-play {
+      position: absolute; inset: 0; margin: auto; width: 42px; height: 42px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); opacity: 0; transition: opacity 160ms ease; pointer-events: none;
+    }
+    .media-play svg { width: 18px; height: 18px; margin-left: 2px; fill: currentColor; }
+    .media-card:hover .media-thumb, .media-card:focus-visible .media-thumb { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.22); }
+    .media-card:hover .media-play, .media-card:focus-visible .media-play { opacity: 1; }
+    .media-card:focus-visible .media-thumb { outline: 3px solid var(--ub-focus, rgba(10,132,255,0.5)); outline-offset: 2px; }
+    .media-card-text { display: flex; flex-direction: column; gap: 1px; padding: 0 2px; min-width: 0; }
+    .media-card-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .media-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .media-pager { display: inline-flex; align-items: center; gap: 10px; }
+    .media-pager .secondary-action { width: 32px; height: 32px; padding: 0; justify-content: center; }
+
+    .media-layout-toggle { display: inline-flex; }
+    .media-layout-toggle button { display: inline-flex; align-items: center; gap: 6px; }
+    .media-layout-toggle svg { width: 14px; height: 14px; }
+    .media-poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 16px; }
+    .media-poster { all: unset; box-sizing: border-box; position: relative; display: flex; flex-direction: column; gap: 8px; cursor: pointer; min-width: 0; }
+    .media-poster-art {
+      position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden;
+      background: var(--ub-fill); box-shadow: 0 8px 22px rgba(0,0,0,0.22), inset 0 0 0 1px var(--ub-stroke);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+    .media-poster-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+    .media-poster-fallback {
+      position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px; text-align: center; color: #fff;
+      background: linear-gradient(160deg, color-mix(in srgb, var(--poster-tint) 85%, #000), color-mix(in srgb, var(--poster-tint) 35%, #000));
+    }
+    .media-poster-fallback strong { font-size: 34px; font-weight: 800; letter-spacing: 0.02em; opacity: 0.9; }
+    .media-poster-fallback span { font-size: 13px; font-weight: 600; line-height: 1.25; opacity: 0.85; }
+    .media-poster .media-badge.is-count { top: 8px; right: 8px; bottom: auto; }
+    .media-poster:hover .media-poster-art, .media-poster:focus-visible .media-poster-art { transform: translateY(-3px) scale(1.015); box-shadow: 0 16px 32px rgba(0,0,0,0.3), inset 0 0 0 1px var(--ub-stroke); }
+    .media-poster:focus-visible .media-poster-art { outline: 3px solid var(--ub-focus, rgba(10,132,255,0.5)); outline-offset: 2px; }
+    .media-game-hero { display: flex; align-items: flex-end; gap: 18px; margin-top: -8px; }
+    .media-poster.is-hero { cursor: default; width: 120px; flex: none; }
+    .media-game-hero-text { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+    .media-game-hero-text h2 { margin: 6px 0 0; font-size: 26px; font-weight: 750; line-height: 1.1; color: var(--text); }
+    @media (max-width: 880px) {
+      .media-poster-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 16px 10px; }
+      .media-poster-fallback strong { font-size: 26px; }
+      .media-poster.is-hero { width: 90px; }
+      .media-game-hero-text h2 { font-size: 21px; }
+    }
+    .media-stage { border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 18px 40px rgba(0,0,0,0.28); }
+    .media-stage video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 70vh; object-fit: contain; background: #000; }
+    .media-meta { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: -10px; }
+    .media-path { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .media-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 168px; gap: 12px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+    .media-strip-item { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; cursor: pointer; min-width: 0; }
+    .media-strip-item .media-thumb { border-radius: 10px; }
+    .media-strip-item:hover .media-thumb { transform: translateY(-2px); }
+    .media-strip-label { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .media-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .media-tools .settings-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .media-tools .panel-title { margin-bottom: 2px; }
+    .media-field { display: flex; flex-direction: column; gap: 6px; }
+    .media-field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .media-field-row .segmented { display: flex; }
+    .media-field-row .segmented button { flex: 1; }
+    .media-tool-actions { display: flex; justify-content: flex-end; margin-top: 2px; }
+    #mediaPanels .timeline-card { background: var(--ub-fill); border-color: var(--ub-stroke); }
+    #mediaPanels .timeline-track { background: var(--ub-fill); }
+    #mediaPanels .timeline-actions { justify-content: flex-start; }
+    .media-job { gap: 12px; padding: 12px 0; }
+    .media-job .ops-dot { width: 8px; height: 8px; flex: none; }
+    @media (max-width: 880px) {
+      .media-tools, .media-field-row { grid-template-columns: 1fr; }
+      .media-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 10px; }
+      .media-filter select { max-width: 140px; }
     }
   </style>
 </head>
@@ -5577,11 +5806,18 @@
 
         <section id="commandsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="terminal"></i> Commands</div>
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="terminal"></i> Commands</div>
+              <div class="section-actions">
+                <label class="cmd-search"><i class="lucide" data-lucide="search"></i><input id="commandsSearch" type="search" placeholder="Search commands" aria-label="Search commands" autocomplete="off" spellcheck="false"></label>
+              </div>
+            </div>
           </div>
-          <div class="commands-shell">
-            <section id="commandsTop" class="commands-top glass"></section>
-            <section id="commandsCatalog" class="commands-catalog glass"></section>
+
+          <div id="commandsTop" class="ub-status glass"></div>
+          <div class="gt-shell">
+            <div id="commandsSettings"></div>
+            <div id="commandsCatalog"></div>
           </div>
         </section>
 
@@ -5743,25 +5979,19 @@
             <div class="section-sticky-row">
               <div class="section-mini-title"><i class="lucide" data-lucide="gamepad-2"></i> Game Tracker</div>
               <div class="section-actions">
-                <span id="gametrackerSchedule" class="muted-text"></span>
-                <button id="gametrackerCheckNow" class="primary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Check Now</button>
+                <button id="gametrackerCheckNow" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Check Now</button>
+                <button id="gametrackerAddPlayer" class="primary-action" type="button"><i class="lucide" data-lucide="plus"></i> Add Player</button>
               </div>
             </div>
           </div>
 
           <div id="gametrackerMetrics" class="ub-status glass"></div>
 
-          <div id="gametrackerNotice" class="hidden" style="margin-bottom: 16px;"></div>
-
-          <div class="diagnostics-panels" style="grid-template-columns: 1fr 340px;">
-            <div>
-              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="users"></i> Tracked Players</div>
-              <div id="gametrackerPlayers" style="display: grid; gap: 10px;"></div>
-            </div>
-            <div>
-              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="history"></i> Recent Activity</div>
-              <div id="gametrackerHistory" class="event-list glass" style="max-height: 600px; overflow-y: auto;"></div>
-            </div>
+          <div id="gametrackerNotice" class="hidden gt-notices"></div>
+          <div class="gt-shell">
+            <div id="gametrackerPlayers"></div>
+            <div id="gametrackerAutomation"></div>
+            <div id="gametrackerHistory"></div>
           </div>
         </section>
 
@@ -5770,28 +6000,17 @@
             <div class="section-sticky-row">
               <div class="section-mini-title"><i class="lucide" data-lucide="layers"></i> Sweep</div>
               <div class="section-actions">
-                <button id="sweepPauseAll" class="secondary-action" type="button">Pause All</button>
+                <button id="sweepPauseAll" class="secondary-action" type="button"><i class="lucide" data-lucide="pause"></i> Pause All</button>
                 <button id="sweepNewRule" class="primary-action" type="button"><i class="lucide" data-lucide="plus"></i> New Rule</button>
               </div>
             </div>
           </div>
 
           <div id="sweepMetrics" class="ub-status glass"></div>
-
-          <div id="sweepSuggestions" class="hidden" style="margin-bottom: 24px;">
-            <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="sparkles"></i> Suggestions</div>
-            <div id="sweepSuggestionsList" style="display: grid; gap: 10px;"></div>
-          </div>
-
-          <div class="diagnostics-panels" style="grid-template-columns: 1fr 340px;">
-            <div>
-              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Active Rules</div>
-              <div id="sweepRulesList" style="display: grid; gap: 10px;"></div>
-            </div>
-            <div>
-              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="history"></i> Recent Audit</div>
-              <div id="sweepAuditList" class="event-list glass" style="max-height: 600px; overflow-y: auto;"></div>
-            </div>
+          <div class="gt-shell">
+            <div id="sweepRulesList"></div>
+            <div id="sweepSuggestions"></div>
+            <div id="sweepAuditList"></div>
           </div>
         </section>
 
@@ -6071,6 +6290,10 @@
     let selectedActionRuleID = null;
     let selectedMediaItemID = null;
     let mediaViewMode = 'library';
+    // 'recent' (clips by day) or 'games' (poster wall, then one game's clips).
+    let mediaLibraryLayout = (() => {
+      try { return localStorage.getItem('swiftbot.media.layout') === 'games' ? 'games' : 'recent'; } catch { return 'recent'; }
+    })();
     const activeMediaPlayback = { sessionID: '', itemID: '', started: false, completed: false, lastSentSeconds: 0 };
     let mediaFilterState = { source: '', dateRange: 'all', game: '', page: 1, pageSize: 24 };
     let mediaExportState = {
@@ -6203,6 +6426,22 @@
         'shield.lefthalf.filled': 'shield',
         'doc.text.below.ecg': 'file-text',
         'music.note': 'music',
+        'arrow.left.arrow.right': 'arrow-left-right',
+        'at.circle.fill': 'at-sign',
+        'character.bubble.fill': 'languages',
+        'exclamationmark.shield.fill': 'shield-alert',
+        'flag.fill': 'flag',
+        'hands.clap.fill': 'handshake',
+        'key.slash.fill': 'key-round',
+        'list.bullet.rectangle': 'scroll-text',
+        'movieclapper.fill': 'clapperboard',
+        'network': 'network',
+        'party.popper.fill': 'party-popper',
+        'person.2.badge.minus': 'user-minus',
+        'speaker.wave.3.fill': 'volume-2',
+        'star.fill': 'star',
+        'trophy.fill': 'trophy',
+        'scope': 'crosshair',
       };
       return map[sfName] || 'circle-help';
     }
@@ -6622,90 +6861,213 @@
       return `<span class="badge ${extraClass}">${label}</span>`;
     }
 
+    // Web icons per command; categories come from SlashCommandGroup in Swift.
+    const COMMAND_ICONS = {
+      help: 'circle-help', ping: 'radio', roll: 'dices', '8ball': 'circle-dot', poll: 'chart-bar', userinfo: 'circle-user',
+      cluster: 'network', debug: 'stethoscope', notifystatus: 'bell-ring', setchannel: 'hash', ignorechannel: 'volume-x',
+      weekly: 'calendar-clock', image: 'image', music: 'music', playlist: 'list-music', miner: 'pickaxe', compare: 'columns-2',
+      meta: 'crown', steam: 'gamepad-2', timestamp: 'clock', announce: 'megaphone', randomteams: 'users', rewind: 'history',
+      sweep: 'layers'
+    };
+    const COMMAND_GROUPS = [
+      ['General', '#0a84ff', 'settings-2'],
+      ['Utilities & AI', '#bf5af2', 'wand-sparkles'],
+      ['Moderation', '#ff9f0a', 'shield-half'],
+      ['Infrastructure', '#64d2ff', 'server'],
+      ['Gaming', '#30d158', 'gamepad-2']
+    ];
+    let commandsSearchText = '';
+
+    // "/roll notation:<value>" → name plus option chips (required solid, optional dashed).
+    function commandOptionChips(usage) {
+      return String(usage || '').split(' ').slice(1).filter(Boolean).map(part => {
+        const optional = part.startsWith('[');
+        const name = part.replace(/^\[|\]$/g, '').replace(/:<value>$/, '');
+        return `<span class="cmd-opt${optional ? ' is-optional' : ''}" title="${optional ? 'Optional' : 'Required'}">${escapeHTML(name)}</span>`;
+      }).join('');
+    }
+
     function renderCommandsView() {
       if (!commandsCatalog) return;
       const top = document.getElementById('commandsTop');
+      const settings = document.getElementById('commandsSettings');
       const catalog = document.getElementById('commandsCatalog');
-      if (!top || !catalog) return;
+      if (!top || !settings || !catalog) return;
 
-      top.innerHTML = `
-        <div class="commands-toggle-card">
-          <span class="label">Master Switch</span>
-          <span class="value">All Commands</span>
-          <label class="switch"><input id="cmdMaster" type="checkbox" ${commandsCatalog.commandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
-        <div class="commands-toggle-card">
-          <span class="label">Discord UI</span>
-          <span class="value">/ slash</span>
-          <label class="switch"><input id="cmdSlash" type="checkbox" ${commandsCatalog.slashCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
-        <div class="commands-toggle-card">
-          <span class="label">Music Links</span>
-          <span class="value">${commandsCatalog.musicLinkWatch?.isEnabled ? `${commandsCatalog.musicLinkWatch.channelIDs.length} channel${commandsCatalog.musicLinkWatch.channelIDs.length === 1 ? '' : 's'}` : 'Off'}</span>
-          <button id="musicWatchConfigure" class="secondary-action" type="button">Configure</button>
-        </div>
-      `;
-      top.querySelector('#cmdMaster')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      top.querySelector('#cmdSlash')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
-      top.querySelector('#musicWatchConfigure')?.addEventListener('click', openMusicLinkWatchEditor);
+      const items = commandsCatalog.items || [];
+      const on = items.filter(i => i.enabled).length;
+      const master = !!commandsCatalog.commandsEnabled;
+      const slash = !!commandsCatalog.slashCommandsEnabled;
+      const watch = commandsCatalog.musicLinkWatch || {};
+      const watchCount = (watch.channelIDs || []).length;
+      const watchText = watch.isEnabled ? `${watchCount} ${watchCount === 1 ? 'channel' : 'channels'}` : 'Off';
 
-      const rows = (commandsCatalog.items || []).map(item => {
-        const badges = [
-          commandBadge(item.surface),
-          commandBadge(item.category)
-        ];
-        if (item.adminOnly) badges.push(commandBadge('Admin', 'admin'));
-        if (item.aliases && item.aliases.length > 0) {
-          badges.push(commandBadge(`Aliases: ${item.aliases.join(', ')}`));
-        }
-        return `
-          <article class="command-row">
-            <div>
-              <div class="command-name">${item.name}</div>
-              <div class="command-usage">${item.usage}</div>
-              <div class="command-desc">${item.description}</div>
-              <div class="badge-row">${badges.join('')}</div>
+      top.innerHTML = [
+        ubStatusCell(master ? `${on} of ${items.length} on` : 'Commands off', master ? 'Commands' : 'Nothing responds', master ? (on ? 'healthy' : 'warning') : 'critical'),
+        ubStatusCell(slash ? 'Slash commands on' : 'Slash commands off', slash ? 'Registered with Discord' : 'Not shown in Discord', slash ? 'healthy' : 'neutral')
+      ].join('');
+
+      const sw = (id, checked, extra = '') => `<label class="switch"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''} ${extra}><span class="switch-track"><span class="switch-knob"></span></span></label>`;
+      settings.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Settings</h2></div>
+          <div class="ub-group-card glass">
+            <div class="ub-row">
+              <div class="ub-row-text"><div class="ub-row-title">All commands</div><div class="ub-row-desc">Turn off to stop SwiftBot answering any command.</div></div>
+              ${sw('cmdMaster', master)}
             </div>
-            <label class="switch"><input data-command-name="${item.name}" data-command-surface="${item.surface.toLowerCase()}" type="checkbox" ${item.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-          </article>
-        `;
-      }).join('');
-      catalog.innerHTML = rows || `<div class="placeholder">No commands available.</div>`;
+            <div class="ub-row${master ? '' : ' is-dimmed'}">
+              <div class="ub-row-text"><div class="ub-row-title">Slash commands</div><div class="ub-row-desc">Shows commands in Discord’s / menu.</div></div>
+              ${sw('cmdSlash', slash, master ? '' : 'disabled')}
+            </div>
+          </div>
+        </section>`;
+      settings.querySelector('#cmdMaster')?.addEventListener('change', (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
+      settings.querySelector('#cmdSlash')?.addEventListener('change', (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+      const search = commandsSearchText.trim().toLowerCase();
+      const matches = items.filter(item => !search
+        || item.name.toLowerCase().includes(search)
+        || (item.description || '').toLowerCase().includes(search)
+        || (item.aliases || []).some(a => a.toLowerCase().includes(search)));
+      const knownGroups = COMMAND_GROUPS.map(g => g[0]);
+      const groups = [...COMMAND_GROUPS, ...[...new Set(matches.map(i => i.category))].filter(c => !knownGroups.includes(c)).map(c => [c, '#8e8e93', 'terminal'])]
+        .map(([name, color, icon]) => ({ name, color, icon, items: matches.filter(i => i.category === name).sort((a, b) => a.name.localeCompare(b.name)) }))
+        .filter(g => g.items.length);
+
+      // The watcher's settings sit on the /music row: beside the switch on
+      // wide screens, under the description on phones.
+      const musicLink = (placement) => `
+        <button class="cmd-row-link music-watch-link ${placement}" type="button" ${master ? '' : 'disabled'} title="Reply to song links posted in chosen channels">
+          ${watch.isEnabled ? `Link watcher · ${escapeHTML(watchText)}` : 'Link watcher off'}<i class="lucide" data-lucide="chevron-right"></i>
+        </button>`;
+      const row = (item, group) => `
+        <div class="ub-item${item.enabled ? '' : ' is-off'}">
+          <div class="ub-item-main cmd-item">
+            <span class="ub-item-icon" style="--brand:${group.color};"><i class="lucide" data-lucide="${COMMAND_ICONS[item.name] || group.icon}"></i></span>
+            <span class="ub-item-text">
+              <span class="ub-item-title"><span class="cmd-name">${item.surface === 'prefix' ? '!' : '/'}${escapeHTML(item.name)}</span>${commandOptionChips(item.usage)}${item.adminOnly ? '<span class="badge">Admin</span>' : ''}</span>
+              <span class="ub-item-sub">${escapeHTML(item.description || '')}${item.aliases?.length ? ` · also ${escapeHTML(item.aliases.join(', '))}` : ''}</span>
+              ${item.name === 'music' ? musicLink('is-below') : ''}
+            </span>
+          </div>
+          ${item.name === 'music' ? musicLink('is-side') : ''}
+          <label class="switch" title="${item.enabled ? 'On' : 'Off'}">
+            <input data-command-name="${escapeHTML(item.name)}" data-command-surface="${escapeHTML(String(item.surface || '').toLowerCase())}" type="checkbox" ${item.enabled ? 'checked' : ''} ${master ? '' : 'disabled'} aria-label="Enable ${escapeHTML(item.name)}">
+            <span class="switch-track"><span class="switch-knob"></span></span>
+          </label>
+        </div>`;
+
+      catalog.innerHTML = !items.length ? `
+          <div class="ub-empty glass">
+            <div class="ub-empty-title">No commands available</div>
+            <div class="ub-empty-sub">Commands appear once the bot registers them with Discord.</div>
+          </div>`
+        : !groups.length ? `
+          <div class="ub-empty glass">
+            <div class="ub-empty-title">No commands match “${escapeHTML(commandsSearchText.trim())}”</div>
+            <div class="ub-empty-sub">Try a command name or part of its description.</div>
+          </div>`
+        : `<div class="cmd-groups${master ? '' : ' is-dimmed'}">${groups.map(group => {
+            const groupOn = group.items.filter(i => i.enabled).length;
+            return `
+              <section class="ub-group">
+                <div class="ub-group-head gt-game-head">
+                  <span class="ub-item-icon" style="--brand:${group.color};"><i class="lucide" data-lucide="${group.icon}"></i></span>
+                  <h2>${escapeHTML(group.name)}</h2>
+                  <span class="gt-game-count">${groupOn === group.items.length ? group.items.length : `${groupOn} of ${group.items.length} on`}</span>
+                </div>
+                <div class="ub-list glass">${group.items.map(item => row(item, group)).join('')}</div>
+              </section>`;
+          }).join('')}</div>`;
+      catalog.querySelectorAll('.music-watch-link').forEach(btn => btn.addEventListener('click', openMusicLinkWatchEditor));
       catalog.querySelectorAll('input[data-command-name]').forEach((input) => {
         input.addEventListener('change', async (e) => {
           const node = e.currentTarget;
-          await toggleCommand(node.dataset.commandName, node.dataset.commandSurface, node.checked);
+          node.disabled = true;
+          try {
+            await toggleCommand(node.dataset.commandName, node.dataset.commandSurface, node.checked);
+          } catch (error) {
+            node.checked = !node.checked;
+            node.disabled = false;
+            setMessage(error.message || 'Could not update the command.', 'error');
+          }
         });
       });
+
+      const searchInput = document.getElementById('commandsSearch');
+      if (searchInput && !searchInput.dataset.bound) {
+        searchInput.dataset.bound = 'true';
+        searchInput.addEventListener('input', () => { commandsSearchText = searchInput.value; renderCommandsView(); });
+      }
       refreshIcons();
     }
 
+    // Opened from the /music command row.
     function openMusicLinkWatchEditor() {
       const watcher = commandsCatalog?.musicLinkWatch;
       if (!watcher) return;
       const selected = new Set(watcher.channelIDs || []);
-      const options = (watcher.servers || []).flatMap(server =>
-        (watcher.textChannelsByServer?.[server.id] || []).map(channel =>
-          `<option value="${escapeHTML(channel.id)}" ${selected.has(channel.id) ? 'selected' : ''}>${escapeHTML(server.name)} · #${escapeHTML(channel.name)}</option>`
-        )
-      ).join('');
+      const servers = (watcher.servers || []).filter(server => (watcher.textChannelsByServer?.[server.id] || []).length);
+      const serverBlock = (server) => `
+        <div class="music-server">
+          ${servers.length > 1 ? `<div class="ac-field-label">${escapeHTML(server.name)}</div>` : ''}
+          <div class="patchy-role-list">
+            ${(watcher.textChannelsByServer?.[server.id] || []).map(channel => `
+              <label class="patchy-role-chip"><input type="checkbox" class="music-channel" value="${escapeHTML(channel.id)}" ${selected.has(channel.id) ? 'checked' : ''}><span>#${escapeHTML(channel.name)}</span></label>`).join('')}
+          </div>
+        </div>`;
 
-      showModal('Music Link Watcher', `
-        <div style="display:grid;gap:14px;">
-          <label class="settings-row"><span>Watch for music links</span><label class="switch"><input id="musicWatchEnabled" type="checkbox" ${watcher.isEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></label>
-          <p class="muted">SwiftBot only replies in selected channels. It ignores bot messages and playlists, then posts Apple Music, Spotify, YouTube Music, and YouTube links for supported track URLs.</p>
-          <label style="display:grid;gap:6px;"><span class="label">Watched channels</span><select id="musicWatchChannels" class="field-input" multiple size="9">${options}</select></label>
+      showModal('Music link watcher', `
+        <div class="automation-editor-section">
+          <label class="ac-toggle"><input id="musicWatchEnabled" type="checkbox" ${watcher.isEnabled ? 'checked' : ''}>
+            <span class="ac-toggle-text"><span class="ac-toggle-title">Watch for music links</span>
+            <span class="ac-toggle-desc">When someone posts a song link in a chosen channel, SwiftBot replies with Apple Music, Spotify, YouTube Music and YouTube versions, without anyone running /music. Playlists and bot messages are ignored.</span></span>
+          </label>
+        </div>
+        <div class="automation-editor-section" id="musicWatchChannels">
+          <h3><i class="lucide" data-lucide="hash"></i> Channels</h3>
+          ${servers.reduce((n, server) => n + (watcher.textChannelsByServer?.[server.id] || []).length, 0) > 20
+            ? '<label class="cmd-search music-filter"><i class="lucide" data-lucide="search"></i><input id="musicWatchFilter" type="search" placeholder="Filter channels" autocomplete="off" spellcheck="false"></label>'
+            : ''}
+          ${servers.length ? servers.map(serverBlock).join('') : '<div class="ub-help" style="margin-top:0;">No text channels found. Connect SwiftBot to a server first.</div>'}
         </div>
       `, `
+        <span id="musicWatchHint" class="modal-hint"></span>
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
         <button id="musicWatchSave" class="primary-action" type="button">Save</button>
       `);
 
-      document.getElementById('musicWatchSave').onclick = async () => {
+      const validate = () => {
         const enabled = document.getElementById('musicWatchEnabled').checked;
-        const channelIDs = Array.from(document.getElementById('musicWatchChannels').selectedOptions).map(option => option.value);
-        await saveConfigPatch({ musicLinkWatchEnabled: enabled, musicLinkWatchChannelIDs: channelIDs });
-        hideModal();
+        const count = document.querySelectorAll('.music-channel:checked').length;
+        document.getElementById('musicWatchChannels').classList.toggle('is-dimmed', !enabled);
+        const issue = enabled && !count ? 'Pick at least one channel to watch.' : '';
+        document.getElementById('musicWatchHint').textContent = issue;
+        document.getElementById('musicWatchSave').disabled = !!issue;
+      };
+      // The section's parent is this dialog's own content, replaced on every open.
+      document.getElementById('musicWatchChannels').parentElement.addEventListener('change', validate);
+      document.getElementById('musicWatchFilter')?.addEventListener('input', (e) => {
+        const term = e.target.value.trim().toLowerCase();
+        document.querySelectorAll('#musicWatchChannels .patchy-role-chip').forEach(chip => {
+          const input = chip.querySelector('input');
+          // Keep chosen channels visible so a filter never hides a selection.
+          chip.style.display = !term || input.checked || chip.textContent.toLowerCase().includes(term) ? '' : 'none';
+        });
+      });
+      validate();
+      refreshIcons();
+
+      document.getElementById('musicWatchSave').onclick = async (e) => {
+        const channelIDs = Array.from(document.querySelectorAll('.music-channel:checked')).map(input => input.value);
+        e.currentTarget.disabled = true;
+        try {
+          await saveConfigPatch({ musicLinkWatchEnabled: document.getElementById('musicWatchEnabled').checked, musicLinkWatchChannelIDs: channelIDs });
+          hideModal();
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          document.getElementById('musicWatchHint').textContent = error.message || 'Could not save.';
+        }
       };
     }
 
@@ -7451,6 +7813,26 @@
       return rule;
     }
 
+    // Picker sections, keyed by what triggers the rule.
+    const AUTO_TEMPLATE_GROUPS = [
+      { title: 'Voice', kinds: ['userJoinedVoice', 'userLeftVoice', 'userMovedVoice'] },
+      { title: 'Messages', kinds: ['messageCreated'] },
+      { title: 'Members', kinds: ['memberJoined', 'memberLeft'] },
+      { title: 'Reactions & commands', kinds: ['reactionAdded', 'slashCommand'] },
+      { title: 'Media', kinds: ['mediaAdded'] }
+    ];
+
+    function autoTemplateGroupsHTML(templates) {
+      const used = new Set();
+      const sections = AUTO_TEMPLATE_GROUPS.map(group => {
+        const items = (templates || []).filter(t => group.kinds.includes(t.rule?.trigger?.kind));
+        items.forEach(t => used.add(t.id));
+        return items.length ? `<div class="ub-tile-group-title">${group.title}</div><div class="ub-tile-grid">${autoTemplateTilesHTML(items)}</div>` : '';
+      }).join('');
+      const rest = (templates || []).filter(t => !used.has(t.id));
+      return sections + (rest.length ? `<div class="ub-tile-group-title">Other</div><div class="ub-tile-grid">${autoTemplateTilesHTML(rest)}</div>` : '');
+    }
+
     function autoTemplateTilesHTML(templates) {
       return (templates || []).map(t => {
         const colour = AUTO_TEMPLATE_TINTS[t.tint] || '#3b82f6';
@@ -7478,7 +7860,8 @@
           <div class="ub-empty glass">
             <div class="ub-empty-title">No ${noun}s yet</div>
             <div class="ub-empty-sub">Start from a template, or use <strong>New Rule</strong> to build one or describe it in plain English.</div>
-            ${templates?.length ? `<div class="ub-tile-grid">${autoTemplateTilesHTML(templates)}</div>` : ''}
+            ${templates?.length ? `<div class="ub-tile-grid">${autoTemplateTilesHTML(templates.slice(0, 6))}</div>` : ''}
+            ${templates?.length > 6 ? `<div class="ub-empty-more">${templates.length - 6} more in <strong>New Rule</strong></div>` : ''}
           </div>`;
         root.querySelectorAll('[data-template-id]').forEach(tile => tile.addEventListener('click', () => {
           const template = templates.find(t => t.id === tile.dataset.templateId);
@@ -7551,8 +7934,8 @@
               <span class="ub-item-icon" style="--brand:#8e8e93;"><i class="lucide" data-lucide="plus"></i></span>
               <span class="ub-tile-text"><span class="ub-tile-title">Blank rule</span><span class="ub-tile-sub">Build it step by step</span></span>
             </button>
-            ${autoTemplateTilesHTML(templates)}
           </div>
+          ${autoTemplateGroupsHTML(templates)}
         </div>
       `, '<button class="secondary-action" type="button" data-action="hideModal">Cancel</button>', { wide: true });
 
@@ -8490,8 +8873,11 @@
 
     async function toggleCommand(name, surface, enabled) {
       await postJSON('/api/commands/toggle', { name, surface, enabled });
-      await Promise.all([loadCommandsCatalog(), loadOverview(), loadAnalytics(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData(), loadAnnouncer()]);
+      await loadCommandsCatalog();
       renderCommandsView();
+      // Wiki lookups and the overview mention commands too; refresh them
+      // without holding up the switch.
+      Promise.all([loadOverview(), loadWikiBridge()]).catch(() => {});
     }
 
     function refreshCurrentView() {
@@ -8670,14 +9056,6 @@
       return `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${iconHTML}<span>${gameName}</span></span>`;
     }
 
-    function ffmpegPillHTML() {
-      if (!mediaExportStatus) return '';
-      if (mediaExportStatus.installed) {
-        return `<span class="chip" style="background:rgba(79, 216, 140, 0.18);color:#7ce9b0;">Exports ready</span>`;
-      }
-      return `<span class="chip" style="background:rgba(255, 182, 77, 0.18);color:#ffd28a;">Exports unavailable</span>`;
-    }
-
     function mediaTokenFromURL(url) {
       try {
         const token = new URL(url, window.location.origin).searchParams.get('id');
@@ -8846,8 +9224,6 @@
       return patchyData?.textChannelsByServer?.[serverID] || [];
     }
 
-    const GAME_TRACKER_TONE_COLORS = { green: '#22c55e', amber: '#f59e0b', gray: '#9ca3af' };
-
     const GAME_TRACKER_HISTORY_ICONS = {
       check: 'search',
       announcement: 'megaphone',
@@ -8857,18 +9233,38 @@
       error: 'alert-triangle'
     };
 
+    const GAME_TRACKER_HISTORY_TONES = {
+      check: 'healthy', announcement: 'info', seasonReset: 'info',
+      sessionStarted: 'healthy', sessionEnded: 'neutral', error: 'critical'
+    };
+
+    function gameTrackerHourLabel(hour) {
+      const date = new Date();
+      date.setHours(hour, 0, 0, 0);
+      return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+
+    async function postGameTrackerUpdate(update) {
+      await postJSON('/api/gametracker/update', update);
+      await loadGameTracker();
+      renderGameTrackerView();
+    }
+
+    // Game Tracker: players with switches, the two automations, and recent
+    // activity. Adding and editing players mirrors the native editor sheet.
     function renderGameTrackerView() {
       if (!gameTrackerData) return;
       const metrics = document.getElementById('gametrackerMetrics');
       const notice = document.getElementById('gametrackerNotice');
       const playersList = document.getElementById('gametrackerPlayers');
+      const automation = document.getElementById('gametrackerAutomation');
       const historyList = document.getElementById('gametrackerHistory');
-      const schedule = document.getElementById('gametrackerSchedule');
       const checkButton = document.getElementById('gametrackerCheckNow');
-      if (!metrics || !notice || !playersList || !historyList || !schedule || !checkButton) return;
+      const addButton = document.getElementById('gametrackerAddPlayer');
+      if (!metrics || !notice || !playersList || !automation || !historyList || !checkButton || !addButton) return;
 
       const data = gameTrackerData;
-      schedule.textContent = data.scheduleDescription || '';
+      const readOnly = !!data.isFailoverManagedNode;
 
       checkButton.disabled = !!data.checkInProgress || !data.isPollingRuntime;
       checkButton.onclick = async () => {
@@ -8882,8 +9278,10 @@
           setMessage('Game Tracker check failed.', 'error');
         }
       };
+      addButton.disabled = readOnly;
+      addButton.onclick = () => openGameTrackerPlayerEditor(null);
 
-      const features = [data.dailyCheckEnabled ? 'Daily check' : null, data.sessionTrackingEnabled ? 'Play sessions' : null].filter(Boolean).join(' + ') || 'Nothing enabled';
+      const features = [data.dailyCheckEnabled ? 'Daily check' : null, data.sessionTrackingEnabled ? 'Play sessions' : null].filter(Boolean).join(' + ') || 'Nothing turned on';
       metrics.innerHTML = [
         ubStatusCell(escapeHTML(data.statusText || 'Unknown'), escapeHTML(features), data.enabled ? toneToState(data.statusTone) : 'neutral'),
         ubStatusCell(data.nextCheckAt ? `Next check ${new Date(data.nextCheckAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : 'No check scheduled',
@@ -8891,91 +9289,314 @@
         ubStatusCell(data.lastCheckAt ? `Last check ${relativeTime(data.lastCheckAt)}` : 'Never checked', '')
       ].join('');
 
-      if (data.configurationIssue) {
-        notice.classList.remove('hidden');
-        notice.innerHTML = `
-          <div class="glass" style="padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-radius: 14px;">
-            <i class="lucide" data-lucide="alert-triangle" style="color: #f59e0b; flex-shrink: 0;"></i>
-            <span style="font-size: 13px;">${escapeHTML(data.configurationIssue)}</span>
-          </div>
-        `;
-      } else {
-        notice.classList.add('hidden');
-        notice.innerHTML = '';
-      }
+      const notes = [];
+      if (readOnly) notes.push({ icon: 'lock', tone: '#ffcc00', title: 'Managed by the SwiftMesh leader', body: 'Game Tracker settings sync from the primary node, so they are read-only here.' });
+      if (data.configurationIssue) notes.push({ icon: 'triangle-alert', tone: '#f59e0b', title: 'Game Tracker needs attention', body: data.configurationIssue });
+      notice.classList.toggle('hidden', !notes.length);
+      notice.innerHTML = notes.map(n => `
+        <div class="ub-notice glass" style="--notice:${n.tone};">
+          <i class="lucide" data-lucide="${n.icon}"></i>
+          <span><strong>${escapeHTML(n.title)}</strong><br>${escapeHTML(n.body)}</span>
+        </div>`).join('');
 
-      if (!data.players.length) {
-        playersList.innerHTML = `<div class="placeholder">No tracked players yet. Add a profile in the native Game Tracker view.</div>`;
+      // Players
+      const players = data.players || [];
+      if (!players.length) {
+        playersList.innerHTML = `
+          <div class="ub-empty glass">
+            <div class="ub-empty-title">No players tracked yet</div>
+            <div class="ub-empty-sub">Add a game profile and SwiftBot records a silent ranked-score baseline on its first check, then posts when it changes.</div>
+          </div>`;
       } else {
-        playersList.innerHTML = data.players.map(player => {
-          const scoreText = player.score === null || player.score === undefined
-            ? (player.supportsRankedScore ? 'No baseline yet' : 'Rank not tracked for this game')
+        // One section per game, in catalog order; games the catalog no longer
+        // lists still get a section so their players stay editable.
+        const catalogGames = data.catalog?.games || [];
+        const gameIDs = [...new Set([...catalogGames.map(g => g.id), ...players.map(p => p.game)])]
+          .filter(id => players.some(p => p.game === id));
+        const playerRow = (player) => {
+          const score = player.score === null || player.score === undefined
+            ? (player.supportsRankedScore ? 'Awaiting first check' : 'Rank not tracked')
             : `${player.score.toLocaleString()} SR`;
-          const rankText = [player.rankName, player.season].filter(Boolean).map(escapeHTML).join(' &middot; ');
+          const rank = [player.rankName, player.season].filter(Boolean).join(' · ');
           return `
-            <div class="glass" style="padding: 16px; display: flex; align-items: center; gap: 14px; border-radius: 14px; ${player.isEnabled ? '' : 'opacity: 0.55;'}">
-              <div class="stat-icon" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.1); color: #6366f1; flex-shrink: 0;">
-                <i class="lucide" data-lucide="gamepad-2"></i>
+            <div class="ub-item${player.isEnabled ? '' : ' is-off'}" data-player-id="${escapeHTML(player.id)}">
+              <button class="ub-item-main" type="button" data-player-edit aria-label="Edit ${escapeHTML(player.displayName)}">
+                <span class="gt-avatar" aria-hidden="true">${escapeHTML((player.displayName || '?').trim().charAt(0).toUpperCase())}</span>
+                <span class="ub-item-text">
+                  <span class="ub-item-title">${escapeHTML(player.displayName)}</span>
+                  <span class="ub-item-sub">${escapeHTML(player.playerID)} → #${escapeHTML(player.destinationChannelName)}${player.discordUserID ? ` · linked to ${escapeHTML((data.members || []).find(m => m.id === player.discordUserID)?.name || 'a member')}` : ''}</span>
+                </span>
+                <span class="gt-score">
+                  <strong>${escapeHTML(score)}</strong>
+                  ${rank ? `<span>${escapeHTML(rank)}</span>` : ''}
+                </span>
+                <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
+              </button>
+              <label class="switch" title="${player.isEnabled ? 'On' : 'Off'}">
+                <input class="gt-player-enabled" type="checkbox" ${player.isEnabled ? 'checked' : ''} ${readOnly ? 'disabled' : ''} aria-label="Track this player">
+                <span class="switch-track"><span class="switch-knob"></span></span>
+              </label>
+            </div>`;
+        };
+        playersList.innerHTML = gameIDs.map(gameID => {
+          const game = catalogGames.find(g => g.id === gameID);
+          const gamePlayers = players
+            .filter(p => p.game === gameID)
+            .sort((x, y) => (y.isEnabled - x.isEnabled) || ((y.score ?? -1) - (x.score ?? -1)) || x.displayName.localeCompare(y.displayName));
+          const name = game?.displayName || gamePlayers[0]?.gameDisplayName || gameID;
+          const on = gamePlayers.filter(p => p.isEnabled).length;
+          return `
+            <section class="ub-group gt-game" data-game="${escapeHTML(gameID)}">
+              <div class="ub-group-head gt-game-head">
+                <span class="ub-item-icon" style="--brand:#ef4444;"><i class="lucide" data-lucide="${game?.symbolName ? sfSymbolToLucide(game.symbolName) : 'gamepad-2'}"></i></span>
+                <h2>${escapeHTML(name)}</h2>
+                <span class="gt-game-count">${on === gamePlayers.length ? `${gamePlayers.length} ${gamePlayers.length === 1 ? 'player' : 'players'}` : `${on} of ${gamePlayers.length} on`}</span>
+                ${readOnly ? '' : `<button class="gt-game-add" type="button" data-add-game="${escapeHTML(gameID)}" title="Add a ${escapeHTML(name)} player"><i class="lucide" data-lucide="plus"></i> Add</button>`}
               </div>
-              <div style="flex: 1; min-width: 0;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                  <span style="font-weight: 650; font-size: 14px;">${escapeHTML(player.displayName)}</span>
-                  <span style="font-size: 10px; font-weight: 700; color: var(--muted); background: var(--nav-icon-bg); padding: 2px 6px; border-radius: 999px;">${escapeHTML(player.gameDisplayName)}</span>
-                  <span style="font-size: 10px; font-weight: 700; color: var(--muted); background: var(--nav-icon-bg); padding: 2px 6px; border-radius: 999px;">${escapeHTML(player.providerDisplayName)}</span>
-                  ${player.isEnabled ? '' : '<span style="font-size: 10px; font-weight: 700; color: var(--muted);">Disabled</span>'}
-                </div>
-                <p style="font-size: 12px; color: var(--muted); margin: 0; line-height: 1.4;">
-                  ${scoreText}${rankText ? ` &middot; ${rankText}` : ''} &middot; posts to #${escapeHTML(player.destinationChannelName)}
-                </p>
-              </div>
-              <div style="text-align: right; flex-shrink: 0;">
-                <div style="font-size: 11px; color: var(--muted);">${player.baselineRecordedAt ? relativeTime(player.baselineRecordedAt) : ''}</div>
-              </div>
-            </div>
-          `;
+              <div class="ub-list glass">${gamePlayers.map(playerRow).join('')}</div>
+            </section>`;
         }).join('');
+        playersList.querySelectorAll('[data-add-game]').forEach(btn =>
+          btn.addEventListener('click', () => openGameTrackerPlayerEditor(null, btn.dataset.addGame)));
+        playersList.querySelectorAll('[data-player-id]').forEach(row => {
+          const id = row.dataset.playerId;
+          row.querySelector('[data-player-edit]')?.addEventListener('click', () => openGameTrackerPlayerEditor(id));
+          row.querySelector('.gt-player-enabled')?.addEventListener('change', (e) =>
+            postGameTrackerUpdate({ action: 'setPlayerEnabled', playerID: id, enabled: e.target.checked })
+              .catch(error => setMessage(error.message || 'Could not update player.', 'error')));
+        });
       }
 
-      if (!data.history.length) {
-        historyList.innerHTML = `<div class="placeholder">No checks recorded yet.</div>`;
-      } else {
-        historyList.innerHTML = data.history.map(entry => `
-          <div class="event-item${entry.kind === 'error' ? ' error' : ''}" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-              <span style="font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: ${entry.kind === 'error' ? '#f87171' : 'inherit'};">
-                <i class="lucide" data-lucide="${GAME_TRACKER_HISTORY_ICONS[entry.kind] || 'circle'}" style="width: 13px; height: 13px;"></i>
-                ${escapeHTML(entry.title)}
-              </span>
-              <span style="font-size: 11px; color: var(--muted);">${timeAgoHTML(entry.timestamp)}</span>
+      // Automation
+      const hourOptions = Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === data.checkHour ? 'selected' : ''}>${gameTrackerHourLabel(h)}</option>`).join('');
+      const linked = data.linkedPlayerCount || 0;
+      const off = readOnly ? 'disabled' : '';
+      automation.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Automation</h2></div>
+          <div class="ub-group-card glass">
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Daily ranked check</div>
+                <div class="ub-row-desc">A missed check catches up when SwiftBot next starts. First results and new seasons set a silent baseline.</div>
+              </div>
+              <label class="switch"><input id="gtDaily" type="checkbox" ${data.dailyCheckEnabled ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
             </div>
-            <div style="font-size: 11px; color: var(--muted);">${escapeHTML(entry.detail)}</div>
+            <div class="ub-row${data.dailyCheckEnabled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Runs at</div>
+                <div class="ub-row-desc">${escapeHTML(data.timeZoneIdentifier || '')}</div>
+              </div>
+              <select id="gtHour" class="field-select prefs-control" ${data.dailyCheckEnabled && !readOnly ? '' : 'disabled'}>${hourOptions}</select>
+            </div>
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Play session announcements</div>
+                <div class="ub-row-desc">Detected from Discord rich presence. Sessions must last ${data.sessionMinimumMinutes ?? 5} min and end ${data.sessionGraceMinutes ?? 3} min after the game closes.
+                  ${data.sessionTrackingEnabled && !linked ? '<br><span class="gt-warn">No players are linked to a Discord account yet.</span>' : (linked ? `<br>${linked} linked player${linked === 1 ? '' : 's'}.` : '')}</div>
+              </div>
+              <label class="switch"><input id="gtSessions" type="checkbox" ${data.sessionTrackingEnabled ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
+            </div>
           </div>
-        `).join('');
-      }
+        </section>`;
+      const saveSettings = (patch) => postGameTrackerUpdate({ action: 'updateSettings', ...patch })
+        .catch(error => setMessage(error.message || 'Could not save Game Tracker settings.', 'error'));
+      automation.querySelector('#gtDaily')?.addEventListener('change', e => saveSettings({ dailyCheckEnabled: e.target.checked }));
+      automation.querySelector('#gtSessions')?.addEventListener('change', e => saveSettings({ sessionTrackingEnabled: e.target.checked }));
+      automation.querySelector('#gtHour')?.addEventListener('change', e => saveSettings({ checkHour: Number(e.target.value) }));
+
+      // Recent activity
+      const history = (data.history || []).slice(0, 10);
+      historyList.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Recent activity</h2></div>
+          ${history.length ? `<div class="ub-list glass">${history.map(entry => `
+            <div class="ub-item gt-history">
+              <span class="ub-item-icon" style="--brand:${({ healthy: '#22c55e', info: '#3b82f6', critical: '#ef4444' })[GAME_TRACKER_HISTORY_TONES[entry.kind]] || '#8e8e93'};"><i class="lucide" data-lucide="${GAME_TRACKER_HISTORY_ICONS[entry.kind] || 'circle'}"></i></span>
+              <span class="ub-item-text">
+                <span class="ub-item-title">${escapeHTML(entry.title)}</span>
+                <span class="ub-item-sub">${escapeHTML(entry.detail)}</span>
+              </span>
+              <span class="ub-item-time-only">${timeAgoHTML(entry.timestamp)}</span>
+            </div>`).join('')}</div>`
+          : '<div class="placeholder">Checks and Discord announcements will appear here.</div>'}
+        </section>`;
 
       refreshIcons();
+    }
+
+    // Server members by name; keeps a link to someone the bot no longer
+    // sees (left the server, cache not loaded) rather than dropping it.
+    function gameTrackerMemberSelect(members, selectedID, off) {
+      const known = members.some(m => m.id === selectedID);
+      const label = (m) => m.username ? `${m.name} (@${m.username})` : m.name;
+      return `<select id="gtDiscord" class="field-select" ${off}>
+        <option value="">Not linked</option>
+        ${selectedID && !known ? `<option value="${escapeHTML(selectedID)}" selected>Unknown member (${escapeHTML(selectedID)})</option>` : ''}
+        ${members.map(m => `<option value="${escapeHTML(m.id)}" ${m.id === selectedID ? 'selected' : ''}>${escapeHTML(label(m))}</option>`).join('')}
+      </select>`;
+    }
+
+    function openGameTrackerPlayerEditor(playerID, gameID = null) {
+      const data = gameTrackerData;
+      const catalog = data.catalog || { games: [], providers: [] };
+      const existing = (data.players || []).find(p => p.id === playerID);
+      const readOnly = !!data.isFailoverManagedNode;
+      const firstGame = (gameID && catalog.games.some(g => g.id === gameID) ? gameID : catalog.games[0]?.id) || 'theFinals';
+      const draft = existing ? {
+        id: existing.id, game: existing.game, provider: existing.provider, playerID: existing.playerID,
+        displayName: existing.displayName, destinationChannelID: existing.destinationChannelID, isEnabled: existing.isEnabled,
+        discordUserID: existing.discordUserID || '', triggerMetrics: [...(existing.triggerMetrics || [])], contextMetrics: [...(existing.contextMetrics || [])]
+      } : {
+        id: null, game: firstGame,
+        provider: catalog.providers.find(p => p.supportedGames.includes(firstGame))?.id || 'finalsID',
+        playerID: '', displayName: '', destinationChannelID: '', isEnabled: true, discordUserID: '',
+        triggerMetrics: ['rankedScore'], contextMetrics: ['killDeathRatio', 'wins']
+      };
+
+      showModal(existing ? `Edit ${existing.displayName}` : 'Add player', '<div id="gtEditorBody"></div>', `
+        ${existing && !readOnly ? '<div class="modal-footer-start"><button id="gtEditorDelete" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Remove</button></div>' : ''}
+        <span id="gtEditorHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">${readOnly ? 'Close' : 'Cancel'}</button>
+        ${readOnly ? '' : `<button id="gtEditorSave" class="primary-action" type="button">${existing ? 'Save' : 'Add Player'}</button>`}
+      `, { wide: true });
+
+      const off = readOnly ? 'disabled' : '';
+      const providersFor = (game) => catalog.providers.filter(p => p.supportedGames.includes(game));
+      const read = () => {
+        const el = (id) => document.getElementById(id);
+        if (el('gtGame')) draft.game = el('gtGame').value;
+        if (el('gtProvider')) draft.provider = el('gtProvider').value;
+        if (!providersFor(draft.game).some(p => p.id === draft.provider)) draft.provider = providersFor(draft.game)[0]?.id || draft.provider;
+        if (el('gtName')) draft.displayName = el('gtName').value;
+        if (el('gtPlayerID')) draft.playerID = el('gtPlayerID').value;
+        if (el('gtDiscord')) draft.discordUserID = el('gtDiscord').value.trim();
+        if (el('gtChannel')) draft.destinationChannelID = el('gtChannel').value;
+        if (el('gtEnabled')) draft.isEnabled = el('gtEnabled').checked;
+        if (document.querySelector('.gt-metric')) {
+          draft.triggerMetrics = [...document.querySelectorAll('.gt-metric[data-group="trigger"]:checked')].map(b => b.value);
+          draft.contextMetrics = [...document.querySelectorAll('.gt-metric[data-group="context"]:checked')].map(b => b.value);
+        }
+      };
+      const issue = () => {
+        if (!draft.playerID.trim()) return 'Enter the player’s ID for this provider.';
+        if (!draft.destinationChannelID) return 'Choose a channel for announcements.';
+        if (draft.discordUserID && !/^\d{15,22}$/.test(draft.discordUserID)) return 'Discord user IDs are 15–22 digits.';
+        return '';
+      };
+      const validate = () => {
+        read();
+        const message = issue();
+        const save = document.getElementById('gtEditorSave');
+        if (save) save.disabled = !!message;
+        document.getElementById('gtEditorHint').textContent = message;
+      };
+      const render = () => {
+        const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label><div style="flex:1;min-width:0;">${html}</div></div>`;
+        const section = (icon, title, body) => `<div class="automation-editor-section"><h3><i class="lucide" data-lucide="${icon}"></i> ${title}</h3>${body}</div>`;
+        const provider = catalog.providers.find(p => p.id === draft.provider);
+        const metrics = provider?.metrics || [];
+        const chips = (group, list, selected) => `<div class="patchy-role-list">${list.map(m => `
+          <label class="patchy-role-chip"><input type="checkbox" class="gt-metric" data-group="${group}" value="${escapeHTML(m.id)}" ${selected.includes(m.id) ? 'checked' : ''} ${off}><span>${escapeHTML(m.displayName)}</span></label>`).join('')}</div>`;
+        document.getElementById('gtEditorBody').innerHTML = `
+          ${section('user', 'Profile',
+            row('Game', `<select id="gtGame" class="field-select" ${off}>${catalog.games.map(g => `<option value="${escapeHTML(g.id)}" ${g.id === draft.game ? 'selected' : ''}>${escapeHTML(g.displayName)}</option>`).join('')}</select>`)
+            + row('Data provider', `<select id="gtProvider" class="field-select" ${off}>${providersFor(draft.game).map(p => `<option value="${escapeHTML(p.id)}" ${p.id === draft.provider ? 'selected' : ''}>${escapeHTML(p.displayName)}${p.isConfigured ? '' : ' (not connected)'}</option>`).join('')}</select>`
+              + (provider && !provider.isConfigured ? '<div class="ub-help">Connect this provider in the macOS app under Settings › Integrations before checks can run.</div>' : ''))
+            + row('Display name', `<input id="gtName" class="field-input" value="${escapeHTML(draft.displayName)}" placeholder="Shown in announcements" ${off}>`)
+            + row('Player ID', `<input id="gtPlayerID" class="field-input" value="${escapeHTML(draft.playerID)}" placeholder="e.g. name#1234" spellcheck="false" ${off}>`))}
+          ${section('chart-line', 'Tracked stats', metrics.length
+            ? `<div class="ac-field-label">Announce when these change</div>${chips('trigger', metrics.filter(m => m.canTrigger), draft.triggerMetrics)}
+               <div class="ub-help">Counters like kills only ever climb, so they can't trigger an announcement. Add them as context instead.</div>
+               <div class="ac-field-label" style="margin-top:12px;">Also show for context</div>${chips('context', metrics, draft.contextMetrics)}`
+            : '<div class="ub-help" style="margin-top:0;">This provider doesn’t publish any trackable stats yet.</div>')}
+          ${section('timer', 'Play sessions',
+            row('Discord member', gameTrackerMemberSelect(data.members || [], draft.discordUserID, off)
+              + '<div class="ub-help">Links this profile to a Discord account so SwiftBot can spot play sessions from rich presence and post a summary when one ends.</div>'))}
+          ${section('megaphone', 'Announcements',
+            row('Channel', `<select id="gtChannel" class="field-select" ${off}><option value="">Select a channel</option>${(data.channels || []).map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.destinationChannelID ? 'selected' : ''}>${escapeHTML(c.name)}</option>`).join('')}</select>`)
+            + `<label class="ac-toggle"><input id="gtEnabled" type="checkbox" ${draft.isEnabled ? 'checked' : ''} ${off}><span class="ac-toggle-text"><span class="ac-toggle-title">Track this player</span></span></label>`)}
+        `;
+        ['gtGame', 'gtProvider'].forEach(id => document.getElementById(id)?.addEventListener('change', () => { read(); render(); }));
+        validate();
+        refreshIcons();
+      };
+      document.getElementById('gtEditorBody').addEventListener('input', validate);
+      document.getElementById('gtEditorBody').addEventListener('change', validate);
+      render();
+
+      document.getElementById('gtEditorDelete')?.addEventListener('click', async () => {
+        if (!confirm(`Remove ${existing.displayName}? Their saved baseline is removed too.`)) return;
+        await postGameTrackerUpdate({ action: 'deletePlayer', playerID: existing.id });
+        hideModal();
+      });
+      document.getElementById('gtEditorSave')?.addEventListener('click', async (e) => {
+        read();
+        if (issue()) return;
+        e.currentTarget.disabled = true;
+        try {
+          await postGameTrackerUpdate({ action: 'upsertPlayer', player: { ...draft, playerID: draft.playerID.trim() } });
+          hideModal();
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          alert(error.message || 'Player could not be saved.');
+        }
+      });
+    }
+
+    // ---- Sweep ----------------------------------------------------------
+    // Rules list, suggestions, recent runs, and one editor for new and
+    // existing rules (the server's update call inserts unknown IDs).
+    const SWEEP_KINDS = {
+      compact: { label: 'Trim old messages', icon: 'scissors', params: ['age', 'bots'], blurb: 'Deletes messages older than the chosen age. Turn on “Bots only” to leave people’s messages alone.' },
+      reduceNoise: { label: 'Clean a noisy channel', icon: 'activity', params: ['age'], blurb: 'Deletes duplicates, then bot messages older than the chosen age. Best for busy notification channels.' },
+      keepLatest: { label: 'Keep only the newest', icon: 'list-ordered', params: ['keep'], blurb: 'Keeps the most recent posts and deletes everything older.' },
+      deduplicate: { label: 'Remove duplicates', icon: 'copy', params: ['age'], blurb: 'Deletes repeated messages, keeping the freshest copy of each.' },
+      archive: { label: 'Archive quiet threads', icon: 'archive', params: ['age'], blurb: 'Archives threads that have been quiet for the chosen time. They stay visible but collapsed.' },
+      summarise: { label: 'AI digest', icon: 'sparkles', params: [], blurb: 'Writes an on-device digest of matching messages into the run report. Discord isn’t touched.' },
+      quietChannel: { label: 'Mute bot chatter (in-app)', icon: 'bell-off', params: [], blurb: 'Marks routine bot chatter as muted in SwiftBot’s own views. Nothing changes in Discord.' },
+      clearAll: { label: 'Clear the whole channel', icon: 'trash-2', params: [], blurb: 'Deletes every message in the channel. Pinned and reacted messages are kept when those protections are on.' }
+    };
+    const SWEEP_ACTIONS = {
+      delete: { icon: 'trash-2', state: 'warning' }, keep: { icon: 'circle-check', state: 'neutral' },
+      archive: { icon: 'archive', state: 'info' }, summarise: { icon: 'sparkles', state: 'info' },
+      pin: { icon: 'pin', state: 'info' }, quiet: { icon: 'bell-off', state: 'neutral' }, skip: { icon: 'shield-check', state: 'healthy' }
+    };
+    const SWEEP_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // SweepSchedule uses Swift's synthesized enum coding.
+    function sweepScheduleLabel(schedule) {
+      if (schedule?.interval) {
+        const m = Number(schedule.interval.minutes) || 0;
+        return m % 60 === 0 ? `Every ${m / 60 === 1 ? 'hour' : `${m / 60} hours`}` : `Every ${m} min`;
+      }
+      if (schedule?.daily) return `Daily at ${gameTrackerHourLabel(Number(schedule.daily.hour) || 0)}`;
+      return 'Manual only';
+    }
+
+    function sweepTaskSummary(policy) {
+      return (policy.strategies || []).map(s => SWEEP_KINDS[s.kind]?.label || s.kind).join(' + ') || 'No task';
     }
 
     function renderSweepView() {
       if (!sweepData) return;
       const metrics = document.getElementById('sweepMetrics');
-      const suggestions = document.getElementById('sweepSuggestions');
-      const suggestionsList = document.getElementById('sweepSuggestionsList');
+      const suggestionsNode = document.getElementById('sweepSuggestions');
       const rulesList = document.getElementById('sweepRulesList');
       const auditList = document.getElementById('sweepAuditList');
       const pauseButton = document.getElementById('sweepPauseAll');
       const newButton = document.getElementById('sweepNewRule');
-      if (!metrics || !suggestions || !suggestionsList || !rulesList || !auditList || !pauseButton || !newButton) return;
+      if (!metrics || !suggestionsNode || !rulesList || !auditList || !pauseButton || !newButton) return;
 
-      // Header Buttons
-      pauseButton.textContent = sweepData.globalPaused ? 'Resume Sweep' : 'Pause All';
+      pauseButton.innerHTML = sweepData.globalPaused
+        ? '<i class="lucide" data-lucide="play"></i> Resume'
+        : '<i class="lucide" data-lucide="pause"></i> Pause All';
       pauseButton.onclick = async () => {
         await postJSON('/api/sweep/pause', { paused: !sweepData.globalPaused });
         await loadSweep();
         renderSweepView();
       };
-      
-      newButton.onclick = () => openSweepPolicyCreator();
+      newButton.onclick = () => openSweepPolicyEditor(null);
 
       metrics.innerHTML = [
         ubStatusCell(escapeHTML(sweepData.state), sweepData.globalPaused ? 'Paused by an admin' : `${sweepData.enabledPolicyCount} of ${sweepData.totalPolicyCount} rules on`,
@@ -8984,77 +9605,104 @@
         ubStatusCell(`${sweepData.messagesTodayCount} tidied today`, `${sweepData.suppressedTodayCount || 0} protected`)
       ].join('');
 
-      // Suggestions
-      if (sweepData.suggestions && sweepData.suggestions.length > 0) {
-        suggestions.classList.remove('hidden');
-        suggestionsList.innerHTML = sweepData.suggestions.map(s => `
-          <div class="glass" style="padding: 16px; display: flex; align-items: flex-start; gap: 14px; border-radius: 14px;">
-            <div class="stat-icon" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.1); color: #6366f1; flex-shrink: 0;">
-              <i class="lucide" data-lucide="sparkles"></i>
-            </div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <span style="font-weight: 650; font-size: 14px;">${s.title}</span>
-                <span style="font-size: 10px; font-weight: 700; color: var(--muted); background: var(--nav-icon-bg); padding: 2px 6px; border-radius: 999px;">${Math.round(s.confidence * 100)}% Match</span>
-              </div>
-              <p style="font-size: 12px; color: var(--muted); margin: 0 0 12px; line-height: 1.4;">${s.rationale}</p>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                ${s.projection ? `<button class="mini-btn secondary-action" data-action="showSweepReportById" data-id="${s.id}" data-projection="true">Preview</button>` : ''}
-                <button class="mini-btn primary-action" data-action="applySweepSuggestion" data-id="${s.id}">Apply Rule</button>
-                <button class="mini-btn secondary-action" data-action="dismissSweepSuggestion" data-id="${s.id}">Dismiss</button>
-              </div>
-            </div>
+      // Suggestions: always shown, so scanning is discoverable.
+      const suggestions = sweepData.suggestions || [];
+      const scanning = !!sweepData.isScanningSuggestions;
+      const scanLabel = scanning
+        ? `Scanning ${sweepData.scanProgressDone || 0} of ${sweepData.scanProgressTotal || '…'}`
+        : (sweepData.lastSuggestionScanAt ? `Last scan ${relativeTime(sweepData.lastSuggestionScanAt)}` : 'Never scanned');
+      suggestionsNode.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head">
+            <h2>Suggestions · ${escapeHTML(scanLabel)}</h2>
+            <button id="sweepScan" class="secondary-action" type="button" ${scanning ? 'disabled' : ''}><i class="lucide" data-lucide="sparkles"></i> Scan channels</button>
           </div>
-        `).join('');
-      } else {
-        suggestions.classList.add('hidden');
-      }
+          ${suggestions.length ? `<div class="sweep-suggestions">${suggestions.map(s => `
+            <div class="sweep-suggestion glass" data-suggestion-id="${escapeHTML(s.id)}">
+              <span class="ub-item-icon" style="--brand:#8b5cf6;"><i class="lucide" data-lucide="${SWEEP_KINDS[s.strategyKind]?.icon || 'sparkles'}"></i></span>
+              <div class="sweep-suggestion-text">
+                <div class="ub-item-title">${escapeHTML(s.title)} <span class="badge">${Math.round((s.confidence || 0) * 100)}% match</span></div>
+                <div class="ub-item-sub sweep-wrap">${escapeHTML(s.rationale)}</div>
+                <div class="ub-item-sub">#${escapeHTML(s.channelName)} · ${escapeHTML(sweepScheduleLabel(s.proposedSchedule))}</div>
+              </div>
+              <div class="sweep-suggestion-actions">
+                ${s.projection ? '<button class="secondary-action" type="button" data-suggestion-preview>Try run</button>' : ''}
+                <button class="secondary-action" type="button" data-suggestion-dismiss>Dismiss</button>
+                <button class="primary-action" type="button" data-suggestion-apply>Apply</button>
+              </div>
+            </div>`).join('')}</div>`
+          : `<div class="placeholder">${scanning ? 'Looking for channels that could use a tidy…' : 'No suggestions right now. Scan to look for noisy or duplicate-heavy channels.'}</div>`}
+        </section>`;
+      suggestionsNode.querySelector('#sweepScan')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try { await postJSON('/api/sweep/suggestions/scan', {}); } catch (error) { setMessage(error.message || 'Scan failed.', 'error'); }
+        await loadSweep();
+        renderSweepView();
+      });
+      suggestionsNode.querySelectorAll('[data-suggestion-id]').forEach(card => {
+        const id = card.dataset.suggestionId;
+        card.querySelector('[data-suggestion-preview]')?.addEventListener('click', () => showSweepReportById(id, true));
+        card.querySelector('[data-suggestion-apply]')?.addEventListener('click', () => applySweepSuggestion(id));
+        card.querySelector('[data-suggestion-dismiss]')?.addEventListener('click', () => dismissSweepSuggestion(id));
+      });
 
-      // Active Rules
-      if (sweepData.policies && sweepData.policies.length > 0) {
-        rulesList.innerHTML = sweepData.policies.map(p => `
-          <div class="glass" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; border-radius: 12px; opacity: ${p.isEnabled ? '1' : '0.6'};">
-            <div class="stat-icon" style="color: #6366f1;"><i class="lucide" data-lucide="layers"></i></div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
-                <span style="font-weight: 600; font-size: 13px;">${p.name}</span>
-                ${!p.isEnabled ? '<span style="font-size: 9px; font-weight: 700; background: var(--nav-icon-bg); padding: 1px 5px; border-radius: 4px; color: var(--muted);">DISABLED</span>' : ''}
-              </div>
-              <div style="font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px;">
-                <span>#${p.channelName}</span>
-                <span>·</span>
-                <span>${p.schedule.displayName || 'Manual'}</span>
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <button class="icon-btn" style="width: 28px; height: 28px;" data-action="previewSweepPolicy" data-id="${p.id}" title="Preview (Dry Run)"><i class="lucide" data-lucide="eye" style="width: 14px; height: 14px;"></i></button>
-              <button class="icon-btn" style="width: 28px; height: 28px;" data-action="editSweepPolicy" data-id="${p.id}" title="Edit rule"><i class="lucide" data-lucide="pencil" style="width: 14px; height: 14px;"></i></button>
-              <button class="icon-btn" style="width: 28px; height: 28px;" data-action="runSweepPolicy" data-id="${p.id}" title="Run Now (Live)"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
-              <label class="switch" style="transform: scale(0.8); margin-left: 4px;"><input type="checkbox" ${p.isEnabled ? 'checked' : ''} data-action="toggleSweepPolicy" data-id="${p.id}"><span class="switch-track"><span class="switch-knob"></span></span></label>
-              <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" data-action="deleteSweepPolicy" data-id="${p.id}" title="Delete"><i class="lucide" data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
-            </div>
+      // Rules
+      const policies = sweepData.policies || [];
+      rulesList.innerHTML = policies.length ? `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Rules · ${policies.filter(p => p.isEnabled).length} of ${policies.length} on</h2></div>
+          <div class="ub-list glass">
+            ${policies.map(p => {
+              const kind = SWEEP_KINDS[p.strategies?.[0]?.kind] || {};
+              const lastRun = p.lastRunAt ? `ran ${relativeTime(p.lastRunAt)}` : 'never run';
+              return `
+                <div class="ub-item${p.isEnabled ? '' : ' is-off'}" data-policy-id="${escapeHTML(p.id)}">
+                  <button class="ub-item-main" type="button" data-policy-edit aria-label="Edit ${escapeHTML(p.name)}">
+                    <span class="ub-item-icon" style="--brand:${p.strategies?.some(s => s.kind === 'clearAll') ? '#ef4444' : '#0a84ff'};"><i class="lucide" data-lucide="${kind.icon || 'layers'}"></i></span>
+                    <span class="ub-item-text">
+                      <span class="ub-item-title">${escapeHTML(p.name)}${p.safety?.dryRunOnly ? ' <span class="badge">Dry run</span>' : ''}</span>
+                      <span class="ub-item-sub">#${escapeHTML(p.channelName)} · ${escapeHTML(sweepTaskSummary(p))} · ${escapeHTML(sweepScheduleLabel(p.schedule))} · ${escapeHTML(lastRun)}</span>
+                    </span>
+                    <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
+                  </button>
+                  <label class="switch" title="${p.isEnabled ? 'On' : 'Off'}">
+                    <input class="sweep-policy-enabled" type="checkbox" ${p.isEnabled ? 'checked' : ''} aria-label="Rule on">
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                  </label>
+                </div>`;
+            }).join('')}
           </div>
-        `).join('');
-      } else {
-        rulesList.innerHTML = '<div class="placeholder">No Sweep rules yet. Create one to get started.</div>';
-      }
+        </section>`
+        : `<div class="ub-empty glass">
+             <div class="ub-empty-title">No Sweep rules yet</div>
+             <div class="ub-empty-sub">Rules keep busy channels tidy on a schedule — trimming old bot posts, removing duplicates or keeping only the newest messages. Scan for suggestions or use <strong>New Rule</strong>.</div>
+           </div>`;
+      rulesList.querySelectorAll('[data-policy-id]').forEach(row => {
+        const id = row.dataset.policyId;
+        row.querySelector('[data-policy-edit]')?.addEventListener('click', () => openSweepPolicyEditor(id));
+        row.querySelector('.sweep-policy-enabled')?.addEventListener('change', e => toggleSweepPolicy(id, e.target.checked));
+      });
 
-      // Audit Log
-      if (sweepData.recentReports && sweepData.recentReports.length > 0) {
-        auditList.innerHTML = sweepData.recentReports.map(r => `
-          <div class="event-item" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" data-action="showSweepReportById" data-id="${r.id}">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-              <span style="font-weight: 600; font-size: 12px; color: ${r.error ? '#f87171' : 'inherit'}">${r.policyName}</span>
-              <span style="font-size: 11px; color: var(--muted);">${timeAgoHTML(r.startedAt)}</span>
-            </div>
-            <div style="font-size: 11px; color: var(--muted);">
-              ${r.error ? `Error: ${r.error}` : `${r.scanned} scanned · ${r.executed} tidied · ${r.suppressed} saved`}
-            </div>
-          </div>
-        `).join('');
-      } else {
-        auditList.innerHTML = '<div class="placeholder">Audit timeline will populate as rules run.</div>';
-      }
+      // Recent runs
+      const reports = (sweepData.recentReports || []).slice(0, 10);
+      auditList.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Recent runs</h2></div>
+          ${reports.length ? `<div class="ub-list glass">${reports.map(r => `
+            <div class="ub-item">
+              <button class="ub-item-main" type="button" data-report-id="${escapeHTML(r.id)}">
+                <span class="ub-item-icon" style="--brand:${r.error ? '#ef4444' : (r.dryRun ? '#8e8e93' : '#22c55e')};"><i class="lucide" data-lucide="${r.error ? 'triangle-alert' : (r.dryRun ? 'eye' : 'check')}"></i></span>
+                <span class="ub-item-text">
+                  <span class="ub-item-title">${escapeHTML(r.policyName)}${r.dryRun ? ' <span class="badge">Dry run</span>' : ''}</span>
+                  <span class="ub-item-sub">${r.error ? escapeHTML(r.error) : `${r.dryRun ? r.matched : r.executed} tidied · ${r.suppressed} protected · ${r.scanned} scanned`}</span>
+                </span>
+                <span class="ub-item-time-only">${timeAgoHTML(r.startedAt)}</span>
+                <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
+              </button>
+            </div>`).join('')}</div>`
+          : '<div class="placeholder">Runs appear here after a rule runs or you try one.</div>'}
+        </section>`;
+      auditList.querySelectorAll('[data-report-id]').forEach(btn => btn.addEventListener('click', () => showSweepReportById(btn.dataset.reportId)));
 
       refreshIcons();
     }
@@ -9065,131 +9713,235 @@
       renderSweepView();
     }
 
-    function openSweepPolicyCreator() {
-      const servers = sweepData?.servers || [];
-      const serverOptions = servers.map(server => `<option value="${escapeHTML(server.id)}">${escapeHTML(server.name)}</option>`).join('');
-      showModal('New Sweep Rule', `
-        <div class="automation-editor-section">
-          <div class="automation-editor-row"><label>Rule Name</label><input id="sweepCreateName" class="field-input" value="New Sweep Rule"></div>
-          <div class="automation-editor-row"><label>Server</label><select id="sweepCreateGuild" class="field-select"><option value="">— Select a server —</option>${serverOptions}</select></div>
-          <div class="automation-editor-row"><label>Channel</label><select id="sweepCreateChannel" class="field-select"><option value="">— Select a server first —</option></select></div>
-          <div class="automation-editor-row"><label>Task</label><select id="sweepCreateStrategy" class="field-select"><option value="compact">Trim old messages</option><option value="keepLatest">Keep newest messages</option><option value="deduplicate">Remove duplicates</option><option value="reduceNoise" selected>Clean noisy bot channel</option><option value="summarise">AI digest (in-app)</option><option value="clearAll">Clear channel</option></select></div>
-          <div class="automation-editor-row"><label>Age (hours)</label><input id="sweepCreateAge" class="field-input" type="number" min="0" max="8760" value="48"></div>
-          <div class="automation-editor-row"><label>Keep count</label><input id="sweepCreateKeep" class="field-input" type="number" min="0" max="1000" value="1"></div>
-          <div class="automation-editor-row"><label>Bots only</label><input id="sweepCreateBots" type="checkbox" checked></div>
-          <div class="automation-editor-row"><label>Repeat every (minutes)</label><input id="sweepCreateInterval" class="field-input" type="number" min="0" max="43200" value="60"><span class="command-desc">Set 0 for manual only.</span></div>
-          <div class="automation-editor-row"><label>Max messages/run</label><input id="sweepCreateMax" class="field-input" type="number" min="1" max="1000" value="200"></div>
-          <div class="automation-editor-row"><label>Minimum message age (minutes)</label><input id="sweepCreateMinAge" class="field-input" type="number" min="0" max="43200" value="5"></div>
-          <div class="automation-editor-row"><label>Protect pinned messages</label><input id="sweepCreatePinned" type="checkbox" checked></div>
-          <div class="automation-editor-row"><label>Protect reacted messages</label><input id="sweepCreateReacted" type="checkbox" checked></div>
-        </div>`, `
-        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
-        <button id="sweepCreateSave" class="primary-action" type="button">Create Rule</button>
-      `);
-      const guild = document.getElementById('sweepCreateGuild');
-      const channel = document.getElementById('sweepCreateChannel');
-      const populateChannels = () => {
-        const channels = sweepData?.textChannelsByServer?.[guild?.value || ''] || [];
-        channel.innerHTML = `<option value="">— Select a channel —</option>${channels.map(item => `<option value="${escapeHTML(item.id)}">#${escapeHTML(item.name)}</option>`).join('')}`;
+    function newSweepPolicyDraft() {
+      const guildID = (sweepData?.servers || [])[0]?.id || '';
+      const now = isoDateNoMillis();
+      return {
+        id: autoNewID(), name: '', guildID, guildName: '', channelID: '', channelName: '',
+        strategies: [{ id: autoNewID(), kind: 'reduceNoise', ageHours: 48, keepCount: 1, fromBotsOnly: true }],
+        schedule: { interval: { minutes: 60 } },
+        safety: { maxMessagesPerRun: 200, dryRunOnly: false, minMessageAgeMinutes: 5, protectPinned: true, protectReacted: true },
+        notice: { isEnabled: false, template: ':swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}.', showVoiceAverages: false, pinnedMessageID: null },
+        weeklyMVP: { isEnabled: false, weekday: 2, hour: 20, template: "🏆 This week's MVP is {winner} with {duration} this week!", lastPostedWeekKey: null, pinnedMessageID: null },
+        isEnabled: true, createdAt: now, updatedAt: now, lastRunAt: null, nextRunAt: null
       };
-      guild?.addEventListener('change', populateChannels);
-      document.getElementById('sweepCreateSave')?.addEventListener('click', async () => {
+    }
+
+    // `resumeDraft` reopens the editor with unsaved edits (after a Try run).
+    function openSweepPolicyEditor(policyID, resumeDraft = null) {
+      const existing = policyID ? sweepData?.policies?.find(item => item.id === policyID) : null;
+      if (policyID && !existing) {
+        setMessage('Sweep rule could not be found.', 'error');
+        return;
+      }
+      const isNew = !existing;
+      const draft = resumeDraft || (existing ? structuredClone(existing) : newSweepPolicyDraft());
+      draft.notice = draft.notice || newSweepPolicyDraft().notice;
+      draft.weeklyMVP = draft.weeklyMVP || newSweepPolicyDraft().weeklyMVP;
+      const footer = `
+        <div class="modal-footer-start">
+          <button id="sweepEditorTry" class="secondary-action" type="button" title="Preview what this rule would do, without changing anything"><i class="lucide" data-lucide="eye"></i> Try run</button>
+          ${isNew ? '' : `
+            <button id="sweepEditorRun" class="secondary-action" type="button" title="Run this rule now"><i class="lucide" data-lucide="play"></i> Run now</button>
+            <button id="sweepEditorDelete" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>`}
+        </div>
+        <span id="sweepEditorHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="sweepEditorSave" class="primary-action" type="button">${isNew ? 'Create Rule' : 'Save'}</button>`;
+      if (isNew) {
+        showModal('New Sweep Rule', '<div id="sweepEditorBody"></div>', footer, { wide: true });
+      } else {
+        showModal('Edit Sweep Rule', '<div id="sweepEditorBody"></div>', footer, { wide: true });
+      }
+      renderSweepEditor(draft);
+
+      const finalize = () => {
+        readSweepEditorInto(draft);
+        const server = (sweepData.servers || []).find(s => s.id === draft.guildID);
+        const channel = (sweepData.textChannelsByServer?.[draft.guildID] || []).find(c => c.id === draft.channelID);
+        return {
+          ...draft,
+          name: draft.name.trim() || `Tidy #${channel?.name || 'channel'}`,
+          guildName: server?.name || draft.guildName,
+          channelName: channel?.name || draft.channelName,
+          updatedAt: isoDateNoMillis()
+        };
+      };
+      document.getElementById('sweepEditorTry')?.addEventListener('click', async (e) => {
+        readSweepEditorInto(draft);
+        if (sweepEditorIssue(draft)) return;
+        e.currentTarget.disabled = true;
         try {
-          await postJSON('/api/sweep/policy/create', {
-            name: document.getElementById('sweepCreateName')?.value || '',
-            guildID: guild?.value || '',
-            channelID: channel?.value || '',
-            strategyKind: document.getElementById('sweepCreateStrategy')?.value || 'reduceNoise',
-            ageHours: Number(document.getElementById('sweepCreateAge')?.value || 48),
-            keepCount: Number(document.getElementById('sweepCreateKeep')?.value || 1),
-            fromBotsOnly: !!document.getElementById('sweepCreateBots')?.checked,
-            scheduleMinutes: Number(document.getElementById('sweepCreateInterval')?.value || 0),
-            maxMessagesPerRun: Number(document.getElementById('sweepCreateMax')?.value || 200),
-            minMessageAgeMinutes: Number(document.getElementById('sweepCreateMinAge')?.value || 5),
-            protectPinned: !!document.getElementById('sweepCreatePinned')?.checked,
-            protectReacted: !!document.getElementById('sweepCreateReacted')?.checked
-          });
+          const report = await postJSON('/api/sweep/draft/preview', finalize());
+          showSweepReport(report, { onBack: () => openSweepPolicyEditor(isNew ? null : draft.id, draft) });
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          setMessage(error.message || 'Try run failed. The bot may be offline.', 'error');
+        }
+      });
+      document.getElementById('sweepEditorRun')?.addEventListener('click', async () => {
+        if (!confirm(`Run "${existing.name}" now? This acts on Discord immediately.`)) return;
+        await runSweepPolicy(existing.id);
+        hideModal();
+      });
+      document.getElementById('sweepEditorDelete')?.addEventListener('click', async () => {
+        if (!confirm(`Delete "${existing.name}"?`)) return;
+        await postJSON('/api/sweep/policy/delete', { policyID: existing.id });
+        await loadSweep();
+        renderSweepView();
+        hideModal();
+      });
+      document.getElementById('sweepEditorSave')?.addEventListener('click', async (e) => {
+        readSweepEditorInto(draft);
+        if (sweepEditorIssue(draft)) return;
+        e.currentTarget.disabled = true;
+        try {
+          await postJSON('/api/sweep/policy/update', finalize());
           await loadSweep();
           renderSweepView();
           hideModal();
         } catch (error) {
-          setMessage(error.message || 'Could not create Sweep rule.', 'error');
+          e.currentTarget.disabled = false;
+          alert(error.message || 'Sweep rule could not be saved.');
         }
       });
     }
 
-    function openSweepPolicyEditor(policyID) {
-      const policy = sweepData?.policies?.find(item => item.id === policyID);
-      if (!policy) {
-        setMessage('Sweep rule could not be found.', 'error');
-        return;
-      }
-      const firstStrategy = policy.strategies?.[0] || {};
-      const safety = policy.safety || {};
-      const servers = sweepData?.servers || [];
-      const serverOptions = servers.map(server => `<option value="${escapeHTML(server.id)}" ${server.id === policy.guildID ? 'selected' : ''}>${escapeHTML(server.name)}</option>`).join('');
-      showModal('Edit Sweep Rule', `
-        <div class="automation-editor-section">
-          <p class="command-desc">This updates the rule’s core task and safety limits. Its existing schedule is retained.</p>
-          <div class="automation-editor-row"><label>Rule Name</label><input id="sweepEditName" class="field-input" value="${escapeHTML(policy.name || '')}"></div>
-          <div class="automation-editor-row"><label>Server</label><select id="sweepEditGuild" class="field-select">${serverOptions}</select></div>
-          <div class="automation-editor-row"><label>Channel</label><select id="sweepEditChannel" class="field-select"></select></div>
-          <div class="automation-editor-row"><label>Task</label><select id="sweepEditStrategy" class="field-select"><option value="compact">Trim old messages</option><option value="keepLatest">Keep newest messages</option><option value="deduplicate">Remove duplicates</option><option value="reduceNoise">Clean noisy bot channel</option><option value="summarise">AI digest (in-app)</option><option value="clearAll">Clear channel</option></select></div>
-          <div class="automation-editor-row"><label>Age (hours)</label><input id="sweepEditAge" class="field-input" type="number" min="0" max="8760" value="${Number(firstStrategy.ageHours || 0)}"></div>
-          <div class="automation-editor-row"><label>Keep count</label><input id="sweepEditKeep" class="field-input" type="number" min="0" max="1000" value="${Number(firstStrategy.keepCount || 0)}"></div>
-          <div class="automation-editor-row"><label>Bots only</label><input id="sweepEditBots" type="checkbox" ${firstStrategy.fromBotsOnly ? 'checked' : ''}></div>
-          <div class="automation-editor-row"><label>Max messages/run</label><input id="sweepEditMax" class="field-input" type="number" min="1" max="1000" value="${Number(safety.maxMessagesPerRun || 200)}"></div>
-          <div class="automation-editor-row"><label>Minimum message age (minutes)</label><input id="sweepEditMinAge" class="field-input" type="number" min="0" max="43200" value="${Number(safety.minMessageAgeMinutes || 0)}"></div>
-          <div class="automation-editor-row"><label>Protect pinned messages</label><input id="sweepEditPinned" type="checkbox" ${safety.protectPinned ? 'checked' : ''}></div>
-          <div class="automation-editor-row"><label>Protect reacted messages</label><input id="sweepEditReacted" type="checkbox" ${safety.protectReacted ? 'checked' : ''}></div>
-          <div class="automation-editor-row"><label>Rule enabled</label><input id="sweepEditEnabled" type="checkbox" ${policy.isEnabled ? 'checked' : ''}></div>
-        </div>`, `
-        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
-        <button id="sweepEditSave" class="primary-action" type="button">Save Rule</button>
-      `);
-      const guild = document.getElementById('sweepEditGuild');
-      const channel = document.getElementById('sweepEditChannel');
-      const populateChannels = () => {
-        const channels = sweepData?.textChannelsByServer?.[guild?.value || ''] || [];
-        channel.innerHTML = channels.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === policy.channelID ? 'selected' : ''}>#${escapeHTML(item.name)}</option>`).join('');
-      };
-      populateChannels();
-      document.getElementById('sweepEditStrategy').value = firstStrategy.kind || 'reduceNoise';
-      guild?.addEventListener('change', populateChannels);
-      document.getElementById('sweepEditSave')?.addEventListener('click', async () => {
-        try {
-          const selectedChannel = (sweepData?.textChannelsByServer?.[guild?.value || ''] || []).find(item => item.id === channel?.value);
-          const updated = {
-            ...policy,
-            name: document.getElementById('sweepEditName')?.value || policy.name,
-            guildID: guild?.value || policy.guildID,
-            guildName: (servers.find(server => server.id === guild?.value)?.name) || policy.guildName,
-            channelID: channel?.value || policy.channelID,
-            channelName: selectedChannel?.name || policy.channelName,
-            isEnabled: !!document.getElementById('sweepEditEnabled')?.checked,
-            strategies: [{
-              ...firstStrategy,
-              kind: document.getElementById('sweepEditStrategy')?.value || firstStrategy.kind,
-              ageHours: Number(document.getElementById('sweepEditAge')?.value || 0),
-              keepCount: Number(document.getElementById('sweepEditKeep')?.value || 0),
-              fromBotsOnly: !!document.getElementById('sweepEditBots')?.checked
-            }],
-            safety: {
-              ...safety,
-              maxMessagesPerRun: Number(document.getElementById('sweepEditMax')?.value || 200),
-              minMessageAgeMinutes: Number(document.getElementById('sweepEditMinAge')?.value || 0),
-              protectPinned: !!document.getElementById('sweepEditPinned')?.checked,
-              protectReacted: !!document.getElementById('sweepEditReacted')?.checked
-            }
-          };
-          await postJSON('/api/sweep/policy/update', updated);
-          await loadSweep();
-          renderSweepView();
-          hideModal();
-        } catch (error) {
-          setMessage(error.message || 'Could not save Sweep rule.', 'error');
-        }
+    function sweepEditorIssue(draft) {
+      if (!draft.guildID) return 'Choose a server.';
+      if (!draft.channelID) return 'Choose a channel to tidy.';
+      if (!(draft.strategies || []).length) return 'Add at least one task.';
+      if (draft.schedule?.interval && !(Number(draft.schedule.interval.minutes) >= 5)) return 'Run at most every 5 minutes.';
+      if (draft.weeklyMVP?.isEnabled && !String(draft.weeklyMVP.template || '').includes('{winner}')) return 'The MVP message needs the {winner} placeholder.';
+      return '';
+    }
+
+    function updateSweepEditorValidity(draft) {
+      const probe = structuredClone(draft);
+      readSweepEditorInto(probe);
+      const issue = sweepEditorIssue(probe);
+      const save = document.getElementById('sweepEditorSave');
+      const tryRun = document.getElementById('sweepEditorTry');
+      if (save) save.disabled = !!issue;
+      if (tryRun) tryRun.disabled = !!issue;
+      const hint = document.getElementById('sweepEditorHint');
+      if (hint) hint.textContent = issue;
+    }
+
+    function renderSweepEditor(draft) {
+      const root = document.getElementById('sweepEditorBody');
+      if (!root) return;
+      const rerender = () => { readSweepEditorInto(draft); renderSweepEditor(draft); };
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label><div style="flex:1;min-width:0;">${html}</div></div>`;
+      const section = (icon, title, body) => `<div class="automation-editor-section"><h3><i class="lucide" data-lucide="${icon}"></i> ${title}</h3>${body}</div>`;
+      const toggle = (id, on, title, desc) => `
+        <label class="ac-toggle"><input id="${id}" type="checkbox" ${on ? 'checked' : ''}>
+          <span class="ac-toggle-text"><span class="ac-toggle-title">${title}</span>${desc ? `<span class="ac-toggle-desc">${desc}</span>` : ''}</span></label>`;
+      const number = (id, value, min, max, unit) => `<div class="patchy-interval"><input id="${id}" class="field-input" type="number" min="${min}" max="${max}" value="${escapeHTML(String(value))}"><span>${unit}</span></div>`;
+
+      const servers = sweepData.servers || [];
+      const channels = sweepData.textChannelsByServer?.[draft.guildID] || [];
+      const scheduleKind = draft.schedule?.interval ? 'interval' : (draft.schedule?.daily ? 'daily' : 'manual');
+
+      const tasks = (draft.strategies || []).map((strategy, i) => {
+        const kind = SWEEP_KINDS[strategy.kind] || SWEEP_KINDS.compact;
+        return `
+          <div class="sweep-task" data-task-index="${i}">
+            <div class="sweep-task-head">
+              <span class="ub-item-icon" style="--brand:${strategy.kind === 'clearAll' ? '#ef4444' : '#0a84ff'};"><i class="lucide" data-lucide="${kind.icon}"></i></span>
+              <select class="field-select se-task-kind" data-index="${i}">${Object.entries(SWEEP_KINDS).map(([value, k]) => `<option value="${value}" ${value === strategy.kind ? 'selected' : ''}>${k.label}</option>`).join('')}</select>
+              ${(draft.strategies || []).length > 1 ? `<button class="icon-btn we-remove" type="button" data-remove-task="${i}" aria-label="Remove task"><i class="lucide" data-lucide="x"></i></button>` : ''}
+            </div>
+            <div class="ub-help">${kind.blurb}</div>
+            <div class="sweep-task-params">
+              ${kind.params.includes('age') ? `<label class="sweep-param">Older than ${number(`seAge${i}`, strategy.ageHours, 1, 720, 'hours')}</label>` : ''}
+              ${kind.params.includes('keep') ? `<label class="sweep-param">Keep ${number(`seKeep${i}`, strategy.keepCount, 1, 20, 'newest')}</label>` : ''}
+              ${kind.params.includes('bots') ? `<label class="patchy-role-chip"><input type="checkbox" id="seBots${i}" ${strategy.fromBotsOnly ? 'checked' : ''}><span>Bots only</span></label>` : ''}
+            </div>
+            ${strategy.kind === 'clearAll' ? '<div class="ac-note patchy-dup-note"><i class="lucide" data-lucide="triangle-alert"></i> Deletes every message on each run. Try a run first.</div>' : ''}
+          </div>`;
+      }).join('');
+
+      const hourOptions = (selected) => Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === selected ? 'selected' : ''}>${gameTrackerHourLabel(h)}</option>`).join('');
+      const notice = draft.notice;
+      const mvp = draft.weeklyMVP;
+
+      root.innerHTML = `
+        ${section('hash', 'Channel',
+          row('Server', `<select id="seGuild" class="field-select">${servers.map(s => `<option value="${escapeHTML(s.id)}" ${s.id === draft.guildID ? 'selected' : ''}>${escapeHTML(s.name)}</option>`).join('')}</select>`)
+          + row('Channel', `<select id="seChannel" class="field-select"><option value="">Select a channel</option>${channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>`)
+          + row('Rule name', `<input id="seName" class="field-input" value="${escapeHTML(draft.name)}" placeholder="Defaults to “Tidy #channel”">`))}
+        ${section('list-checks', 'Tasks', `${tasks}<div class="wiki-actions"><button id="seAddTask" class="secondary-action" type="button"><i class="lucide" data-lucide="plus"></i> Add task</button></div>`)}
+        ${section('calendar-clock', 'Schedule',
+          `<div class="sweep-segment" role="radiogroup">${['manual', 'interval', 'daily'].map(k => `
+            <label class="sweep-segment-option"><input type="radio" name="seScheduleKind" value="${k}" ${k === scheduleKind ? 'checked' : ''}><span>${({ manual: 'Manual', interval: 'Repeat', daily: 'Daily' })[k]}</span></label>`).join('')}</div>`
+          + (scheduleKind === 'interval' ? row('Every', number('seInterval', draft.schedule.interval.minutes, 5, 43200, 'minutes')) : '')
+          + (scheduleKind === 'daily' ? row('At', `<select id="seDailyHour" class="field-select prefs-control">${hourOptions(Number(draft.schedule.daily.hour) || 0)}</select>`) : '')
+          + (scheduleKind === 'manual' ? '<div class="ub-help">Only runs when you press Run now.</div>' : ''))}
+        ${section('shield-check', 'Safety',
+          toggle('sePinned', draft.safety.protectPinned, 'Protect pinned messages', '')
+          + toggle('seReacted', draft.safety.protectReacted, 'Protect messages with reactions', '')
+          + toggle('seDryRun', draft.safety.dryRunOnly, 'Dry run only', 'Report what would happen without touching Discord.')
+          + row('Max per run', number('seMax', draft.safety.maxMessagesPerRun, 1, 1000, 'messages'))
+          + row('Skip newer than', number('seMinAge', draft.safety.minMessageAgeMinutes, 0, 43200, 'minutes')))}
+        <details class="automation-editor-section wiki-advanced" ${notice.isEnabled || mvp.isEnabled || draft.__extrasOpen ? 'open' : ''}>
+          <summary><i class="lucide" data-lucide="pin"></i> Channel notice &amp; weekly MVP</summary>
+          ${toggle('seNotice', notice.isEnabled, 'Pin a managed-channel notice', 'Posted and kept up to date after each live run. The notice is never deleted by this rule.')}
+          ${notice.isEnabled ? row('Notice', `<textarea id="seNoticeText" class="field-input" rows="2">${escapeHTML(notice.template)}</textarea><div class="ub-help">Placeholders: {time} (e.g. “at 4 AM”) · {frequency} (e.g. “daily”)</div>`)
+            + toggle('seNoticeVoice', notice.showVoiceAverages, 'Show 7-day voice leaderboard', '') : ''}
+          ${toggle('seMVP', mvp.isEnabled, 'Announce the 7-day voice MVP', 'Keeps one pinned MVP card up to date each week and mentions the winner.')}
+          ${mvp.isEnabled ? row('When', `<div class="sweep-inline"><select id="seMVPDay" class="field-select">${SWEEP_WEEKDAYS.map((d, i) => `<option value="${i + 1}" ${i + 1 === Number(mvp.weekday) ? 'selected' : ''}>${d}</option>`).join('')}</select><select id="seMVPHour" class="field-select">${hourOptions(Number(mvp.hour) || 0)}</select></div>`)
+            + row('Message', `<textarea id="seMVPText" class="field-input" rows="2">${escapeHTML(mvp.template)}</textarea><div class="ub-help">Placeholders: {winner} · {duration}</div>`) : ''}
+        </details>
+        <label class="ac-toggle" style="margin-top:12px;"><input id="seEnabled" type="checkbox" ${draft.isEnabled ? 'checked' : ''}><span class="ac-toggle-text"><span class="ac-toggle-title">Rule is on</span></span></label>
+      `;
+
+      const mutate = (change) => () => { readSweepEditorInto(draft); change(); renderSweepEditor(draft); };
+      document.getElementById('seGuild')?.addEventListener('change', mutate(() => { draft.channelID = ''; }));
+      document.getElementById('seAddTask')?.addEventListener('click', mutate(() => {
+        draft.strategies.push({ id: autoNewID(), kind: 'compact', ageHours: 24, keepCount: 1, fromBotsOnly: false });
+      }));
+      root.querySelectorAll('[data-remove-task]').forEach(btn => btn.addEventListener('click', mutate(() => draft.strategies.splice(Number(btn.dataset.removeTask), 1))));
+      root.querySelectorAll('.se-task-kind, input[name="seScheduleKind"], #seNotice, #seMVP').forEach(el => el.addEventListener('change', rerender));
+      root.querySelector('.wiki-advanced')?.addEventListener('toggle', e => { draft.__extrasOpen = e.target.open; });
+      root.addEventListener('input', () => updateSweepEditorValidity(draft));
+      root.addEventListener('change', () => updateSweepEditorValidity(draft));
+      updateSweepEditorValidity(draft);
+      refreshIcons();
+    }
+
+    function readSweepEditorInto(draft) {
+      const el = (id) => document.getElementById(id);
+      const num = (id, fallback) => { const v = Number(el(id)?.value); return Number.isFinite(v) && el(id)?.value !== '' ? v : fallback; };
+      if (el('seGuild')) draft.guildID = el('seGuild').value;
+      if (el('seChannel')) draft.channelID = el('seChannel').value;
+      if (el('seName')) draft.name = el('seName').value;
+      document.querySelectorAll('.se-task-kind').forEach(select => {
+        const i = Number(select.dataset.index);
+        const strategy = draft.strategies[i];
+        if (!strategy) return;
+        strategy.kind = select.value;
+        strategy.ageHours = Math.min(720, Math.max(1, num(`seAge${i}`, strategy.ageHours)));
+        strategy.keepCount = Math.min(20, Math.max(1, num(`seKeep${i}`, strategy.keepCount)));
+        if (el(`seBots${i}`)) strategy.fromBotsOnly = el(`seBots${i}`).checked;
       });
+      const kind = document.querySelector('input[name="seScheduleKind"]:checked')?.value;
+      if (kind === 'manual') draft.schedule = { manual: {} };
+      if (kind === 'interval') draft.schedule = { interval: { minutes: num('seInterval', draft.schedule?.interval?.minutes || 60) } };
+      if (kind === 'daily') draft.schedule = { daily: { hour: num('seDailyHour', draft.schedule?.daily?.hour ?? 4) } };
+      if (el('sePinned')) draft.safety.protectPinned = el('sePinned').checked;
+      if (el('seReacted')) draft.safety.protectReacted = el('seReacted').checked;
+      if (el('seDryRun')) draft.safety.dryRunOnly = el('seDryRun').checked;
+      draft.safety.maxMessagesPerRun = Math.min(1000, Math.max(1, num('seMax', draft.safety.maxMessagesPerRun)));
+      draft.safety.minMessageAgeMinutes = Math.min(43200, Math.max(0, num('seMinAge', draft.safety.minMessageAgeMinutes)));
+      if (el('seNotice')) draft.notice.isEnabled = el('seNotice').checked;
+      if (el('seNoticeText')) draft.notice.template = el('seNoticeText').value;
+      if (el('seNoticeVoice')) draft.notice.showVoiceAverages = el('seNoticeVoice').checked;
+      if (el('seMVP')) draft.weeklyMVP.isEnabled = el('seMVP').checked;
+      if (el('seMVPDay')) draft.weeklyMVP.weekday = Number(el('seMVPDay').value);
+      if (el('seMVPHour')) draft.weeklyMVP.hour = Number(el('seMVPHour').value);
+      if (el('seMVPText')) draft.weeklyMVP.template = el('seMVPText').value;
+      if (el('seEnabled')) draft.isEnabled = el('seEnabled').checked;
     }
 
     async function runSweepPolicy(id) {
@@ -9200,111 +9952,63 @@
     }
 
     async function previewSweepPolicy(id) {
-      const response = await postJSON('/api/sweep/policy/preview', { policyID: id });
-      if (!response.ok) {
-        setMessage('Preview failed. Bot might be offline.', 'error');
-        return;
+      try {
+        // The endpoint returns the SweepRunReport itself.
+        showSweepReport(await postJSON('/api/sweep/policy/preview', { policyID: id }));
+      } catch (error) {
+        setMessage(error.message || 'Try run failed. The bot may be offline.', 'error');
       }
-      const data = await response.json();
-      showSweepReport(data.report);
     }
 
     function showSweepReportById(id, isSuggestion = false) {
       if (isSuggestion) {
-        const suggestion = sweepData.suggestions.find(s => s.id === id);
-        if (suggestion && suggestion.projection) {
-          showSweepReport(suggestion.projection);
-        }
+        const suggestion = (sweepData.suggestions || []).find(s => s.id === id);
+        if (suggestion?.projection) showSweepReport(suggestion.projection);
       } else {
-        const report = sweepData.recentReports.find(r => r.id === id);
+        const report = (sweepData.recentReports || []).find(r => r.id === id);
         if (report) showSweepReport(report);
       }
     }
 
-    function showSweepReport(report) {
+    function showSweepReport(report, options = {}) {
       if (!report) return;
-      
-      const title = `Preview: ${report.policyName}`;
-      const stats = `
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
-          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
-            <div style="font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 4px;">Scanned</div>
-            <div style="font-size: 18px; font-weight: 700;">${report.scanned}</div>
-          </div>
-          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
-            <div style="font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 4px;">Matched</div>
-            <div style="font-size: 18px; font-weight: 700; color: #6366f1;">${report.matched}</div>
-          </div>
-          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
-            <div style="font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 4px;">Tidied</div>
-            <div style="font-size: 18px; font-weight: 700; color: #4ade80;">${report.dryRun ? report.matched : report.executed}</div>
-          </div>
-          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
-            <div style="font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 4px;">Protected</div>
-            <div style="font-size: 18px; font-weight: 700; color: #f97316;">${report.suppressed}</div>
-          </div>
-        </div>
-      `;
-
-      let actionsHtml = '';
-      if (report.error) {
-        actionsHtml = `<div style="padding: 20px; text-align: center; color: #f87171; font-weight: 600;">${report.error}</div>`;
-      } else if (!report.actions || report.actions.length === 0) {
-        actionsHtml = '<div class="placeholder">No actions would be taken for this channel.</div>';
-      } else {
-        actionsHtml = `
-          <div style="display: grid; gap: 8px;">
-            ${report.actions.slice(0, 50).map(a => renderSweepActionRow(a)).join('')}
-            ${report.actions.length > 50 ? `<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 10px;">... and ${report.actions.length - 50} more actions</div>` : ''}
-          </div>
-        `;
-      }
-
+      const tidied = report.dryRun ? report.matched : report.executed;
+      const stat = (label, value) => `<div class="ub-editor-stat"><span>${label}</span><strong>${escapeHTML(String(value))}</strong></div>`;
+      const actions = report.actions || [];
       const body = `
-        <div style="max-height: 70vh; overflow-y: auto; padding: 4px;">
-          ${stats}
-          <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Planned Actions</div>
-          ${actionsHtml}
-          ${report.summary ? `
-            <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="sparkles"></i> AI Summary</div>
-            <div class="glass" style="padding: 16px; font-size: 13px; line-height: 1.5; border-radius: 12px; white-space: pre-wrap;">${report.summary}</div>
-          ` : ''}
+        <div class="ub-editor-stats sweep-report-stats">
+          ${stat('Scanned', report.scanned)}${stat('Matched', report.matched)}${stat(report.dryRun ? 'Would tidy' : 'Tidied', tidied)}${stat('Protected', report.suppressed)}
         </div>
+        ${report.error ? `<div class="ac-note patchy-dup-note" style="margin-top:14px;"><i class="lucide" data-lucide="triangle-alert"></i> ${escapeHTML(report.error)}</div>` : ''}
+        ${report.summary ? `<div class="automation-editor-section" style="margin-top:14px;"><h3><i class="lucide" data-lucide="sparkles"></i> Digest</h3><div class="sweep-wrap" style="font-size:13px;line-height:1.5;white-space:pre-wrap;">${escapeHTML(report.summary)}</div></div>` : ''}
+        <div class="ub-group-head" style="margin-top:16px;"><h2>${actions.length ? `Actions · ${actions.length}` : 'Actions'}</h2></div>
+        ${actions.length ? `<div class="ub-list glass">${actions.slice(0, 50).map(a => {
+          const meta = SWEEP_ACTIONS[a.kind] || { icon: 'circle', state: 'neutral' };
+          return `
+            <div class="ub-item">
+              <span class="ops-chip" data-state="${meta.state}" style="--ops-color:${({ warning: '#ff9f0a', healthy: 'var(--success)', info: '#0a84ff' })[meta.state] || 'var(--muted)'};"><i class="lucide" data-lucide="${meta.icon}"></i></span>
+              <span class="ub-item-text" style="padding:10px 0;">
+                <span class="ub-item-title" style="font-size:13.5px;">${escapeHTML(a.reason)}</span>
+                <span class="ub-item-sub">${a.authorName ? `${escapeHTML(a.authorName)}: ` : ''}${escapeHTML(a.preview)}</span>
+              </span>
+              ${a.mode === 'virtual' ? '<span class="badge">No change</span>' : ''}
+            </div>`;
+        }).join('')}</div>
+        ${actions.length > 50 ? `<div class="ub-help">…and ${actions.length - 50} more</div>` : ''}`
+        : `<div class="placeholder">${report.error ? 'The run stopped before taking any action.' : 'Nothing would be touched in this run.'}</div>`}
       `;
-
-      const footer = `<button class="primary-action" data-action="hideModal" style="width: 100px;">Close</button>`;
-      
-      showModal(title, body, footer);
+      const title = `${report.dryRun ? 'Try run' : 'Run'} — ${report.policyName}`;
+      showModal(title, body, `
+        <span class="modal-hint" style="color:var(--muted);">${report.startedAt ? escapeHTML(formatTime(report.startedAt)) : ''}</span>
+        ${options.onBack ? '<button id="sweepReportBack" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> Back to rule</button>' : ''}
+        <button class="primary-action" type="button" data-action="hideModal">Done</button>
+      `, { wide: true });
+      document.getElementById('sweepReportBack')?.addEventListener('click', options.onBack);
       refreshIcons();
     }
 
-    function renderSweepActionRow(action) {
-      let icon = 'shield-half';
-      let color = 'var(--muted)';
-      switch (action.kind) {
-        case 'delete': icon = 'trash-2'; color = '#f97316'; break;
-        case 'keep': icon = 'check-circle'; color = 'var(--muted)'; break;
-        case 'archive': icon = 'archive'; color = '#6366f1'; break;
-        case 'summarise': icon = 'text-bubble'; color = '#a855f7'; break;
-        case 'pin': icon = 'pin'; color = '#ec4899'; break;
-        case 'quiet': icon = 'bell-slash'; color = 'var(--muted)'; break;
-        case 'skip': icon = 'shield-check'; color = '#22c55e'; break;
-      }
-
-      return `
-        <div class="glass" style="padding: 10px 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; font-size: 12px;">
-          <div class="stat-icon" style="color: ${color}; width: 24px; height: 24px;"><i class="lucide" data-lucide="${icon}" style="width: 14px; height: 14px;"></i></div>
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 600; margin-bottom: 2px;">${action.reason}</div>
-            <div style="color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px;">${action.preview}</div>
-          </div>
-          ${action.mode === 'virtual' ? '<span style="font-size: 9px; font-weight: 700; color: #3b82f6; background: rgba(59, 130, 246, 0.1); padding: 1px 5px; border-radius: 4px;">VIRTUAL</span>' : ''}
-        </div>
-      `;
-    }
-
     async function deleteSweepPolicy(id) {
-      if (!confirm('Are you sure you want to delete this Sweep rule?')) return;
+      if (!confirm('Delete this Sweep rule?')) return;
       await postJSON('/api/sweep/policy/delete', { policyID: id });
       await loadSweep();
       renderSweepView();
@@ -9312,7 +10016,7 @@
 
     async function applySweepSuggestion(id) {
       await postJSON('/api/sweep/suggestions/apply', { suggestionID: id });
-      setMessage('Rule applied.', 'success');
+      setMessage('Rule added from suggestion.', 'success');
       await loadSweep();
       renderSweepView();
     }
@@ -9954,7 +10658,7 @@
     function toneToState(tone) {
       const t = String(tone || '').toLowerCase();
       if (['success', 'healthy', 'ok', 'green'].includes(t)) return 'healthy';
-      if (['warning', 'orange', 'yellow'].includes(t)) return 'warning';
+      if (['warning', 'orange', 'yellow', 'amber'].includes(t)) return 'warning';
       if (['error', 'critical', 'danger', 'red'].includes(t)) return 'critical';
       return 'neutral';
     }
@@ -10902,7 +11606,9 @@
       const mesh = cfg.swiftMesh;
       const meshMode = mesh.mode ? mesh.mode.charAt(0).toUpperCase() + mesh.mode.slice(1) : '';
       const meshSummary = [meshMode, mesh.nodeName].filter(Boolean).join(' · ');
-      const timezones = Object.entries(cfg.userTimezones?.mappings || {}).sort(([a], [b]) => a.localeCompare(b));
+      const tzMembers = cfg.userTimezones?.members || [];
+      const timezones = Object.entries(cfg.userTimezones?.mappings || {})
+        .sort(([a], [b]) => discordMemberLabel(tzMembers, a).localeCompare(discordMemberLabel(tzMembers, b)));
       const webURL = dashboardStatus.webUIBaseURL || cfg.general.webUIBaseURL || '';
 
       panels.innerHTML = `
@@ -10934,7 +11640,7 @@
           ${group('User timezones', timezones.length
             ? timezones.map(([id, zone]) => `
               <div class="ub-row">
-                <div class="ub-row-text"><div class="ub-row-title ub-mono">${escapeHTML(id)}</div></div>
+                <div class="ub-row-text"><div class="ub-row-title">${escapeHTML(discordMemberLabel(tzMembers, id))}</div></div>
                 <span class="ub-row-value">${escapeHTML(zone)}</span>
               </div>`).join('')
             : '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">No timezones set. /timestamp uses the server’s timezone for everyone.</div></div></div>',
@@ -10958,12 +11664,20 @@
         }
         setTimeout(() => { button.innerHTML = '<i class="lucide" data-lucide="copy"></i> Copy'; refreshIcons(); }, 1500);
       });
-      panels.querySelector('#setEditTimezones')?.addEventListener('click', () => openTimezoneEditor(timezones));
+      panels.querySelector('#setEditTimezones')?.addEventListener('click', () => openTimezoneEditor(timezones, tzMembers));
       refreshIcons();
     }
 
     // Timezone mappings as rows (user ID → IANA zone) instead of a text box.
-    function openTimezoneEditor(entries) {
+    // "Nickname (@username)" for a member ID; IDs the bot can't see any more
+    // stay visible so a saved entry is never silently lost.
+    function discordMemberLabel(members, id) {
+      const m = members.find(x => x.id === id);
+      if (!m) return id ? `Unknown member (${id})` : '';
+      return m.username ? `${m.name} (@${m.username})` : m.name;
+    }
+
+    function openTimezoneEditor(entries, members = []) {
       const rows = entries.map(([userID, zone]) => ({ userID, zone }));
       const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
       // Accept already-saved zones (older aliases like Asia/Calcutta) and UTC
@@ -10978,7 +11692,7 @@
       };
       const issue = () => {
         const filled = rows.filter(r => r.userID || r.zone);
-        if (filled.some(r => !/^\d{15,22}$/.test(r.userID))) return 'User IDs are 15–22 digit Discord IDs.';
+        if (filled.some(r => !r.userID)) return 'Choose a member for every row.';
         if (zoneSet.size && filled.some(r => !zoneSet.has(r.zone))) return 'Pick a timezone from the list, e.g. Pacific/Auckland.';
         if (filled.some(r => !r.zone)) return 'Every user needs a timezone.';
         if (new Set(filled.map(r => r.userID)).size !== filled.length) return 'A user is listed twice.';
@@ -10992,12 +11706,18 @@
       };
       const render = () => {
         document.getElementById('tzBody').innerHTML = `
-          <p class="ub-help" style="margin-top:0;">Used by <code>/timestamp</code>. Copy a user’s ID in Discord with Developer Mode on.</p>
+          <p class="ub-help" style="margin-top:0;">Used by <code>/timestamp</code> to read times a member types in their own timezone.</p>
           ${rows.length ? `<div class="wiki-grid tz-grid">
-            <span class="wiki-grid-head">Discord user ID</span><span class="wiki-grid-head">Timezone</span><span class="wiki-grid-head"></span>
+            <span class="wiki-grid-head">Member</span><span class="wiki-grid-head">Timezone</span><span class="wiki-grid-head"></span>
             ${rows.map((r, i) => `
               <div class="tz-row" style="display:contents;">
-                <input class="field-input tz-user" value="${escapeHTML(r.userID)}" placeholder="123456789012345678" inputmode="numeric" spellcheck="false">
+                <select class="field-select tz-user">
+                  <option value="">Choose a member…</option>
+                  ${r.userID && !members.some(m => m.id === r.userID) ? `<option value="${escapeHTML(r.userID)}" selected>${escapeHTML(discordMemberLabel(members, r.userID))}</option>` : ''}
+                  ${members
+                    .filter(m => m.id === r.userID || !rows.some((other, j) => j !== i && other.userID === m.id))
+                    .map(m => `<option value="${escapeHTML(m.id)}" ${m.id === r.userID ? 'selected' : ''}>${escapeHTML(discordMemberLabel(members, m.id))}</option>`).join('')}
+                </select>
                 <input class="field-input tz-zone" value="${escapeHTML(r.zone)}" placeholder="Pacific/Auckland" list="tzZones" spellcheck="false">
                 <button class="icon-btn we-remove" type="button" data-tz-remove="${i}" aria-label="Remove"><i class="lucide" data-lucide="x"></i></button>
               </div>`).join('')}
@@ -11021,6 +11741,8 @@
         <button id="tzSave" class="primary-action" type="button">Save</button>
       `, { wide: true });
       document.getElementById('tzBody').addEventListener('input', validate);
+      // A member picked in one row drops out of the others' lists.
+      document.getElementById('tzBody').addEventListener('change', (e) => { if (e.target.classList.contains('tz-user')) { read(); render(); } });
       render();
 
       document.getElementById('tzSave').addEventListener('click', async (e) => {
@@ -11366,12 +12088,17 @@
 
       if (mediaViewMode === 'player') {
         header.innerHTML = `
-          <div class="section-mini-title"><i class="lucide" data-lucide="film"></i> Recordings</div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <div style="font-size:12px;color:var(--muted);">Now playing</div>
-            <button id="mediaBackToLibrary" class="mini-btn" type="button"><i class="lucide" data-lucide="arrow-left"></i> Back to Library</button>
-            ${ffmpegPillHTML()}
+          <div class="media-player-title">
+            <button id="mediaBackToLibrary" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> Library</button>
+            <div class="section-mini-title">${escapeHTML(selected ? (selected.gameName || 'Recording') : 'Recordings')}</div>
+            ${selected ? `<span class="media-subtle">${escapeHTML(relativeTime(selected.modifiedAt))}</span>` : ''}
           </div>
+          ${selected ? `<div class="section-actions">
+            <button id="mediaQualityToggle" class="secondary-action" type="button" title="Use a lower-bitrate copy if the original buffers. The first switch may take a few seconds while it's generated.">
+              <i class="lucide" data-lucide="${mediaExportState.playbackQuality === 'low' ? 'monitor-play' : 'monitor'}"></i>
+              ${mediaExportState.playbackQuality === 'low' ? 'Lower quality' : 'Auto quality'}
+            </button>
+          </div>` : ''}
         `;
 
         if (!mediaExportState.secondaryID && items.length > 1) {
@@ -11383,126 +12110,148 @@
           .map(item => `<option value="${item.id}" ${mediaExportState.secondaryID === item.id ? 'selected' : ''}>${item.gameName || 'Unknown'} · ${formatMediaTime(item.modifiedAt)}</option>`)
           .join('');
 
+        const jobInfo = (status) => ({
+          finished: ['healthy', 'Ready'], failed: ['critical', 'Failed'], running: ['info', 'Exporting…'], queued: ['neutral', 'Queued']
+        })[String(status || '').toLowerCase()] || ['neutral', String(status || '')];
         const jobsHTML = (mediaExportJobs || []).length
-          ? mediaExportJobs.slice(0, 6).map(job => `
-              <div class="event-item ${job.status === 'failed' ? 'error' : 'ok'}">
-                <div class="event-title">${job.kind === 'multiview' ? 'Multiview' : 'Clip'} · ${job.status}</div>
-                <div class="event-time">${job.outputFileName || job.message || ''}</div>
-              </div>
-            `).join('')
-          : '<div class="placeholder">No export jobs yet.</div>';
+          ? `<div class="ub-list glass">${mediaExportJobs.slice(0, 6).map(job => {
+              const [state, label] = jobInfo(job.status);
+              const kind = job.kind === 'multiview' ? 'Multiview' : 'Clip';
+              const detail = job.status === 'failed' && job.message ? job.message : [kind, relativeTime(job.finishedAt || job.startedAt || job.createdAt)].filter(Boolean).join(' · ');
+              return `
+              <div class="ub-item media-job">
+                <span class="ops-dot" data-state="${state}"></span>
+                <span class="ub-item-text">
+                  <span class="ub-item-title">${escapeHTML(job.outputFileName || `${kind} export`)}</span>
+                  <span class="ub-item-sub">${escapeHTML(detail)}</span>
+                </span>
+                <span class="ub-item-status">${escapeHTML(label)}</span>
+              </div>`;
+            }).join('')}</div>`
+          : '<div class="placeholder">Clips and multiviews you export appear here.</div>';
+        const others = items.filter(item => item.id !== (selected?.id || '')).slice(0, 8);
+        const accessQuery = mediaAccessQuery();
 
         panels.innerHTML = `
-          <section class="settings-panel glass full-span">
+          <div class="media-player">
             ${selected ? `
-              <div style="display:flex;flex-direction:column;gap:12px;">
-                <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
-                  <div style="min-width:240px;display:flex;flex-direction:column;gap:6px;">
-                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                      ${gamePillHTML(selected.gameName)}
-                      <span class="chip">${formatMediaTime(selected.modifiedAt)}</span>
-                      <span class="chip">${formatFileSize(selected.sizeBytes)}</span>
-                    </div>
-                    <div style="font-size:12px;color:var(--muted);">${selected.nodeName} · ${selected.sourceName}</div>
-                  </div>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <span class="chip">${selected.fileExtension.toUpperCase()}</span>
-                    <button id="mediaQualityToggle" class="mini-btn" type="button" title="Use a lower-bitrate transcode if the original buffers. The first switch may take a few seconds while the variant is generated.">
-                      <i class="lucide" data-lucide="${mediaExportState.playbackQuality === 'low' ? 'monitor-play' : 'monitor'}"></i>
-                      ${mediaExportState.playbackQuality === 'low' ? 'Lower quality' : 'Auto quality'}
-                    </button>
-                  </div>
-                </div>
-                <video id="mediaPlayer" controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;"></video>
-                <div style="font-size:12px;color:var(--muted);">Path: ${selected.relativePath}</div>
+              <div class="media-stage">
+                <video id="mediaPlayer" controls preload="metadata"></video>
+              </div>
+              <div class="media-meta">
+                ${gamePillHTML(selected.gameName)}
+                <span title="${escapeHTML(formatTime(selected.modifiedAt))}">${escapeHTML(formatMediaTime(selected.modifiedAt))}</span>
+                <span>${escapeHTML(formatFileSize(selected.sizeBytes))}</span>
+                <span>${escapeHTML(selected.nodeName)} · ${escapeHTML(selected.sourceName)}</span>
+                <span class="media-path" title="${escapeHTML(selected.relativePath)}">${escapeHTML(selected.relativePath)}</span>
               </div>
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
-          </section>
-          <section class="settings-panel glass">
-            <div class="panel-title"><i class="lucide" data-lucide="scissors"></i> Clip</div>
+            ${others.length ? `
+              <section class="ub-group">
+                <div class="ub-group-head"><h2>More recordings</h2></div>
+                <div class="media-strip">
+                  ${others.map(item => `
+                    <button class="media-strip-item" type="button" data-media-switch="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}">
+                      <span class="media-thumb"><img src="${item.thumbnailURL}${accessQuery}" alt="" loading="lazy" data-fallback="next-sibling"><span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span></span>
+                      <span class="media-strip-label">${escapeHTML(item.gameName || 'Recording')}</span>
+                      <span class="media-subtle">${escapeHTML(relativeTime(item.modifiedAt))}</span>
+                    </button>`).join('')}
+                </div>
+              </section>` : ''}
             ${mediaExportStatus && !mediaExportStatus.installed ? `
-              <div class="placeholder" style="margin:0;">Exports are currently unavailable on this node.</div>
-            ` : ''}
-            <div class="timeline-card">
-              <div class="field-label">Primary clip window</div>
-              <div class="timeline-track" data-track="primary-clip">
-                <div class="timeline-window" data-window="primary-clip">
-                  <span class="timeline-handle left"></span>
-                  <span class="timeline-handle right"></span>
+              <div class="ub-notice glass" style="--notice:#f59e0b;"><i class="lucide" data-lucide="triangle-alert"></i><span><strong>Exports are unavailable on this node.</strong><br>Install ffmpeg on the Mac that stores these recordings to create clips and multiviews.</span></div>` : ''}
+            <div class="media-tools">
+              <section class="settings-panel glass">
+                <div class="panel-title"><i class="lucide" data-lucide="scissors"></i> Clip</div>
+                <div class="timeline-card">
+                  <div class="field-label">Clip window</div>
+                  <div class="timeline-track" data-track="primary-clip">
+                    <div class="timeline-window" data-window="primary-clip">
+                      <span class="timeline-handle left"></span>
+                      <span class="timeline-handle right"></span>
+                    </div>
+                  </div>
+                  <div id="primaryTimelineMetaClip" class="timeline-meta"></div>
+                  <div class="timeline-actions">
+                    <button id="primaryExtendClip" class="secondary-action" type="button"><i class="lucide" data-lucide="maximize-2"></i> +10s</button>
+                    <button id="primaryTrimClip" class="secondary-action" type="button"><i class="lucide" data-lucide="minimize-2"></i> −10s</button>
+                  </div>
                 </div>
-              </div>
-              <div id="primaryTimelineMetaClip" class="timeline-meta"></div>
-              <div class="timeline-actions">
-                <button id="primaryExtendClip" class="mini-btn" type="button"><i class="lucide" data-lucide="maximize-2"></i> Extend +10s</button>
-                <button id="primaryTrimClip" class="mini-btn" type="button"><i class="lucide" data-lucide="minimize-2"></i> Trim -10s</button>
-              </div>
-            </div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px;">This window is shared with the multiview primary timeline.</div>
-            <div style="margin-top:10px;">
-              <div class="field-label">Output name (optional)</div>
-              <input id="clipName" class="field-input" placeholder="My_clip.mp4" value="${mediaExportState.clipName || ''}">
-            </div>
-            <div style="font-size:11px;color:var(--muted);margin-top:8px;">Max clip length: 15 minutes.</div>
-            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-              <button id="clipExportStart" class="mini-btn" type="button"><i class="lucide" data-lucide="clapperboard"></i> Create Clip</button>
-            </div>
-          </section>
-          <section class="settings-panel glass">
-            <div class="panel-title"><i class="lucide" data-lucide="layout-grid"></i> Multiview</div>
-            <div class="field-label">Second clip</div>
-            <select id="multiSecondary" class="field-select">${secondaryOptions || '<option value=\"\">No other clips</option>'}</select>
-            <div class="timeline-card" style="margin-top:10px;">
-              <div class="field-label">Primary clip window</div>
-              <div class="timeline-track" data-track="primary-multi">
-                <div class="timeline-window" data-window="primary-multi">
-                  <span class="timeline-handle left"></span>
-                  <span class="timeline-handle right"></span>
+                <div class="ub-help">Drag the window or its edges. Clips can be up to 15 minutes, and the window is shared with Multiview.</div>
+                <div class="media-field">
+                  <div class="field-label">File name (optional)</div>
+                  <input id="clipName" class="field-input" placeholder="My_clip.mp4" value="${escapeHTML(mediaExportState.clipName || '')}">
                 </div>
-              </div>
-              <div id="primaryTimelineMetaMulti" class="timeline-meta"></div>
-            </div>
-            <div class="timeline-card" style="margin-top:10px;">
-              <div class="field-label">Secondary clip window</div>
-              <div class="timeline-track" data-track="secondary">
-                <div class="timeline-window" data-window="secondary">
-                  <span class="timeline-handle left"></span>
-                  <span class="timeline-handle right"></span>
+                <div class="media-tool-actions">
+                  <button id="clipExportStart" class="primary-action" type="button"><i class="lucide" data-lucide="clapperboard"></i> Create clip</button>
                 </div>
-              </div>
-              <div id="secondaryTimelineMeta" class="timeline-meta"></div>
-              <div class="timeline-actions">
-                <button id="alignSecondary" class="mini-btn" type="button"><i class="lucide" data-lucide="align-left"></i> Align to primary</button>
-              </div>
-            </div>
-            <div class="field-row" style="margin-top:10px;">
-              <div style="flex:1;">
-                <div class="field-label">Layout</div>
-                <div class="segmented" id="multiLayout">
-                  <button data-value="stacked" class="${mediaExportState.layout === 'stacked' ? 'active' : ''}">Stacked</button>
-                  <button data-value="side-by-side" class="${mediaExportState.layout === 'side-by-side' ? 'active' : ''}">Side by side</button>
+              </section>
+              <section class="settings-panel glass">
+                <div class="panel-title"><i class="lucide" data-lucide="layout-grid"></i> Multiview</div>
+                <div class="field-label">Second recording</div>
+                <select id="multiSecondary" class="field-select">${secondaryOptions || '<option value="">No other recordings</option>'}</select>
+                <div class="timeline-card" style="margin-top:12px;">
+                  <div class="field-label">This recording</div>
+                  <div class="timeline-track" data-track="primary-multi">
+                    <div class="timeline-window" data-window="primary-multi">
+                      <span class="timeline-handle left"></span>
+                      <span class="timeline-handle right"></span>
+                    </div>
+                  </div>
+                  <div id="primaryTimelineMetaMulti" class="timeline-meta"></div>
                 </div>
-              </div>
-              <div style="flex:1;">
-                <div class="field-label">Audio</div>
-                <div class="segmented" id="multiAudio">
-                  <button data-value="primary" class="${mediaExportState.audio === 'primary' ? 'active' : ''}">Primary</button>
-                  <button data-value="secondary" class="${mediaExportState.audio === 'secondary' ? 'active' : ''}">Secondary</button>
+                <div class="timeline-card" style="margin-top:12px;">
+                  <div class="field-label">Second recording</div>
+                  <div class="timeline-track" data-track="secondary">
+                    <div class="timeline-window" data-window="secondary">
+                      <span class="timeline-handle left"></span>
+                      <span class="timeline-handle right"></span>
+                    </div>
+                  </div>
+                  <div id="secondaryTimelineMeta" class="timeline-meta"></div>
+                  <div class="timeline-actions">
+                    <button id="alignSecondary" class="secondary-action" type="button"><i class="lucide" data-lucide="align-left"></i> Match clip window</button>
+                  </div>
                 </div>
-              </div>
+                <div class="media-field-row">
+                  <div>
+                    <div class="field-label">Layout</div>
+                    <div class="segmented" id="multiLayout">
+                      <button data-value="stacked" class="${mediaExportState.layout === 'stacked' ? 'active' : ''}">Stacked</button>
+                      <button data-value="side-by-side" class="${mediaExportState.layout === 'side-by-side' ? 'active' : ''}">Side by side</button>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="field-label">Audio from</div>
+                    <div class="segmented" id="multiAudio">
+                      <button data-value="primary" class="${mediaExportState.audio === 'primary' ? 'active' : ''}">This one</button>
+                      <button data-value="secondary" class="${mediaExportState.audio === 'secondary' ? 'active' : ''}">Second</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="media-field">
+                  <div class="field-label">File name (optional)</div>
+                  <input id="multiName" class="field-input" placeholder="Multi_view.mp4" value="${escapeHTML(mediaExportState.multiName || '')}">
+                </div>
+                <div class="media-tool-actions">
+                  <button id="multiExportStart" class="primary-action" type="button"><i class="lucide" data-lucide="layout-grid"></i> Create multiview</button>
+                </div>
+              </section>
             </div>
-            <div style="margin-top:10px;">
-              <div class="field-label">Output name (optional)</div>
-              <input id="multiName" class="field-input" placeholder="Multi_view.mp4" value="${mediaExportState.multiName || ''}">
-            </div>
-            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-              <button id="multiExportStart" class="mini-btn" type="button"><i class="lucide" data-lucide="grid"></i> Create Multiview</button>
-            </div>
-          </section>
-          <section class="settings-panel glass full-span">
-            <div class="panel-title"><i class="lucide" data-lucide="clock"></i> Export Jobs</div>
-            <div class="event-list">${jobsHTML}</div>
-          </section>
+            <section class="ub-group">
+              <div class="ub-group-head"><h2>Exports</h2></div>
+              ${jobsHTML}
+            </section>
+          </div>
         `;
+
+        panels.querySelectorAll('[data-media-switch]').forEach(btn => btn.addEventListener('click', () => {
+          flushActiveMediaPlayback(panels.querySelector('#mediaPlayer'), 'progress');
+          selectedMediaItemID = btn.dataset.mediaSwitch;
+          mediaExportState.secondaryID = null;
+          renderRecordingsView();
+          document.querySelector('#appShell .content')?.scrollTo({ top: 0, behavior: 'smooth' });
+        }));
 
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
           flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
@@ -11510,7 +12259,7 @@
           renderRecordingsView();
         });
 
-        panels.querySelector('#mediaQualityToggle')?.addEventListener('click', () => {
+        header.querySelector('#mediaQualityToggle')?.addEventListener('click', () => {
           const video = panels.querySelector('video');
           const wasPlaying = video && !video.paused && !video.ended;
           const resumeAt = video ? video.currentTime : 0;
@@ -11783,6 +12532,7 @@
             scheduleFramePreview(secondaryWindow, secondaryToken, (state.start + state.end) / 2);
           }, { once: true });
         }
+        refreshIcons();
         return;
       }
 
@@ -11800,77 +12550,171 @@
         ['90d', 'Last 90 days']
       ].map(([value, label]) => `<option value="${value}" ${mediaFilterState.dateRange === value ? 'selected' : ''}>${label}</option>`).join('');
 
+      // In Games view the chosen game is navigation, not a filter to clear.
+      const filtered = Boolean(mediaFilterState.source || (mediaLibraryLayout !== 'games' && mediaFilterState.game) || (mediaFilterState.dateRange && mediaFilterState.dateRange !== 'all'));
+      const gameSummaries = mediaLibraryData.gameSummaries || [];
+      const showingGameWall = mediaLibraryLayout === 'games' && !mediaFilterState.game;
+      const countLabel = showingGameWall
+        ? `${gameSummaries.length} ${gameSummaries.length === 1 ? 'game' : 'games'}`
+        : `${mediaLibraryData.totalItems || 0} ${(mediaLibraryData.totalItems || 0) === 1 ? 'recording' : 'recordings'}`;
       header.innerHTML = `
-        <div class="section-mini-title"><i class="lucide" data-lucide="film"></i> Recordings</div>
-        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div class="field-label"><i class="lucide" data-lucide="filter" style="width:14px;height:14px;vertical-align:-2px;"></i> Source</div>
-            <select id="mediaSourceFilter" class="field-select" style="min-width:220px;">${sourceOptions}</select>
+        <div class="media-library-head">
+          <div class="section-mini-title">Recordings</div>
+          <span class="media-subtle">${countLabel}</span>
+        </div>
+        <div class="media-filters">
+          <div class="segmented media-layout-toggle" role="tablist" aria-label="Library view">
+            <button type="button" data-layout="recent" class="${mediaLibraryLayout === 'recent' ? 'active' : ''}" aria-selected="${mediaLibraryLayout === 'recent'}"><i class="lucide" data-lucide="calendar-days"></i> Recent</button>
+            <button type="button" data-layout="games" class="${mediaLibraryLayout === 'games' ? 'active' : ''}" aria-selected="${mediaLibraryLayout === 'games'}"><i class="lucide" data-lucide="library"></i> Games</button>
           </div>
-          <div>
-            <div class="field-label"><i class="lucide" data-lucide="gamepad-2" style="width:14px;height:14px;vertical-align:-2px;"></i> Game</div>
-            <select id="mediaGameFilter" class="field-select" style="min-width:200px;">${gameOptions}</select>
-          </div>
-          <div>
-            <div class="field-label"><i class="lucide" data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px;"></i> Date</div>
-            <select id="mediaDateFilter" class="field-select" style="min-width:180px;">${dateOptions}</select>
-          </div>
-          <button id="mediaApplyFilters" class="mini-btn" type="button"><i class="lucide" data-lucide="filter"></i> Filter</button>
-          <div style="min-width:180px;text-align:right;">
-            <div class="field-label" style="margin-bottom:4px;">Results</div>
-            <div style="font-size:13px;color:var(--muted);">${mediaLibraryData.totalItems || 0} items · page ${mediaLibraryData.page || 1} of ${mediaLibraryData.totalPages || 1}</div>
-          </div>
-          ${ffmpegPillHTML()}
+          ${mediaLibraryLayout === 'games' ? '' : `<label class="media-filter"><i class="lucide" data-lucide="gamepad-2"></i><select id="mediaGameFilter" aria-label="Game">${gameOptions}</select></label>`}
+          <label class="media-filter"><i class="lucide" data-lucide="calendar"></i><select id="mediaDateFilter" aria-label="Date">${dateOptions}</select></label>
+          ${sources.length > 1 || mediaFilterState.source ? `<label class="media-filter"><i class="lucide" data-lucide="hard-drive"></i><select id="mediaSourceFilter" aria-label="Source">${sourceOptions}</select></label>` : ''}
+          ${filtered ? '<button id="mediaApplyFilters" class="media-filter-clear" type="button"><i class="lucide" data-lucide="x"></i> Clear</button>' : ''}
         </div>
       `;
 
       const now = Date.now();
       const oneDayMs = 24 * 60 * 60 * 1000;
-      const itemCards = items.map(item => {
-        const gameName = item.gameName || 'Unknown';
+      const accessQuery = mediaAccessQuery();
+      const dayKey = (value) => {
+        const d = new Date(value);
+        return Number.isFinite(d.getTime()) ? d.toDateString() : '';
+      };
+      const dayLabel = (value) => {
+        const d = new Date(value);
+        if (!Number.isFinite(d.getTime())) return 'Undated';
+        const today = new Date();
+        const yesterday = new Date(today.getTime() - oneDayMs);
+        if (d.toDateString() === today.toDateString()) return 'Today';
+        if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+        return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) });
+      };
+      const itemCard = (item) => {
         const modifiedMs = new Date(item.modifiedAt).getTime();
         const isRecent = Number.isFinite(modifiedMs) && (now - modifiedMs) < oneDayMs;
-        const accessQuery = mediaAccessQuery();
-        const thumbnailURL = `${item.thumbnailURL}${accessQuery}`;
-        const streamURL = `${item.streamURL}${accessQuery}`;
+        const clock = Number.isFinite(modifiedMs) ? new Date(modifiedMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
         return `
-        <article class="glass ${selected && selected.id === item.id ? 'ok' : ''}" data-media-id="${item.id}" title="${item.fileName}" style="cursor:pointer;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;gap:0;min-height:248px;">
-          <div style="aspect-ratio:16 / 9;background:rgba(10,14,22,0.35);display:flex;align-items:center;justify-content:center;position:relative;">
-            <img src="${thumbnailURL}" alt="${item.fileName}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" data-fallback="next-sibling">
-            <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--muted);font-size:13px;"><i class="lucide" data-lucide="film" style="width:34px;height:34px;"></i></div>
-            <video class="hover-preview" muted playsinline loop preload="none" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+          <button class="media-card" type="button" data-media-id="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}">
+            <span class="media-thumb">
+              <img src="${item.thumbnailURL}${accessQuery}" alt="" loading="lazy" data-fallback="next-sibling">
+              <span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span>
+              <video class="hover-preview" muted playsinline loop preload="none"></video>
+              ${isRecent ? '<span class="media-badge is-new">New</span>' : ''}
+              <span class="media-badge is-size">${escapeHTML(formatFileSize(item.sizeBytes))}</span>
+              <span class="media-play"><i class="lucide" data-lucide="play"></i></span>
+            </span>
+            <span class="media-card-text">
+              ${mediaFilterState.game ? `
+              <span class="media-card-title">${escapeHTML(clock || 'Recording')}</span>
+              <span class="media-subtle">${escapeHTML(relativeTime(item.modifiedAt))}${sources.length > 1 ? ` · ${escapeHTML(item.nodeName)}` : ''}</span>` : `
+              <span class="media-card-title">${escapeHTML(item.gameName || 'Unknown game')}</span>
+              <span class="media-subtle">${escapeHTML(clock)}${sources.length > 1 ? ` · ${escapeHTML(item.nodeName)}` : ''}</span>`}
+            </span>
+          </button>`;
+      };
+      const groups = [];
+      items.forEach(item => {
+        const key = dayKey(item.modifiedAt);
+        let group = groups.find(g => g.key === key);
+        if (!group) { group = { key, label: dayLabel(item.modifiedAt), items: [] }; groups.push(group); }
+        group.items.push(item);
+      });
+      const totalPages = mediaLibraryData.totalPages || 1;
+      const page = mediaLibraryData.page || 1;
+      const posterURL = (name) => `/api/media/game-art?game=${encodeURIComponent(name)}${accessQuery}`;
+      const posterArt = (name) => `
+        <span class="media-poster-art" style="--poster-tint:${gameColor(name)};">
+          <img src="${posterURL(name)}" alt="" loading="lazy" data-fallback="next-sibling">
+          <span class="media-poster-fallback"><strong>${escapeHTML(gameInitials(name))}</strong><span>${escapeHTML(name)}</span></span>
+        </span>`;
+      const clipsLabel = (n) => `${n} ${n === 1 ? 'clip' : 'clips'}`;
+      const selectedSummary = gameSummaries.find(g => g.name === mediaFilterState.game);
+      const gameHero = mediaLibraryLayout === 'games' && mediaFilterState.game ? `
+        <div>
+          <button id="mediaBackToGames" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> All games</button>
+        </div>
+        <div class="media-game-hero">
+          <span class="media-poster is-hero">${posterArt(mediaFilterState.game)}</span>
+          <div class="media-game-hero-text">
+            <h2>${escapeHTML(mediaFilterState.game)}</h2>
+            <span class="media-subtle">${[
+              clipsLabel(mediaLibraryData.totalItems || 0),
+              selectedSummary ? formatFileSize(selectedSummary.totalBytes) : '',
+              selectedSummary?.latestAt ? `last played ${relativeTime(selectedSummary.latestAt)}` : ''
+            ].filter(Boolean).join(' · ')}</span>
           </div>
-          <div style="padding:14px 14px 16px;display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              ${gamePillHTML(gameName)}
-              <span class="chip">${formatMediaTime(item.modifiedAt)}</span>
-              ${isRecent ? `<span class="chip" style="background:rgba(71, 220, 150, 0.18);color:#7ce9b0;">New</span>` : ''}
-            </div>
-            <div style="font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;">
-              <span>${item.nodeName} · ${item.sourceName}</span>
-              <span>· ${formatFileSize(item.sizeBytes)}</span>
-            </div>
-          </div>
-        </article>
-      `;
-      }).join('');
+        </div>` : '';
 
+      if (showingGameWall) {
+        panels.innerHTML = `
+          <div class="media-library">
+            ${gameSummaries.length ? `
+              <div class="media-poster-grid">
+                ${gameSummaries.map(game => `
+                  <button class="media-poster" type="button" data-game-open="${escapeHTML(game.name)}" title="${escapeHTML(game.name)}">
+                    ${posterArt(game.name)}
+                    <span class="media-badge is-count">${game.clipCount}</span>
+                    <span class="media-card-text">
+                      <span class="media-card-title">${escapeHTML(game.name)}</span>
+                      <span class="media-subtle">${clipsLabel(game.clipCount)}${game.latestAt ? ` · ${escapeHTML(relativeTime(game.latestAt))}` : ''}</span>
+                    </span>
+                  </button>`).join('')}
+              </div>` : `
+              <div class="ub-empty glass">
+                <div class="ub-empty-title">${filtered ? 'No games match these filters' : 'No recordings yet'}</div>
+                <div class="ub-empty-sub">${filtered ? 'Try a wider date range.' : 'Recordings from your configured media sources show up here once they finish writing.'}</div>
+              </div>`}
+            <div class="media-footer">
+              <span class="media-subtle">Scanned ${timeAgoHTML(mediaLibraryData.generatedAt, 'never')} · Artwork from Steam and Twitch</span>
+            </div>
+          </div>`;
+      } else {
       panels.innerHTML = `
-        <section class="settings-panel glass full-span">
-          ${items.length ? `
-            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:16px;">
-              ${itemCards}
-            </div>
-          ` : '<div class="placeholder">No recordings matched the current filters.</div>'}
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;">
-            <div style="font-size:12px;color:var(--muted);">Latest scan ${timeAgoHTML(mediaLibraryData.generatedAt)}</div>
-            <div style="display:flex;gap:8px;">
-              <button id="mediaPrevPage" class="mini-btn" type="button" ${mediaLibraryData.page <= 1 ? 'disabled' : ''}><i class="lucide" data-lucide="chevron-left"></i> Prev</button>
-              <button id="mediaNextPage" class="mini-btn" type="button" ${mediaLibraryData.page >= mediaLibraryData.totalPages ? 'disabled' : ''}>Next <i class="lucide" data-lucide="chevron-right"></i></button>
-            </div>
+        <div class="media-library">
+          ${gameHero}
+          ${items.length ? groups.map(group => `
+            <section class="ub-group">
+              <div class="ub-group-head"><h2>${escapeHTML(group.label)}</h2></div>
+              <div class="media-grid">${group.items.map(itemCard).join('')}</div>
+            </section>`).join('') : `
+            <div class="ub-empty glass">
+              <div class="ub-empty-title">${filtered ? 'No recordings match these filters' : 'No recordings yet'}</div>
+              <div class="ub-empty-sub">${filtered ? 'Try a different game or a wider date range.' : 'Recordings from your configured media sources show up here once they finish writing.'}</div>
+            </div>`}
+          <div class="media-footer">
+            <span class="media-subtle">Scanned ${timeAgoHTML(mediaLibraryData.generatedAt, 'never')}${mediaExportStatus && !mediaExportStatus.installed ? ' · Exports need ffmpeg' : ''}</span>
+            ${totalPages > 1 ? `
+              <div class="media-pager">
+                <button id="mediaPrevPage" class="secondary-action" type="button" aria-label="Previous page" ${page <= 1 ? 'disabled' : ''}><i class="lucide" data-lucide="chevron-left"></i></button>
+                <span class="media-subtle">Page ${page} of ${totalPages}</span>
+                <button id="mediaNextPage" class="secondary-action" type="button" aria-label="Next page" ${page >= totalPages ? 'disabled' : ''}><i class="lucide" data-lucide="chevron-right"></i></button>
+              </div>` : ''}
           </div>
-        </section>
+        </div>
       `;
+      }
+
+      const openGame = async (name) => {
+        mediaFilterState.game = name;
+        mediaFilterState.page = 1;
+        await loadMediaData();
+        renderRecordingsView();
+        document.querySelector('#appShell .content')?.scrollTo({ top: 0 });
+      };
+      panels.querySelectorAll('[data-game-open]').forEach(btn => btn.addEventListener('click', () => openGame(btn.dataset.gameOpen)));
+      panels.querySelector('#mediaBackToGames')?.addEventListener('click', () => openGame(''));
+      header.querySelectorAll('[data-layout]').forEach(btn => btn.addEventListener('click', async () => {
+        if (btn.dataset.layout === mediaLibraryLayout) return;
+        mediaLibraryLayout = btn.dataset.layout;
+        try { localStorage.setItem('swiftbot.media.layout', mediaLibraryLayout); } catch {}
+        // Switching views starts from the top: all games, or every recent clip.
+        if (mediaFilterState.game) {
+          await openGame('');
+        } else {
+          renderRecordingsView();
+        }
+      }));
 
       panels.querySelectorAll('[data-media-id]').forEach(node => {
         node.addEventListener('click', () => {
@@ -11899,13 +12743,19 @@
           stopHoverPreview(node.querySelector('.hover-preview'));
         });
       });
-      header.querySelector('#mediaApplyFilters')?.addEventListener('click', async () => {
+      const applyMediaFilters = async () => {
         mediaFilterState.source = header.querySelector('#mediaSourceFilter')?.value || '';
-        mediaFilterState.game = header.querySelector('#mediaGameFilter')?.value || '';
+        const gameSelect = header.querySelector('#mediaGameFilter');
+        if (gameSelect) mediaFilterState.game = gameSelect.value;
         mediaFilterState.dateRange = header.querySelector('#mediaDateFilter')?.value || 'all';
         mediaFilterState.page = 1;
         await loadMediaData();
         renderRecordingsView();
+      };
+      header.querySelectorAll('.media-filter select').forEach(select => select.addEventListener('change', applyMediaFilters));
+      header.querySelector('#mediaApplyFilters')?.addEventListener('click', async () => {
+        header.querySelectorAll('.media-filter select').forEach(select => { select.value = select.id === 'mediaDateFilter' ? 'all' : ''; });
+        await applyMediaFilters();
       });
       panels.querySelector('#mediaPrevPage')?.addEventListener('click', async () => {
         if ((mediaLibraryData.page || 1) <= 1) return;

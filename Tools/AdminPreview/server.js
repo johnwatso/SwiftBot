@@ -38,6 +38,8 @@ let wikibridge = JSON.parse(JSON.stringify(fixtures.wikibridge));
 let config = JSON.parse(JSON.stringify(fixtures.config));
 let automationRules = JSON.parse(JSON.stringify(fixtures.automationRules));
 let welcomeFlow = JSON.parse(JSON.stringify(fixtures.welcomeFlow));
+let gametracker = JSON.parse(JSON.stringify(fixtures.gametracker));
+let sweep = JSON.parse(JSON.stringify(fixtures.sweep));
 
 function sendJSON(res, body, statusCode = 200) {
   const payload = JSON.stringify(body);
@@ -58,9 +60,31 @@ function readBody(req) {
   });
 }
 
+// Same idea as RecordingSteamArtworkService: proxy Steam's portrait library
+// art so the page only ever loads same-origin images.
+const STEAM_APP_IDS = { 'the finals': 2073850, 'apex legends': 1172470, 'helldivers 2': 553850, 'counter-strike 2': 730 };
+const posterCache = new Map();
+function sendGameArt(res, game) {
+  const appID = STEAM_APP_IDS[String(game || '').toLowerCase()];
+  // Steam first; Twitch box art by name for games Steam doesn't carry.
+  // A 302 from Twitch means its "404_boxart" placeholder, so treat as none.
+  const url = appID
+    ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${appID}/library_600x900.jpg`
+    : `https://static-cdn.jtvnw.net/ttv-boxart/${encodeURIComponent(String(game || ''))}-600x800.jpg`;
+  const send = (buf) => { res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' }); res.end(buf); };
+  if (posterCache.has(url)) return send(posterCache.get(url));
+  require('https').get(url, (up) => {
+    if (up.statusCode !== 200) { up.resume(); return sendJSON(res, { error: 'artwork_unavailable' }, 404); }
+    const chunks = [];
+    up.on('data', c => chunks.push(c));
+    up.on('end', () => { const buf = Buffer.concat(chunks); posterCache.set(url, buf); send(buf); });
+  }).on('error', () => sendJSON(res, { error: 'artwork_unavailable' }, 404));
+}
+
 async function handleAPI(req, res, pathname, query) {
   if (req.method === 'GET') {
     switch (pathname) {
+      case '/api/media/game-art': return sendGameArt(res, query.get('game'));
       case '/api/me': return sendJSON(res, fixtures.me);
       case '/api/auth/options': return sendJSON(res, fixtures.authOptions);
       case '/api/overview': return sendJSON(res, fixtures.overview);
@@ -79,10 +103,22 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/patchy': return sendJSON(res, patchy);
       case '/api/aibots': return sendJSON(res, fixtures.aibots);
       case '/api/wikibridge': return sendJSON(res, wikibridge);
-      case '/api/sweep': return sendJSON(res, fixtures.sweep);
-      case '/api/gametracker': return sendJSON(res, fixtures.gametracker);
-      case '/api/media': return sendJSON(res, fixtures.media);
-      case '/api/media/exports': return sendJSON(res, { jobs: [] });
+      case '/api/sweep': return sendJSON(res, sweep);
+      case '/api/gametracker': return sendJSON(res, gametracker);
+      case '/api/media': {
+        const game = query.get ? query.get('game') : query.game;
+        const range = (query.get ? query.get('dateRange') : query.dateRange) || 'all';
+        const days = { '7d': 7, '30d': 30, '90d': 90 }[range];
+        const inRange = fixtures.media.items.filter(item => !days || Date.now() - new Date(item.modifiedAt).getTime() < days * 86400000);
+        const items = inRange.filter(item => !game || item.gameName === game);
+        const gameSummaries = [...new Set(inRange.map(i => i.gameName))].map(name => {
+          const entries = inRange.filter(i => i.gameName === name);
+          return { name, clipCount: entries.length, latestAt: entries.map(i => i.modifiedAt).sort().pop(), totalBytes: entries.reduce((t, i) => t + i.sizeBytes, 0) };
+        }).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
+        return sendJSON(res, { ...fixtures.media, items, totalItems: items.length, gameSummaries, games: gameSummaries.map(g => g.name).sort(), selectedGame: game || null, selectedDateRange: range });
+      }
+      case '/api/media/exports': return sendJSON(res, fixtures.mediaExports);
+      case '/api/media/export-status': return sendJSON(res, { installed: true, version: '7.1' });
       default:
         // Everything the announcer work does not exercise (patchy, sweep,
         // media, aibots, …) gets a benign empty payload.
@@ -178,6 +214,89 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname.startsWith('/api/sweep/')) {
+      const find = (id) => sweep.policies.find((p) => p.id === id);
+      const recount = () => {
+        sweep.enabledPolicyCount = sweep.policies.filter((p) => p.isEnabled).length;
+        sweep.totalPolicyCount = sweep.policies.length;
+      };
+      const projection = (policy) => ({ ...JSON.parse(JSON.stringify(sweep.recentReports[0])), id: `preview-${Date.now()}`, policyID: policy.id, policyName: policy.name, dryRun: true, startedAt: new Date().toISOString() });
+      switch (pathname) {
+        case '/api/sweep/pause':
+          sweep.globalPaused = !!body.paused;
+          sweep.state = sweep.globalPaused ? 'Paused' : 'Active';
+          break;
+        case '/api/sweep/policy/update': {
+          const index = sweep.policies.findIndex((p) => p.id === body.id);
+          if (index < 0) sweep.policies.push(body); else sweep.policies[index] = body;
+          console.log('[sweep upsert]', JSON.stringify(body, null, 2));
+          recount();
+          break;
+        }
+        case '/api/sweep/policy/delete':
+          sweep.policies = sweep.policies.filter((p) => p.id !== body.policyID);
+          recount();
+          break;
+        case '/api/sweep/policy/toggle':
+          if (find(body.policyID)) find(body.policyID).isEnabled = !!body.enabled;
+          recount();
+          break;
+        case '/api/sweep/policy/run': {
+          const policy = find(body.policyID);
+          if (policy) {
+            policy.lastRunAt = new Date().toISOString();
+            sweep.recentReports.unshift({ ...projection(policy), dryRun: false, id: `run-${Date.now()}` });
+          }
+          break;
+        }
+        case '/api/sweep/policy/preview':
+          return sendJSON(res, projection(find(body.policyID) || { id: body.policyID, name: 'Rule' }));
+        case '/api/sweep/draft/preview':
+          return sendJSON(res, projection(body));
+        case '/api/sweep/suggestions/scan':
+          sweep.lastSuggestionScanAt = new Date().toISOString();
+          break;
+        case '/api/sweep/suggestions/apply':
+        case '/api/sweep/suggestions/dismiss':
+          sweep.suggestions = sweep.suggestions.filter((x) => x.id !== body.suggestionID);
+          break;
+      }
+      console.log(`[${pathname}]`, JSON.stringify(body).slice(0, 160));
+      return sendJSON(res, { ok: true });
+    }
+
+    if (pathname === '/api/gametracker/update') {
+      // Same actions as AdminWebGameTrackerUpdate.
+      const players = gametracker.players;
+      if (body.action === 'upsertPlayer') {
+        const input = body.player;
+        const index = players.findIndex((p) => p.id === input.id);
+        const channel = gametracker.channels.find((c) => c.id === input.destinationChannelID);
+        const next = {
+          ...(index >= 0 ? players[index] : { id: `p-${Date.now()}`, score: null, rankName: null, season: null, baselineRecordedAt: null, supportsRankedScore: true }),
+          ...input,
+          id: index >= 0 ? players[index].id : `p-${Date.now()}`,
+          displayName: input.displayName || input.playerID,
+          gameDisplayName: 'THE FINALS', providerDisplayName: 'Finals ID',
+          destinationChannelName: channel ? channel.name.split('#').pop() : input.destinationChannelID
+        };
+        if (index >= 0) players[index] = next; else players.push(next);
+      } else if (body.action === 'deletePlayer') {
+        gametracker.players = players.filter((p) => p.id !== body.playerID);
+      } else if (body.action === 'setPlayerEnabled') {
+        const player = players.find((p) => p.id === body.playerID);
+        if (player) player.isEnabled = !!body.enabled;
+      } else if (body.action === 'updateSettings') {
+        ['dailyCheckEnabled', 'sessionTrackingEnabled', 'checkHour'].forEach((key) => { if (key in body) gametracker[key] = body[key]; });
+        gametracker.enabled = gametracker.dailyCheckEnabled || gametracker.sessionTrackingEnabled;
+      }
+      gametracker.enabledPlayerCount = gametracker.players.filter((p) => p.isEnabled).length;
+      gametracker.totalPlayerCount = gametracker.players.length;
+      gametracker.linkedPlayerCount = gametracker.players.filter((p) => p.discordUserID).length;
+      console.log('[gametracker]', JSON.stringify(body));
+      return sendJSON(res, { ok: true });
+    }
+
     if (pathname === '/api/welcome-flow') {
       if (body.settings) welcomeFlow.settings = body.settings;
       console.log('[welcome-flow]', JSON.stringify(body.settings));
@@ -211,7 +330,20 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/commands/toggle') {
+      const item = fixtures.commands.items.find(i => i.name === body.name);
+      if (!item) return sendJSON(res, { error: 'unknown_command' }, 404);
+      item.enabled = !!body.enabled;
+      return sendJSON(res, { ok: true });
+    }
+
     if (pathname === '/api/config') {
+      // The Commands page reads these from the command catalog.
+      const cmds = fixtures.commands;
+      if ('commandsEnabled' in body) cmds.commandsEnabled = !!body.commandsEnabled;
+      if ('slashCommandsEnabled' in body) cmds.slashCommandsEnabled = !!body.slashCommandsEnabled;
+      if ('musicLinkWatchEnabled' in body) cmds.musicLinkWatch.isEnabled = !!body.musicLinkWatchEnabled;
+      if (Array.isArray(body.musicLinkWatchChannelIDs)) cmds.musicLinkWatch.channelIDs = body.musicLinkWatchChannelIDs;
       // Apply the flat patch keys the Settings page sends to the nested config.
       const map = {
         autoStart: ['general', 'autoStart'],

@@ -105,6 +105,8 @@ final class AppModel: ObservableObject {
     @Published var availableRolesByServer: [String: [GuildRole]] = [:]
     @Published var welcomeFlowInvitesByServer: [String: [WelcomeFlowService.InviteSnapshot]] = [:]
     @Published var knownUsersById: [String: String] = [:]
+    /// Discord @usernames, alongside the display names in `knownUsersById`.
+    @Published var knownRawUsernamesById: [String: String] = [:]
     @Published var knownBotUserIds: Set<String> = []
     @Published var knownGuildMemberIds: Set<String> = []
     @Published var gatewayEventCount = 0

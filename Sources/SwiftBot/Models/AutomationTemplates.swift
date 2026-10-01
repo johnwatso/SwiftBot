@@ -176,6 +176,196 @@ struct AutomationTemplate: Identifiable, Hashable {
                 ]
             )
         ),
+
+        // MARK: Voice
+
+        AutomationTemplate(
+            id: "voice-move-notify",
+            title: "Voice move notice",
+            subtitle: "Post in the new channel when someone hops between voice channels.",
+            symbol: "arrow.left.arrow.right",
+            tint: .blue,
+            rule: Automations.Rule(
+                name: "Voice move notice",
+                trigger: Automations.Trigger(kind: .userMovedVoice),
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .sameChannel,
+                        content: "🔀 {userMention} moved to #{channelName}"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "voice-marathon-shoutout",
+            title: "Long session shout-out",
+            subtitle: "Celebrate anyone who spends two hours or more in voice.",
+            symbol: "trophy.fill",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "Long session shout-out",
+                trigger: Automations.Trigger(kind: .userLeftVoice),
+                filters: [
+                    Automations.Filter(kind: .minVoiceDurationSeconds, intValue: 7200)
+                ],
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .sameChannel,
+                        content: "🏆 {userMention} just wrapped a {duration} session in #{channelName}!"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "voice-role-add",
+            title: "In Voice role: add",
+            subtitle: "Give members a role while they're in voice. Pick the role, then turn it on.",
+            symbol: "person.badge.plus",
+            tint: .green,
+            rule: Automations.Rule(
+                name: "In Voice role: add",
+                enabled: false,
+                trigger: Automations.Trigger(kind: .userJoinedVoice),
+                steps: [
+                    Automations.Step(kind: .modifyMember, memberOp: .addRole)
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "voice-role-remove",
+            title: "In Voice role: remove",
+            subtitle: "Take the In Voice role away when members leave voice. Pick the same role.",
+            symbol: "person.badge.minus",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "In Voice role: remove",
+                enabled: false,
+                trigger: Automations.Trigger(kind: .userLeftVoice),
+                steps: [
+                    Automations.Step(kind: .modifyMember, memberOp: .removeRole)
+                ]
+            )
+        ),
+
+        // MARK: Messages
+
+        AutomationTemplate(
+            id: "thanks-reaction",
+            title: "Thank-you reaction",
+            subtitle: "React with 🙏 when someone says thanks.",
+            symbol: "hands.clap.fill",
+            tint: .green,
+            rule: Automations.Rule(
+                name: "Thank-you reaction",
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageContainsAny, textValues: ["thanks", "thank you", "thx", "ty"])
+                ],
+                steps: [
+                    Automations.Step(kind: .modifyMessage, messageOp: .react, reactEmoji: "🙏")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "gg-reaction",
+            title: "GG reaction",
+            subtitle: "Celebrate with 🎉 whenever someone says GG.",
+            symbol: "party.popper.fill",
+            tint: .purple,
+            rule: Automations.Rule(
+                name: "GG reaction",
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageContainsAny, textValues: ["gg", "good game"])
+                ],
+                steps: [
+                    Automations.Step(kind: .modifyMessage, messageOp: .react, reactEmoji: "🎉")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "translate-on-request",
+            title: "Translate on request",
+            subtitle: "Reply with an English translation when a message starts with “translate:”.",
+            symbol: "character.bubble.fill",
+            tint: .indigo,
+            rule: Automations.Rule(
+                name: "Translate on request",
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageMatchesRegex, text: "(?i)^translate:")
+                ],
+                steps: [
+                    Automations.Step(
+                        kind: .aiTransform,
+                        aiPrompt: "Translate the text after 'translate:' into natural English. Reply with only the translation: {message}"
+                    ),
+                    Automations.Step(kind: .sendMessage, sendTarget: .replyToTrigger, content: "🌐 {ai_output}")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "link-log",
+            title: "Link log",
+            subtitle: "Keep a local log of every link people share.",
+            symbol: "link",
+            tint: .blue,
+            rule: Automations.Rule(
+                name: "Link log",
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageMatchesRegex, text: #"https?://\S+"#),
+                    Automations.Filter(kind: .fromBot, boolValue: false)
+                ],
+                steps: [
+                    Automations.Step(kind: .log, logText: "{username} shared a link in #{channelName}: {message}")
+                ]
+            )
+        ),
+
+        // MARK: Reactions & commands
+
+        AutomationTemplate(
+            id: "star-reaction-log",
+            title: "Starred messages",
+            subtitle: "Log messages people react to with ⭐ so you can find highlights later.",
+            symbol: "star.fill",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "Starred messages",
+                trigger: Automations.Trigger(kind: .reactionAdded, reactionEmoji: "⭐"),
+                steps: [
+                    Automations.Step(kind: .log, logText: "{username} starred a message in #{channelName}")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "rules-command",
+            title: "/rules command",
+            subtitle: "Answer a /rules slash command with your server rules.",
+            symbol: "list.bullet.rectangle",
+            tint: .blue,
+            rule: Automations.Rule(
+                name: "/rules command",
+                trigger: Automations.Trigger(kind: .slashCommand, commandName: "rules"),
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .replyToTrigger,
+                        content: "📜 **{guildName} rules**\n1. Be kind.\n2. No spam or self-promo.\n3. Keep it on topic."
+                    )
+                ]
+            )
+        ),
     ]
 
     // MARK: - Moderation catalog
@@ -438,6 +628,176 @@ struct AutomationTemplate: Identifiable, Hashable {
                         kind: .log,
                         logText: "{username} left {guildName}"
                     )
+                ]
+            )
+        ),
+
+        // MARK: Scams & spam
+
+        AutomationTemplate(
+            id: "mod-scam-link-timeout",
+            title: "Scam link blocker",
+            subtitle: "Delete free-Nitro and gift scam links, timeout the sender for an hour and log it.",
+            symbol: "exclamationmark.shield.fill",
+            tint: .red,
+            rule: Automations.Rule(
+                name: "Scam link blocker",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageContainsSpamLink)
+                ],
+                steps: [
+                    Automations.Step(kind: .modifyMessage, messageOp: .delete),
+                    Automations.Step(kind: .modifyMember, memberOp: .timeout, timeoutSeconds: 3600),
+                    Automations.Step(kind: .log, logText: "Removed a scam link from {username} in #{channelName}")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-caps-warning",
+            title: "Shouting warning",
+            subtitle: "Gently remind people when a message is 80% or more capital letters.",
+            symbol: "speaker.wave.3.fill",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "Shouting warning",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageCapsPercentage, intValue: 80),
+                    Automations.Filter(kind: .fromBot, boolValue: false)
+                ],
+                steps: [
+                    Automations.Step(kind: .sendMessage, sendTarget: .replyToTrigger, content: "Easy on the caps, {username} 🙂")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-mass-mention-kick",
+            title: "Mass mention kick",
+            subtitle: "Delete messages that ping 10 or more people and kick the sender.",
+            symbol: "at.circle.fill",
+            tint: .red,
+            rule: Automations.Rule(
+                name: "Mass mention kick",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageMentionsCount, intValue: 10)
+                ],
+                steps: [
+                    Automations.Step(kind: .modifyMessage, messageOp: .delete),
+                    Automations.Step(kind: .modifyMember, memberOp: .kick, kickReason: "Mass mention spam")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-no-links-channel",
+            title: "No links in a channel",
+            subtitle: "Remove links posted in channels you choose. Pick the channels, then turn it on.",
+            symbol: "link.badge.plus",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "No links in a channel",
+                enabled: false,
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .inChannel, channelIds: []),
+                    Automations.Filter(kind: .messageMatchesRegex, text: #"https?://\S+"#)
+                ],
+                steps: [
+                    Automations.Step(kind: .modifyMessage, messageOp: .delete),
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .directMessage,
+                        content: "Hi {username}, links aren't allowed in #{channelName}. Your message was removed."
+                    )
+                ]
+            )
+        ),
+
+        // MARK: Reports & alerts
+
+        AutomationTemplate(
+            id: "mod-report-command",
+            title: "/report command",
+            subtitle: "Let members report a problem with /report; it's logged for moderators.",
+            symbol: "flag.fill",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "/report command",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .slashCommand, commandName: "report"),
+                steps: [
+                    Automations.Step(kind: .log, logText: "Report from {username} in #{channelName}: {message}"),
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .replyToTrigger,
+                        content: "Thanks {username} — the moderators have been notified."
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-keyword-alert",
+            title: "Moderator alert",
+            subtitle: "Alert a mod channel when a watched phrase appears. Pick the channel, then turn it on.",
+            symbol: "bell.badge.fill",
+            tint: .red,
+            rule: Automations.Rule(
+                name: "Moderator alert",
+                enabled: false,
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageContainsAny, textValues: ["dox", "swat", "threat"])
+                ],
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .specificChannel,
+                        content: "🚨 {username} in #{channelName}: {message}"
+                    )
+                ]
+            )
+        ),
+
+        // MARK: Audit
+
+        AutomationTemplate(
+            id: "mod-voice-leave-audit",
+            title: "Voice leave audit",
+            subtitle: "Log when someone leaves voice, with how long they stayed.",
+            symbol: "speaker.slash.fill",
+            tint: .green,
+            rule: Automations.Rule(
+                name: "Voice leave audit",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .userLeftVoice),
+                steps: [
+                    Automations.Step(kind: .log, logText: "{username} left #{channelName} after {duration}")
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-voice-move-audit",
+            title: "Voice move audit",
+            subtitle: "Log when someone moves between voice channels.",
+            symbol: "arrow.left.arrow.right",
+            tint: .green,
+            rule: Automations.Rule(
+                name: "Voice move audit",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .userMovedVoice),
+                steps: [
+                    Automations.Step(kind: .log, logText: "{username} moved to #{channelName}")
                 ]
             )
         ),

@@ -560,7 +560,7 @@ private struct RecordingGameArtwork: View {
     }
 }
 
-private actor RecordingSteamArtworkService {
+actor RecordingSteamArtworkService {
     static let shared = RecordingSteamArtworkService()
 
     private let defaultsKey = "swiftbot.recordings.steamArtworkAppIDs"
@@ -570,6 +570,10 @@ private actor RecordingSteamArtworkService {
     private var manualOverrides: [String: String]
     private var cache: [String: String]
     private var failedLookups: Set<String> = []
+    private var portraitDataCache: [String: Data] = [:]
+    /// Twitch box-art results for games Steam doesn't have; nil = none found.
+    private var twitchResults: [String: URL?] = [:]
+    private let twitchBoxArtBaseURL = "https://static-cdn.jtvnw.net/ttv-boxart/"
 
     init() {
         manualOverrides = UserDefaults.standard.dictionary(forKey: manualDefaultsKey) as? [String: String] ?? [:]
@@ -585,6 +589,8 @@ private actor RecordingSteamArtworkService {
             manualOverrides[normalized] = trimmed
         }
         cache.removeValue(forKey: normalized)
+        portraitDataCache.removeValue(forKey: normalized)
+        twitchResults.removeValue(forKey: normalized)
         failedLookups.remove(normalized)
         UserDefaults.standard.set(manualOverrides, forKey: manualDefaultsKey)
         UserDefaults.standard.set(cache, forKey: defaultsKey)
@@ -600,7 +606,7 @@ private actor RecordingSteamArtworkService {
 
         guard !failedLookups.contains(normalized),
               let appID = await lookupAppID(for: gameName, normalized: normalized) else {
-            return nil
+            return await twitchBoxArtURL(for: gameName, normalized: normalized)
         }
 
         cache[normalized] = appID
@@ -650,6 +656,47 @@ private actor RecordingSteamArtworkService {
 
         failedLookups.insert(normalized)
         return nil
+    }
+
+    /// Poster bytes for the WebUI, which can't load Steam's CDN directly
+    /// under its content-security policy. Kept in memory for the session.
+    func portraitData(for gameName: String) async -> Data? {
+        let normalized = Self.normalized(gameName)
+        if let cached = portraitDataCache[normalized] { return cached }
+        guard let url = await portraitURL(for: gameName) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              !data.isEmpty else {
+            return nil
+        }
+        portraitDataCache[normalized] = data
+        return data
+    }
+
+    /// Twitch box art by game name, for games not on Steam (e.g. Minecraft).
+    /// Name URLs only resolve for long-established games; anything else
+    /// redirects to Twitch's "404_boxart" placeholder, which counts as none.
+    private func twitchBoxArtURL(for gameName: String, normalized: String) async -> URL? {
+        if let known = twitchResults[normalized] { return known }
+        let name = gameName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))),
+              let url = URL(string: "\(twitchBoxArtBaseURL)\(encoded)-600x800.jpg") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 5
+        var found: URL?
+        if let (_, response) = try? await URLSession.shared.data(for: request),
+           let http = response as? HTTPURLResponse,
+           http.statusCode == 200,
+           http.url?.path.contains("404_boxart") == false {
+            found = url
+        }
+        twitchResults[normalized] = found
+        return found
     }
 
     private func portraitExists(appID: String) async -> Bool {
@@ -782,7 +829,7 @@ private struct RecordingActionMenuLabel: View {
     }
 }
 
-private enum RecordingCustomArtworkStore {
+enum RecordingCustomArtworkStore {
     private static let defaultsKey = "swiftbot.recordings.customArtworkURLs"
 
     static func customArtworkURL(for gameName: String) -> URL? {
@@ -864,5 +911,21 @@ private extension NSImage {
             return nil
         }
         return NSImage(contentsOf: url)
+    }
+}
+
+/// Serves a game's poster to the WebUI: custom artwork first, then Steam.
+enum RecordingGameArtworkResponder {
+    static func response(for gameName: String) async -> BinaryHTTPResponse? {
+        let headers = ["Cache-Control": "private, max-age=86400"]
+        if let url = RecordingCustomArtworkStore.customArtworkURL(for: gameName),
+           let data = try? Data(contentsOf: url) {
+            let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "image/png"
+            return BinaryHTTPResponse(status: "200 OK", contentType: type, headers: headers, body: data)
+        }
+        guard let data = await RecordingSteamArtworkService.shared.portraitData(for: gameName) else {
+            return nil
+        }
+        return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: headers, body: data)
     }
 }

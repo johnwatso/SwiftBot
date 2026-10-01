@@ -416,7 +416,7 @@ final class FinalsIDTests: XCTestCase {
 
         XCTAssertEqual(
             tracking.configurationIssue(connections: GameProviderConnections()),
-            "Add a Discord User ID to a profile to announce play sessions."
+            "Link a Discord member to a profile to announce play sessions."
         )
     }
 

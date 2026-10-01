@@ -195,7 +195,6 @@ struct MusicLinkWatchEditor: View {
 struct UserTimezonesEditor: View {
     @EnvironmentObject var app: AppModel
 
-    @State private var newUserID: String = ""
     @State private var newTimeZoneID: String = TimeZone.current.identifier
     @State private var addPickerSelection: String = ""
 
@@ -211,30 +210,19 @@ struct UserTimezonesEditor: View {
     }
 
     private func displayName(for userID: String) -> String {
+        if let member = app.discordMemberOptions.first(where: { $0.id == userID }) {
+            return member.label
+        }
         if let name = app.knownUsersById[userID], !name.isEmpty {
             return name
         }
-        return "Unknown user"
+        return "Unknown member (\(userID))"
     }
 
-    /// Only real humans: must be in the guild-member set, must not be a bot,
-    /// and must have a non-empty username we can show.
-    private var humanUsers: [(id: String, name: String)] {
-        let bots = app.knownBotUserIds
-        let members = app.knownGuildMemberIds
-        return app.knownUsersById
-            .filter { entry in
-                guard !entry.value.isEmpty else { return false }
-                guard members.contains(entry.key) else { return false }
-                return !bots.contains(entry.key)
-            }
-            .map { (id: $0.key, name: $0.value) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    private var unassignedKnownUsers: [(id: String, name: String)] {
+    /// Server members who don't have a timezone yet.
+    private var unassignedMembers: [DiscordMemberOption] {
         let assigned = Set(app.settings.userTimezones.keys)
-        return humanUsers.filter { !assigned.contains($0.id) }
+        return app.discordMemberOptions.filter { !assigned.contains($0.id) }
     }
 
     var body: some View {
@@ -320,27 +308,18 @@ struct UserTimezonesEditor: View {
                 .font(.headline)
 
             HStack(spacing: 8) {
-                if unassignedKnownUsers.isEmpty {
-                    TextField("Discord user ID", text: $newUserID)
-                        .textFieldStyle(.roundedBorder)
-                } else {
-                    Picker("", selection: $addPickerSelection) {
-                        Text("Pick a known user…").tag("")
-                        ForEach(unassignedKnownUsers, id: \.id) { user in
-                            Text(user.name).tag(user.id)
-                        }
-                        Divider()
-                        Text("Enter ID manually…").tag("__manual__")
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 280)
-
-                    if addPickerSelection == "__manual__" {
-                        TextField("User ID", text: $newUserID)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 180)
+                Picker("", selection: $addPickerSelection) {
+                    Text(unassignedMembers.isEmpty ? "No members to add" : "Choose a member…").tag("")
+                    ForEach(unassignedMembers) { member in
+                        Text(member.label).tag(member.id)
                     }
                 }
+                .labelsHidden()
+                .frame(maxWidth: 280)
+                .disabled(unassignedMembers.isEmpty)
+                .help(unassignedMembers.isEmpty
+                      ? "Everyone SwiftBot can see already has a timezone, or the member list hasn't loaded yet."
+                      : "Members of the connected servers")
 
                 TimeZoneSearchField(selection: $newTimeZoneID)
                     .frame(maxWidth: 260)
@@ -374,12 +353,7 @@ struct UserTimezonesEditor: View {
     }
 
     private var resolvedNewUserID: String {
-        if !unassignedKnownUsers.isEmpty,
-           addPickerSelection != "",
-           addPickerSelection != "__manual__" {
-            return addPickerSelection
-        }
-        return newUserID
+        addPickerSelection
     }
 
     private func addMapping() {
@@ -387,7 +361,6 @@ struct UserTimezonesEditor: View {
         guard !id.isEmpty, TimeZone(identifier: newTimeZoneID) != nil else { return }
         app.settings.userTimezones[id] = newTimeZoneID
         app.persistSettingsQuietly()
-        newUserID = ""
         addPickerSelection = ""
     }
 

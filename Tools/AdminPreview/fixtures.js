@@ -310,7 +310,15 @@ const config = {
   patchy: { monitoringEnabled: true, enabledTargets: 3, totalTargets: 4 },
   swiftMesh: { mode: 'standalone', nodeName: 'Preview Mac', leaderAddress: '', leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: false, offloadAIReplies: false, offloadWikiLookups: false, autoReclaimAfterHours: 6 },
   general: { autoStart: true, webUIEnabled: true, webUIBaseURL: 'http://127.0.0.1:4179' },
-  userTimezones: { mappings: { '280129381292318720': 'Pacific/Auckland', '512391234123412345': 'Europe/London' } },
+  userTimezones: {
+    mappings: { '412378964087275541': 'Pacific/Auckland', '280129381292318720': 'Pacific/Auckland', '512391234123412345': 'Europe/London' },
+    members: [
+      { id: '412378964087275541', name: 'jonwatso', username: null },
+    { id: '280129381292318720', name: 'Sam', username: 'samthegreat' },
+      { id: '280129381292318721', name: 'Alex', username: null },
+      { id: '280129381292318722', name: 'Jordan', username: 'jordan_ttv' }
+    ]
+  },
   swiftMiner: { enabled: false, paired: false }
 };
 
@@ -320,14 +328,34 @@ const commands = {
   commandsEnabled: true,
   prefixCommandsEnabled: true,
   slashCommandsEnabled: true,
+  // Mirrors allSlashCommandDefinitions() + SlashCommandGroup in the app.
   items: [
-    commandItem('announce', 'announce', '/announce join', 'Join your voice channel and read announcements aloud.', 'Voice', 'slash'),
-    commandItem('wiki', 'wiki', '/wiki <query>', 'Look something up on a configured wiki.', 'Lookup', 'slash'),
-    commandItem('patch', 'patch', '!patch <game>', 'Show the latest patch notes for a game.', 'Patchy', 'prefix', { aliases: ['patches'] }),
-    commandItem('rank', 'rank', '/rank', 'Show tracked ranked scores.', 'Games', 'slash'),
-    commandItem('purge', 'purge', '/purge <count>', 'Delete recent messages in this channel.', 'Moderation', 'slash', { adminOnly: true }),
-    commandItem('ping', 'ping', '!ping', 'Check the bot is alive.', 'General', 'prefix', { enabled: false })
-  ],
+    ['help', '/help [command:<value>]', 'Show help for SwiftBot', 'General'],
+    ['ping', '/ping', 'Check if bot is alive', 'General'],
+    ['userinfo', '/userinfo', 'Show user info', 'General'],
+    ['weekly', '/weekly', 'Show weekly summary', 'General'],
+    ['roll', '/roll notation:<value>', 'Roll dice, example: 2d6', 'Utilities & AI'],
+    ['8ball', '/8ball question:<value>', 'Ask the magic 8-ball', 'Utilities & AI', { enabled: false }],
+    ['poll', '/poll question:<value>', 'Create a simple poll prompt', 'Utilities & AI'],
+    ['randomteams', '/randomteams teams:<value> [max_size:<value>]', 'Suggest balanced teams from your current voice channel', 'Utilities & AI'],
+    ['image', '/image prompt:<value>', 'Generate an image with OpenAI', 'Utilities & AI', { enabled: false }],
+    ['music', '/music [help:<value>] [query:<value>] [title:<value>] [artist:<value>]', 'Search music and get Apple/Spotify/YouTube links', 'Utilities & AI'],
+    ['playlist', '/playlist url:<value>', 'Import a playlist URL into a thread with per-track links', 'Utilities & AI'],
+    ['timestamp', '/timestamp time:<value>', 'Convert a natural-language time into a Discord timestamp', 'Utilities & AI'],
+    ['announce', '/announce action:<value>', 'Control your configured Announcer voice channel', 'Utilities & AI'],
+    ['rewind', '/rewind phrase:<value>', 'Count how often a word or phrase has been used', 'Utilities & AI'],
+    ['finals', '/finals query:<value>', 'Search THE FINALS wiki', 'Utilities & AI'],
+    ['debug', '/debug', 'Admin diagnostics', 'Moderation', { adminOnly: true }],
+    ['notifystatus', '/notifystatus', 'Show notification config status', 'Moderation'],
+    ['setchannel', '/setchannel', 'Set this channel as notifications channel', 'Moderation'],
+    ['ignorechannel', '/ignorechannel action:<value> [channel:<value>]', 'Manage ignored voice channels', 'Moderation'],
+    ['sweep', '/sweep action:<value>', 'Run, preview, or pause Sweep rules', 'Moderation'],
+    ['cluster', '/cluster [action:<value>]', 'Cluster status/probe/test', 'Infrastructure'],
+    ['miner', '/miner [action:<value>]', 'Check or set up your SwiftMiner drops miner', 'Infrastructure', { enabled: false }],
+    ['compare', '/compare first:<value> second:<value>', 'Compare two THE FINALS weapons', 'Gaming'],
+    ['meta', '/meta', 'Fetch current THE FINALS meta from Skycoach', 'Gaming'],
+    ['steam', '/steam game:<value>', 'Search Steam for game info and player counts', 'Gaming']
+  ].map(([name, usage, description, category, extra]) => commandItem(`slash-${name}`, name, usage, description, category, 'slash', extra)),
   musicLinkWatch: { isEnabled: false, channelIDs: [], servers: serverOptions, textChannelsByServer: textByServer }
 };
 
@@ -344,19 +372,30 @@ const automationRules = {
     rule('b2b2b2b2-0000-4000-8000-000000000001', 'Block spam links', 'moderation', 'messageCreated', { kind: 'modifyMessage', messageOp: 'delete' })
   ]
 };
-const template = (id, title, subtitle, symbol, tint, category, trigger, step) =>
-  ({ id, title, subtitle, symbol, tint, rule: rule(`c3c3c3c3-0000-4000-8000-0000000000${id.length.toString().padStart(2, '0')}`, title, category, trigger, step) });
-const automationTemplates = {
-  automation: [
-    template('voice-hello', 'Voice greeting', 'Say hi when someone joins voice', 'waveform', 'blue', 'automation', 'userJoinedVoice', { kind: 'sendMessage', sendTarget: 'replyToTrigger', content: '' }),
-    template('react', 'Keyword reaction', 'React when a word is posted', 'face.smiling', 'orange', 'automation', 'messageCreated', { kind: 'sendMessage', sendTarget: 'replyToTrigger', content: '' }),
-    template('log-leaves', 'Log leavers', 'Note when members leave', 'doc.text', 'purple', 'automation', 'memberLeft', { kind: 'log' })
-  ],
-  moderation: [
-    template('links', 'Block links', 'Delete messages with links', 'link', 'red', 'moderation', 'messageCreated', { kind: 'modifyMessage', messageOp: 'delete' }),
-    template('timeout', 'Timeout spammers', 'Timeout members who spam', 'hand.raised', 'orange', 'moderation', 'messageCreated', { kind: 'modifyMember', memberOp: 'timeout' })
-  ]
-};
+// Templates are read from the Swift catalog so the preview always shows the
+// real list. Rules are simplified to the trigger plus the first step's kind;
+// the real server sends the full rule.
+const automationTemplates = (() => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(path.resolve(__dirname, '../../Sources/SwiftBot/Models/AutomationTemplates.swift'), 'utf8');
+  const catalogs = { automation: [], moderation: [] };
+  const blocks = source.split('AutomationTemplate(\n').slice(1);
+  blocks.forEach((block, index) => {
+    const field = (name) => (block.match(new RegExp(`${name}: "([^"]*)"`)) || [])[1] || '';
+    const category = /category: \.moderation/.test(block) ? 'moderation' : 'automation';
+    const trigger = (block.match(/Trigger\(kind: \.(\w+)/) || [])[1] || 'messageCreated';
+    const stepKind = (block.match(/Step\(\s*kind: \.(\w+)/) || [])[1] || 'log';
+    const id = field('id');
+    if (!id) return;
+    catalogs[category].push({
+      id, title: field('title'), subtitle: field('subtitle'), symbol: field('symbol'),
+      tint: (block.match(/tint: \.(\w+)/) || [])[1] || 'blue',
+      rule: rule(`c3c3c3c3-0000-4000-8000-${String(index).padStart(12, '0')}`, field('title'), category, trigger, { kind: stepKind })
+    });
+  });
+  return catalogs;
+})();
 const automations = (category, rules = automationRules[category] || []) => ({
   category,
   rules,
@@ -437,41 +476,122 @@ const wikibridge = {
   ]
 };
 
+// Shapes mirror SweepPolicy / SweepRunReport / SweepSuggestion (SweepView.swift);
+// SweepSchedule uses Swift's synthesized enum coding, e.g. { interval: { minutes: 60 } }.
+const sweepAction = (i, kind, mode, preview, reason, authorName, isBot) =>
+  ({ id: `d0d0d0d0-0000-4000-8000-${String(i).padStart(12, '0')}`, kind, mode, messageID: `m${i}`, preview, reason, authorName, isBot });
+const sweepReport = (id, policyID, policyName, minutes, extra) => ({
+  id, policyID, policyName, startedAt: minutesAgo(minutes), durationMS: 840, scanned: 120, matched: 34, executed: 31, suppressed: 3,
+  dryRun: false, error: null, summary: null,
+  actions: [
+    sweepAction(1, 'delete', 'destructive', 'NVIDIA driver 572.16 is out!', 'Bot message older than 48h', 'Patchy', true),
+    sweepAction(2, 'delete', 'destructive', 'NVIDIA driver 572.16 is out!', 'Duplicate of a newer message', 'Patchy', true),
+    sweepAction(3, 'skip', 'virtual', 'Server rules — read before posting', 'Pinned message protected', 'sam', false),
+    sweepAction(4, 'skip', 'virtual', 'gg everyone 🎉', 'Has reactions — protected', 'alex', false)
+  ],
+  ...extra
+});
+const sweepPolicy = (id, name, channelID, channelName, strategies, schedule, extra = {}) => ({
+  id, name, guildID: '1001', guildName: 'Swift Lounge', channelID, channelName, strategies, schedule,
+  safety: { maxMessagesPerRun: 200, dryRunOnly: false, minMessageAgeMinutes: 5, protectPinned: true, protectReacted: true },
+  notice: { isEnabled: false, template: ':swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}.', showVoiceAverages: false, pinnedMessageID: null },
+  weeklyMVP: { isEnabled: false, weekday: 2, hour: 20, template: "🏆 This week's MVP is {winner} with {duration} this week!", lastPostedWeekKey: null, pinnedMessageID: null },
+  isEnabled: true, createdAt: minutesAgo(20000), updatedAt: minutesAgo(3000), lastRunAt: minutesAgo(95), nextRunAt: minutesAgo(-25),
+  ...extra
+});
+const sweepPolicies = [
+  sweepPolicy('e1e1e1e1-0000-4000-8000-000000000001', 'Tidy patch notes', 't101', 'announcements',
+    [{ id: 'e1e1e1e1-0000-4000-8000-0000000000a1', kind: 'reduceNoise', ageHours: 48, keepCount: 1, fromBotsOnly: true }],
+    { interval: { minutes: 120 } }),
+  sweepPolicy('e1e1e1e1-0000-4000-8000-000000000002', 'Weekly voice-chat reset', 't100', 'general',
+    [{ id: 'e1e1e1e1-0000-4000-8000-0000000000a2', kind: 'keepLatest', ageHours: 24, keepCount: 20, fromBotsOnly: false }],
+    { daily: { hour: 4 } }, { isEnabled: false, lastRunAt: null, nextRunAt: null })
+];
 const sweep = {
-  globalPaused: false, state: 'Active', stateTone: 'success', nextRunDescription: 'Next run in 2h',
-  enabledPolicyCount: 0, totalPolicyCount: 0, messagesTodayCount: 0, suppressedTodayCount: 0, summariesThisWeekCount: 0,
-  policies: [], recentReports: [], suggestions: [], isScanningSuggestions: false, lastSuggestionScanAt: null,
+  globalPaused: false, state: 'Active', stateTone: 'success', nextRunDescription: 'Next run in 25m',
+  enabledPolicyCount: 1, totalPolicyCount: 2, messagesTodayCount: 31, suppressedTodayCount: 3, summariesThisWeekCount: 0,
+  policies: sweepPolicies,
+  recentReports: [
+    sweepReport('f2f2f2f2-0000-4000-8000-000000000001', sweepPolicies[0].id, 'Tidy patch notes', 95),
+    sweepReport('f2f2f2f2-0000-4000-8000-000000000002', sweepPolicies[0].id, 'Tidy patch notes', 215, { executed: 12, matched: 14, suppressed: 2 }),
+    sweepReport('f2f2f2f2-0000-4000-8000-000000000003', sweepPolicies[1].id, 'Weekly voice-chat reset', 1500, { error: 'Missing Manage Messages permission in #general', executed: 0, matched: 0, actions: [] })
+  ],
+  suggestions: [{
+    id: 'a7a7a7a7-0000-4000-8000-000000000001', guildID: '1001', guildName: 'Swift Lounge', channelID: 't102', channelName: 'stream-chat',
+    strategyKind: 'deduplicate', title: 'Remove duplicate clip links in #stream-chat',
+    rationale: '42 messages in the last week repeat an earlier link. Deduplicating keeps the newest copy of each.',
+    evidenceCount: 42, confidence: 0.86,
+    proposedStrategy: { id: 'a7a7a7a7-0000-4000-8000-0000000000b1', kind: 'deduplicate', ageHours: 24, keepCount: 1, fromBotsOnly: false },
+    proposedSchedule: { daily: { hour: 3 } }, createdAt: minutesAgo(600),
+    projection: sweepReport('a7a7a7a7-0000-4000-8000-0000000000c1', 'a7a7a7a7-0000-4000-8000-000000000001', 'Suggested: deduplicate', 600, { dryRun: true })
+  }],
+  isScanningSuggestions: false, lastSuggestionScanAt: minutesAgo(600),
   scanProgressDone: 0, scanProgressTotal: 0, servers: serverOptions, textChannelsByServer: textByServer
 };
 
 const gametracker = {
-  enabled: true, dailyCheckEnabled: true, sessionTrackingEnabled: true, statusText: 'Tracking 2 players', statusTone: 'success',
+  enabled: true, dailyCheckEnabled: true, sessionTrackingEnabled: true, statusText: 'Tracking 3 players', statusTone: 'success',
   configurationIssue: null, checkInProgress: false, scheduleDescription: 'Daily at 9:00 am', lastCheckAt: minutesAgo(300), nextCheckAt: minutesAgo(-1140),
-  enabledPlayerCount: 2, totalPlayerCount: 2,
+  enabledPlayerCount: 3, totalPlayerCount: 3,
   players: [
-    { id: 'p1', game: 'thefinals', gameDisplayName: 'THE FINALS', provider: 'embark', providerDisplayName: 'Embark', playerID: 'sam#1234', displayName: 'sam', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Gold 2', score: 18420, baselineRecordedAt: minutesAgo(2000) },
-    { id: 'p2', game: 'thefinals', gameDisplayName: 'THE FINALS', provider: 'embark', providerDisplayName: 'Embark', playerID: 'alex#9876', displayName: 'alex', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Silver 1', score: 11203, baselineRecordedAt: minutesAgo(2000) }
+    // Real finals.id numbers for jonwatso#5331 (captured 2026-10-01).
+    { id: 'p0', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'jonwatso#5331', displayName: 'jonwatso', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S11', rankName: 'Gold', score: 28160, baselineRecordedAt: '2026-09-29T09:03:10Z', discordUserID: '412378964087275541', triggerMetrics: ['rankedScore', 'rankTier'], contextMetrics: ['killDeathRatio', 'wins'] },
+    { id: 'p1', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'sam#1234', displayName: 'sam', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Gold 2', score: 18420, baselineRecordedAt: minutesAgo(2000), discordUserID: '280129381292318720', triggerMetrics: ['rankedScore'], contextMetrics: ['killDeathRatio', 'wins'] },
+    { id: 'p2', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'alex#9876', displayName: 'alex', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Silver 1', score: 11203, baselineRecordedAt: minutesAgo(2000), discordUserID: '', triggerMetrics: ['rankedScore', 'rankTier'], contextMetrics: [] }
   ],
   history: [
-    { id: 'h1', timestamp: minutesAgo(300), kind: 'dailyCheck', title: 'Daily check', detail: 'sam climbed to Gold 2 (+420)' }
+    { id: 'h1', timestamp: minutesAgo(300), kind: 'announcement', title: 'Rank update posted', detail: 'sam climbed to Gold 2 (+420)' },
+    { id: 'h2', timestamp: '2026-09-30T10:30:29Z', kind: 'sessionEnded', title: 'Play session posted', detail: 'jonwatso · 2h 6m · 6 matches, 1 win · 67 kills' },
+    { id: 'h3', timestamp: '2026-09-29T09:03:10Z', kind: 'announcement', title: 'Rank update posted', detail: 'jonwatso dropped to 28,160 SR (−674)' }
   ],
-  isPollingRuntime: false
+  isPollingRuntime: false,
+  checkHour: 9, timeZoneIdentifier: 'Pacific/Auckland', linkedPlayerCount: 2,
+  sessionMinimumMinutes: 5, sessionGraceMinutes: 3, isFailoverManagedNode: false,
+  // Mirrors AdminWebGameTrackerCatalog built from GameID / GameProviderCatalog.
+  catalog: {
+    games: [{ id: 'theFinals', displayName: 'THE FINALS', symbolName: 'scope' }],
+    providers: [{
+      id: 'finalsID', displayName: 'Finals ID', supportedGames: ['theFinals'], isConfigured: true,
+      metrics: [
+        ['rankedScore', 'Ranked Score', true], ['rankTier', 'Rank', true], ['kills', 'Kills', false], ['deaths', 'Deaths', false],
+        ['assists', 'Assists', false], ['killDeathRatio', 'K/D', true], ['damage', 'Damage', false],
+        ['matchesPlayed', 'Matches', false], ['wins', 'Wins', false], ['winRate', 'Win Rate', true]
+      ].map(([id, displayName, canTrigger]) => ({ id, displayName, canTrigger }))
+    }]
+  },
+  channels: textChannels.map(c => ({ id: c.id, name: `Swift Lounge · #${c.name}` })),
+  members: [
+    { id: '412378964087275541', name: 'jonwatso', username: null },
+    { id: '280129381292318720', name: 'Sam', username: 'samthegreat' },
+    { id: '280129381292318721', name: 'Alex', username: null },
+    { id: '280129381292318722', name: 'Jordan', username: 'jordan_ttv' }
+  ]
 };
 
 const mediaItem = (i, game) => ({
   id: `m${i}`, nodeName: 'Preview Mac', sourceName: 'Clips', gameName: game, fileName: `${game.replace(/\W/g, '')}-${i}.mp4`,
   relativePath: `Clips/${game}/${i}.mp4`, fileExtension: 'mp4', sizeBytes: 48_000_000 + i * 1_000_000,
-  modifiedAt: minutesAgo(i * 90), thumbnailURL: '', streamURL: ''
+  modifiedAt: minutesAgo([20, 140, 1500, 1620, 4400, 9000][i - 1] ?? i * 90), thumbnailURL: '', streamURL: ''
 });
 const media = {
   generatedAt: new Date().toISOString(),
   sources: [{ id: 'clips', nodeName: 'Preview Mac', sourceName: 'Clips', itemCount: 6 }],
-  items: [1, 2, 3, 4, 5, 6].map(i => mediaItem(i, i % 2 ? 'THE FINALS' : 'Minecraft')),
-  games: ['THE FINALS', 'Minecraft'], selectedSourceID: null, selectedDateRange: 'all', selectedGame: null,
-  page: 1, pageSize: 24, totalItems: 6, totalPages: 1
+  items: [
+    ...[1, 2, 3, 4, 5, 6].map(i => mediaItem(i, i % 2 ? 'THE FINALS' : 'Minecraft')),
+    ...[[7, 'Apex Legends', 2900], [8, 'Apex Legends', 3100], [9, 'Helldivers 2', 5800], [10, 'Counter-Strike 2', 12000], [11, 'Helldivers 2', 7300]]
+      .map(([i, game, mins]) => ({ ...mediaItem(i, game), modifiedAt: minutesAgo(mins) }))
+  ],
+  games: ['Apex Legends', 'Counter-Strike 2', 'Helldivers 2', 'Minecraft', 'THE FINALS'], selectedSourceID: null, selectedDateRange: 'all', selectedGame: null,
+  page: 1, pageSize: 24, totalItems: 11, totalPages: 1
+};
+const mediaExports = {
+  jobs: [
+    { id: 'j1', kind: 'clip', status: 'finished', createdAt: minutesAgo(30), finishedAt: minutesAgo(29), outputFileName: 'Final_round_clutch.mp4', nodeName: 'Preview Mac' },
+    { id: 'j2', kind: 'multiview', status: 'failed', createdAt: minutesAgo(200), message: 'Second recording is shorter than the selected window.', nodeName: 'Preview Mac' }
+  ]
 };
 
 module.exports = {
   announcer, me, overview, status, analytics, rewind, authOptions,
-  config, commands, automations, automationRules, welcomeFlow, patchy, aibots, wikibridge, sweep, gametracker, media
+  config, commands, automations, automationRules, welcomeFlow, patchy, aibots, wikibridge, sweep, gametracker, media, mediaExports
 };

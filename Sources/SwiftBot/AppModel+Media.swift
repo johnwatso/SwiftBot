@@ -577,6 +577,19 @@ extension AppModel {
         )
         let availableGames = Array(Set(unfilteredForGames.map { $0.gameName }))
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let gameSummaries = Dictionary(grouping: unfilteredForGames, by: \.gameName)
+            .map { name, entries in
+                AdminWebMediaGameSummary(
+                    name: name,
+                    clipCount: entries.count,
+                    latestAt: entries.map(\.modifiedAt).max(),
+                    totalBytes: entries.reduce(0) { $0 + $1.sizeBytes }
+                )
+            }
+            .sorted { lhs, rhs in
+                // Most recently played first, like a "continue watching" row.
+                (lhs.latestAt ?? .distantPast) > (rhs.latestAt ?? .distantPast)
+            }
 
         let filteredItems = filteredMediaItemPayloads(
             from: payloads,
@@ -601,6 +614,7 @@ extension AppModel {
             },
             items: pagedItems,
             games: availableGames,
+            gameSummaries: gameSummaries,
             selectedSourceID: selectedSourceID,
             selectedDateRange: selectedDateRange,
             selectedGame: selectedGame,

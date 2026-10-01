@@ -467,7 +467,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
             }
         }
         if sessionTrackingEnabled, presenceLinkedPlayers.isEmpty {
-            return "Add a Discord User ID to a profile to announce play sessions."
+            return "Link a Discord member to a profile to announce play sessions."
         }
         return nil
     }

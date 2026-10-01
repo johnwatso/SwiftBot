@@ -958,7 +958,10 @@ extension AppModel {
                 webUIEnabled: settings.adminWebUI.enabled,
                 webUIBaseURL: adminWebBaseURL()
             ),
-            userTimezones: .init(mappings: settings.userTimezones),
+            userTimezones: .init(
+                mappings: settings.userTimezones,
+                members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) }
+            ),
             swiftMiner: .init(enabled: settings.swiftMiner.enabled, paired: settings.swiftMiner.isPaired)
         )
     }
@@ -1046,7 +1049,7 @@ extension AppModel {
                 name: name,
                 usage: "/\(name)\(usageSuffix)",
                 description: description,
-                category: "Slash",
+                category: SlashCommandGroup.forCommand(name).rawValue,
                 surface: "slash",
                 aliases: [],
                 adminOnly: name == "debug"
@@ -2134,6 +2137,13 @@ extension AppModel {
                 guard let model = self else { return false }
                 await model.runGameTrackingCheck(trigger: "Web")
                 return true
+            },
+            gameTrackerUpdater: { [weak self] update in
+                guard let model = self else { return false }
+                return await MainActor.run { model.applyAdminWebGameTrackerUpdate(update) }
+            },
+            mediaGameArtworkProvider: { gameName in
+                await RecordingGameArtworkResponder.response(for: gameName)
             },
             sweepProvider: { [weak self] in
                 guard let model = self else {
@@ -3430,9 +3440,35 @@ extension AppModel {
                 season: baseline?.season,
                 rankName: baseline?.rankName,
                 score: baseline?.score,
-                baselineRecordedAt: baseline?.recordedAt
+                baselineRecordedAt: baseline?.recordedAt,
+                discordUserID: player.discordUserID,
+                triggerMetrics: player.triggerMetrics.map(\.rawValue).sorted(),
+                contextMetrics: player.contextMetrics.map(\.rawValue).sorted()
             )
         }
+
+        // Same option list the native editor builds (server · #channel).
+        let channels = availableTextChannelsByServer.flatMap { serverID, channels in
+            channels.map { AdminWebSimpleOption(id: $0.id, name: "\(connectedServers[serverID] ?? "Unknown Server") · #\($0.name)") }
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        let catalog = AdminWebGameTrackerCatalog(
+            games: GameID.allCases.map { .init(id: $0.rawValue, displayName: $0.displayName, symbolName: $0.symbolName) },
+            providers: GameProviderID.allCases.map { provider in
+                let descriptor = GameProviderCatalog.descriptor(for: provider)
+                let supported = descriptor?.supportedMetrics ?? []
+                return .init(
+                    id: provider.rawValue,
+                    displayName: provider.displayName,
+                    supportedGames: provider.supportedGames.map(\.rawValue).sorted(),
+                    metrics: GameMetricID.allCases.filter { supported.contains($0) }.map {
+                        .init(id: $0.rawValue, displayName: $0.displayName, canTrigger: $0.canTriggerAnnouncement)
+                    },
+                    isConfigured: descriptor.map { settings.gameProviders[provider].configurationIssue(for: $0) == nil } ?? false
+                )
+            }
+        )
 
         let tone: String
         if !tracking.enabled {
@@ -3460,8 +3496,56 @@ extension AppModel {
             totalPlayerCount: tracking.players.count,
             players: players,
             history: gameTrackingHistory,
-            isPollingRuntime: isPollingRuntime
+            isPollingRuntime: isPollingRuntime,
+            checkHour: tracking.checkHour,
+            timeZoneIdentifier: tracking.timeZoneIdentifier,
+            linkedPlayerCount: tracking.presenceLinkedPlayers.count,
+            sessionMinimumMinutes: tracking.sessionMinimumDurationSeconds / 60,
+            sessionGraceMinutes: tracking.sessionAbsenceGraceSeconds / 60,
+            isFailoverManagedNode: isFailoverManagedNode,
+            catalog: catalog,
+            channels: channels,
+            members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) }
         )
+    }
+
+    /// Applies one WebUI Game Tracker edit through the same methods the
+    /// native view uses, so saving, monitoring and baselines behave alike.
+    func applyAdminWebGameTrackerUpdate(_ update: AdminWebGameTrackerUpdate) -> Bool {
+        // Failover nodes receive Game Tracker settings from the primary.
+        guard !isFailoverManagedNode else { return false }
+        switch update.action {
+        case .upsertPlayer:
+            guard let input = update.player,
+                  let game = GameID(rawValue: input.game),
+                  let provider = GameProviderID(rawValue: input.provider) else { return false }
+            var player = input.id.flatMap(UUID.init(uuidString:))
+                .flatMap { id in settings.gameTracking.players.first { $0.id == id } }
+                ?? GameTrackedPlayer()
+            player.game = game
+            player.provider = provider
+            player.playerID = input.playerID.trimmingCharacters(in: .whitespacesAndNewlines)
+            player.displayName = input.displayName
+            player.destinationChannelID = input.destinationChannelID
+            player.isEnabled = input.isEnabled
+            player.discordUserID = input.discordUserID.trimmingCharacters(in: .whitespacesAndNewlines)
+            player.triggerMetrics = Set(input.triggerMetrics.compactMap(GameMetricID.init(rawValue:)))
+            player.contextMetrics = Set(input.contextMetrics.compactMap(GameMetricID.init(rawValue:)))
+            upsertTrackedGamePlayer(player)
+        case .deletePlayer:
+            guard let id = update.playerID.flatMap(UUID.init(uuidString:)) else { return false }
+            removeTrackedGamePlayer(id)
+        case .setPlayerEnabled:
+            guard let id = update.playerID.flatMap(UUID.init(uuidString:)),
+                  settings.gameTracking.players.contains(where: { $0.id == id }) else { return false }
+            setTrackedGamePlayerEnabled(id, enabled: update.enabled ?? true)
+        case .updateSettings:
+            if let enabled = update.dailyCheckEnabled { settings.gameTracking.dailyCheckEnabled = enabled }
+            if let enabled = update.sessionTrackingEnabled { settings.gameTracking.sessionTrackingEnabled = enabled }
+            if let hour = update.checkHour { settings.gameTracking.checkHour = hour }
+            gameTrackingSettingsDidChange()
+        }
+        return true
     }
 
     @MainActor

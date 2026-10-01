@@ -317,6 +317,7 @@ extension AppModel {
         availableTextChannelsByServer = snapshot.availableTextChannelsByServer
         availableRolesByServer = snapshot.availableRolesByServer
         knownUsersById = snapshot.usernamesById
+        knownRawUsernamesById = snapshot.rawUsernamesById
         knownBotUserIds = snapshot.botUserIds
         knownGuildMemberIds = snapshot.guildMemberIds
         // Feed channel/role names to DiscordService so Sweep/Announcer can turn
@@ -457,5 +458,39 @@ private extension Array where Element == WelcomeFlowService.InviteSnapshot {
             }
             return lhs.code.localizedCaseInsensitiveCompare(rhs.code) == .orderedAscending
         }
+    }
+}
+
+/// A server member someone can pick instead of typing a raw user ID.
+struct DiscordMemberOption: Identifiable, Hashable {
+    let id: String
+    /// Server nickname when set, otherwise the global display name.
+    let displayName: String
+    /// The @username, when Discord sent one that differs from the display name.
+    let username: String?
+
+    var label: String {
+        guard let username else { return displayName }
+        return "\(displayName) (@\(username))"
+    }
+}
+
+extension AppModel {
+    /// Humans in the connected servers, by name. Bots and users only seen in
+    /// old messages are left out, matching the Timezones picker.
+    var discordMemberOptions: [DiscordMemberOption] {
+        knownUsersById
+            .filter { id, name in
+                !name.isEmpty && knownGuildMemberIds.contains(id) && !knownBotUserIds.contains(id)
+            }
+            .map { id, name in
+                let username = knownRawUsernamesById[id]
+                return DiscordMemberOption(
+                    id: id,
+                    displayName: name,
+                    username: username.flatMap { $0.isEmpty || $0.caseInsensitiveCompare(name) == .orderedSame ? nil : $0 }
+                )
+            }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 }

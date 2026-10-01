@@ -278,6 +278,39 @@ struct AdminWebGameTrackerPlayerPayload: Codable {
     let rankName: String?
     let score: Int?
     let baselineRecordedAt: Date?
+    /// Editable fields the WebUI player editor round-trips.
+    var discordUserID: String = ""
+    var triggerMetrics: [String] = []
+    var contextMetrics: [String] = []
+}
+
+/// What the WebUI needs to offer the same choices as the native player
+/// editor: games, the providers for each, and the stats each provider reports.
+struct AdminWebGameTrackerCatalog: Codable {
+    struct Game: Codable {
+        let id: String
+        let displayName: String
+        /// SF Symbol name; the web UI maps it to a Lucide icon.
+        let symbolName: String
+    }
+
+    struct Metric: Codable {
+        let id: String
+        let displayName: String
+        /// Counters only ever climb, so they can't trigger announcements.
+        let canTrigger: Bool
+    }
+
+    struct Provider: Codable {
+        let id: String
+        let displayName: String
+        let supportedGames: [String]
+        let metrics: [Metric]
+        let isConfigured: Bool
+    }
+
+    let games: [Game]
+    let providers: [Provider]
 }
 
 struct AdminWebGameTrackerPayload: Codable {
@@ -296,6 +329,81 @@ struct AdminWebGameTrackerPayload: Codable {
     let players: [AdminWebGameTrackerPlayerPayload]
     let history: [GameTrackingHistoryEntry]
     let isPollingRuntime: Bool
+    var checkHour: Int = 9
+    var timeZoneIdentifier: String = ""
+    var linkedPlayerCount: Int = 0
+    var sessionMinimumMinutes: Int = 5
+    var sessionGraceMinutes: Int = 3
+    var isFailoverManagedNode: Bool = false
+    var catalog: AdminWebGameTrackerCatalog?
+    var channels: [AdminWebSimpleOption] = []
+    /// Server members for the "Discord member" picker; `name` is the
+    /// display name and `username` the @handle when it differs.
+    var members: [AdminWebMemberOption] = []
+}
+
+struct AdminWebMemberOption: Codable {
+    let id: String
+    let name: String
+    let username: String?
+}
+
+/// One WebUI edit to Game Tracker. Mirrors what the native view can change.
+struct AdminWebGameTrackerUpdate: Codable, Validatable {
+    enum Action: String, Codable {
+        case upsertPlayer
+        case deletePlayer
+        case setPlayerEnabled
+        case updateSettings
+    }
+
+    struct PlayerInput: Codable {
+        /// Nil for a new player.
+        let id: String?
+        let game: String
+        let provider: String
+        let playerID: String
+        let displayName: String
+        let destinationChannelID: String
+        let isEnabled: Bool
+        let discordUserID: String
+        let triggerMetrics: [String]
+        let contextMetrics: [String]
+    }
+
+    let action: Action
+    var player: PlayerInput?
+    var playerID: String?
+    var enabled: Bool?
+    var dailyCheckEnabled: Bool?
+    var sessionTrackingEnabled: Bool?
+    var checkHour: Int?
+
+    func validate() throws {
+        switch action {
+        case .upsertPlayer:
+            guard let player else { throw ValidationError.invalidValue("Player is required") }
+            guard let game = GameID(rawValue: player.game),
+                  let provider = GameProviderID(rawValue: player.provider),
+                  provider.supportedGames.contains(game) else {
+                throw ValidationError.invalidValue("Unsupported game or provider")
+            }
+            if player.playerID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw ValidationError.invalidValue("Player ID is required")
+            }
+            if player.destinationChannelID.isEmpty {
+                throw ValidationError.invalidValue("Choose a channel for announcements")
+            }
+        case .deletePlayer, .setPlayerEnabled:
+            guard let playerID, UUID(uuidString: playerID) != nil else {
+                throw ValidationError.invalidValue("Player is required")
+            }
+        case .updateSettings:
+            if let checkHour, !(0...23).contains(checkHour) {
+                throw ValidationError.outOfRange("checkHour", min: 0, max: 23)
+            }
+        }
+    }
 }
 
 struct AdminWebSweepRunReportPayload: Codable {
@@ -431,6 +539,8 @@ struct AdminWebConfigPayload: Codable {
 
     struct UserTimezones: Codable {
         let mappings: [String: String]
+        /// Server members, so the editor can show names instead of IDs.
+        var members: [AdminWebMemberOption] = []
     }
 
     struct SwiftMiner: Codable {
@@ -794,6 +904,9 @@ struct AdminWebMediaLibraryPayload: Codable {
     let sources: [AdminWebMediaSourcePayload]
     let items: [AdminWebMediaItemPayload]
     let games: [String]
+    /// One entry per game for the poster view, honouring the source and
+    /// date filters but not the game filter.
+    var gameSummaries: [AdminWebMediaGameSummary] = []
     let selectedSourceID: String?
     let selectedDateRange: String
     let selectedGame: String?
@@ -801,6 +914,13 @@ struct AdminWebMediaLibraryPayload: Codable {
     let pageSize: Int
     let totalItems: Int
     let totalPages: Int
+}
+
+struct AdminWebMediaGameSummary: Codable {
+    let name: String
+    let clipCount: Int
+    let latestAt: Date?
+    let totalBytes: Int64
 }
 
 struct AdminWebMediaPlaybackPatch: Codable {
@@ -1045,6 +1165,8 @@ actor AdminWebServer {
     private var sweepProvider: (@Sendable () async -> AdminWebSweepPayload)?
     private var gameTrackerProvider: (@Sendable () async -> AdminWebGameTrackerPayload)?
     private var gameTrackerCheckRunner: (@Sendable () async -> Bool)?
+    private var gameTrackerUpdater: (@Sendable (AdminWebGameTrackerUpdate) async -> Bool)?
+    private var mediaGameArtworkProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
     private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
     private var createSweepPolicy: (@Sendable (AdminWebSweepPolicyCreatePatch) async -> SweepPolicy?)?
@@ -1168,6 +1290,8 @@ actor AdminWebServer {
         mediaMultiViewExportStarter: @escaping @Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse,
         gameTrackerProvider: @escaping @Sendable () async -> AdminWebGameTrackerPayload,
         gameTrackerCheckRunner: @escaping @Sendable () async -> Bool,
+        gameTrackerUpdater: @escaping @Sendable (AdminWebGameTrackerUpdate) async -> Bool,
+        mediaGameArtworkProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
         setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
         updateSweepPolicy: @escaping @Sendable (SweepPolicy) async -> Bool,
@@ -1256,6 +1380,8 @@ actor AdminWebServer {
         self.sweepProvider = sweepProvider
         self.gameTrackerProvider = gameTrackerProvider
         self.gameTrackerCheckRunner = gameTrackerCheckRunner
+        self.gameTrackerUpdater = gameTrackerUpdater
+        self.mediaGameArtworkProvider = mediaGameArtworkProvider
         self.setSweepGlobalPaused = setSweepGlobalPaused
         self.updateSweepPolicy = updateSweepPolicy
         self.createSweepPolicy = createSweepPolicy
@@ -2462,6 +2588,26 @@ actor AdminWebServer {
                 return jsonResponse(["error": "check_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+        case ("POST", "/api/gametracker/update"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            do {
+                let update = try apiDecoder.decode(AdminWebGameTrackerUpdate.self, from: request.body)
+                try update.validate()
+                guard await gameTrackerUpdater?(update) == true else {
+                    return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+                }
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
+            }
         case ("GET", "/api/sweep"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -2739,6 +2885,25 @@ actor AdminWebServer {
             }
             guard let response = await mediaThumbnailProvider?(token) else {
                 return jsonResponse(["error": "thumbnail_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
+        case ("GET", "/api/media/game-art"):
+            // Portrait poster for a game: custom artwork when set, otherwise
+            // Steam library art fetched and cached by the app, so the page
+            // never loads images from Steam directly.
+            guard mediaAccessAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let game = request.query["game"]?.trimmingCharacters(in: .whitespacesAndNewlines), !game.isEmpty else {
+                return jsonResponse(["error": "missing_game"], status: "400 Bad Request")
+            }
+            guard let response = await mediaGameArtworkProvider?(game) else {
+                return jsonResponse(["error": "artwork_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
                 status: response.status,

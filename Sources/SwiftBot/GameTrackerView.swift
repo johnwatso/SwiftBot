@@ -40,6 +40,7 @@ struct GameTrackerView: View {
             GameTrackedPlayerEditor(
                 initialPlayer: player,
                 channelOptions: channelOptions,
+                memberOptions: app.discordMemberOptions,
                 onCancel: { editorPlayer = nil },
                 onSave: { updated in
                     app.upsertTrackedGamePlayer(updated)
@@ -103,42 +104,66 @@ struct GameTrackerView: View {
                         || app.gameTrackingCheckInProgress
                 )
 
+                Button {
+                    editorPlayer = GameTrackedPlayer()
+                } label: {
+                    Label("Add Player", systemImage: "plus")
+                }
+                .buttonStyle(GlassActionButtonStyle())
+
                 servicePill
             }
         }
     }
 
+    /// One strip of live state. Player counts live in each game's header
+    /// below, so they aren't repeated as a tile here (matches the WebUI).
     private var statusRail: some View {
-        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
-            DashboardMetricCard(
-                title: "Tracked Players",
-                value: "\(app.settings.gameTracking.players.count)",
-                subtitle: "\(activePlayerCount) enabled",
-                symbol: "person.2.fill",
-                color: .blue
-            )
-            DashboardMetricCard(
-                title: "Game Providers",
-                value: "\(configuredProviderCount)/\(GameProviderID.allCases.count)",
-                subtitle: providerSubtitle,
-                symbol: "point.3.connected.trianglepath.dotted",
-                color: configuredProviderCount > 0 ? .green : .orange
-            )
-            DashboardMetricCard(
-                title: "Last Check",
-                value: shortTime(app.gameTrackingLastCheckAt),
-                subtitle: shortDate(app.gameTrackingLastCheckAt),
+        HStack(spacing: 0) {
+            statusItem(
+                title: app.gameTrackingLastCheckAt.map { "Last check \($0.formatted(.relative(presentation: .named)))" } ?? "Never checked",
+                detail: shortDate(app.gameTrackingLastCheckAt),
                 symbol: "checkmark.circle.fill",
                 color: .green
             )
-            DashboardMetricCard(
-                title: "Next Check",
-                value: shortTime(app.gameTrackingNextCheckAt),
-                subtitle: nextCheckSubtitle,
+            Divider().frame(height: 30)
+            statusItem(
+                title: app.gameTrackingNextCheckAt.map { "Next check \(shortTime($0))" } ?? "No check scheduled",
+                detail: nextCheckSubtitle,
                 symbol: "clock.badge.checkmark.fill",
                 color: .purple
             )
+            Divider().frame(height: 30)
+            statusItem(
+                title: "\(configuredProviderCount) of \(GameProviderID.allCases.count) providers ready",
+                detail: providerSubtitle,
+                symbol: "point.3.connected.trianglepath.dotted",
+                color: configuredProviderCount > 0 ? .green : .orange
+            )
         }
+        .padding(.vertical, 12)
+        .dashboardSurface()
+    }
+
+    private func statusItem(title: String, detail: String, symbol: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func configurationBanner(_ issue: String) -> some View {
@@ -165,36 +190,13 @@ struct GameTrackerView: View {
 
     private var trackedPlayersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                SettingsSectionHeader(
-                    title: "Tracked Players",
-                    systemImage: "person.text.rectangle.fill",
-                    titleFont: .headline
-                )
-                Spacer()
-                Button {
-                    editorPlayer = GameTrackedPlayer()
-                } label: {
-                    Label("Add Player", systemImage: "plus")
-                }
-                .buttonStyle(GlassActionButtonStyle())
-            }
-
             if app.settings.gameTracking.players.isEmpty {
+                SettingsSectionHeader(title: "Tracked Players", systemImage: "person.text.rectangle.fill", titleFont: .headline)
                 emptyPlayersView
             } else {
                 ForEach(trackedGames) { game in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 7) {
-                            Image(systemName: game.symbolName)
-                                .foregroundStyle(.secondary)
-                            Text(game.displayName)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.secondary)
-                            Text("\(players(for: game).count)")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.tertiary)
-                        }
+                    VStack(alignment: .leading, spacing: 10) {
+                        gameHeader(game)
 
                         LazyVGrid(
                             columns: [GridItem(.adaptive(minimum: 360), spacing: 12)],
@@ -207,6 +209,36 @@ struct GameTrackerView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func gameHeader(_ game: GameID) -> some View {
+        let gamePlayers = players(for: game)
+        let enabled = gamePlayers.filter(\.isEnabled).count
+        return HStack(spacing: 10) {
+            Image(systemName: game.symbolName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Text(game.displayName)
+                .font(.headline)
+            Text(enabled == gamePlayers.count
+                 ? "\(gamePlayers.count) \(gamePlayers.count == 1 ? "player" : "players")"
+                 : "\(enabled) of \(gamePlayers.count) on")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                var player = GameTrackedPlayer()
+                player.game = game
+                player.normalize()
+                editorPlayer = player
+            } label: {
+                Label("Add", systemImage: "plus")
+            }
+            .buttonStyle(GlassActionButtonStyle())
+            .help("Add a \(game.displayName) player")
         }
     }
 
@@ -421,9 +453,10 @@ struct GameTrackerView: View {
                                 Text(entry.title)
                                     .font(.subheadline.weight(.medium))
                                 Spacer()
-                                Text(entry.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                Text(entry.timestamp.formatted(.relative(presentation: .named)))
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
+                                    .help(entry.timestamp.formatted(date: .abbreviated, time: .shortened))
                             }
                             Text(entry.detail)
                                 .font(.caption)
@@ -499,10 +532,6 @@ struct GameTrackerView: View {
         return app.settings.gameTracking.configurationIssue(connections: app.settings.gameProviders) == nil ? .green : .orange
     }
 
-    private var activePlayerCount: Int {
-        app.settings.gameTracking.players.filter(\.isEnabled).count
-    }
-
     private var configuredProviderCount: Int {
         GameProviderID.allCases.filter(isProviderConfigured).count
     }
@@ -551,8 +580,8 @@ struct GameTrackerView: View {
         return baseline.season.isEmpty ? "Season unavailable" : baseline.season.uppercased()
     }
 
-    private func shortTime(_ date: Date?) -> String {
-        date?.formatted(date: .omitted, time: .shortened) ?? "—"
+    private func shortTime(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
     }
 
     private func shortDate(_ date: Date?) -> String {
@@ -598,17 +627,20 @@ struct GameTrackerChannelOption: Identifiable, Hashable {
 private struct GameTrackedPlayerEditor: View {
     @State private var player: GameTrackedPlayer
     let channelOptions: [GameTrackerChannelOption]
+    let memberOptions: [DiscordMemberOption]
     let onCancel: () -> Void
     let onSave: (GameTrackedPlayer) -> Void
 
     init(
         initialPlayer: GameTrackedPlayer,
         channelOptions: [GameTrackerChannelOption],
+        memberOptions: [DiscordMemberOption],
         onCancel: @escaping () -> Void,
         onSave: @escaping (GameTrackedPlayer) -> Void
     ) {
         _player = State(initialValue: initialPlayer)
         self.channelOptions = channelOptions
+        self.memberOptions = memberOptions
         self.onCancel = onCancel
         self.onSave = onSave
     }
@@ -671,7 +703,19 @@ private struct GameTrackedPlayerEditor: View {
                 }
 
                 Section("Play Sessions") {
-                    TextField("Discord User ID", text: $player.discordUserID)
+                    Picker("Discord Member", selection: $player.discordUserID) {
+                        Text("Not linked").tag("")
+                        // Keep a link to someone the cache no longer knows
+                        // (left the server, or not loaded yet) instead of
+                        // silently dropping it.
+                        if !player.discordUserID.isEmpty,
+                           !memberOptions.contains(where: { $0.id == player.discordUserID }) {
+                            Text("Unknown member (\(player.discordUserID))").tag(player.discordUserID)
+                        }
+                        ForEach(memberOptions) { member in
+                            Text(member.label).tag(member.id)
+                        }
+                    }
                     Text("Optional. Links this profile to a Discord account so SwiftBot can detect play sessions from rich presence and post a summary when the session ends.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

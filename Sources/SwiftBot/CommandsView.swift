@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: - Command Category
 
-private enum CommandGroup: String, CaseIterable {
+/// Shared by the native Commands view and the WebUI command catalog.
+enum SlashCommandGroup: String, CaseIterable {
     case general = "General"
     case utilities = "Utilities & AI"
     case moderation = "Moderation"
@@ -28,6 +29,52 @@ private enum CommandGroup: String, CaseIterable {
         case .gaming: return "gamecontroller.fill"
         }
     }
+
+    /// Wiki lookups and anything new land in Utilities until mapped here.
+    static func forCommand(_ name: String) -> SlashCommandGroup {
+        switch name.lowercased() {
+        case "help", "ping", "userinfo", "weekly":
+            return .general
+        case "debug", "ignorechannel", "setchannel", "notifystatus", "sweep":
+            return .moderation
+        case "cluster", "miner":
+            return .infrastructure
+        case "compare", "meta", "steam":
+            return .gaming
+        default:
+            return .utilities
+        }
+    }
+
+    static func symbol(forCommand name: String) -> String {
+        switch name.lowercased() {
+        case "help": return "questionmark.circle.fill"
+        case "ping": return "antenna.radiowaves.left.and.right"
+        case "roll": return "dice.fill"
+        case "8ball": return "circle.hexagongrid.fill"
+        case "poll": return "chart.bar.fill"
+        case "userinfo": return "person.crop.circle.fill"
+        case "cluster": return "network"
+        case "debug": return "stethoscope"
+        case "notifystatus": return "bell.badge.fill"
+        case "setchannel": return "gearshape.fill"
+        case "ignorechannel": return "speaker.slash.fill"
+        case "weekly": return "calendar.badge.clock"
+        case "image": return "photo.fill"
+        case "music": return "music.note"
+        case "playlist": return "list.bullet"
+        case "miner": return "hammer.fill"
+        case "compare": return "square.split.2x1"
+        case "meta": return "crown.fill"
+        case "steam": return "gamecontroller.fill"
+        case "timestamp": return "clock.fill"
+        case "announce": return "speaker.wave.2.bubble.fill"
+        case "randomteams": return "person.3.sequence.fill"
+        case "rewind": return "clock.arrow.circlepath"
+        case "sweep": return "rectangle.stack.fill.badge.minus"
+        default: return "rectangle.and.text.magnifyingglass"
+        }
+    }
 }
 
 // MARK: - Visual Command
@@ -37,7 +84,7 @@ private struct VisualCommand: Identifiable {
     let name: String
     let usage: String
     let description: String
-    let category: CommandGroup
+    let category: SlashCommandGroup
     let surfaces: [String]
     let aliases: [String]
     let adminOnly: Bool
@@ -74,11 +121,11 @@ struct CommandsView: View {
                 name: name,
                 usage: "/\(name)\(usageSuffix)",
                 description: description,
-                category: group(for: name),
+                category: SlashCommandGroup.forCommand(name),
                 surfaces: ["Slash"],
                 aliases: [],
                 adminOnly: name == "debug",
-                icon: icon(for: name)
+                icon: SlashCommandGroup.symbol(forCommand: name)
             )
         }
     }
@@ -257,7 +304,7 @@ struct CommandsView: View {
                 if allVisualCommands.isEmpty {
                     emptyState
                 } else {
-                    ForEach(CommandGroup.allCases, id: \.self) { category in
+                    ForEach(SlashCommandGroup.allCases, id: \.self) { category in
                         let group = commandsInGroup(category, commands: allVisualCommands)
                         if !group.isEmpty {
                             CommandSection(
@@ -304,60 +351,15 @@ struct CommandsView: View {
 
     // MARK: - Helpers
 
-    private func commandsInGroup(_ group: CommandGroup, commands: [VisualCommand]) -> [VisualCommand] {
+    private func commandsInGroup(_ group: SlashCommandGroup, commands: [VisualCommand]) -> [VisualCommand] {
         commands.filter { $0.category == group }
-    }
-
-    private func group(for commandName: String) -> CommandGroup {
-        switch commandName.lowercased() {
-        case "help", "ping", "userinfo":
-            return .general
-        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki", "timestamp", "announce", "randomteams":
-            return .utilities
-        case "debug", "ignorechannel", "setchannel", "notifystatus":
-            return .moderation
-        case "cluster", "miner", "weekly":
-            return .infrastructure
-        case "compare", "meta":
-            return .gaming
-        default:
-            return .general
-        }
-    }
-
-    private func icon(for commandName: String) -> String {
-        switch commandName.lowercased() {
-        case "help": return "questionmark.circle.fill"
-        case "ping": return "antenna.radiowaves.left.and.right"
-        case "roll": return "dice.fill"
-        case "8ball": return "circle.hexagongrid.fill"
-        case "poll": return "chart.bar.fill"
-        case "userinfo": return "person.crop.circle.fill"
-        case "cluster": return "network"
-        case "debug": return "stethoscope"
-        case "notifystatus": return "bell.badge.fill"
-        case "setchannel": return "gearshape.fill"
-        case "ignorechannel": return "speaker.slash.fill"
-        case "weekly": return "calendar.badge.clock"
-        case "image": return "photo.fill"
-        case "music": return "music.note"
-        case "playlist": return "list.bullet"
-        case "miner": return "hammer.fill"
-        case "wiki": return "rectangle.and.text.magnifyingglass"
-        case "compare": return "square.split.2x1"
-        case "meta": return "crown.fill"
-        case "timestamp": return "clock.fill"
-        case "announce": return "speaker.wave.2.bubble.fill"
-        case "randomteams": return "person.3.sequence.fill"
-        default: return "command"
-        }
     }
 }
 
 // MARK: - Command Section
 
 private struct CommandSection: View {
-    let category: CommandGroup
+    let category: SlashCommandGroup
     let commands: [VisualCommand]
     let commandEnabledBinding: (VisualCommand) -> Binding<Bool>
     let configureAction: (VisualCommand) -> (() -> Void)?
@@ -554,11 +556,11 @@ enum CommandsDashboardSummary {
                     name: name,
                     usage: "/\(name)\(usageSuffix)",
                     description: description,
-                    category: group(for: name),
+                    category: SlashCommandGroup.forCommand(name),
                     surfaces: ["Slash"],
                     aliases: [],
                     adminOnly: name == "debug",
-                    icon: icon(for: name)
+                    icon: SlashCommandGroup.symbol(forCommand: name)
                 )
                 commandsByName[name.lowercased()] = command
             }
@@ -573,35 +575,6 @@ enum CommandsDashboardSummary {
     private static func isEnabled(command: VisualCommand, app: AppModel) -> Bool {
         return command.surfaces.allSatisfy { surface in
             app.isCommandEnabled(name: command.name, surface: surface.lowercased())
-        }
-    }
-
-    private static func group(for name: String) -> CommandGroup {
-        switch name {
-        case "help", "ping", "about":
-            return .general
-        case "ask", "wiki", "patchy", "sweep":
-            return .utilities
-        case "ban", "kick", "timeout", "mute", "purge":
-            return .moderation
-        case "mesh", "status", "debug":
-            return .infrastructure
-        default:
-            return .gaming
-        }
-    }
-
-    private static func icon(for name: String) -> String {
-        switch name {
-        case "help": return "questionmark.circle.fill"
-        case "ping": return "dot.radiowaves.left.and.right"
-        case "ask": return "sparkles"
-        case "wiki": return "rectangle.and.text.magnifyingglass"
-        case "patchy": return "square.and.arrow.down.badge.checkmark.fill"
-        case "sweep": return "rectangle.stack.fill.badge.minus"
-        case "mesh": return "point.3.connected.trianglepath.dotted"
-        case "debug": return "ladybug.fill"
-        default: return "terminal.fill"
         }
     }
 }
