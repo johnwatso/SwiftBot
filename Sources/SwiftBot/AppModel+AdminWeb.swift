@@ -255,7 +255,69 @@ extension AppModel {
                 errors: stats.errors,
                 state: status.rawValue.capitalized,
                 cluster: settings.clusterMode != .standalone ? clusterSnapshot.mode.rawValue : nil
-            )
+            ),
+            health: adminWebOverviewHealth()
+        )
+    }
+
+    /// SF Symbols used by OverviewHealthReport → the WebUI's lucide names.
+    private static let adminWebHealthIcons: [String: String] = [
+        "antenna.radiowaves.left.and.right": "radio-tower",
+        "point.3.connected.trianglepath.dotted": "network",
+        "arrow.triangle.2.circlepath": "refresh-cw",
+        "memorychip": "memory-stick",
+        "checkmark.icloud": "cloud",
+        "waveform.path.ecg": "activity",
+        "gauge.with.needle": "gauge",
+        "checklist": "list-checks",
+        "waveform": "audio-waveform",
+        "terminal": "terminal",
+        "info.circle": "info",
+        "exclamationmark.triangle": "triangle-alert",
+        "xmark.octagon": "octagon-x",
+        "square.and.arrow.down.badge.checkmark": "download",
+        "hammer": "hammer"
+    ]
+
+    private func adminWebOverviewHealth() -> AdminWebOverviewHealthPayload {
+        let report = OverviewHealthReport(.init(
+            status: status,
+            settings: settings,
+            events: events,
+            commandLog: commandLog,
+            rules: ruleStore.rules,
+            clusterNodes: clusterNodes,
+            clusterSnapshot: clusterSnapshot,
+            diagnostics: connectionDiagnostics,
+            lastGatewayEventName: lastGatewayEventName,
+            intentsAccepted: intentsAccepted,
+            lastVoiceStateAt: lastVoiceStateAt,
+            lastClusterStatusSuccessAt: lastClusterStatusSuccessAt,
+            patchyLastCycleAt: patchyLastCycleAt,
+            patchyIsCycleRunning: patchyIsCycleRunning,
+            memoryText: OverviewHealthReport.memoryText(samples: [])
+        ))
+        let icon = { (symbol: String) in Self.adminWebHealthIcons[symbol] ?? "circle" }
+        let severityName: (OverviewHealthReport.AttentionItem.Severity) -> String = {
+            switch $0 {
+            case .critical: return "critical"
+            case .warning: return "warning"
+            case .info: return "info"
+            }
+        }
+
+        return AdminWebOverviewHealthPayload(
+            state: report.overall.rawValue,
+            title: report.overallTitle,
+            tiles: report.tiles.map {
+                .init(id: $0.id, title: $0.title, value: $0.value, detail: $0.detail, icon: icon($0.symbol), state: $0.state.rawValue)
+            },
+            attention: report.attention.map {
+                .init(id: $0.id, title: $0.title, detail: $0.detail, severity: severityName($0.severity), label: $0.severity.label)
+            },
+            activity: report.activity.map {
+                .init(id: $0.id, timestamp: $0.timestamp, title: $0.title, detail: $0.detail, icon: icon($0.symbol), tone: $0.tone.rawValue)
+            }
         )
     }
 

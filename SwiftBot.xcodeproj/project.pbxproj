@@ -240,6 +240,7 @@
 		D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */; };
 		D28247A5224312A0E701C5B8 /* PlaylistImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4155A5B46BE9627288D4C5E /* PlaylistImportService.swift */; };
 		D30DB2FE3DD38F94A4AC624D /* SwiftMinerDMEmbedBuilders.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD694DB2603BFF235153B63 /* SwiftMinerDMEmbedBuilders.swift */; };
+		D374D0B6DFB2DCA12850463C /* OverviewHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456F5716A6955A85E96B4139 /* OverviewHealth.swift */; };
 		D4D1A98F218CC5A88CDB1A01 /* SwiftMinerDMRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C16880906FB1F98EF051F3 /* SwiftMinerDMRouter.swift */; };
 		D53C22628DC9441741DF918C /* LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E678C66818B4531DA8A3E7 /* LocalBotProvider.swift */; };
 		D5477FB7568F8E97079A7143 /* DiscordMessageRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E51AA5D2D331C44291BBF19 /* DiscordMessageRESTClient.swift */; };
@@ -422,6 +423,7 @@
 		3C6322EA38D64C533EA2EEF0 /* HelpEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngineTests.swift; sourceTree = "<group>"; };
 		3E3656072ADCD399C66EC948 /* VoicePipelineTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePipelineTestSupport.swift; sourceTree = "<group>"; };
 		44BEF66B80A037B46C598D03 /* TextChannelAnnouncerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextChannelAnnouncerTests.swift; sourceTree = "<group>"; };
+		456F5716A6955A85E96B4139 /* OverviewHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewHealth.swift; sourceTree = "<group>"; };
 		461288CB1D75C69008CE6DC6 /* HLSPackager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSPackager.swift; sourceTree = "<group>"; };
 		4622FDCA8F04C6BA993CBEFA /* SwiftMinerE2EIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerE2EIntegrationTests.swift; sourceTree = "<group>"; };
 		472A0A99DF74AC4BB384B33F /* DiscordGuildRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGuildRESTClient.swift; sourceTree = "<group>"; };
@@ -888,6 +890,7 @@
 				7BED78EB9AF97FC3DA9EE531 /* OnboardingRootView.swift */,
 				A9F0D5CD0C8C8D93EE4D621E /* OnboardingStyles.swift */,
 				EBEE8DEFE1A39BC0B627AED5 /* OnboardingView.swift */,
+				456F5716A6955A85E96B4139 /* OverviewHealth.swift */,
 				969318F077F71E4BD406D8E8 /* OverviewView.swift */,
 				8450C4A48DC007496BAAD5D6 /* PatchyView.swift */,
 				D1A24C2F7C9DC277A106B278 /* PatchyViewModel.swift */,
@@ -1324,6 +1327,7 @@
 				444D749D420CA4BC407B8102 /* OnboardingStyles.swift in Sources */,
 				FD1C644CE4C2642C24F86FD5 /* OnboardingView.swift in Sources */,
 				62E75279155C231F62D8A8E7 /* OpusFrameEncoder.swift in Sources */,
+				D374D0B6DFB2DCA12850463C /* OverviewHealth.swift in Sources */,
 				233C0362C373A39B123B798D /* OverviewView.swift in Sources */,
 				F2D195292A6C1FFA2C9B9DD6 /* PatchySwiftMinerCampaignRouter.swift in Sources */,
 				3D16A300F4DCD8FD5A33879B /* PatchyView.swift in Sources */,

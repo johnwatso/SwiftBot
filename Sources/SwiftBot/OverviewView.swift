@@ -38,76 +38,9 @@ struct OverviewView: View {
         let members: [VoiceMemberPresence]
     }
 
-    private struct OperationalStatusMetric: Identifiable {
-        enum State {
-            case healthy
-            case warning
-            case critical
-            case neutral
-
-            var color: Color {
-                switch self {
-                case .healthy: return .green
-                case .warning: return .orange
-                case .critical: return .red
-                case .neutral: return .secondary
-                }
-            }
-        }
-
-        let id: String
-        let title: String
-        let value: String
-        let detail: String
-        let symbol: String
-        let state: State
-    }
-
-    private struct OperationalActivityItem: Identifiable {
-        let id: String
-        let timestamp: Date
-        let title: String
-        let detail: String
-        let symbol: String
-        let color: Color
-    }
-
-    private struct AttentionItem: Identifiable {
-        enum Severity: Int {
-            case critical = 3
-            case warning = 2
-            case info = 1
-
-            var color: Color {
-                switch self {
-                case .critical: return .red
-                case .warning: return .orange
-                case .info: return .blue
-                }
-            }
-
-            var label: String {
-                switch self {
-                case .critical: return "Action"
-                case .warning: return "Review"
-                case .info: return "Note"
-                }
-            }
-
-            var symbol: String {
-                switch self {
-                case .critical: return "exclamationmark.octagon.fill"
-                case .warning: return "exclamationmark.triangle.fill"
-                case .info: return "info.circle.fill"
-                }
-            }
-        }
-
-        let id: String
-        let title: String
-        let detail: String
-        let severity: Severity
-    }
+    private typealias OperationalStatusMetric = OverviewHealthReport.StatusTile
+    private typealias OperationalActivityItem = OverviewHealthReport.ActivityItem
+    private typealias AttentionItem = OverviewHealthReport.AttentionItem
 
     // MARK: - Data Access via Provider
 
@@ -151,303 +84,36 @@ struct OverviewView: View {
         settings.patchy.sourceTargets.count
     }
 
-    private var patchyEnabledTargetCount: Int {
-        settings.patchy.sourceTargets.filter(\.isEnabled).count
-    }
-
-    private var enabledActionRuleCount: Int {
-        rules.filter(\.isEnabled).count
-    }
-
     private var helpSummary: String {
         "\(settings.help.mode.rawValue) · \(settings.help.tone.rawValue)"
     }
 
-    private var failedCommandsToday: Int {
-        commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count
+    /// Shared with the admin WebUI so both surfaces agree on health.
+    private var healthReport: OverviewHealthReport {
+        OverviewHealthReport(.init(
+            status: status,
+            settings: settings,
+            events: provider.events,
+            commandLog: commandLog,
+            rules: rules,
+            clusterNodes: clusterNodes,
+            clusterSnapshot: clusterSnapshot,
+            diagnostics: app.connectionDiagnostics,
+            lastGatewayEventName: app.lastGatewayEventName,
+            intentsAccepted: app.intentsAccepted,
+            lastVoiceStateAt: app.lastVoiceStateAt,
+            lastClusterStatusSuccessAt: app.lastClusterStatusSuccessAt,
+            patchyLastCycleAt: provider.patchyLastCycleAt,
+            patchyIsCycleRunning: provider.patchyIsCycleRunning,
+            memoryText: OverviewHealthReport.memoryText(samples: memorySamples)
+        ))
     }
 
-    private var eventThroughputPerMinute: Double {
-        let cutoff = Date().addingTimeInterval(-300)
-        return Double(provider.events.filter { $0.timestamp >= cutoff }.count) / 5.0
-    }
-
-    private var operationalHealth: OperationalStatusMetric.State {
-        if status == .reconnecting
-            || ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(app.connectionDiagnostics.lastGatewayCloseCode)
-            || failedCommandsToday >= 5 {
-            return .critical
-        }
-        if status == .connecting
-            || failedCommandsToday > 0
-            || ConnectionDiagnostics.isGatewayHeartbeatWarning(app.connectionDiagnostics.heartbeatLatencyMs) {
-            return .warning
-        }
-        if status == .running || settings.clusterMode == .worker {
-            return .healthy
-        }
-        return .neutral
-    }
-
-    private var operationalHealthTitle: String {
-        switch operationalHealth {
-        case .healthy: return "Nominal"
-        case .warning: return "Needs Review"
-        case .critical: return "Action Required"
-        case .neutral: return "Offline"
-        }
-    }
-
-    private var lastOperationalSyncDate: Date? {
-        [app.lastVoiceStateAt, app.lastClusterStatusSuccessAt, provider.patchyLastCycleAt]
-            .compactMap { $0 }
-            .max()
-    }
-
-    private var operationalStatusMetrics: [OperationalStatusMetric] {
-        let latency = app.connectionDiagnostics.heartbeatLatencyMs
-        let memoryText = averageMemoryText
-
-        return [
-            OperationalStatusMetric(
-                id: "gateway-latency",
-                title: "Gateway Heartbeat",
-                value: latency.map { "\($0) ms" } ?? "--",
-                detail: GatewayEventPresentation.statusDetail(for: app.lastGatewayEventName),
-                symbol: "antenna.radiowaves.left.and.right",
-                state: latency.map {
-                    ConnectionDiagnostics.isGatewayHeartbeatWarning($0) ? .warning : .healthy
-                } ?? (status == .running ? .warning : .neutral)
-            ),
-            OperationalStatusMetric(
-                id: "cluster-role",
-                title: "Cluster Role",
-                value: settings.clusterMode.displayName,
-                detail: settings.clusterNodeName.isEmpty ? clusterSnapshot.nodeName : settings.clusterNodeName,
-                symbol: "point.3.connected.trianglepath.dotted",
-                state: clusterNodes.contains(where: { $0.status == .disconnected }) ? .warning : .healthy
-            ),
-            OperationalStatusMetric(
-                id: "last-sync",
-                title: "Last Sync",
-                value: lastOperationalSyncDate.map { relativeText(since: $0) } ?? "--",
-                detail: app.lastVoiceStateAt == nil ? "No voice state yet" : "Voice state observed",
-                symbol: "arrow.triangle.2.circlepath",
-                state: lastOperationalSyncDate == nil ? .neutral : .healthy
-            ),
-            OperationalStatusMetric(
-                id: "memory",
-                title: "Memory",
-                value: memoryText,
-                detail: "Average resident footprint",
-                symbol: "memorychip",
-                state: .neutral
-            ),
-            OperationalStatusMetric(
-                id: "discord",
-                title: "Discord Connectivity",
-                value: discordConnectivityLabel,
-                detail: discordConnectivityDetail,
-                symbol: "checkmark.icloud",
-                state: discordConnectivityState
-            ),
-            OperationalStatusMetric(
-                id: "throughput",
-                title: "Event Throughput",
-                value: String(format: "%.1f/min", eventThroughputPerMinute),
-                detail: "\(provider.events.count) retained runtime events",
-                symbol: "waveform.path.ecg",
-                state: .healthy
-            ),
-            OperationalStatusMetric(
-                id: "rate-limit",
-                title: "Rate Limit",
-                value: app.connectionDiagnostics.rateLimitRemaining.map { "\($0) rem." } ?? "--",
-                detail: app.connectionDiagnostics.rateLimitRemaining == nil
-                    ? "No REST traffic yet"
-                    : "Per-route headroom",
-                symbol: "gauge.with.needle",
-                state: {
-                    guard let rem = app.connectionDiagnostics.rateLimitRemaining else { return .neutral }
-                    if rem == 0 { return .critical }
-                    if rem < 5 { return .warning }
-                    return .healthy
-                }()
-            ),
-            OperationalStatusMetric(
-                id: "intents",
-                title: "Intents",
-                value: {
-                    if app.connectionDiagnostics.lastGatewayCloseCode == 4014 { return "Rejected" }
-                    return app.intentsAccepted.map { $0 ? "Accepted" : "Unknown" } ?? "--"
-                }(),
-                detail: app.connectionDiagnostics.lastGatewayCloseCode == 4014
-                    ? "Enable privileged intents in Discord portal"
-                    : "Gateway intent negotiation",
-                symbol: "checklist",
-                state: {
-                    if app.connectionDiagnostics.lastGatewayCloseCode == 4014 { return .critical }
-                    if app.intentsAccepted == true { return .healthy }
-                    return .neutral
-                }()
-            )
-        ]
-    }
-
-    private var liveActivityItems: [OperationalActivityItem] {
-        var items = provider.events.prefix(8).map { event in
-            OperationalActivityItem(
-                id: "event-\(event.id)",
-                timestamp: event.timestamp,
-                title: activityTitle(for: event.kind),
-                detail: cleanedActivityMessage(event.message),
-                symbol: activitySymbol(for: event.kind),
-                color: activityColor(for: event.kind)
-            )
-        }
-
-        items += commandLog.prefix(4).map { command in
-            OperationalActivityItem(
-                id: "command-\(command.id)",
-                timestamp: command.time,
-                title: command.ok ? "Command Executed" : "Command Failed",
-                detail: "\(command.user) ran \(command.command)",
-                symbol: "terminal",
-                color: command.ok ? .cyan : .red
-            )
-        }
-
-        if provider.patchyIsCycleRunning {
-            items.append(OperationalActivityItem(
-                id: "patchy-running",
-                timestamp: Date(),
-                title: "Patchy Running",
-                detail: "Update monitoring cycle is active",
-                symbol: "square.and.arrow.down.badge.checkmark",
-                color: .purple
-            ))
-        } else if let lastCycle = provider.patchyLastCycleAt {
-            items.append(OperationalActivityItem(
-                id: "patchy-\(lastCycle.timeIntervalSince1970)",
-                timestamp: lastCycle,
-                title: "Patchy Checked",
-                detail: "\(patchyEnabledTargetCount) targets monitored",
-                symbol: "hammer",
-                color: .purple
-            ))
-        }
-
-        return Array(items.sorted { $0.timestamp > $1.timestamp }.prefix(10))
-    }
-
-    private var attentionItems: [AttentionItem] {
-        var items: [AttentionItem] = []
-
-        if status != .running && settings.clusterMode != .worker {
-            items.append(AttentionItem(
-                id: "gateway-status",
-                title: "Gateway is \(status.rawValue.capitalized)",
-                detail: "Live Discord operations are limited until the gateway is running.",
-                severity: status == .reconnecting ? .critical : .warning
-            ))
-        }
-
-        if let closeCode = app.connectionDiagnostics.lastGatewayCloseCode {
-            let needsAction = ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(closeCode)
-            items.append(AttentionItem(
-                id: "gateway-close",
-                title: needsAction ? "Discord rejected the gateway connection" : "Discord gateway closed",
-                detail: "Close code \(closeCode). \(ConnectionDiagnostics.gatewayCloseRemedy(for: closeCode))",
-                severity: needsAction ? .critical : .warning
-            ))
-        }
-
-        if let latency = app.connectionDiagnostics.heartbeatLatencyMs,
-           ConnectionDiagnostics.isGatewayHeartbeatWarning(latency) {
-            items.append(AttentionItem(
-                id: "latency",
-                title: "Gateway heartbeat elevated",
-                detail: "\(latency) ms median heartbeat ACK is above the normal operating band.",
-                severity: ConnectionDiagnostics.isGatewayHeartbeatCritical(latency) ? .critical : .warning
-            ))
-        }
-
-        // Only flag a quiet feed if the gateway is healthy AND the silence is unusually long.
-        // A quiet bot is not a broken bot — most servers have idle stretches.
-        if status == .running,
-           app.connectionDiagnostics.heartbeatLatencyMs != nil,
-           let newestEventAt = provider.events.first?.timestamp {
-            let lag = Date().timeIntervalSince(newestEventAt)
-            if lag >= 14_400 { // 4 hours
-                let hours = Int(lag / 3600)
-                items.append(AttentionItem(
-                    id: "event-flow-quiet",
-                    title: "Runtime feed quiet",
-                    detail: "No runtime events in the last \(hours) hour\(hours == 1 ? "" : "s"). The gateway is connected, so Discord activity may simply be low. Restart the bot if you expect events.",
-                    severity: .info
-                ))
-            }
-        }
-
-        if settings.clusterMode == .worker || settings.clusterMode == .standby {
-            let workerState = clusterSnapshot.workerState
-            if workerState == .failed || workerState == .degraded {
-                let target = settings.clusterLeaderAddress.isEmpty
-                    ? "the configured primary"
-                    : settings.clusterLeaderAddress
-                items.append(AttentionItem(
-                    id: "cluster-leader",
-                    title: "Cluster primary unreachable",
-                    detail: "Cannot reach \(target): \(clusterSnapshot.workerStatusText)",
-                    severity: workerState == .failed ? .critical : .warning
-                ))
-            }
-        }
-
-        if failedCommandsToday > 0 {
-            items.append(AttentionItem(
-                id: "failed-commands",
-                title: "Command failures today",
-                detail: "\(failedCommandsToday) command\(failedCommandsToday == 1 ? "" : "s") failed and may need review.",
-                severity: failedCommandsToday >= 5 ? .critical : .warning
-            ))
-        }
-
-        if enabledActionRuleCount == 0 {
-            items.append(AttentionItem(
-                id: "rules",
-                title: "No active workflows",
-                detail: "Rules are configured, but none are currently enabled for automation.",
-                severity: .info
-            ))
-        }
-
-        if settings.patchy.monitoringEnabled && patchyEnabledTargetCount == 0 {
-            items.append(AttentionItem(
-                id: "patchy-targets",
-                title: "Patchy has no enabled targets",
-                detail: "Monitoring is on, but there are no delivery targets to check.",
-                severity: .warning
-            ))
-        }
-
-        let degradedNodes = clusterNodes.filter { $0.status == .degraded || $0.status == .disconnected }
-        if settings.clusterMode != .standalone && !degradedNodes.isEmpty {
-            items.append(AttentionItem(
-                id: "cluster-nodes",
-                title: "SwiftMesh node health",
-                detail: "\(degradedNodes.count) cluster node\(degradedNodes.count == 1 ? "" : "s") need attention.",
-                severity: degradedNodes.contains(where: { $0.status == .disconnected }) ? .critical : .warning
-            ))
-        }
-
-        return items.sorted {
-            if $0.severity.rawValue != $1.severity.rawValue {
-                return $0.severity.rawValue > $1.severity.rawValue
-            }
-            return $0.title < $1.title
-        }
-    }
+    private var operationalHealth: OverviewHealthReport.State { healthReport.overall }
+    private var operationalHealthTitle: String { healthReport.overallTitle }
+    private var operationalStatusMetrics: [OperationalStatusMetric] { healthReport.tiles }
+    private var liveActivityItems: [OperationalActivityItem] { healthReport.activity }
+    private var attentionItems: [AttentionItem] { healthReport.attention }
 
     private var groupedActiveVoice: [VoiceChannelGroup] {
         let grouped = Dictionary(grouping: activeVoice) { member in
@@ -1036,35 +702,6 @@ struct OverviewView: View {
         .frame(width: 28, height: 28)
     }
 
-    private var discordConnectivityLabel: String {
-        switch app.connectionDiagnostics.restHealth {
-        case .ok: return "REST OK"
-        case .error(let code, _): return code == 0 ? "Unavailable" : "HTTP \(code)"
-        case .unknown:
-            if status == .running { return "Gateway OK" }
-            return "Unknown"
-        }
-    }
-
-    private var discordConnectivityDetail: String {
-        switch app.connectionDiagnostics.restHealth {
-        case .ok:
-            return app.connectionDiagnostics.rateLimitRemaining.map { "\($0) REST requests remaining" } ?? "REST probe succeeded"
-        case .error(_, let message):
-            return message
-        case .unknown:
-            return app.connectionDiagnostics.lastTestMessage.isEmpty ? "REST probe not run" : app.connectionDiagnostics.lastTestMessage
-        }
-    }
-
-    private var discordConnectivityState: OperationalStatusMetric.State {
-        switch app.connectionDiagnostics.restHealth {
-        case .ok: return .healthy
-        case .error: return .critical
-        case .unknown: return status == .running ? .healthy : .neutral
-        }
-    }
-
     private var currentNodeModeLabel: String {
         switch settings.clusterMode {
         case .standalone: return "Standalone"
@@ -1074,83 +711,13 @@ struct OverviewView: View {
         }
     }
 
-    private func activityTitle(for kind: ActivityEvent.Kind) -> String {
-        switch kind {
-        case .voiceJoin: return "User Joined Voice"
-        case .voiceLeave: return "User Left Voice"
-        case .voiceMove: return "Voice Channel Move"
-        case .command: return "Command Executed"
-        case .info: return "Runtime Event"
-        case .warning: return "Runtime Warning"
-        case .error: return "Runtime Error"
-        }
-    }
-
-    private func activitySymbol(for kind: ActivityEvent.Kind) -> String {
-        switch kind {
-        case .voiceJoin, .voiceLeave, .voiceMove: return "waveform"
-        case .command: return "terminal"
-        case .info: return "info.circle"
-        case .warning: return "exclamationmark.triangle"
-        case .error: return "xmark.octagon"
-        }
-    }
-
-    private func activityColor(for kind: ActivityEvent.Kind) -> Color {
-        switch kind {
-        case .voiceJoin: return .green
-        case .voiceLeave: return .red
-        case .voiceMove: return .blue
-        case .command: return .cyan
-        case .info: return .secondary
-        case .warning: return .orange
-        case .error: return .red
-        }
-    }
-
-    private func cleanedActivityMessage(_ message: String) -> String {
-        ["🟢 ", "🔴 ", "🔀 ", "✅ ", "⚠️ ", "❌ "].reduce(message) { cleaned, marker in
-            cleaned.replacingOccurrences(of: marker, with: "")
-        }
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func relativeText(since date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date)))
-        if seconds < 60 { return "\(seconds)s ago" }
-        if seconds < 3600 { return "\(seconds / 60)m ago" }
-        if seconds < 86_400 { return "\(seconds / 3600)h ago" }
-        return "\(seconds / 86_400)d ago"
-    }
-
-    private var averageMemoryText: String {
-        let samples = memorySamples.isEmpty ? [currentResidentMemoryBytes()] : memorySamples
-        let valid = samples.filter { $0 > 0 }
-        guard !valid.isEmpty else { return "--" }
-        let avg = valid.reduce(UInt64(0), +) / UInt64(valid.count)
-        let megabytes = Int((Double(avg) / 1_048_576).rounded())
-        return "\(megabytes) MB"
-    }
-
     private func recordMemorySample() {
-        let bytes = currentResidentMemoryBytes()
+        let bytes = OverviewHealthReport.residentMemoryBytes()
         guard bytes > 0 else { return }
         memorySamples.append(bytes)
         if memorySamples.count > Self.memorySampleCapacity {
             memorySamples.removeFirst(memorySamples.count - Self.memorySampleCapacity)
         }
-    }
-
-    private func currentResidentMemoryBytes() -> UInt64 {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return 0 }
-        return UInt64(info.resident_size)
     }
 
     private func syncDashboardPreferences() {
@@ -1441,5 +1008,44 @@ struct InfoRow: View {
                 .fontWeight(.semibold)
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Health colors
+
+extension OverviewHealthReport.State {
+    var color: Color {
+        switch self {
+        case .healthy: return .green
+        case .warning: return .orange
+        case .critical: return .red
+        case .neutral: return .secondary
+        }
+    }
+}
+
+extension OverviewHealthReport.AttentionItem.Severity {
+    var color: Color {
+        switch self {
+        case .critical: return .red
+        case .warning: return .orange
+        case .info: return .blue
+        }
+    }
+}
+
+extension OverviewHealthReport.ActivityItem {
+    var color: Color {
+        switch tone {
+        case .join: return .green
+        case .leave: return .red
+        case .move: return .blue
+        case .command: return .cyan
+        case .commandFailed: return .red
+        case .info: return .secondary
+        case .warning: return .orange
+        case .error: return .red
+        case .patchy: return .purple
+        }
     }
 }

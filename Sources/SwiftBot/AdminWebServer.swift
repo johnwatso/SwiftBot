@@ -146,6 +146,43 @@ struct AdminWebOverviewPayload: Codable {
     let recentVoice: [AdminWebRecentVoicePayload]
     let recentCommands: [AdminWebRecentCommandPayload]
     let botInfo: AdminWebBotInfoPayload
+    /// Mirrors the native Overview's Operational Status / Attention Required /
+    /// Live Activity panels (both are built from OverviewHealthReport).
+    var health: AdminWebOverviewHealthPayload?
+}
+
+struct AdminWebOverviewHealthPayload: Codable {
+    struct Tile: Codable {
+        let id: String
+        let title: String
+        let value: String
+        let detail: String
+        let icon: String      // lucide icon name
+        let state: String     // healthy | warning | critical | neutral
+    }
+
+    struct Attention: Codable {
+        let id: String
+        let title: String
+        let detail: String
+        let severity: String  // critical | warning | info
+        let label: String
+    }
+
+    struct Activity: Codable {
+        let id: String
+        let timestamp: Date
+        let title: String
+        let detail: String
+        let icon: String      // lucide icon name
+        let tone: String
+    }
+
+    let state: String
+    let title: String
+    let tiles: [Tile]
+    let attention: [Attention]
+    let activity: [Activity]
 }
 
 struct AdminWebAnalyticsMetricPayload: Codable {
@@ -1675,6 +1712,8 @@ actor AdminWebServer {
             return serveAsset(named: "lucide.min", ext: "js")
         case ("GET", "/assets/hls.min.js"):
             return serveAsset(named: "hls.min", ext: "js")
+        case ("GET", "/assets/tabler-icons.js"):
+            return serveAsset(named: "tabler-icons", ext: "js")
         case ("GET", let path) where path.hasPrefix("/assets/games/"):
             let filename = path.replacingOccurrences(of: "/assets/games/", with: "")
             let parts = filename.split(separator: ".", maxSplits: 1).map(String.init)
