@@ -14,6 +14,7 @@ enum SwiftBotStorage {
     static let voiceSessionHistoryFileName = "voice-session-history.json"
     static let analyticsRuntimeFileName = "analytics-runtime.json"
     static let gameTrackingStateFileName = "game-tracking-state.json"
+    static let communityStatsFileName = "community-stats.json"
 
     /// The test bundle is hosted by `SwiftBot.app` itself, so without this the
     /// suite reads and writes the same `settings.json`, caches and session

@@ -90,7 +90,6 @@ final class RemoteBotProvider: BotDataProvider {
         var s = BotSettings()
         s.commandsEnabled = config.commands.enabled
         s.slashCommandsEnabled = config.commands.slashEnabled
-        s.bugTrackingEnabled = config.commands.bugTrackingEnabled
         s.autoStart = config.general.autoStart
 
         s.localAIDMReplyEnabled = config.appleIntelligence.localAIDMReplyEnabled
@@ -136,7 +135,6 @@ final class RemoteBotProvider: BotDataProvider {
         let patch = AdminWebConfigPatch(
             commandsEnabled: settings.commandsEnabled,
             slashCommandsEnabled: settings.slashCommandsEnabled,
-            bugTrackingEnabled: settings.bugTrackingEnabled,
             localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
             wikiBridgeEnabled: settings.wikiBot.isEnabled,
             patchyMonitoringEnabled: settings.patchy.monitoringEnabled,

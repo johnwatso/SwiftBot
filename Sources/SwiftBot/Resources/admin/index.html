@@ -4875,7 +4875,7 @@
       margin-right: auto;
       flex-wrap: wrap;
     }
-    #modalOverlay .secondary-action.is-destructive { color: #ff453a; }
+    #modalOverlay .secondary-action.is-destructive, #appShell .secondary-action.is-destructive { color: #ff453a; }
     #modalOverlay .secondary-action svg { width: 15px; height: 15px; }
 
     /* ---- Shared list page: status bar, grouped rows, editor status (Patchy, Lookup) ---- */
@@ -5124,7 +5124,7 @@
     }
 
     /* ---- Grouped settings rows (Settings) ---- */
-    .ub-settings { max-width: 760px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+    .ub-settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
     .ub-group-head {
       display: flex;
       align-items: center;
@@ -5177,7 +5177,7 @@
     #appShell .view > .ub-status { margin-bottom: 18px; }
     .ub-row-actions { justify-content: flex-end; }
     .mesh-join-actions { display: flex; gap: 8px; flex: 0 0 auto; }
-    #appShell #swiftmeshPanels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; max-width: 900px; }
+    #appShell #swiftmeshPanels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 
     .prefs-avatar { width: 40px; height: 40px; border-radius: 12px; object-fit: cover; flex: 0 0 auto; }
     .prefs-control { width: 160px; flex: 0 0 auto; }
@@ -5196,7 +5196,8 @@
     @media (max-width: 640px) { .auto-draft { flex-direction: column; align-items: stretch; } }
 
     /* ---- Game Tracker ---- */
-    #appShell .gt-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; max-width: 980px; }
+    /* Content spans the page like the header above it. */
+    #appShell .gt-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
     #appShell .gt-shell .ub-row-text { min-width: 0; }
     #appShell .gt-notices { display: grid; gap: 10px; margin-bottom: 18px; }
     .ub-notice { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; font-size: 13px; line-height: 1.45; }
@@ -5274,6 +5275,167 @@
 
     /* ---- Sweep ---- */
     .sweep-suggestions { display: grid; gap: 10px; }
+    #appShell a.primary-action, #appShell a.secondary-action { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+    #appShell .ub-row-link .ub-row-text { flex: 1 1 0; min-width: 0; }
+    #appShell .ub-row-link .ub-row-value { flex: 0 0 auto; max-width: 45%; }
+    .access-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .access-chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--ub-fill); border: 1px solid var(--ub-stroke); }
+    .access-chip em { font-style: normal; color: var(--muted); }
+    .access-modes { display: grid; gap: 8px; }
+    .access-mode { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; cursor: pointer; border: 1px solid var(--ub-stroke); background: var(--ub-fill); }
+    .access-mode.is-selected { border-color: var(--accent, #0a84ff); box-shadow: 0 0 0 1px var(--accent, #0a84ff); }
+    .access-mode input { margin-top: 3px; }
+    .access-mode > span { display: grid; gap: 2px; }
+    .access-mode-title { font-weight: 600; font-size: 14px; }
+    .access-mode-desc { font-size: 12.5px; color: var(--muted); }
+    .access-list { margin-bottom: 10px; }
+    .access-list .ub-item { padding: 8px 0; gap: 10px; }
+    .access-add { display: flex; gap: 8px; }
+    .access-self-note { font-size: 12px; color: var(--muted); }
+    .access-add select { flex: 1; min-width: 0; }
+    .activity-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 14px; }
+    .activity-chip {
+      all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+      border-radius: 999px; font-size: 12.5px; cursor: pointer; color: var(--muted); background: transparent; border: 1px solid var(--ub-stroke);
+    }
+    .activity-chip svg { width: 14px; height: 14px; }
+    .activity-chip.is-on { color: var(--text); background: var(--ub-fill); border-color: color-mix(in srgb, var(--accent, #0a84ff) 45%, var(--ub-stroke)); }
+    .activity-chip:focus-visible { outline: 2px solid var(--ub-focus, rgba(10,132,255,0.5)); }
+    .activity-row { padding: 10px 0; gap: 12px; align-items: flex-start; }
+    .activity-row .ub-item-icon { width: 30px; height: 30px; border-radius: 9px; }
+    .activity-row .ub-item-icon svg { width: 15px; height: 15px; }
+    #appShell .activity-row .ub-item-title { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 13.5px; }
+    .activity-source { white-space: nowrap; }
+    #appShell .activity-row .ub-item-sub { white-space: normal; overflow-wrap: anywhere; }
+    .activity-row .ub-item-time::before { content: none; display: none; }
+    .activity-source { display: inline-block; margin-right: 6px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 18px; vertical-align: 1px; color: var(--muted); background: var(--ub-fill); border: 1px solid var(--ub-stroke); }
+    .activity-chip-all { margin-left: 2px; }
+    /* Times are the point of this feed, so keep them on narrow screens. */
+    #appShell .activity-row .ub-item-time { display: inline-block; }
+    .activity-row .ub-item-time { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+    .activity-level { flex: none; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-top: 1px; }
+    .activity-level.is-error { color: #ff453a; background: rgba(255,69,58,0.12); }
+    .activity-level.is-warning { color: #c77c02; background: rgba(255,159,10,0.15); }
+    /* Analytics */
+    .an-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    @media (max-width: 600px) { .an-stats { gap: 8px; } #appShell .an-stat { padding: 12px; } .an-stat-value { font-size: 21px; } }
+    #appShell .an-stat { padding: 14px 16px; border-radius: 16px; min-width: 0; }
+    .an-stat-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .an-stat-value { font-size: 26px; font-weight: 750; line-height: 1.15; margin: 4px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .an-stat-detail { font-size: 12px; color: var(--muted); }
+    .an-trend { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; font-weight: 600; background: var(--ub-fill); }
+    .an-trend.is-up { color: #1f9d55; background: rgba(48,209,88,0.14); }
+    .an-trend.is-down { color: #e0443a; background: rgba(255,69,58,0.12); }
+    .an-live { color: #1f9d55; }
+    .an-period { display: inline-flex; }
+    .an-body.is-loading { opacity: 0.55; transition: opacity 120ms ease; }
+    .an-series { display: inline-flex; }
+    .an-cols { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 3px; align-items: end; }
+    .an-col { display: flex; gap: 1px; align-items: flex-end; height: 100%; }
+    .an-col-bar { flex: 1; height: var(--h); min-height: 0; border-radius: 3px 3px 1px 1px; background: var(--c); opacity: 0.85; }
+    .an-col:hover .an-col-bar { opacity: 1; }
+    .an-cols-axis { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 3px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .an-cols-axis span { overflow: visible; }
+    .an-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .an-legend > span { width: 9px; height: 9px; border-radius: 3px; background: var(--c); margin-left: 6px; }
+    .an-highlights { display: grid; gap: 6px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--ub-divider); }
+    .an-highlight { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text); }
+    .an-highlight svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+    .an-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .an-word { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; background: var(--ub-fill); border: 1px solid var(--ub-stroke); }
+    .an-cloud.is-emoji .an-word { font-size: 16px; }
+    .an-word em { font-style: normal; font-size: 11px; color: var(--muted); }
+    .an-spark { width: 120px; height: 32px; flex: none; }
+    .an-up { color: #1f9d55; font-weight: 600; }
+    .an-down { color: #e0443a; font-weight: 600; }
+    .an-body { display: flex; flex-direction: column; gap: 22px; }
+    #appShell .an-chart-card { padding: 14px 18px 16px; display: grid; gap: 10px; }
+    .an-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .an-hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; align-items: end; height: 72px; }
+    .an-hour { display: block; height: var(--h); border-radius: 3px 3px 1px 1px; background: color-mix(in srgb, var(--accent, #0a84ff) 35%, transparent); }
+    .an-hour.is-peak { background: var(--accent, #0a84ff); }
+    .an-hours-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+    .an-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+    .an-rank, .an-voice, .an-insight { padding: 10px 0; gap: 12px; }
+    .an-rank-n { width: 20px; flex: none; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .an-rank-count { flex: none; min-width: 84px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .an-bar { display: block; height: 4px; margin-top: 6px; border-radius: 999px; background: var(--ub-fill); overflow: hidden; }
+    .an-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent, #0a84ff); }
+    @media (max-width: 880px) { .an-grid { grid-template-columns: 1fr; } }
+    @media (min-width: 1600px) { .an-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .settings-host-note { display: flex; gap: 8px; align-items: flex-start; margin: 4px 4px 0; }
+    .settings-host-note svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
+    /* Welcome Flow */
+    .wf-step-icon { position: relative; }
+    .wf-step-number {
+      position: absolute; right: -5px; bottom: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+      font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; color: #fff; background: var(--brand);
+      box-shadow: 0 0 0 2px var(--panel, #fff);
+    }
+    .wf-tokens { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
+    .wf-token { cursor: pointer; }
+    .wf-token:hover { color: var(--text); border-color: var(--accent, #0a84ff); }
+    #modalOverlay textarea.wf-template { width: 100%; resize: vertical; }
+    .wf-preview strong { color: #f2f3f5; }
+    .wf-preview code { font-size: 12.5px; padding: 1px 4px; border-radius: 4px; background: #1e1f22; }
+    #modalOverlay .wiki-advanced:not(.automation-editor-section) { margin-top: 10px; }
+    .wf-format { display: inline-flex; }
+    .wf-invite-list { display: grid; gap: 8px; margin: 10px 0; }
+    .wf-invite-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr) auto auto; gap: 8px; align-items: center; }
+    .wf-invite-row.is-off > :is(input, select) { opacity: 0.55; }
+    .wf-invite-arrow { width: 16px; height: 16px; color: var(--muted); }
+    @media (max-width: 600px) {
+      .wf-invite-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+      .wf-invite-row .wf-invite-arrow { display: none; }
+      .wf-invite-row .wf-invite-code { grid-column: 1 / -1; }
+    }
+    /* Discord-style message preview (colours fixed to Discord's dark theme) */
+    .wf-preview { border-radius: 12px; overflow: hidden; background: #313338; color: #dbdee1; font-size: 14px; line-height: 1.4; }
+    .wf-preview-where { padding: 8px 14px; font-size: 12px; font-weight: 600; color: #949ba4; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .wf-message { display: flex; gap: 12px; padding: 12px 14px 14px; }
+    .wf-avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; background: #5865f2; color: #fff; font-weight: 700; }
+    .wf-avatar svg { width: 20px; height: 20px; }
+    .wf-avatar.is-small { width: 20px; height: 20px; font-size: 10px; margin-right: 6px; background: #3ba55d; }
+    .wf-avatar.is-thumb { width: 64px; height: 64px; border-radius: 8px; font-size: 22px; background: #3ba55d; }
+    .wf-message-main { min-width: 0; flex: 1; }
+    .wf-author { font-weight: 600; color: #f2f3f5; display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+    .wf-bot-tag { font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; background: #5865f2; color: #fff; }
+    .wf-time { font-size: 11px; font-weight: 400; color: #949ba4; }
+    .wf-text { white-space: normal; overflow-wrap: anywhere; }
+    .wf-mention { color: #c9cdfb; background: rgba(88,101,242,0.3); border-radius: 3px; padding: 0 2px; font-weight: 500; }
+    .wf-muted { color: #949ba4; font-style: italic; }
+    .wf-embed { display: flex; gap: 12px; max-width: 432px; margin-top: 4px; padding: 10px 14px 12px 12px; border-radius: 4px; background: #2b2d31; border-left: 4px solid var(--embed); }
+    .wf-embed-main { flex: 1; min-width: 0; display: grid; gap: 6px; }
+    .wf-embed-author { display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #f2f3f5; }
+    .wf-embed-title { font-weight: 700; color: #f2f3f5; }
+    .wf-embed-text { font-size: 13.5px; overflow-wrap: anywhere; }
+    .wf-embed-footer { font-size: 12px; color: #b5bac1; }
+    /* Announcer editor */
+    .ac-identity { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+    #modalOverlay .ac-identity-preview { width: 56px; height: 56px; border-radius: 16px; flex: none; }
+    #modalOverlay .ac-identity-preview svg { width: 28px; height: 28px; }
+    .ac-identity-fields { flex: 1; min-width: 0; display: grid; gap: 10px; }
+    .ac-identity-pickers { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+    .ac-choice-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ac-icon-choice {
+      all: unset; box-sizing: border-box; width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--muted); background: var(--ub-fill); border: 1px solid var(--ub-stroke);
+    }
+    .ac-icon-choice svg { width: 16px; height: 16px; }
+    .ac-icon-choice:hover { color: var(--text); }
+    .ac-icon-choice.is-selected { color: var(--text); border-color: var(--accent, #0a84ff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #0a84ff) 35%, transparent); }
+    .ac-tint-choice {
+      all: unset; box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+      background: var(--swatch); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+    }
+    .ac-tint-choice.is-selected { box-shadow: 0 0 0 2px var(--panel, #fff), 0 0 0 4px var(--swatch); }
+    .ac-icon-choice:focus-visible, .ac-tint-choice:focus-visible { outline: 2px solid var(--ub-focus, rgba(10,132,255,0.6)); outline-offset: 2px; }
+    .ac-behaviour-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+    #modalOverlay .ac-behaviour-chip { justify-content: flex-start; }
+    #modalOverlay .ac-combo input.ac-combo-input { padding-left: 36px; }
+    #modalOverlay .ac-combo > svg { left: 12px; width: 14px; height: 14px; z-index: 1; }
+    .ac-enabled-row { margin: 4px 0 0; padding: 14px 16px; border-radius: 14px; background: var(--ub-fill); border: 1px solid var(--ub-stroke); }
+    @media (max-width: 600px) { .ac-behaviour-grid { grid-template-columns: 1fr; } }
     #appShell .sweep-suggestion { display: grid; gap: 12px; padding: 16px; }
     .sweep-suggestion-head { display: flex; align-items: flex-start; gap: 12px; }
     .sweep-suggestion-text { flex: 1; min-width: 0; display: grid; gap: 4px; }
@@ -5834,43 +5996,18 @@
           <div class="section-sticky">
             <div class="section-sticky-row">
               <div class="section-mini-title"><i class="lucide" data-lucide="activity"></i> Analytics</div>
-              <div id="analyticsUpdated" class="command-desc">Live analytics</div>
+              <div class="section-actions">
+                <div class="segmented an-period" id="analyticsPeriod" role="tablist" aria-label="Period">
+                  <button type="button" data-period="7d">7 days</button>
+                  <button type="button" data-period="30d">30 days</button>
+                  <button type="button" data-period="365d">12 months</button>
+                </div>
+                <span id="analyticsUpdated" class="command-desc">Live analytics</span>
+              </div>
             </div>
           </div>
-          <div class="analytics-shell">
-            <section id="analyticsPulse" class="analytics-pulse glass"></section>
-            <section class="analytics-main">
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="trending-up"></i> Activity Overview</div>
-                <div id="analyticsPeak" class="command-desc" style="margin-bottom:10px;">Peak activity</div>
-                <div id="analyticsChart" class="analytics-chart"></div>
-              </article>
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="rss"></i> Live Operations</div>
-                <div id="analyticsFeed" class="analytics-feed"></div>
-              </article>
-            </section>
-            <section class="analytics-diagnostics">
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="zap"></i> System Activity</div>
-                <div id="analyticsSystem" class="analytics-health-grid"></div>
-              </article>
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="heart-pulse"></i> Bot Health</div>
-                <div id="analyticsHealth" class="analytics-health-grid"></div>
-              </article>
-            </section>
-            <section class="analytics-support">
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Insights</div>
-                <div id="analyticsInsights" class="analytics-health-grid"></div>
-              </article>
-              <article class="analytics-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="users"></i> Top Users</div>
-                <div id="analyticsUsers" class="analytics-health-grid"></div>
-              </article>
-            </section>
-          </div>
+          <div id="analyticsPulse" class="an-stats"></div>
+          <div class="gt-shell" style="margin-top:22px;"><div id="analyticsBody" class="an-body"></div></div>
         </section>
 
         <section id="rewindView" class="view hidden">
@@ -5975,12 +6112,17 @@
 
         <section id="activityView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="history"></i> Activity</div>
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="history"></i> Activity</div>
+              <div class="section-actions">
+                <label class="cmd-search"><i class="lucide" data-lucide="search"></i><input id="activitySearch" type="search" placeholder="Search activity" aria-label="Search activity" autocomplete="off" spellcheck="false"></label>
+                <button id="activityCopy" class="secondary-action" type="button" title="Copy the visible entries"><i class="lucide" data-lucide="copy"></i> Copy</button>
+              </div>
+            </div>
           </div>
-          <div class="diagnostics-shell">
-            <section id="logsTop" class="ub-status glass"></section>
-            <section id="logsPanels" class="diagnostics-panels"></section>
-          </div>
+          <section id="logsTop" class="ub-status glass"></section>
+          <div id="activityFilters" class="activity-filters"></div>
+          <div class="gt-shell" style="margin-top:14px;"><div id="logsPanels"></div></div>
         </section>
 
         <section id="gametrackerView" class="view hidden">
@@ -7179,114 +7321,217 @@
       `;
     }
 
+    // Columns for one or two series. Labels show every few columns so 30
+    // days still reads; hover gives each column's exact numbers.
+    function anColumnChart(buckets, series, { height = 120 } = {}) {
+      const max = Math.max(1, ...buckets.flatMap(b => series.map(sr => sr.value(b))));
+      const every = buckets.length > 14 ? Math.ceil(buckets.length / 8) : 1;
+      return `
+        <div class="an-cols" style="--cols:${buckets.length};height:${height}px;">
+          ${buckets.map(b => `
+            <div class="an-col" title="${escapeHTML(b.label)} · ${series.map(sr => `${sr.value(b).toLocaleString()} ${sr.name}`).join(' · ')}">
+              ${series.map(sr => `<span class="an-col-bar" style="--h:${Math.max(sr.value(b) ? 3 : 0, Math.round(sr.value(b) / max * 100))}%;--c:${sr.color};"></span>`).join('')}
+            </div>`).join('')}
+        </div>
+        <div class="an-cols-axis" style="--cols:${buckets.length};">
+          ${buckets.map((b, i) => `<span>${i % every === 0 || i === buckets.length - 1 ? escapeHTML(b.label) : ''}</span>`).join('')}
+        </div>`;
+    }
+
+    function anDuration(seconds) {
+      const s = Math.max(0, Math.round(seconds || 0));
+      const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+      return h ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    function anTrend(current, previous) {
+      if (!previous) return '';
+      const change = Math.round((current - previous) / previous * 100);
+      if (!change) return '<span class="an-trend">same</span>';
+      return `<span class="an-trend ${change > 0 ? 'is-up' : 'is-down'}">${change > 0 ? '+' : ''}${change}%</span>`;
+    }
+
+    // A small line per tracked player, from Game Tracker's rank readings.
+    function anSparkline(points) {
+      if (points.length < 2) return '';
+      const w = 160, h = 36, pad = 3;
+      const scores = points.map(p => p.score);
+      const min = Math.min(...scores), max = Math.max(...scores), span = Math.max(1, max - min);
+      const t0 = new Date(points[0].date).getTime(), t1 = new Date(points[points.length - 1].date).getTime();
+      const xs = points.map(p => pad + (w - 2 * pad) * ((new Date(p.date).getTime() - t0) / Math.max(1, t1 - t0)));
+      const ys = points.map(p => h - pad - (h - 2 * pad) * ((p.score - min) / span));
+      const d = xs.map((x, i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ');
+      const up = scores[scores.length - 1] >= scores[0];
+      return `<svg class="an-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="${up ? '#30d158' : '#ff453a'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+
+    // Community analytics over the chosen period: who's around, when, and
+    // what they use. Bot health lives on the Overview and the event feed on
+    // Activity, so neither is here.
     function renderAnalyticsView() {
       if (!dashboardAnalytics) return;
-
       const data = dashboardAnalytics;
+      const community = data.community || {};
+      const p = data.period;
       const updated = document.getElementById('analyticsUpdated');
       if (updated) updated.textContent = `Updated ${relativeTime(data.generatedAt) || 'just now'}`;
-
+      document.querySelectorAll('#analyticsPeriod [data-period]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.period === analyticsPeriod);
+        btn.setAttribute('aria-selected', String(btn.dataset.period === analyticsPeriod));
+        if (!btn.dataset.bound) {
+          btn.dataset.bound = 'true';
+          btn.addEventListener('click', async () => {
+            if (analyticsPeriod === btn.dataset.period) return;
+            analyticsPeriod = btn.dataset.period;
+            try { localStorage.setItem('swiftbot.analytics.period', analyticsPeriod); } catch {}
+            document.getElementById('analyticsBody')?.classList.add('is-loading');
+            try { await loadAnalytics(); } catch {}
+            document.getElementById('analyticsBody')?.classList.remove('is-loading');
+          });
+        }
+      });
+      const body = document.getElementById('analyticsBody');
       const pulse = document.getElementById('analyticsPulse');
-      if (pulse) {
-        pulse.innerHTML = (data.metrics || []).map(metric => `
-          <article class="analytics-card ${analyticsToneClass(metric.tone)}">
-            <div class="label">${metric.title}</div>
-            <div class="value" title="${metric.value}">${metric.value}</div>
-            <div class="detail">${metric.detail}</div>
-            <div class="trend">${metric.trend}</div>
-          </article>
-        `).join('') || `<div class="placeholder">Analytics are waiting for runtime data.</div>`;
+      if (!body || !pulse) return;
+      if (!p) {
+        pulse.innerHTML = '';
+        body.innerHTML = '<div class="placeholder">Analytics are waiting for activity.</div>';
+        return;
       }
+      const t = p.totals;
+      const net = t.joins - t.leaves;
 
-      const peak = document.getElementById('analyticsPeak');
-      if (peak) peak.textContent = data.peakActivityLabel || 'Waiting for activity';
+      const stat = (label, value, detail) => `
+        <article class="an-stat glass">
+          <div class="an-stat-label">${label}</div>
+          <div class="an-stat-value" title="${escapeHTML(String(value))}">${value}</div>
+          <div class="an-stat-detail">${detail}</div>
+        </article>`;
+      pulse.innerHTML = [
+        stat('Voice time', anDuration(t.voiceSeconds), `${p.label} ${anTrend(t.voiceSeconds, t.previousVoiceSeconds)}`),
+        stat('Voice sessions', t.voiceSessions.toLocaleString(), `avg ${anDuration(t.averageSessionSeconds)} ${anTrend(t.voiceSessions, t.previousVoiceSessions)}`),
+        p.messagesAvailable ? stat('Messages', t.messages.toLocaleString(), `${p.label} ${anTrend(t.messages, t.previousMessages)}`) : '',
+        stat('Commands', t.commands.toLocaleString(), t.failedCommands ? `${t.failedCommands} failed` : 'none failed'),
+        stat('New members', `${net >= 0 ? '+' : ''}${net}`, `${t.joins} joined · ${t.leaves} left`)
+      ].join('');
 
-      const chart = document.getElementById('analyticsChart');
-      if (chart) {
-        chart.innerHTML = renderAnalyticsLineChart(data.dailyActivity || []);
-      }
+      const group = (title, inner, action = '') => `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>${title}</h2>${action}</div>
+          ${inner}
+        </section>`;
+      const emptyCard = (text) => `<div class="ub-group-card glass"><div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">${text}</div></div></div></div>`;
+      const rankedList = (items, unit, emptyText, fmt = (n) => n.toLocaleString()) => {
+        if (!items?.length) return emptyCard(emptyText);
+        const max = Math.max(...items.map(i => i.count), 1);
+        return `<div class="ub-list glass">${items.map((item, i) => `
+          <div class="ub-item an-rank">
+            <span class="an-rank-n">${i + 1}</span>
+            <span class="ub-item-text">
+              <span class="ub-item-title">${escapeHTML(item.title)}${item.badge || ''}</span>
+              <span class="an-bar"><span style="width:${Math.max(4, Math.round(item.count / max * 100))}%;"></span></span>
+            </span>
+            <span class="an-rank-count">${fmt(item.count)}${unit ? ` ${unit(item.count)}` : ''}</span>
+          </div>`).join('')}</div>`;
+      };
 
-      const feed = document.getElementById('analyticsFeed');
-      if (feed) {
-        feed.innerHTML = (data.feed || []).slice(0, 7).map(item => `
-          <article class="analytics-feed-item ${analyticsToneClass(item.tone)}">
-            <span class="analytics-feed-icon">${analyticsIcon(item.category)}</span>
-            <div style="min-width:0;">
-              <div class="analytics-feed-title">${item.title}</div>
-              <div class="analytics-feed-detail">${item.detail}</div>
+      // Activity chart with a series switch.
+      const seriesDefs = {
+        voice: { name: 'voice sessions', color: 'var(--accent, #0a84ff)', value: b => b.voiceSessions },
+        messages: { name: 'messages', color: '#30d158', value: b => b.messages },
+        commands: { name: 'commands', color: '#bf5af2', value: b => b.commands }
+      };
+      if (!p.messagesAvailable && analyticsSeries === 'messages') analyticsSeries = 'voice';
+      const seriesTabs = Object.entries(seriesDefs)
+        .filter(([id]) => id !== 'messages' || p.messagesAvailable)
+        .map(([id, def]) => `<button type="button" data-series="${id}" class="${analyticsSeries === id ? 'active' : ''}">${def.name.replace(/^./, c => c.toUpperCase())}</button>`).join('');
+      const hours = analyticsSeries === 'messages' ? p.hourlyMessages : p.hourlyVoice;
+      const maxHour = Math.max(...hours, 0);
+      const peakIndex = hours.indexOf(maxHour);
+      const hourLabel = (h) => `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`;
+      const busiest = p.buckets.reduce((best, b) => seriesDefs[analyticsSeries].value(b) > seriesDefs[analyticsSeries].value(best) ? b : best, p.buckets[0]);
+
+      const inVoice = community.inVoice || [];
+      const since = (d) => anDuration((Date.now() - new Date(d).getTime()) / 1000);
+
+      const highlights = [
+        p.streak ? `<div class="an-highlight"><i class="lucide" data-lucide="flame"></i><span><strong>${escapeHTML(p.streak.name)}</strong> has been in voice ${p.streak.days} days in a row</span></div>` : '',
+        busiest && seriesDefs[analyticsSeries].value(busiest) ? `<div class="an-highlight"><i class="lucide" data-lucide="calendar-check"></i><span>Busiest ${p.period === '365d' ? 'month' : 'day'}: <strong>${escapeHTML(busiest.label)}</strong> · ${seriesDefs[analyticsSeries].value(busiest).toLocaleString()} ${seriesDefs[analyticsSeries].name}</span></div>` : '',
+        maxHour ? `<div class="an-highlight"><i class="lucide" data-lucide="clock"></i><span>Most active around <strong>${hourLabel(peakIndex)}</strong></span></div>` : ''
+      ].filter(Boolean).join('');
+
+      const voiceUsers = (p.topVoiceUsers || []).map(u => ({ title: u.name, count: u.seconds, badge: u.inVoiceNow ? ' <span class="badge an-live">In voice</span>' : '' }));
+      const textChannels = p.messagesAvailable && p.messageChannels?.length ? p.messageChannels : (community.topChannels || []);
+      const words = p.topWords?.length ? `<div class="an-cloud">${p.topWords.map(w => `<span class="an-word" title="${w.count.toLocaleString()} times">${escapeHTML(w.title)}<em>${w.count.toLocaleString()}</em></span>`).join('')}</div>` : '';
+      const emoji = p.topEmoji?.length ? `<div class="an-cloud is-emoji">${p.topEmoji.map(e => `<span class="an-word" title="${e.count.toLocaleString()} times">${escapeHTML(e.title)}<em>${e.count.toLocaleString()}</em></span>`).join('')}</div>` : '';
+
+      body.innerHTML = `
+        ${group(`Activity · ${escapeHTML(p.label)}`, `
+          <div class="ub-group-card glass an-chart-card">
+            <div class="an-chart-head"><div class="segmented an-series">${seriesTabs}</div></div>
+            ${anColumnChart(p.buckets, [seriesDefs[analyticsSeries]], { height: 140 })}
+            <div class="an-chart-head" style="margin-top:6px;"><span class="ub-row-title">By hour of day</span>${maxHour ? `<span class="ub-row-desc">Peak around ${hourLabel(peakIndex)}</span>` : ''}</div>
+            ${maxHour ? `
+              <div class="an-hours">${hours.map((c, h) => `<span class="an-hour${c === maxHour ? ' is-peak' : ''}" style="--h:${Math.max(3, Math.round(c / maxHour * 100))}%;" title="${hourLabel(h)} · ${c.toLocaleString()}"></span>`).join('')}</div>
+              <div class="an-hours-axis"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>`
+              : '<div class="ub-row-desc">Nothing yet for this period.</div>'}
+            ${highlights ? `<div class="an-highlights">${highlights}</div>` : ''}
+          </div>`)}
+        ${!p.messagesAvailable ? `
+          <div class="ub-notice glass" style="--notice:#0a84ff;"><i class="lucide" data-lucide="message-square"></i>
+            <span><strong>${p.rewindEnabled ? 'Message stats appear as Rewind archives messages.' : 'Turn on Rewind to see message stats.'}</strong><br>Rewind keeps daily message counts, so Analytics can show messages, top posters and busiest channels. <button type="button" class="cmd-row-link" data-open-view="rewind">Open Rewind</button></span>
+          </div>` : ''}
+        ${group(`In voice right now${inVoice.length ? ` · ${inVoice.length}` : ''}`, inVoice.length ? `
+          <div class="ub-list glass">${inVoice.map(v => `
+            <div class="ub-item an-voice">
+              <span class="gt-avatar" aria-hidden="true">${escapeHTML((v.username || '?').charAt(0).toUpperCase())}</span>
+              <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(v.username)}</span><span class="ub-item-sub">🔊 ${escapeHTML(v.channelName)}</span></span>
+              <span class="an-rank-count">for ${since(v.since)}</span>
+            </div>`).join('')}</div>` : emptyCard('Nobody’s in voice right now.'))}
+        <div class="an-grid">
+          ${group('Top voice users', rankedList(voiceUsers, null, 'No voice sessions in this period.', anDuration))}
+          ${group('Voice channels', rankedList(p.voiceChannels, null, 'No voice sessions in this period.', (m) => anDuration(m * 60)))}
+          ${p.messagesAvailable ? group('Top posters', rankedList(p.topPosters, n => n === 1 ? 'message' : 'messages', 'No messages in this period.')) : ''}
+          ${group('Busiest text channels', rankedList(textChannels, n => p.messagesAvailable ? (n === 1 ? 'message' : 'messages') : (n === 1 ? 'command' : 'commands'), 'No channel activity yet.'))}
+          ${group('Top commands', rankedList(p.topCommands, n => n === 1 ? 'use' : 'uses', 'No commands in this period.'))}
+          ${group('Most active with commands', rankedList(p.topCommandUsers, n => n === 1 ? 'command' : 'commands', 'Nobody ran a command in this period.'))}
+        </div>
+        ${words || emoji ? group('What people are saying', `<div class="ub-group-card glass an-chart-card">${words ? `<div class="ub-row-title">Most used words</div>${words}` : ''}${emoji ? `<div class="ub-row-title">Most used emoji</div>${emoji}` : ''}</div>`) : ''}
+        ${group('Member growth', `
+          <div class="ub-group-card glass an-chart-card">
+            <div class="an-chart-head">
+              <span class="ub-row-title">${net >= 0 ? '+' : ''}${net} members</span>
+              <span class="an-legend"><span style="--c:#30d158;"></span>Joined ${t.joins}<span style="--c:#ff453a;"></span>Left ${t.leaves}</span>
             </div>
-            <div class="analytics-feed-time">${relativeTime(item.timestamp)}</div>
-          </article>
-        `).join('') || `<div class="placeholder">No runtime events yet.</div>`;
-      }
-
-      const system = document.getElementById('analyticsSystem');
-      if (system) {
-        const metrics = new Map((data.metrics || []).map(metric => [metric.id, metric]));
-        const rows = ['commands-today', 'active-automations', 'recordings-watched', 'clips-exported']
-          .map(id => metrics.get(id))
-          .filter(Boolean);
-        system.innerHTML = rows.map(metric => `
-          <div class="analytics-health-row ${analyticsToneClass(metric.tone)}">
-            <span>${metric.title}</span>
-            <strong>${metric.value}</strong>
-          </div>
-          <div class="analytics-card ${analyticsToneClass(metric.tone)}" style="padding:8px 9px;">
-            <div class="detail">${metric.detail}</div>
-            <div class="trend">${metric.trend}</div>
-          </div>
-        `).join('');
-        // Nothing to show: drop the panel and let its neighbour take the row.
-        const panel = system.closest('.analytics-panel, .glass');
-        panel?.classList.toggle('hidden', !rows.length);
-        panel?.parentElement?.classList.toggle('analytics-single', !rows.length);
-      }
-
-      const health = document.getElementById('analyticsHealth');
-      if (health) {
-        const h = data.health || {};
-        health.innerHTML = `
-          <div class="analytics-health-row ${analyticsToneClass(h.state === 'degraded' ? 'danger' : h.state)}">
-            <span>State</span>
-            <strong>${h.state || 'healthy'}</strong>
-          </div>
-          <div class="analytics-card ${analyticsToneClass(h.state === 'degraded' ? 'danger' : h.state)}" style="padding:8px 9px;">
-            <div class="detail">${h.detail || 'Runtime health is nominal.'}</div>
-          </div>
-          <div class="analytics-health-row"><span>Gateway Heartbeat</span><strong>${h.websocketLatencyMs == null ? '-' : `${h.websocketLatencyMs} ms`}</strong></div>
-          <div class="analytics-health-row"><span>Event Queue</span><strong>${h.eventQueueDepth || 0}/20</strong></div>
-          <div class="analytics-health-row"><span>Active Tasks</span><strong>${h.activeTasks || 0}</strong></div>
-          <div class="analytics-health-row"><span>Memory</span><strong>${h.memoryText || '-'}</strong></div>
-        `;
-      }
-
-      const insights = document.getElementById('analyticsInsights');
-      if (insights) {
-        insights.innerHTML = (data.insights || []).map(item => `
-          <article class="analytics-insight ${analyticsToneClass(item.tone)}">
-            <div class="analytics-insight-title">${item.title}</div>
-            <div class="analytics-insight-body">${item.body}</div>
-          </article>
-        `).join('') || `<div class="placeholder">Insights will appear as activity builds.</div>`;
-      }
-
-      const users = document.getElementById('analyticsUsers');
-      if (users) {
-        users.innerHTML = (data.topUsers || []).map((user, index) => `
-          <article class="analytics-user-row ${index === 0 ? 'tone-usage' : ''}">
-            <div class="analytics-avatar">${user.initials}</div>
-            <div style="min-width:0;">
-              <div class="analytics-user-name">${index + 1}. ${user.username}${user.isActive ? ' · live' : ''}</div>
-              <div class="analytics-user-meta">${user.totalTime} · ${user.activityShare}% tracked activity</div>
-              <div class="analytics-progress"><span style="width:${Math.max(2, Math.min(100, user.activityShare || 0))}%;"></span></div>
-            </div>
-            <strong style="font-size:12px;">${user.activityShare}%</strong>
-          </article>
-        `).join('') || `<div class="placeholder">No completed voice sessions yet.</div>`;
-      }
-
-      // Convert any `<i class="lucide">` placeholders that were injected
-      // (analytics feed icons, etc.) into SVGs.
+            ${t.joins || t.leaves ? anColumnChart(p.buckets, [
+              { name: 'joined', color: '#30d158', value: b => b.joins },
+              { name: 'left', color: '#ff453a', value: b => b.leaves }
+            ], { height: 90 }) : '<div class="ub-row-desc">No joins or leaves recorded in this period. Counting started with this version of SwiftBot.</div>'}
+          </div>`)}
+        <div class="an-grid">
+          ${(p.rankSeries || []).length ? group('Ranked progress', `<div class="ub-list glass">${p.rankSeries.map(series => {
+            const first = series.points[0], last = series.points[series.points.length - 1];
+            const change = last.score - first.score;
+            return `
+              <div class="ub-item an-rank">
+                <span class="ub-item-text">
+                  <span class="ub-item-title">${escapeHTML(series.name)}</span>
+                  <span class="ub-item-sub">${escapeHTML(series.game)}${last.rankName ? ` · ${escapeHTML(last.rankName)}` : ''}</span>
+                </span>
+                ${anSparkline(series.points)}
+                <span class="an-rank-count"><strong>${last.score.toLocaleString()}</strong><br>${change ? `<span class="${change > 0 ? 'an-up' : 'an-down'}">${change > 0 ? '+' : ''}${change.toLocaleString()}</span>` : 'no change'}</span>
+              </div>`;
+          }).join('')}</div>`) : ''}
+          ${(p.clipsByGame || []).length ? group('Clips recorded', rankedList(p.clipsByGame, n => n === 1 ? 'clip' : 'clips', '')) : ''}
+        </div>
+        ${(data.insights || []).length ? group('Insights', `<div class="ub-list glass">${data.insights.map(item => `
+          <div class="ub-item an-insight">
+            <span class="ub-item-icon" style="--brand:#a855f7;"><i class="lucide" data-lucide="sparkles"></i></span>
+            <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(item.title)}</span><span class="ub-item-sub">${escapeHTML(item.body)}</span></span>
+          </div>`).join('')}</div>`) : ''}
+      `;
+      body.querySelectorAll('[data-series]').forEach(btn => btn.addEventListener('click', () => { analyticsSeries = btn.dataset.series; renderAnalyticsView(); }));
+      body.querySelectorAll('[data-open-view]').forEach(btn => btn.addEventListener('click', () => selectView(btn.dataset.openView)));
       refreshIcons();
     }
 
@@ -7334,8 +7579,13 @@
       return data;
     }
 
+    let analyticsPeriod = (() => {
+      try { const v = localStorage.getItem('swiftbot.analytics.period'); return ['7d', '30d', '365d'].includes(v) ? v : '7d'; } catch { return '7d'; }
+    })();
+    let analyticsSeries = 'voice';
+
     async function loadAnalytics() {
-      const response = await fetch('/api/analytics');
+      const response = await fetch(`/api/analytics?period=${encodeURIComponent(analyticsPeriod)}`);
       if (!response.ok) {
         throw new Error('Analytics unavailable');
       }
@@ -8600,13 +8850,15 @@
 
     let welcomeData = null;
 
+    // In the order WelcomeFlowService runs them on a join; Goodbye runs on leave.
     const WELCOME_TEMPLATES = [
-      { id: 'publicGreeting', title: 'Public Greeting', subtitle: 'Post a welcome in a selected channel when someone joins.', symbol: 'hand.wave.fill', tint: 'green' },
-      { id: 'directMessage', title: 'Welcome DM', subtitle: 'Send a private welcome and optionally fall back to channel.', symbol: 'mail', tint: 'blue' },
-      { id: 'inviteRoles', title: 'Invite Role', subtitle: 'Grant roles from invite-specific next-step rules.', symbol: 'link.badge.plus', tint: 'purple' },
-      { id: 'safety', title: 'Safety Gate', subtitle: 'Skip bots or hold welcomes for very new accounts.', symbol: 'shield.lefthalf.filled', tint: 'orange' },
-      { id: 'goodbye', title: 'Goodbye', subtitle: 'Post a departure message when someone leaves.', symbol: 'door.left.hand.open', tint: 'orange' }
+      { id: 'safety', title: 'Safety gate', subtitle: 'Skip bots, or hold back welcomes for brand-new accounts.', symbol: 'shield.lefthalf.filled', tint: 'orange', on: 'join' },
+      { id: 'publicGreeting', title: 'Public greeting', subtitle: 'Post a welcome in a channel when someone joins.', symbol: 'hand.wave.fill', tint: 'green', on: 'join' },
+      { id: 'directMessage', title: 'Welcome DM', subtitle: 'Send the new member a private welcome.', symbol: 'mail', tint: 'blue', on: 'join' },
+      { id: 'inviteRoles', title: 'Invite roles', subtitle: 'Give a role based on which invite someone used.', symbol: 'link.badge.plus', tint: 'purple', on: 'join' },
+      { id: 'goodbye', title: 'Goodbye', subtitle: 'Post a message when someone leaves.', symbol: 'door.left.hand.open', tint: 'red', on: 'leave' }
     ];
+    const WELCOME_TOKENS = ['{userMention}', '{username}', '{server}', '{memberCount}'];
 
     async function loadWelcomeFlow() {
       const response = await fetch('/api/welcome-flow');
@@ -8678,37 +8930,48 @@
       refreshIcons();
     }
 
-    // The five welcome steps, in the order they run, each with an on/off
-    // switch. (The old template grid listed these same five again.)
+    // The five steps as the journey a member takes: what runs when they
+    // join, in order, then what runs when they leave.
     function renderWelcomeRules() {
       const root = document.getElementById('welcomeRules');
       if (!root) return;
-      const tints = { blue: '#3b82f6', green: '#22c55e', purple: '#a855f7', orange: '#f97316' };
+      const tints = { blue: '#3b82f6', green: '#22c55e', purple: '#a855f7', orange: '#f97316', red: '#ef4444' };
       const enabledCount = WELCOME_TEMPLATES.filter(t => welcomeRuleEnabled(t.id)).length;
+      const item = (t, index) => {
+        const enabled = welcomeRuleEnabled(t.id);
+        return `
+          <div class="ub-item${enabled ? '' : ' is-off'}" data-welcome-rule="${t.id}">
+            <button class="ub-item-main" type="button" data-welcome-edit aria-label="Edit ${escapeHTML(t.title)}">
+              <span class="ub-item-icon wf-step-icon" style="--brand:${tints[t.tint] || '#3b82f6'};"><i class="lucide" data-lucide="${sfSymbolToLucide(t.symbol)}"></i>${index ? `<span class="wf-step-number">${index}</span>` : ''}</span>
+              <span class="ub-item-text">
+                <span class="ub-item-title">${escapeHTML(t.title)}</span>
+                <span class="ub-item-sub">${escapeHTML(enabled ? welcomeRuleSubtitle(t.id) : t.subtitle)}</span>
+              </span>
+              <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
+            </button>
+            <label class="switch" title="${enabled ? 'On' : 'Off'}">
+              <input class="welcome-rule-enabled" type="checkbox" ${enabled ? 'checked' : ''} aria-label="${escapeHTML(t.title)} on">
+              <span class="switch-track"><span class="switch-knob"></span></span>
+            </label>
+          </div>`;
+      };
+      const join = WELCOME_TEMPLATES.filter(t => t.on === 'join');
+      const leave = WELCOME_TEMPLATES.filter(t => t.on === 'leave');
       root.innerHTML = `
-        <section class="ub-group">
-          <div class="ub-group-head"><h2>${enabledCount} of ${WELCOME_TEMPLATES.length} steps on</h2></div>
-          <div class="ub-list glass">
-            ${WELCOME_TEMPLATES.map(t => {
-              const enabled = welcomeRuleEnabled(t.id);
-              return `
-                <div class="ub-item${enabled ? '' : ' is-off'}" data-welcome-rule="${t.id}">
-                  <button class="ub-item-main" type="button" data-welcome-edit aria-label="Edit ${escapeHTML(t.title)}">
-                    <span class="ub-item-icon" style="--brand:${tints[t.tint] || '#3b82f6'};"><i class="lucide" data-lucide="${sfSymbolToLucide(t.symbol)}"></i></span>
-                    <span class="ub-item-text">
-                      <span class="ub-item-title">${escapeHTML(t.title)}</span>
-                      <span class="ub-item-sub">${escapeHTML(enabled ? welcomeRuleSubtitle(t.id) : t.subtitle)}</span>
-                    </span>
-                    <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
-                  </button>
-                  <label class="switch" title="${enabled ? 'On' : 'Off'}">
-                    <input class="welcome-rule-enabled" type="checkbox" ${enabled ? 'checked' : ''} aria-label="${escapeHTML(t.title)} on">
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                  </label>
-                </div>`;
-            }).join('')}
-          </div>
-        </section>`;
+        <div id="welcomeTop" class="ub-status glass">
+          ${ubStatusCell(`${enabledCount} of ${WELCOME_TEMPLATES.length} steps on`, enabledCount ? 'Runs for every new member' : 'Nothing happens when people join', enabledCount ? 'healthy' : 'neutral')}
+          ${ubStatusCell(escapeHTML(welcomeContext().guildName || 'Server'), 'Settings apply to this server')}
+        </div>
+        <div class="gt-shell" style="margin-top:22px;">
+          <section class="ub-group">
+            <div class="ub-group-head gt-game-head"><span class="ub-item-icon" style="--brand:#22c55e;"><i class="lucide" data-lucide="log-in"></i></span><h2>When someone joins</h2><span class="gt-game-count">in this order</span></div>
+            <div class="ub-list glass wf-journey">${join.map((t, i) => item(t, i + 1)).join('')}</div>
+          </section>
+          <section class="ub-group">
+            <div class="ub-group-head gt-game-head"><span class="ub-item-icon" style="--brand:#ef4444;"><i class="lucide" data-lucide="log-out"></i></span><h2>When someone leaves</h2></div>
+            <div class="ub-list glass">${leave.map(t => item(t, 0)).join('')}</div>
+          </section>
+        </div>`;
 
       root.querySelectorAll('[data-welcome-rule]').forEach(row => {
         const kind = row.dataset.welcomeRule;
@@ -8729,12 +8992,32 @@
     function welcomeRuleSubtitle(kind) {
       const s = welcomeSettings();
       const ctx = welcomeContext();
-      const channelName = id => ctx.textChannels?.find(c => c.id === id)?.name || 'No channel selected';
-      if (kind === 'publicGreeting') return s.publicWelcomeEnabled ? `#${channelName(s.publicChannelId)}` : 'Not posted';
-      if (kind === 'directMessage') return s.dmWelcomeEnabled ? 'DM the new member' : 'Not sent';
-      if (kind === 'inviteRoles') return `${(s.nextStepRules || []).filter(r => r.isEnabled).length} invite rules`;
-      if (kind === 'safety') return welcomeRuleEnabled(kind) ? 'Bots or account-age checks enabled' : 'No safety gate';
-      if (kind === 'goodbye') return s.goodbyeEnabled ? `#${channelName(s.goodbyeChannelId)}` : 'Not sent';
+      const channelName = id => ctx.textChannels?.find(c => c.id === id)?.name;
+      const roleName = id => ctx.roles?.find(r => r.id === id)?.name;
+      const style = format => format === 'embed' ? 'embed' : 'message';
+      if (kind === 'publicGreeting') {
+        const name = channelName(s.publicChannelId);
+        const pool = (s.publicMessageTemplatePool || []).length;
+        return name ? `Posts ${style(s.publicMessageFormat) === 'embed' ? 'an embed' : 'a message'} in #${name}${pool ? ` · ${pool + 1} variations` : ''}` : 'Choose a channel to post in';
+      }
+      if (kind === 'directMessage') {
+        return s.dmFallbackToChannelEnabled && s.publicWelcomeEnabled ? 'DMs the new member · posts in the greeting channel if DMs are closed' : 'DMs the new member';
+      }
+      if (kind === 'inviteRoles') {
+        const rules = (s.nextStepRules || []).filter(r => r.isEnabled && r.roleId);
+        if (rules.length === 1) return `Gives @${roleName(rules[0].roleId) || 'role'}${rules[0].inviteCode ? ` for invite ${rules[0].inviteCode}` : ' to everyone'}`;
+        return `${rules.length} invite rules`;
+      }
+      if (kind === 'safety') {
+        const parts = [];
+        if (s.skipBots) parts.push('Skips bots');
+        if ((s.minAccountAgeDays || 0) > 0) parts.push(`${s.accountAgeAction === 'alertModerators' ? 'Alerts mods about' : 'Skips'} accounts under ${s.minAccountAgeDays} ${s.minAccountAgeDays === 1 ? 'day' : 'days'} old`);
+        return parts.join(' · ') || 'No checks';
+      }
+      if (kind === 'goodbye') {
+        const name = channelName(s.goodbyeChannelId);
+        return name ? `Posts in #${name}` : 'Choose a channel to post in';
+      }
       return '';
     }
 
@@ -8783,53 +9066,159 @@
       return `<select class="field-select ${cls}" data-index="${index}">${options}</select>`;
     }
 
+    // Discord colour ints → CSS hex for the embed preview.
+    function welcomeColorHex(value, fallback) {
+      const n = Number.isFinite(value) ? value : fallback;
+      return `#${Math.max(0, n).toString(16).padStart(6, '0').slice(-6)}`;
+    }
+
+    // Fills the same placeholders as WelcomeFlowService.render with sample
+    // values, escaping first so a template can't inject markup.
+    function welcomeSampleText(template) {
+      const server = welcomeContext().guildName || 'your server';
+      return escapeHTML(template || '')
+        .replaceAll('{userMention}', '<span class="wf-mention">@Taylor</span>')
+        .replaceAll('{username}', 'Taylor')
+        .replaceAll('{userId}', '1234567890')
+        .replaceAll('{server}', escapeHTML(server))
+        .replaceAll('{guildName}', escapeHTML(server))
+        .replaceAll('{memberCount}', '128')
+        // The Discord markdown people use most in welcomes.
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<u>$1</u>')
+        .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+    }
+
+    function welcomePreviewHTML({ format, message, title, footer, showAvatar, showAuthor, color, where }) {
+      const body = format === 'embed'
+        ? `<div class="wf-embed" style="--embed:${color};">
+             <div class="wf-embed-main">
+               ${showAuthor ? '<div class="wf-embed-author"><span class="wf-avatar is-small">T</span>Taylor</div>' : ''}
+               ${title ? `<div class="wf-embed-title">${welcomeSampleText(title)}</div>` : ''}
+               <div class="wf-embed-text">${welcomeSampleText(message) || '<span class="wf-muted">Your message appears here</span>'}</div>
+               ${footer ? `<div class="wf-embed-footer">${welcomeSampleText(footer)}</div>` : ''}
+             </div>
+             ${showAvatar ? '<span class="wf-avatar is-thumb">T</span>' : ''}
+           </div>`
+        : `<div class="wf-text">${welcomeSampleText(message) || '<span class="wf-muted">Your message appears here</span>'}</div>`;
+      return `
+        <div class="wf-preview">
+          <div class="wf-preview-where">${escapeHTML(where)}</div>
+          <div class="wf-message">
+            <span class="wf-avatar is-bot"><i class="lucide" data-lucide="bot"></i></span>
+            <div class="wf-message-main">
+              <div class="wf-author">SwiftBot <span class="wf-bot-tag">APP</span><span class="wf-time">Today at 9:41</span></div>
+              ${body}
+            </div>
+          </div>
+        </div>`;
+    }
+
     function renderWelcomeEditorBody(kind) {
       const root = document.getElementById('welcomeEditorBody');
       if (!root) return;
       const s = welcomeSettings();
-      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label>${html}</div>`;
+      const ctx = welcomeContext();
+      const section = (icon, title, body, extra = '') => `<div class="automation-editor-section"${extra}><h3><i class="lucide" data-lucide="${icon}"></i> ${title}</h3>${body}</div>`;
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label><div style="flex:1;min-width:0;">${html}</div></div>`;
+      const toggle = (id, checked, title, desc = '') => `
+        <label class="ac-toggle"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''}>
+          <span class="ac-toggle-text"><span class="ac-toggle-title">${title}</span>${desc ? `<span class="ac-toggle-desc">${desc}</span>` : ''}</span></label>`;
+      const segmented = (id, value) => `
+        <div class="segmented wf-format" id="${id}">
+          <button type="button" data-value="plainText" class="${value !== 'embed' ? 'active' : ''}">Text</button>
+          <button type="button" data-value="embed" class="${value === 'embed' ? 'active' : ''}">Embed</button>
+        </div>`;
+      const tokens = `<div class="wf-tokens"><span>Insert</span>${WELCOME_TOKENS.map(t => `<button type="button" class="cmd-opt wf-token" data-token="${t}">${t}</button>`).join('')}</div>`;
+      const channelName = id => ctx.textChannels?.find(c => c.id === id)?.name;
+
       let html = '';
-      if (kind === 'publicGreeting') {
-        html = row('Enabled', `<input id="wfPublicEnabled" type="checkbox" ${s.publicWelcomeEnabled ? 'checked' : ''}>`) +
-          row('Channel', channelSelect('wfPublicChannel', s.publicChannelId)) +
-          row('Format', `<select id="wfPublicFormat" class="field-select"><option value="plainText" ${s.publicMessageFormat === 'plainText' ? 'selected' : ''}>Plain Text</option><option value="embed" ${s.publicMessageFormat === 'embed' ? 'selected' : ''}>Embed</option></select>`) +
-          row('Message', `<textarea id="wfPublicMessage" class="field-input" rows="4">${escapeHTML(s.publicMessageTemplate || '')}</textarea>`) +
-          row('Random message pool', `<textarea id="wfPublicPool" class="field-input" rows="4" placeholder="One template per line">${escapeHTML((s.publicMessageTemplatePool || []).join('\n'))}</textarea>`) +
-          row('Embed title', `<input id="wfPublicTitle" class="field-input" value="${escapeHTML(s.publicEmbedTitleTemplate || '')}">`) +
-          row('Embed footer', `<input id="wfPublicFooter" class="field-input" value="${escapeHTML(s.publicEmbedFooterTemplate || '')}">`) +
-          row('Show member avatar', `<input id="wfPublicAvatar" type="checkbox" ${s.publicEmbedShowAvatar !== false ? 'checked' : ''}>`) +
-          row('Show member author line', `<input id="wfPublicAuthor" type="checkbox" ${s.publicEmbedShowAuthor ? 'checked' : ''}>`);
+      if (kind === 'publicGreeting' || kind === 'goodbye') {
+        const g = kind === 'goodbye';
+        const v = {
+          channel: g ? s.goodbyeChannelId : s.publicChannelId,
+          format: g ? s.goodbyeMessageFormat : s.publicMessageFormat,
+          message: g ? s.goodbyeMessageTemplate : s.publicMessageTemplate,
+          title: g ? s.goodbyeEmbedTitleTemplate : s.publicEmbedTitleTemplate,
+          footer: g ? s.goodbyeEmbedFooterTemplate : s.publicEmbedFooterTemplate
+        };
+        const isEmbed = v.format === 'embed';
+        const pool = s.publicMessageTemplatePool || [];
+        html =
+          section('hash', 'Where', row('Channel', channelSelect('wfChannel', v.channel))) +
+          section('message-square', 'Message',
+            row('Style', segmented('wfFormat', v.format)) +
+            `<textarea id="wfMessage" class="field-input wf-template" rows="3">${escapeHTML(v.message || '')}</textarea>` + tokens +
+            (g ? '' : `
+              <details class="wiki-advanced"${pool.length ? ' open' : ''}>
+                <summary><i class="lucide" data-lucide="shuffle"></i> Random variations${pool.length ? ` · ${pool.length}` : ''}</summary>
+                <div class="ub-help" style="margin-top:0;">One message per line. SwiftBot picks one at random, alongside the message above, so welcomes don’t repeat.</div>
+                <textarea id="wfPool" class="field-input wf-template" rows="3" placeholder="Welcome aboard, {userMention}!">${escapeHTML(pool.join('\n'))}</textarea>
+              </details>`)) +
+          (isEmbed ? section('panel-top', 'Embed',
+            row('Title', `<input id="wfTitle" class="field-input wf-template" value="${escapeHTML(v.title || '')}" placeholder="Optional">`) +
+            row('Footer', `<input id="wfFooter" class="field-input wf-template" value="${escapeHTML(v.footer || '')}" placeholder="Optional">`) +
+            (g ? '' : toggle('wfAvatar', s.publicEmbedShowAvatar !== false, 'Show their avatar') + toggle('wfAuthor', !!s.publicEmbedShowAuthor, 'Show their name above the title'))) : '') +
+          section('eye', 'Preview', '<div id="wfPreview"></div>');
       } else if (kind === 'directMessage') {
-        html = row('Enabled', `<input id="wfDmEnabled" type="checkbox" ${s.dmWelcomeEnabled ? 'checked' : ''}>`) +
-          row('Message', `<textarea id="wfDmMessage" class="field-input" rows="5">${escapeHTML(s.dmMessageTemplate || '')}</textarea>`) +
-          row('Fallback', `<input id="wfDmFallbackEnabled" type="checkbox" ${s.dmFallbackToChannelEnabled ? 'checked' : ''}>`) +
-          row('Fallback text', `<textarea id="wfDmFallback" class="field-input" rows="3">${escapeHTML(s.dmFallbackTemplate || '')}</textarea>`);
+        html =
+          section('mail', 'Message', `<textarea id="wfMessage" class="field-input wf-template" rows="4">${escapeHTML(s.dmMessageTemplate || '')}</textarea>` + tokens) +
+          section('life-buoy', 'If their DMs are closed',
+            toggle('wfDmFallbackEnabled', !!s.dmFallbackToChannelEnabled, 'Post in the greeting channel instead',
+              s.publicWelcomeEnabled && channelName(s.publicChannelId) ? `Posts in #${escapeHTML(channelName(s.publicChannelId))}.` : 'Needs the public greeting turned on, since it posts in that channel.') +
+            (s.dmFallbackToChannelEnabled ? `<textarea id="wfDmFallback" class="field-input wf-template" rows="2" placeholder="{userMention}, I couldn't DM you — welcome!">${escapeHTML(s.dmFallbackTemplate || '')}</textarea>` : '')) +
+          section('eye', 'Preview', '<div id="wfPreview"></div>');
       } else if (kind === 'inviteRoles') {
         const rules = s.nextStepRules || [];
-        html = `<div id="wfInviteRules">${rules.map((r, i) => `
-          <div class="automation-step-card" data-index="${i}">
-            <div class="automation-step-header"><span>${escapeHTML(r.name || `Invite Rule ${i + 1}`)}</span><button class="mini-btn wf-invite-remove" type="button"><i class="lucide" data-lucide="x"></i></button></div>
-            ${row('Enabled', `<input class="wf-invite-enabled" data-index="${i}" type="checkbox" ${r.isEnabled ? 'checked' : ''}>`)}
-            ${row('Name', `<input class="field-input wf-invite-name" data-index="${i}" value="${escapeHTML(r.name || '')}">`)}
-            ${row('Invite code', `<input class="field-input wf-invite-code" data-index="${i}" value="${escapeHTML(r.inviteCode || '')}" placeholder="Any invite">`)}
-            ${row('Role', roleSelect('wf-invite-role', r.roleId, i))}
-          </div>`).join('')}</div>
-          <button class="mini-btn" id="wfInviteAdd" type="button" style="margin-top:8px;"><i class="lucide" data-lucide="plus"></i> New Rule</button>`;
+        html = section('link', 'Rules',
+          '<div class="ub-help" style="margin-top:0;">Leave the invite code empty to give the role to everyone who joins.</div>' +
+          (rules.length ? `<div class="wf-invite-list">${rules.map((r, i) => `
+            <div class="wf-invite-row${r.isEnabled ? '' : ' is-off'}" data-index="${i}">
+              <input class="field-input wf-invite-code" data-index="${i}" value="${escapeHTML(r.inviteCode || '')}" placeholder="Any invite" aria-label="Invite code">
+              <i class="lucide wf-invite-arrow" data-lucide="arrow-right"></i>
+              ${roleSelect('wf-invite-role', r.roleId, i)}
+              <label class="switch" title="${r.isEnabled ? 'On' : 'Off'}"><input class="wf-invite-enabled" data-index="${i}" type="checkbox" ${r.isEnabled ? 'checked' : ''} aria-label="Rule on"><span class="switch-track"><span class="switch-knob"></span></span></label>
+              <button class="icon-btn we-remove wf-invite-remove" type="button" aria-label="Remove"><i class="lucide" data-lucide="x"></i></button>
+            </div>`).join('')}</div>` : '<div class="placeholder">No rules yet.</div>') +
+          '<div class="wiki-actions"><button class="secondary-action" id="wfInviteAdd" type="button"><i class="lucide" data-lucide="plus"></i> Add rule</button></div>');
       } else if (kind === 'safety') {
-        html = row('Skip bots', `<input id="wfSkipBots" type="checkbox" ${s.skipBots ? 'checked' : ''}>`) +
-          row('Minimum account age', `<input id="wfMinAge" type="number" class="field-input" value="${s.minAccountAgeDays || 0}">`) +
-          row('Action', `<select id="wfAgeAction" class="field-select"><option value="skipWelcome" ${s.accountAgeAction === 'skipWelcome' ? 'selected' : ''}>Skip silently</option><option value="alertModerators" ${s.accountAgeAction === 'alertModerators' ? 'selected' : ''}>Alert moderators</option></select>`) +
-          row('Alert channel', channelSelect('wfModAlertChannel', s.modAlertChannelId));
-      } else if (kind === 'goodbye') {
-        html = row('Enabled', `<input id="wfGoodbyeEnabled" type="checkbox" ${s.goodbyeEnabled ? 'checked' : ''}>`) +
-          row('Channel', channelSelect('wfGoodbyeChannel', s.goodbyeChannelId)) +
-          row('Format', `<select id="wfGoodbyeFormat" class="field-select"><option value="plainText" ${s.goodbyeMessageFormat === 'plainText' ? 'selected' : ''}>Plain Text</option><option value="embed" ${s.goodbyeMessageFormat === 'embed' ? 'selected' : ''}>Embed</option></select>`) +
-          row('Message', `<textarea id="wfGoodbyeMessage" class="field-input" rows="4">${escapeHTML(s.goodbyeMessageTemplate || '')}</textarea>`) +
-          row('Embed title', `<input id="wfGoodbyeTitle" class="field-input" value="${escapeHTML(s.goodbyeEmbedTitleTemplate || '')}">`) +
-          row('Embed footer', `<input id="wfGoodbyeFooter" class="field-input" value="${escapeHTML(s.goodbyeEmbedFooterTemplate || '')}">`);
+        const age = s.minAccountAgeDays || 0;
+        html = section('shield', 'Checks',
+          toggle('wfSkipBots', !!s.skipBots, 'Skip bots', 'Bots that join get no welcome, DM or roles.') +
+          `<div class="automation-editor-row"><label>New accounts</label><div class="patchy-interval"><input id="wfMinAge" type="number" min="0" max="365" class="field-input" value="${age}"><span>days minimum</span></div></div>` +
+          '<div class="ub-help">Discord accounts younger than this are treated as suspicious. Set to 0 to allow everyone.</div>' +
+          (age > 0 ? row('When one joins', `<select id="wfAgeAction" class="field-select"><option value="skipWelcome" ${s.accountAgeAction !== 'alertModerators' ? 'selected' : ''}>Skip the welcome quietly</option><option value="alertModerators" ${s.accountAgeAction === 'alertModerators' ? 'selected' : ''}>Skip it and alert moderators</option></select>`) : '') +
+          (age > 0 && s.accountAgeAction === 'alertModerators' ? row('Alert channel', channelSelect('wfModAlertChannel', s.modAlertChannelId)) : ''));
       }
-      root.innerHTML = `<div class="automation-editor-section"><h3><i class="lucide" data-lucide="git-branch"></i> ${escapeHTML(titleCaseWelcome(kind))}</h3>${html}</div>`;
+      root.innerHTML = html;
       bindWelcomeEditor(kind);
+      updateWelcomePreview(kind);
+      refreshIcons();
+    }
+
+    function updateWelcomePreview(kind) {
+      const node = document.getElementById('wfPreview');
+      if (!node) return;
+      const s = welcomeSettings();
+      const channel = id => welcomeContext().textChannels?.find(c => c.id === id)?.name;
+      if (kind === 'directMessage') {
+        node.innerHTML = welcomePreviewHTML({ format: 'plainText', message: s.dmMessageTemplate, where: 'Direct message to Taylor' });
+      } else {
+        const g = kind === 'goodbye';
+        const id = g ? s.goodbyeChannelId : s.publicChannelId;
+        node.innerHTML = welcomePreviewHTML({
+          format: g ? s.goodbyeMessageFormat : s.publicMessageFormat,
+          message: g ? s.goodbyeMessageTemplate : s.publicMessageTemplate,
+          title: g ? s.goodbyeEmbedTitleTemplate : s.publicEmbedTitleTemplate,
+          footer: g ? s.goodbyeEmbedFooterTemplate : s.publicEmbedFooterTemplate,
+          showAvatar: !g && s.publicEmbedShowAvatar !== false,
+          showAuthor: !g && !!s.publicEmbedShowAuthor,
+          color: welcomeColorHex(g ? s.goodbyeEmbedColor : s.publicEmbedColor, g ? 14633293 : 5793266),
+          where: channel(id) ? `#${channel(id)}` : 'Choose a channel'
+        });
+      }
       refreshIcons();
     }
 
@@ -8840,40 +9229,48 @@
     function bindWelcomeEditor(kind) {
       const s = welcomeSettings();
       const byID = id => document.getElementById(id);
-      if (kind === 'publicGreeting') {
-        byID('wfPublicEnabled').onchange = e => { s.publicWelcomeEnabled = e.target.checked; };
-        byID('wfPublicChannel').onchange = e => { s.publicChannelId = e.target.value; };
-        byID('wfPublicFormat').onchange = e => { s.publicMessageFormat = e.target.value; };
-        byID('wfPublicMessage').oninput = e => { s.publicMessageTemplate = e.target.value; };
-        byID('wfPublicPool').oninput = e => { s.publicMessageTemplatePool = e.target.value.split('\n').map(value => value.trim()).filter(Boolean); };
-        byID('wfPublicTitle').oninput = e => { s.publicEmbedTitleTemplate = e.target.value; };
-        byID('wfPublicFooter').oninput = e => { s.publicEmbedFooterTemplate = e.target.value; };
-        byID('wfPublicAvatar').onchange = e => { s.publicEmbedShowAvatar = e.target.checked; };
-        byID('wfPublicAuthor').onchange = e => { s.publicEmbedShowAuthor = e.target.checked; };
+      const root = byID('welcomeEditorBody');
+      const g = kind === 'goodbye';
+      const rerender = () => renderWelcomeEditorBody(kind);
+      const preview = () => updateWelcomePreview(kind);
+
+      // Placeholder chips insert into whichever template field was used last.
+      let lastField = byID('wfMessage');
+      root.querySelectorAll('.wf-template').forEach(el => el.addEventListener('focus', () => { lastField = el; }));
+      root.querySelectorAll('.wf-token').forEach(btn => btn.addEventListener('click', () => {
+        if (!lastField) return;
+        const start = lastField.selectionStart ?? lastField.value.length;
+        const end = lastField.selectionEnd ?? start;
+        lastField.value = lastField.value.slice(0, start) + btn.dataset.token + lastField.value.slice(end);
+        lastField.focus();
+        lastField.setSelectionRange(start + btn.dataset.token.length, start + btn.dataset.token.length);
+        lastField.dispatchEvent(new Event('input', { bubbles: true }));
+      }));
+
+      if (kind === 'publicGreeting' || g) {
+        byID('wfChannel').onchange = e => { s[g ? 'goodbyeChannelId' : 'publicChannelId'] = e.target.value; preview(); };
+        root.querySelectorAll('#wfFormat button').forEach(btn => btn.onclick = () => { s[g ? 'goodbyeMessageFormat' : 'publicMessageFormat'] = btn.dataset.value; rerender(); });
+        byID('wfMessage').oninput = e => { s[g ? 'goodbyeMessageTemplate' : 'publicMessageTemplate'] = e.target.value; preview(); };
+        if (byID('wfPool')) byID('wfPool').oninput = e => { s.publicMessageTemplatePool = e.target.value.split('\n').map(value => value.trim()).filter(Boolean); };
+        if (byID('wfTitle')) byID('wfTitle').oninput = e => { s[g ? 'goodbyeEmbedTitleTemplate' : 'publicEmbedTitleTemplate'] = e.target.value; preview(); };
+        if (byID('wfFooter')) byID('wfFooter').oninput = e => { s[g ? 'goodbyeEmbedFooterTemplate' : 'publicEmbedFooterTemplate'] = e.target.value; preview(); };
+        if (byID('wfAvatar')) byID('wfAvatar').onchange = e => { s.publicEmbedShowAvatar = e.target.checked; preview(); };
+        if (byID('wfAuthor')) byID('wfAuthor').onchange = e => { s.publicEmbedShowAuthor = e.target.checked; preview(); };
       } else if (kind === 'directMessage') {
-        byID('wfDmEnabled').onchange = e => { s.dmWelcomeEnabled = e.target.checked; };
-        byID('wfDmMessage').oninput = e => { s.dmMessageTemplate = e.target.value; };
-        byID('wfDmFallbackEnabled').onchange = e => { s.dmFallbackToChannelEnabled = e.target.checked; };
-        byID('wfDmFallback').oninput = e => { s.dmFallbackTemplate = e.target.value; };
+        byID('wfMessage').oninput = e => { s.dmMessageTemplate = e.target.value; preview(); };
+        byID('wfDmFallbackEnabled').onchange = e => { s.dmFallbackToChannelEnabled = e.target.checked; rerender(); };
+        if (byID('wfDmFallback')) byID('wfDmFallback').oninput = e => { s.dmFallbackTemplate = e.target.value; };
       } else if (kind === 'inviteRoles') {
-        byID('wfInviteAdd').onclick = () => { s.nextStepRules = s.nextStepRules || []; s.nextStepRules.push(newWelcomeInviteRule()); renderWelcomeEditorBody(kind); };
-        document.querySelectorAll('.wf-invite-remove').forEach(btn => btn.onclick = e => { s.nextStepRules.splice(Number(e.target.closest('[data-index]').dataset.index), 1); renderWelcomeEditorBody(kind); });
-        document.querySelectorAll('.wf-invite-enabled').forEach(el => el.onchange = e => { s.nextStepRules[Number(e.target.dataset.index)].isEnabled = e.target.checked; });
-        document.querySelectorAll('.wf-invite-name').forEach(el => el.oninput = e => { s.nextStepRules[Number(e.target.dataset.index)].name = e.target.value; });
-        document.querySelectorAll('.wf-invite-code').forEach(el => el.oninput = e => { s.nextStepRules[Number(e.target.dataset.index)].inviteCode = e.target.value; });
-        document.querySelectorAll('.wf-invite-role').forEach(el => el.onchange = e => { s.nextStepRules[Number(e.target.dataset.index)].roleId = e.target.value; });
+        byID('wfInviteAdd').onclick = () => { s.nextStepRules = s.nextStepRules || []; s.nextStepRules.push(newWelcomeInviteRule()); rerender(); };
+        root.querySelectorAll('.wf-invite-remove').forEach(btn => btn.onclick = e => { s.nextStepRules.splice(Number(e.currentTarget.closest('[data-index]').dataset.index), 1); rerender(); });
+        root.querySelectorAll('.wf-invite-enabled').forEach(el => el.onchange = e => { const r = s.nextStepRules[Number(e.target.dataset.index)]; r.isEnabled = e.target.checked; r.updatedAt = isoDateNoMillis(); e.target.closest('.wf-invite-row').classList.toggle('is-off', !e.target.checked); });
+        root.querySelectorAll('.wf-invite-code').forEach(el => el.oninput = e => { const r = s.nextStepRules[Number(e.target.dataset.index)]; r.inviteCode = e.target.value.trim(); r.updatedAt = isoDateNoMillis(); });
+        root.querySelectorAll('.wf-invite-role').forEach(el => el.onchange = e => { const r = s.nextStepRules[Number(e.target.dataset.index)]; r.roleId = e.target.value; r.updatedAt = isoDateNoMillis(); });
       } else if (kind === 'safety') {
         byID('wfSkipBots').onchange = e => { s.skipBots = e.target.checked; };
-        byID('wfMinAge').oninput = e => { s.minAccountAgeDays = Math.max(0, parseInt(e.target.value, 10) || 0); };
-        byID('wfAgeAction').onchange = e => { s.accountAgeAction = e.target.value; };
-        byID('wfModAlertChannel').onchange = e => { s.modAlertChannelId = e.target.value; };
-      } else if (kind === 'goodbye') {
-        byID('wfGoodbyeEnabled').onchange = e => { s.goodbyeEnabled = e.target.checked; };
-        byID('wfGoodbyeChannel').onchange = e => { s.goodbyeChannelId = e.target.value; };
-        byID('wfGoodbyeFormat').onchange = e => { s.goodbyeMessageFormat = e.target.value; };
-        byID('wfGoodbyeMessage').oninput = e => { s.goodbyeMessageTemplate = e.target.value; };
-        byID('wfGoodbyeTitle').oninput = e => { s.goodbyeEmbedTitleTemplate = e.target.value; };
-        byID('wfGoodbyeFooter').oninput = e => { s.goodbyeEmbedFooterTemplate = e.target.value; };
+        byID('wfMinAge').onchange = e => { s.minAccountAgeDays = Math.max(0, Math.min(365, parseInt(e.target.value, 10) || 0)); rerender(); };
+        if (byID('wfAgeAction')) byID('wfAgeAction').onchange = e => { s.accountAgeAction = e.target.value; rerender(); };
+        if (byID('wfModAlertChannel')) byID('wfModAlertChannel').onchange = e => { s.modAlertChannelId = e.target.value; };
       }
     }
 
@@ -10370,10 +10767,6 @@
       if (state.manualHold) rows.push(row('pause-circle', 'Manual hold', state.manualHold));
       if (state.recovery) rows.push(row('shield', 'Recovery', state.recovery));
 
-      const queueBadge = state.queueDepth === 0
-        ? '<span class="ac-queue-badge">Queue clear</span>'
-        : `<span class="ac-queue-badge is-busy">${state.queueDepth} queued</span>`;
-
       node.innerHTML = `
         <div class="ac-state-head">
           <div class="ac-state-icon" style="color:${tone};background:${state.isConnected ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)'};">
@@ -10384,8 +10777,7 @@
             <div class="ac-state-phase">${escapeHTML(state.phaseLabel)}</div>
           </div>
           <span style="flex:1;"></span>
-          ${queueBadge}
-          ${state.isConnected ? '<button id="announcerDisconnect" class="mini-btn" type="button" style="color:#f87171;"><i class="lucide" data-lucide="phone-off"></i> Disconnect</button>' : ''}
+          ${state.isConnected ? '<button id="announcerDisconnect" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="phone-off"></i> Disconnect</button>' : ''}
         </div>
         <div class="ac-state-rows">${rows.join('')}</div>
       `;
@@ -10488,7 +10880,7 @@
         enabled: true
       } : JSON.parse(JSON.stringify(announcerData.configs.find(c => c.id === configId)));
 
-      const title = isNew ? 'Add Voice Channel' : 'Edit Configuration';
+      const title = isNew ? 'New announcer' : `Edit ${config.name || 'announcer'}`;
       showModal(title, '<div id="announcerEditorBody"></div>', `
         ${isNew ? '' : '<div class="modal-footer-start"><button id="announcerEditorDelete" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button></div>'}
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
@@ -10775,12 +11167,27 @@
 
       // MARK: Identity
 
-      const identitySection = section('tag', 'Identity',
-        row('Enabled', `<input id="acEnabled" type="checkbox" ${config.enabled ? 'checked' : ''}>`) +
-        row('Name', `<input id="acName" class="field-input" value="${escapeHTML(config.name || '')}" placeholder="e.g. Lounge Announcer">`) +
-        row('Icon', select('acSymbol', ANNOUNCER_SYMBOLS.map(s => ({ value: s.sf, label: s.label })), announcerSymbolSF(config.symbol))) +
-        row('Tint', select('acTint', ['purple', 'blue', 'orange', 'teal', 'pink', 'green', 'indigo'].map(t => ({ value: t, label: t[0].toUpperCase() + t.slice(1) })), config.tint))
-      );
+      // Name, icon and colour as one header with a live preview of the list
+      // row. Icon and colour stay in acSymbol / acTint for the read-back.
+      const currentSymbol = announcerSymbolSF(config.symbol);
+      const currentTint = config.tint || 'purple';
+      const identitySection = `
+        <div class="ac-identity">
+          <span id="acPreview" class="ub-item-icon ac-identity-preview" style="--brand:${getTintHex(currentTint)};"><i class="lucide" data-lucide="${announcerSymbolLucide(currentSymbol)}"></i></span>
+          <div class="ac-identity-fields">
+            <input id="acName" class="field-input" value="${escapeHTML(config.name || '')}" placeholder="Name, e.g. Lounge Announcer" aria-label="Name">
+            <div class="ac-identity-pickers">
+              <input id="acSymbol" type="hidden" value="${escapeHTML(currentSymbol)}">
+              <div class="ac-choice-row" role="radiogroup" aria-label="Icon">
+                ${ANNOUNCER_SYMBOLS.map(sym => `<button type="button" class="ac-icon-choice${sym.sf === currentSymbol ? ' is-selected' : ''}" data-symbol="${escapeHTML(sym.sf)}" title="${escapeHTML(sym.label)}" aria-label="${escapeHTML(sym.label)}" role="radio" aria-checked="${sym.sf === currentSymbol}"><i class="lucide" data-lucide="${sym.lucide}"></i></button>`).join('')}
+              </div>
+              <input id="acTint" type="hidden" value="${escapeHTML(currentTint)}">
+              <div class="ac-choice-row" role="radiogroup" aria-label="Colour">
+                ${['purple', 'blue', 'indigo', 'teal', 'green', 'orange', 'pink'].map(t => `<button type="button" class="ac-tint-choice${t === currentTint ? ' is-selected' : ''}" data-tint="${t}" style="--swatch:${getTintHex(t)};" title="${t[0].toUpperCase() + t.slice(1)}" aria-label="${t}" role="radio" aria-checked="${t === currentTint}"></button>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>`;
 
       // MARK: Voice Channel
 
@@ -10845,13 +11252,16 @@
 
       // MARK: Behaviour
 
+      const chip = (id, key, title) => `<label class="patchy-role-chip ac-behaviour-chip"><input id="${id}" type="checkbox" ${config[key] ? 'checked' : ''}><span>${title}</span></label>`;
       const behaviourSection = section('sliders-horizontal', 'Behaviour',
-        toggle('acSummariseLong', 'summariseLong', 'Shorten long messages', '') +
-        toggle('acIgnoreLinks', 'ignoreLinks', 'Ignore links', '') +
-        toggle('acSkipBots', 'skipBots', 'Skip bot messages', '') +
-        toggle('acIgnoreEmojiSpam', 'ignoreEmojiSpam', 'Ignore emoji spam', '') +
-        toggle('acKeepShort', 'keepShort', 'Keep announcements short', '') +
-        toggle('acSuppressRepeatedNames', 'suppressRepeatedSpeakerNames', 'Skip repeated speaker names', '') +
+        '<div class="ac-behaviour-grid">' +
+        chip('acSummariseLong', 'summariseLong', 'Shorten long messages') +
+        chip('acIgnoreLinks', 'ignoreLinks', 'Ignore links') +
+        chip('acSkipBots', 'skipBots', 'Skip bot messages') +
+        chip('acIgnoreEmojiSpam', 'ignoreEmojiSpam', 'Ignore emoji spam') +
+        chip('acKeepShort', 'keepShort', 'Keep announcements short') +
+        chip('acSuppressRepeatedNames', 'suppressRepeatedSpeakerNames', 'Skip repeated speaker names') +
+        '</div>' +
         toggle('acSmartShorten', 'smartShortenWithAppleIntelligence', 'Use Apple Intelligence to shorten',
           'Rewrites long or noisy messages into one short spoken sentence on-device, falling back to the length caps below when unavailable.') +
         '<div class="ac-note">Repeated messages from the same person omit their name for two minutes, until somebody else speaks. ' +
@@ -10859,7 +11269,27 @@
         '&ldquo;Keep announcements short&rdquo; trims everything to 160 characters instead.</div>'
       );
 
-      root.innerHTML = identitySection + voiceChannelSection + connectionSection + readsFromSection + behaviourSection;
+      const enabledRow = `
+        <label class="ac-toggle ac-enabled-row">
+          <input id="acEnabled" type="checkbox" ${config.enabled ? 'checked' : ''}>
+          <span class="ac-toggle-text"><span class="ac-toggle-title">Announcer is on</span><span class="ac-toggle-desc">Turn off to keep these settings without SwiftBot joining or reading.</span></span>
+        </label>`;
+      root.innerHTML = identitySection + voiceChannelSection + connectionSection + readsFromSection + behaviourSection + enabledRow;
+
+      // Icon and colour choices update the hidden fields and the preview in
+      // place, so typing in the name isn't lost to a re-render.
+      root.querySelectorAll('.ac-icon-choice').forEach(btn => btn.addEventListener('click', () => {
+        document.getElementById('acSymbol').value = btn.dataset.symbol;
+        root.querySelectorAll('.ac-icon-choice').forEach(b => { b.classList.toggle('is-selected', b === btn); b.setAttribute('aria-checked', String(b === btn)); });
+        const preview = document.getElementById('acPreview');
+        preview.innerHTML = `<i class="lucide" data-lucide="${announcerSymbolLucide(btn.dataset.symbol)}"></i>`;
+        refreshIcons();
+      }));
+      root.querySelectorAll('.ac-tint-choice').forEach(btn => btn.addEventListener('click', () => {
+        document.getElementById('acTint').value = btn.dataset.tint;
+        root.querySelectorAll('.ac-tint-choice').forEach(b => { b.classList.toggle('is-selected', b === btn); b.setAttribute('aria-checked', String(b === btn)); });
+        document.getElementById('acPreview').style.setProperty('--brand', getTintHex(btn.dataset.tint));
+      }));
 
       // Text channels for the selected voice channel's server.
       let serverId = '';
@@ -10869,7 +11299,7 @@
       mountAnnouncerChannelPicker(config, serverId);
 
       // Only these inputs change which rows are visible or what the notes say.
-      ['acAutoJoinOnStream', 'acConnectionMode', 'acConnectionMinutes', 'acEmptyGrace', 'acSymbol']
+      ['acAutoJoinOnStream', 'acConnectionMode', 'acConnectionMinutes', 'acEmptyGrace']
         .forEach(id => document.getElementById(id)?.addEventListener('change', rerender));
 
       document.getElementById('acVoiceChannel')?.addEventListener('change', () => {
@@ -11816,6 +12246,156 @@
 
     // Settings: one column of grouped rows. Features that have their own page
     // appear as link rows with live status instead of duplicated controls.
+    // Who can sign in to the WebUI. Loaded with the Settings page.
+    let accessData = null;
+    async function loadAccess() {
+      const response = await fetch('/api/access');
+      if (!response.ok) throw new Error('Access settings unavailable');
+      accessData = await response.json();
+      return accessData;
+    }
+
+    function accessMemberLabel(id) {
+      return discordMemberLabel(accessData?.members || [], id);
+    }
+
+    function accessGroupHTML(group) {
+      if (!accessData) return group('Who can sign in', '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">Loading…</div></div></div>');
+      const ids = accessData.allowedUserIDs || [];
+      const listed = accessData.restrictToListedUsers;
+      const names = ids.slice(0, 6).map(id => `<span class="access-chip">${escapeHTML(accessMemberLabel(id))}${id === currentUser?.id ? ' <em>you</em>' : ''}</span>`).join('');
+      return group('Who can sign in', `
+        <div class="ub-row">
+          <div class="ub-row-text">
+            <div class="ub-row-title">${listed ? 'Only people you choose' : 'Server owners and managers'}</div>
+            <div class="ub-row-desc">${listed
+              ? `${ids.length} ${ids.length === 1 ? 'person' : 'people'} can sign in with Discord. Nobody else can, including server managers.`
+              : 'Anyone who owns a connected server, or has Administrator or Manage Server in one, can sign in with Discord.'}</div>
+            ${listed && ids.length ? `<div class="access-chips">${names}${ids.length > 6 ? `<span class="access-chip">+${ids.length - 6} more</span>` : ''}</div>` : ''}
+          </div>
+        </div>
+        ${accessData.localFallbackEnabled ? `
+        <div class="ub-row">
+          <div class="ub-row-text">
+            <div class="ub-row-title">Password sign-in</div>
+            <div class="ub-row-desc">On. It always works, whatever the list says, and is set up in the Mac app.</div>
+          </div>
+        </div>` : ''}`,
+        '<button id="setEditAccess" class="secondary-action" type="button"><i class="lucide" data-lucide="users"></i> Edit</button>');
+    }
+
+    function openAccessEditor() {
+      if (!accessData) return;
+      const me = currentUser?.id || '';
+      const meIsLocal = me.startsWith('local:');
+      const draft = { listed: !!accessData.restrictToListedUsers, ids: [...(accessData.allowedUserIDs || [])] };
+      const original = new Set(draft.ids);
+
+      showModal('Who can sign in', '<div id="accessEditorBody"></div>', `
+        <span id="accessHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="accessSave" class="primary-action" type="button">Save</button>
+      `, { wide: true });
+
+      const issue = () => {
+        if (!draft.listed) return '';
+        if (!draft.ids.length) return 'Add at least one person, or nobody could sign in with Discord.';
+        if (!meIsLocal && !draft.ids.includes(me)) return 'You need to stay on the list, or you’d sign yourself out.';
+        return '';
+      };
+
+      const render = () => {
+        const members = accessData.members || [];
+        const addable = members.filter(m => !draft.ids.includes(m.id));
+        const option = (value, title, desc) => `
+          <label class="access-mode${draft.listed === value ? ' is-selected' : ''}">
+            <input type="radio" name="accessMode" value="${value ? 'listed' : 'managers'}" ${draft.listed === value ? 'checked' : ''}>
+            <span><span class="access-mode-title">${title}</span><span class="access-mode-desc">${desc}</span></span>
+          </label>`;
+        document.getElementById('accessEditorBody').innerHTML = `
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="shield-check"></i> Discord sign-in</h3>
+            <div class="access-modes">
+              ${option(false, 'Server owners and managers', 'Anyone who owns a connected server, or has Administrator or Manage Server in one.')}
+              ${option(true, 'Only people you choose', 'Only the people listed below. Server managers can’t sign in unless they’re listed.')}
+            </div>
+          </div>
+          ${draft.listed ? `
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="users"></i> People · ${draft.ids.length}</h3>
+            ${draft.ids.length ? `<div class="ub-list access-list">${draft.ids.map(id => {
+              const isMe = id === me;
+              return `
+                <div class="ub-item">
+                  <span class="gt-avatar" aria-hidden="true">${escapeHTML((accessMemberLabel(id) || '?').charAt(0).toUpperCase())}</span>
+                  <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(accessMemberLabel(id))}${isMe ? ' <span class="badge">You</span>' : ''}</span></span>
+                  ${isMe && !meIsLocal
+                    ? '<span class="access-self-note">Can’t remove yourself</span>'
+                    : `<button class="icon-btn we-remove" type="button" data-access-remove="${escapeHTML(id)}" aria-label="Remove"><i class="lucide" data-lucide="x"></i></button>`}
+                </div>`;
+            }).join('')}</div>` : '<div class="placeholder">Nobody yet.</div>'}
+            <div class="access-add">
+              <select id="accessAddSelect" class="field-select" ${addable.length ? '' : 'disabled'}>
+                <option value="">${addable.length ? 'Choose a member…' : 'Everyone SwiftBot can see is listed'}</option>
+                ${addable.map(m => `<option value="${escapeHTML(m.id)}">${escapeHTML(discordMemberLabel(members, m.id))}</option>`).join('')}
+              </select>
+              <button id="accessAdd" class="secondary-action" type="button" disabled><i class="lucide" data-lucide="plus"></i> Add</button>
+            </div>
+            ${[...original].some(id => !draft.ids.includes(id)) ? '<div class="ub-help">People you remove are signed out straight away.</div>' : ''}
+          </div>` : ''}
+          ${accessData.localFallbackEnabled ? '<p class="ub-help"><i class="lucide" data-lucide="key-round"></i> Password sign-in is also on. It isn’t affected by this list, so it’s your way back in if something goes wrong.</p>' : ''}
+        `;
+        const message = issue();
+        document.getElementById('accessHint').textContent = message;
+        document.getElementById('accessSave').disabled = !!message;
+
+        document.querySelectorAll('input[name="accessMode"]').forEach(radio => radio.addEventListener('change', () => {
+          draft.listed = radio.value === 'listed';
+          // Switching to a list starts with you on it, so it can't lock you out.
+          if (draft.listed && !meIsLocal && me && !draft.ids.includes(me)) draft.ids.unshift(me);
+          render();
+        }));
+        document.querySelectorAll('[data-access-remove]').forEach(btn => btn.addEventListener('click', () => {
+          draft.ids = draft.ids.filter(id => id !== btn.dataset.accessRemove);
+          render();
+        }));
+        const select = document.getElementById('accessAddSelect');
+        const add = document.getElementById('accessAdd');
+        select?.addEventListener('change', () => { add.disabled = !select.value; });
+        add?.addEventListener('click', () => {
+          if (!select.value) return;
+          draft.ids.push(select.value);
+          render();
+        });
+        refreshIcons();
+      };
+      render();
+
+      const errors = {
+        empty_list: 'Add at least one person, or nobody could sign in with Discord.',
+        self_lockout: 'You need to stay on the list, or you’d sign yourself out.',
+        invalid_id: 'One of the entries isn’t a Discord user ID.',
+        update_failed: 'This node is managed by the SwiftMesh primary, so access is changed there.'
+      };
+      document.getElementById('accessSave').addEventListener('click', async (e) => {
+        if (issue()) return;
+        e.currentTarget.disabled = true;
+        try {
+          await postJSON('/api/access/update', { restrictToListedUsers: draft.listed, allowedUserIDs: draft.ids });
+          const removed = draft.listed ? [...original].filter(id => !draft.ids.includes(id)).length : 0;
+          await loadAccess();
+          hideModal();
+          renderSettingsView();
+          setMessage(removed ? `Saved. ${removed} ${removed === 1 ? 'person was' : 'people were'} signed out.` : 'Sign-in access saved.', 'success');
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          let code = '';
+          try { code = JSON.parse(error.message).error || ''; } catch {}
+          document.getElementById('accessHint').textContent = errors[code] || error.message || 'Could not save.';
+        }
+      });
+    }
+
     function renderSettingsView() {
       if (!dashboardConfig || !dashboardStatus) return;
       const panels = document.getElementById('settingsPanels');
@@ -11853,11 +12433,27 @@
       const timezones = Object.entries(cfg.userTimezones?.mappings || {})
         .sort(([a], [b]) => discordMemberLabel(tzMembers, a).localeCompare(discordMemberLabel(tzMembers, b)));
       const webURL = dashboardStatus.webUIBaseURL || cfg.general.webUIBaseURL || '';
+      const general = cfg.general || {};
+      const inviteURL = general.inviteURL || '';
+      const infoRow = (title, value) => value ? `
+        <div class="ub-row">
+          <div class="ub-row-text"><div class="ub-row-title">${title}</div></div>
+          <span class="ub-row-value">${escapeHTML(value)}</span>
+        </div>` : '';
 
       panels.innerHTML = `
         <div class="ub-settings">
           ${group('General', `
             ${switchRow('setAutoStart', 'Start automatically', 'Connect to Discord when SwiftBot launches.', cfg.general.autoStart)}
+            ${switchRow('setCmdEnabled', 'Commands', 'Turn off to remove every command from Discord’s / menu.', cfg.commands.enabled && cfg.commands.slashEnabled)}
+            <button id="setEditTimezones" class="ub-row ub-row-link" type="button">
+              <div class="ub-row-text">
+                <div class="ub-row-title">User timezones</div>
+                <div class="ub-row-desc">How /timestamp reads the times each person types.</div>
+              </div>
+              <span class="ub-row-value">${timezones.length ? `${timezones.length} ${timezones.length === 1 ? 'person' : 'people'}` : 'Server time for everyone'}</span>
+              <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
+            </button>
             <div class="ub-row">
               <div class="ub-row-text">
                 <div class="ub-row-title">Web UI address</div>
@@ -11865,10 +12461,16 @@
               </div>
               ${webURL ? '<button id="setCopyWebURL" class="secondary-action" type="button"><i class="lucide" data-lucide="copy"></i> Copy</button>' : ''}
             </div>
-          `)}
-          ${group('Commands', `
-            ${switchRow('setCmdEnabled', 'Commands', 'Turn off to remove every command from Discord’s / menu.', cfg.commands.enabled && cfg.commands.slashEnabled)}
-            ${switchRow('setCmdBug', 'Bug tracking', 'Capture bug reports when the bot is mentioned.', cfg.commands.bugTrackingEnabled)}
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Add SwiftBot to a server</div>
+                <div class="ub-row-desc">${inviteURL ? 'Opens Discord’s install page with the permissions SwiftBot needs.' : 'Available once SwiftBot has connected to Discord.'}</div>
+              </div>
+              ${inviteURL ? `<div class="section-actions">
+                <button id="setCopyInvite" class="secondary-action" type="button"><i class="lucide" data-lucide="copy"></i> Copy</button>
+                <a class="primary-action" href="${escapeHTML(inviteURL)}" target="_blank" rel="noopener noreferrer"><i class="lucide" data-lucide="external-link"></i> Invite</a>
+              </div>` : ''}
+            </div>
           `)}
           ${group('Features', `
             ${linkRow('aibots', 'bot', 'Apple Intelligence', aiSummary)}
@@ -11879,20 +12481,19 @@
           ${group('Integrations', `
             ${switchRow('setSwiftMinerEnabled', 'SwiftMiner', cfg.swiftMiner.paired ? 'Paired with this Mac.' : 'Pair SwiftMiner in the macOS app first.', cfg.swiftMiner.enabled, cfg.swiftMiner.paired ? '' : 'disabled')}
           `)}
-          ${group('User timezones', timezones.length
-            ? timezones.map(([id, zone]) => `
-              <div class="ub-row">
-                <div class="ub-row-text"><div class="ub-row-title">${escapeHTML(discordMemberLabel(tzMembers, id))}</div></div>
-                <span class="ub-row-value">${escapeHTML(zone)}</span>
-              </div>`).join('')
-            : '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">No timezones set. /timestamp uses the server’s timezone for everyone.</div></div></div>',
-            '<button id="setEditTimezones" class="secondary-action" type="button"><i class="lucide" data-lucide="pencil"></i> Edit</button>')}
+          ${accessGroupHTML(group)}
+          ${group('About this server', `
+            ${infoRow('Version', general.appVersion ? `${general.appVersion}${general.appBuild ? ` (${general.appBuild})` : ''}` : '')}
+            ${infoRow('Running on', [general.hostName, general.osVersion ? `macOS ${general.osVersion.replace(/^Version\s*/, '')}` : ''].filter(Boolean).join(' · '))}
+            ${infoRow('Uptime', dashboardStatus.uptimeText || '')}
+            ${infoRow('Connected to', `${dashboardStatus.connectedServerCount} ${dashboardStatus.connectedServerCount === 1 ? 'server' : 'servers'}${dashboardStatus.botUsername ? ` as ${dashboardStatus.botUsername}` : ''}`)}
+          `)}
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> The bot token, app updates, Web UI sign-in and recording folders are managed in the SwiftBot app on ${escapeHTML(general.hostName || 'the Mac running SwiftBot')}.</p>
         </div>
       `;
 
       panels.querySelector('#setAutoStart')?.addEventListener('change', e => saveConfigPatch({ autoStart: e.target.checked }));
       panels.querySelector('#setCmdEnabled')?.addEventListener('change', e => saveConfigPatch({ commandsEnabled: e.target.checked, slashCommandsEnabled: e.target.checked }));
-      panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       panels.querySelector('#setSwiftMinerEnabled')?.addEventListener('change', e => saveConfigPatch({ swiftMinerEnabled: e.target.checked }));
       panels.querySelectorAll('[data-settings-link]').forEach(row => row.addEventListener('click', () => selectView(row.dataset.settingsLink)));
       panels.querySelector('#setCopyWebURL')?.addEventListener('click', async (e) => {
@@ -11906,6 +12507,13 @@
         setTimeout(() => { button.innerHTML = '<i class="lucide" data-lucide="copy"></i> Copy'; refreshIcons(); }, 1500);
       });
       panels.querySelector('#setEditTimezones')?.addEventListener('click', () => openTimezoneEditor(timezones, tzMembers));
+      panels.querySelector('#setEditAccess')?.addEventListener('click', openAccessEditor);
+      if (!accessData) loadAccess().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
+      panels.querySelector('#setCopyInvite')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        try { await navigator.clipboard.writeText(inviteURL); button.textContent = 'Copied'; } catch { button.textContent = 'Copy failed'; }
+        setTimeout(() => { button.innerHTML = '<i class="lucide" data-lucide="copy"></i> Copy'; refreshIcons(); }, 1500);
+      });
       refreshIcons();
     }
 
@@ -12277,42 +12885,182 @@
       refreshIcons();
     }
 
+    // The unified feed from /api/activity (ActivityFeed in the app). Filter
+    // chips follow the native Activity view: errors and warnings can be shown
+    // on their own, and system lines about Discord count as Gateway.
+    const ACTIVITY_FILTERS = [
+      { id: 'commands', label: 'Commands', icon: 'terminal' },
+      { id: 'gateway', label: 'Gateway', icon: 'radio-tower' },
+      { id: 'system', label: 'System', icon: 'file-text' },
+      { id: 'mesh', label: 'Mesh', icon: 'network' },
+      { id: 'audit', label: 'Audit', icon: 'shield-check' },
+      { id: 'errors', label: 'Errors', icon: 'octagon-x' },
+      { id: 'warnings', label: 'Warnings', icon: 'triangle-alert' }
+    ];
+    const ACTIVITY_CATEGORIES = {
+      command: ['terminal', '#5865f2'], gateway: ['radio-tower', '#5865f2'], voice: ['users', '#ec4899'],
+      mesh: ['network', '#14b8a6'], patchy: ['package-check', '#f97316'], ai: ['sparkles', '#a855f7'],
+      wiki: ['scan-search', '#a16207'], swiftMiner: ['pickaxe', '#10b981'], audit: ['shield-check', '#8b5cf6'],
+      system: ['info', '#8e8e93']
+    };
+    let activityData = null;
+    let activityLimit = 400;
+    let activitySearchText = '';
+    let activityRefreshTimer = null;
+    let activityFilters = (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('swiftbot.activity.filters') || 'null');
+        if (Array.isArray(saved)) return new Set(saved);
+      } catch {}
+      return new Set(ACTIVITY_FILTERS.map(f => f.id));
+    })();
+
+    async function loadActivity() {
+      const response = await fetch(`/api/activity?limit=${activityLimit}`);
+      if (!response.ok) throw new Error('Activity unavailable');
+      activityData = await response.json();
+      return activityData;
+    }
+
+    function activityMatchesFilter(entry) {
+      const f = activityFilters;
+      if (!f.size) return false;
+      const isError = entry.level === 'error', isWarning = entry.level === 'warning';
+      if (entry.kind === 'command') return (isError && f.has('errors')) || f.has('commands');
+      if (entry.kind === 'mesh' || entry.kind === 'audit') {
+        return (isError && f.has('errors')) || (isWarning && f.has('warnings')) || f.has(entry.kind);
+      }
+      const bucket = entry.category === 'gateway' ? 'gateway' : 'system';
+      return (isError && f.has('errors')) || (isWarning && f.has('warnings')) || f.has(bucket);
+    }
+
+    function visibleActivityEntries() {
+      const q = activitySearchText.trim().toLowerCase();
+      return (activityData?.entries || []).filter(e => activityMatchesFilter(e) && (!q || `${e.title} ${e.detail || ''}`.toLowerCase().includes(q)));
+    }
+
+    function scheduleActivityRefresh() {
+      clearTimeout(activityRefreshTimer);
+      activityRefreshTimer = setTimeout(async () => {
+        if (currentView !== 'activity' || document.hidden) return scheduleActivityRefresh();
+        try { await loadActivity(); renderActivityView({ keepScroll: true }); } catch {}
+      }, 15000);
+    }
+
     function renderActivityView() {
-      if (!dashboardOverview || !dashboardStatus) return;
       const top = document.getElementById('logsTop');
       const panels = document.getElementById('logsPanels');
-      if (!top || !panels) return;
-      const recentCommands = dashboardOverview.recentCommands || [];
-      const recentVoice = dashboardOverview.recentVoice || [];
+      const chips = document.getElementById('activityFilters');
+      if (!top || !panels || !chips) return;
+      if (!activityData) {
+        panels.innerHTML = '<div class="placeholder">Loading activity…</div>';
+        loadActivity().then(() => { if (currentView === 'activity') renderActivityView(); }).catch(() => {
+          panels.innerHTML = '<div class="placeholder">Activity is unavailable right now.</div>';
+        });
+        return;
+      }
+      scheduleActivityRefresh();
 
-      top.innerHTML = ubStatusCell(
-        `${Number(dashboardStatus.gatewayEventCount || 0).toLocaleString()} gateway events`,
-        'Since SwiftBot last started',
-        String(dashboardStatus.botStatus || '').toLowerCase() === 'running' ? 'healthy' : 'neutral');
+      const entries = activityData.entries || [];
+      const today = new Date().toDateString();
+      const todayEntries = entries.filter(e => new Date(e.time).toDateString() === today);
+      const errors = todayEntries.filter(e => e.level === 'error').length;
+      const warnings = todayEntries.filter(e => e.level === 'warning').length;
+      const commandsToday = todayEntries.filter(e => e.kind === 'command').length;
+      top.innerHTML = [
+        ubStatusCell(`${Number(dashboardStatus?.gatewayEventCount || 0).toLocaleString()} gateway events`, 'Since SwiftBot last started',
+          String(dashboardStatus?.botStatus || '').toLowerCase() === 'running' ? 'healthy' : 'neutral'),
+        ubStatusCell(`${commandsToday} ${commandsToday === 1 ? 'command' : 'commands'} today`, todayEntries.some(e => e.kind === 'command' && e.level === 'error') ? 'Some failed' : 'All succeeded'),
+        ubStatusCell(errors || warnings ? `${errors} ${errors === 1 ? 'error' : 'errors'} · ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}` : 'No problems today',
+          'In today’s activity', errors ? 'critical' : warnings ? 'warning' : 'healthy')
+      ].join('');
 
-      panels.innerHTML = `
-        <section class="diagnostics-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Command Log</div>
-          <div class="event-list" id="logsCommands"></div>
-        </section>
-        <section class="diagnostics-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="mic"></i> Voice Log</div>
-          <div class="event-list" id="logsVoice"></div>
-        </section>
-      `;
+      chips.innerHTML = ACTIVITY_FILTERS.map(f => `
+        <button type="button" class="activity-chip${activityFilters.has(f.id) ? ' is-on' : ''}" data-activity-filter="${f.id}" aria-pressed="${activityFilters.has(f.id)}">
+          <i class="lucide" data-lucide="${f.icon}"></i>${f.label}
+        </button>`).join('') +
+        `<button type="button" class="cmd-row-link activity-chip-all" data-activity-all>${activityFilters.size === ACTIVITY_FILTERS.length ? 'Clear' : 'All'}</button>`;
 
-      renderEvents('logsCommands', recentCommands, 'No recent command activity', item => `
-        <div class="event-item ${item.ok ? 'ok' : 'error'}">
-          <div class="event-title">${item.title}</div>
-          <div class="event-time">${item.timeText}</div>
-        </div>
-      `);
-      renderEvents('logsVoice', recentVoice, 'No recent voice activity', item => `
-        <div class="event-item ok">
-          <div class="event-title">${item.description}</div>
-          <div class="event-time">${item.timeText}</div>
-        </div>
-      `);
+      const visible = visibleActivityEntries();
+      const dayLabel = (d) => {
+        const date = new Date(d);
+        const yesterday = new Date(Date.now() - 86400000).toDateString();
+        if (date.toDateString() === today) return 'Today';
+        if (date.toDateString() === yesterday) return 'Yesterday';
+        return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+      };
+      const groups = [];
+      visible.forEach(e => {
+        const key = new Date(e.time).toDateString();
+        let g = groups.find(x => x.key === key);
+        if (!g) { g = { key, label: dayLabel(e.time), items: [] }; groups.push(g); }
+        g.items.push(e);
+      });
+      const row = (e) => {
+        const [icon, color] = ACTIVITY_CATEGORIES[e.category] || ACTIVITY_CATEGORIES.system;
+        const clock = new Date(e.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        return `
+          <div class="ub-item activity-row is-${e.level}">
+            <span class="ub-item-icon" style="--brand:${color};"><i class="lucide" data-lucide="${icon}"></i></span>
+            <span class="ub-item-text">
+              <span class="ub-item-title">${(() => {
+                // Audit titles arrive as "[Web Auth] Logged in"; show the source as a label.
+                const m = /^\[([^\]]+)\]\s*(.*)$/.exec(e.title);
+                return m ? `<span class="activity-source">${escapeHTML(m[1])}</span>${escapeHTML(m[2])}` : escapeHTML(e.title);
+              })()}</span>
+              ${e.detail ? `<span class="ub-item-sub">${escapeHTML(e.detail)}</span>` : ''}
+            </span>
+            ${e.level === 'error' ? '<span class="activity-level is-error">Error</span>' : e.level === 'warning' ? '<span class="activity-level is-warning">Warning</span>' : ''}
+            <span class="ub-item-time" title="${escapeHTML(formatTime(e.time))}">${escapeHTML(clock)}</span>
+          </div>`;
+      };
+      const hasMore = (activityData.totalCount || 0) > entries.length;
+      panels.innerHTML = groups.length ? groups.map(g => `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>${escapeHTML(g.label)} · ${g.items.length}</h2></div>
+          <div class="ub-list glass">${g.items.map(row).join('')}</div>
+        </section>`).join('') + (hasMore ? `<div class="wiki-actions"><button id="activityMore" class="secondary-action" type="button">Show older activity</button></div>` : '')
+        : `<div class="ub-empty glass">
+             <div class="ub-empty-title">${!activityFilters.size ? 'Choose at least one filter' : activitySearchText.trim() ? 'Nothing matches your search' : 'No activity yet'}</div>
+             <div class="ub-empty-sub">${activitySearchText.trim() ? 'Try a different word, or turn on more filters.' : 'Commands, sign-ins, setting changes and bot events show up here as they happen.'}</div>
+           </div>`;
+      // Each row's spacing comes from ub-item; group gaps like other pages.
+      panels.style.display = 'flex'; panels.style.flexDirection = 'column'; panels.style.gap = '22px';
+
+      chips.querySelectorAll('[data-activity-filter]').forEach(btn => btn.addEventListener('click', () => {
+        const id = btn.dataset.activityFilter;
+        activityFilters.has(id) ? activityFilters.delete(id) : activityFilters.add(id);
+        try { localStorage.setItem('swiftbot.activity.filters', JSON.stringify([...activityFilters])); } catch {}
+        renderActivityView();
+      }));
+      chips.querySelector('[data-activity-all]')?.addEventListener('click', () => {
+        activityFilters = activityFilters.size === ACTIVITY_FILTERS.length ? new Set() : new Set(ACTIVITY_FILTERS.map(f => f.id));
+        try { localStorage.setItem('swiftbot.activity.filters', JSON.stringify([...activityFilters])); } catch {}
+        renderActivityView();
+      });
+      panels.querySelector('#activityMore')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        activityLimit += 400;
+        try { await loadActivity(); } catch {}
+        renderActivityView();
+      });
+      const search = document.getElementById('activitySearch');
+      if (search && !search.dataset.bound) {
+        search.dataset.bound = 'true';
+        search.addEventListener('input', () => { activitySearchText = search.value; renderActivityView(); });
+      }
+      const copy = document.getElementById('activityCopy');
+      if (copy && !copy.dataset.bound) {
+        copy.dataset.bound = 'true';
+        copy.addEventListener('click', async () => {
+          const text = visibleActivityEntries().map(e => `[${formatTime(e.time)}] [${e.kind}/${e.level}] ${e.title}${e.detail ? ` · ${e.detail}` : ''}`).join('\n');
+          try { await navigator.clipboard.writeText(text); copy.innerHTML = '<i class="lucide" data-lucide="check"></i> Copied'; }
+          catch { copy.textContent = 'Copy failed'; }
+          refreshIcons();
+          setTimeout(() => { copy.innerHTML = '<i class="lucide" data-lucide="copy"></i> Copy'; refreshIcons(); }, 1500);
+        });
+      }
+      refreshIcons();
     }
 
     function renderRecordingsView() {
@@ -13698,7 +14446,6 @@
           primaryRows = [
             { label: 'System Enabled', value: config.commands.enabled ? 'On' : 'Off' },
             { label: 'Slash Commands', value: config.commands.slashEnabled ? 'On' : 'Off' },
-            { label: 'Bug Tracking', value: config.commands.bugTrackingEnabled ? 'On' : 'Off' },
             { label: 'Command Surface', value: '/ slash commands' }
           ];
           secondaryRows = [
@@ -13836,12 +14583,10 @@
         controls.innerHTML = `
           <div class="control-row"><span class="control-label">Enable Command System</span><input id="cfgCommandsEnabled" type="checkbox" ${config.commands.enabled ? 'checked' : ''}></div>
           <div class="control-row"><span class="control-label">Enable Slash Commands</span><input id="cfgSlashEnabled" type="checkbox" ${config.commands.slashEnabled ? 'checked' : ''}></div>
-          <div class="control-row"><span class="control-label">Enable Bug Tracking</span><input id="cfgBugEnabled" type="checkbox" ${config.commands.bugTrackingEnabled ? 'checked' : ''}></div>
         `;
         eventsNode.prepend(controls);
         controls.querySelector('#cfgCommandsEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
         controls.querySelector('#cfgSlashEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
-        controls.querySelector('#cfgBugEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       } else if (view === 'patchy') {
         controls.innerHTML = `
           <div class="control-row"><span class="control-label">Enable Patchy Monitoring</span><input id="cfgPatchyEnabled" type="checkbox" ${config.patchy.monitoringEnabled ? 'checked' : ''}></div>

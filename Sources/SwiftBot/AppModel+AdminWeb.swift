@@ -512,7 +512,7 @@ extension AppModel {
             )
         }
 
-        return AdminWebAnalyticsPayload(
+        var payload = AdminWebAnalyticsPayload(
             generatedAt: now,
             peakActivityLabel: peakHour.map { "Peak activity at \(adminWebHourLabel($0.hour))" } ?? "Waiting for activity",
             metrics: metrics,
@@ -543,6 +543,8 @@ extension AppModel {
                 exportedClips: finishedExports
             )
         )
+        payload.community = adminWebAnalyticsCommunity()
+        return payload
     }
 
     private func adminWebAnalyticsHealthState(
@@ -923,7 +925,7 @@ extension AppModel {
                 enabled: settings.commandsEnabled,
                 prefixEnabled: false,
                 slashEnabled: settings.slashCommandsEnabled,
-                bugTrackingEnabled: settings.bugTrackingEnabled,
+                bugTrackingEnabled: false,
                 prefix: "/"
             ),
             appleIntelligence: .init(
@@ -956,7 +958,17 @@ extension AppModel {
             general: .init(
                 autoStart: settings.autoStart,
                 webUIEnabled: settings.adminWebUI.enabled,
-                webUIBaseURL: adminWebBaseURL()
+                webUIBaseURL: adminWebBaseURL(),
+                inviteURL: resolvedClientID.flatMap {
+                    service.generateInviteURL(
+                        clientId: $0,
+                        includeSlashCommands: settings.commandsEnabled && settings.slashCommandsEnabled
+                    )
+                },
+                appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+                appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+                hostName: settings.clusterNodeName,
+                osVersion: ProcessInfo.processInfo.operatingSystemVersionString
             ),
             userTimezones: .init(
                 mappings: settings.userTimezones,
@@ -969,7 +981,6 @@ extension AppModel {
     func applyAdminWebConfigPatch(_ patch: AdminWebConfigPatch) -> Bool {
         if let value = patch.commandsEnabled { settings.commandsEnabled = value }
         if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
-        if let value = patch.bugTrackingEnabled { settings.bugTrackingEnabled = value }
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
         if let value = patch.useAIInGuildChannels { settings.behavior.useAIInGuildChannels = value }
         if let value = patch.allowDMs { settings.behavior.allowDMs = value }
@@ -1020,6 +1031,171 @@ extension AppModel {
             return true
         }
         saveSettings()
+        return true
+    }
+
+    /// Everything on the Analytics page that follows the period switch.
+    func adminWebAnalyticsPeriod(_ period: AnalyticsPeriod, includeMessageText: Bool) async -> AdminWebAnalyticsPeriodPayload {
+        typealias Ranked = AdminWebAnalyticsPeriodPayload.Ranked
+        let now = Date()
+        let buckets = period.buckets(now: now)
+        let window = period.window(now: now)
+        let previous = period.previousWindow(now: now)
+
+        async let voiceReport = voiceSessionStore.report(period: period, now: now)
+        async let community = communityStatsStore.summary(buckets: buckets, in: window)
+        async let ranks = communityStatsStore.rankHistory(since: window.start)
+        let rewindOn = settings.rewind.isEnabled
+        let messages: RewindPeriodSummary? = rewindOn
+            ? await rewindStore.periodSummary(buckets: buckets, window: window, previous: previous)
+            : nil
+        let voice = await voiceReport
+        let stats = await community
+        let rankHistory = await ranks
+
+        let feed = ActivityFeed(app: self)
+        func ranked(_ counts: [String: Int], name: (String) -> String = { $0 }, limit: Int = 5) -> [Ranked] {
+            var merged: [String: Int] = [:]
+            for (key, count) in counts {
+                let title = name(key)
+                guard !title.isEmpty else { continue }
+                merged[title, default: 0] += count
+            }
+            return merged.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                .prefix(limit).map { Ranked(title: $0.key, count: $0.value) }
+        }
+        let channelName: (String) -> String = { key in
+            let parts = key.split(separator: "|", maxSplits: 1).map(String.init)
+            return parts.count == 2 ? feed.friendlyTextChannelName(parts[1], server: parts[0]) : feed.friendlyTextChannelName(key, server: nil)
+        }
+        let inVoiceNow = Set(activeVoice.map(\.userId))
+
+        // Clips per game from this Mac's library only, so a refresh never
+        // waits on other mesh nodes.
+        let library = await localMediaLibrarySnapshot()
+        let clips = Dictionary(grouping: library.items.filter { window.contains($0.modifiedAt) }, by: { mediaGameName(for: $0.fileName) })
+            .mapValues(\.count)
+
+        return AdminWebAnalyticsPeriodPayload(
+            period: period.rawValue,
+            label: period.label,
+            buckets: buckets.enumerated().map { index, bucket in
+                let voiceBucket = voice.buckets.indices.contains(index) ? voice.buckets[index] : nil
+                return .init(
+                    label: bucket.label,
+                    start: bucket.start,
+                    voiceSessions: voiceBucket?.sessions ?? 0,
+                    voiceMinutes: (voiceBucket?.seconds ?? 0) / 60,
+                    commands: stats.commandsPerBucket[index],
+                    messages: messages?.bucketCounts[index] ?? 0,
+                    joins: stats.joinsPerBucket[index],
+                    leaves: stats.leavesPerBucket[index]
+                )
+            },
+            hourlyVoice: voice.hourly,
+            hourlyMessages: messages?.hourly ?? Array(repeating: 0, count: 24),
+            totals: .init(
+                voiceSessions: voice.sessionCount,
+                voiceSeconds: voice.totalSeconds,
+                averageSessionSeconds: voice.sessionCount > 0 ? voice.totalSeconds / voice.sessionCount : 0,
+                commands: stats.commandCount,
+                failedCommands: stats.failedCommands,
+                messages: messages?.totalMessages ?? 0,
+                joins: stats.joins,
+                leaves: stats.leaves,
+                previousVoiceSessions: voice.previousSessionCount,
+                previousVoiceSeconds: voice.previousTotalSeconds,
+                previousMessages: messages?.previousMessages ?? 0
+            ),
+            topVoiceUsers: voice.topUsers.map { .init(name: $0.username, seconds: $0.seconds, sessions: $0.sessions, inVoiceNow: inVoiceNow.contains($0.userId)) },
+            voiceChannels: voice.channels.map { Ranked(title: $0.name, count: $0.seconds / 60) },
+            topCommands: ranked(stats.commands),
+            topCommandUsers: ranked(stats.users, name: feed.friendlyUserName),
+            topPosters: (messages?.topUsers ?? []).map { Ranked(title: knownUsersById[$0.userID] ?? $0.userName, count: $0.count) },
+            messageChannels: (messages?.topChannels ?? []).map { Ranked(title: feed.friendlyTextChannelName($0.term, server: nil), count: $0.count) },
+            topWords: includeMessageText ? (messages?.topWords ?? []).map { Ranked(title: $0.term, count: $0.count) } : nil,
+            topEmoji: includeMessageText ? (messages?.topEmoji ?? []).map { Ranked(title: $0.term, count: $0.count) } : nil,
+            streak: voice.currentStreak.map { .init(name: $0.username, days: $0.days) },
+            rankSeries: rankHistory.values
+                .sorted { $0.displayName < $1.displayName }
+                .map { .init(name: $0.displayName, game: $0.game, points: $0.points.map { .init(date: $0.date, score: $0.score, rankName: $0.rankName) }) },
+            clipsByGame: ranked(clips),
+            messagesAvailable: rewindOn && (messages?.hasArchive ?? false),
+            rewindEnabled: rewindOn
+        )
+    }
+
+    /// Same rankings as the native Analytics view (command log for commands,
+    /// people and channels; voice log for voice channels).
+    func adminWebAnalyticsCommunity() -> AdminWebAnalyticsCommunityPayload {
+        let feed = ActivityFeed(app: self)
+        func ranked(_ values: [String], limit: Int = 5) -> [AdminWebAnalyticsCommunityPayload.Ranked] {
+            Dictionary(grouping: values.filter { !$0.isEmpty }, by: { $0 })
+                .map { .init(title: $0.key, count: $0.value.count) }
+                .sorted { $0.count != $1.count ? $0.count > $1.count : $0.title < $1.title }
+                .prefix(limit)
+                .map { $0 }
+        }
+        let commandName: (String) -> String = { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? trimmed
+        }
+        let voiceChannels = voiceLog.compactMap { entry -> String? in
+            for marker in [" joined ", " left "] {
+                if let range = entry.description.range(of: marker) {
+                    return String(entry.description[range.upperBound...]).components(separatedBy: " — ").first
+                }
+            }
+            return nil
+        }
+        return AdminWebAnalyticsCommunityPayload(
+            inVoice: activeVoice
+                .sorted { $0.joinedAt < $1.joinedAt }
+                .map { .init(username: $0.username, channelName: $0.channelName, since: $0.joinedAt) },
+            topCommands: ranked(commandLog.map { commandName($0.command) }),
+            topCommandUsers: ranked(commandLog.map { feed.friendlyUserName($0.user) }),
+            topChannels: ranked(commandLog.map { feed.friendlyTextChannelName($0.channel, server: $0.server) }),
+            topVoiceChannels: ranked(voiceChannels)
+        )
+    }
+
+    func adminWebActivitySnapshot(limit: Int) -> AdminWebActivityPayload {
+        let all = ActivityFeed(app: self).entries()
+        let entries = all.prefix(limit).map { entry in
+            AdminWebActivityPayload.Entry(
+                id: entry.id,
+                time: entry.time,
+                kind: String(describing: entry.kind),
+                level: String(describing: entry.level),
+                category: ActivityCategory.infer(from: entry).rawValue,
+                title: entry.title,
+                detail: entry.detail
+            )
+        }
+        return AdminWebActivityPayload(entries: Array(entries), totalCount: all.count)
+    }
+
+    func adminWebAccessSnapshot() -> AdminWebAccessPayload {
+        let web = settings.adminWebUI
+        return AdminWebAccessPayload(
+            restrictToListedUsers: web.restrictAccessToSpecificUsers,
+            allowedUserIDs: web.normalizedAllowedUserIDs,
+            members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) },
+            localFallbackEnabled: web.localAuthEnabled
+                && !web.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !web.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
+    }
+
+    /// Guards already ran in AdminWebServer; this saves and pushes the new
+    /// list to the running server, which signs out anyone no longer listed.
+    /// Access is per node, so a failover-managed node still refuses edits.
+    func applyAdminWebAccessUpdate(_ update: AdminWebAccessUpdate) async -> Bool {
+        guard !isFailoverManagedNode else { return false }
+        settings.adminWebUI.restrictAccessToSpecificUsers = update.restrictToListedUsers
+        settings.adminWebUI.allowedUserIDs = update.normalizedIDs
+        saveSettings()
+        await configureAdminWebServer()
         return true
     }
 
@@ -1632,7 +1808,7 @@ extension AppModel {
             remoteSettingsProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: false, prefix: "/"),
                         appleIntelligence: .init(localAIDMReplyEnabled: false, useAIInGuildChannels: false, allowDMs: false, localAISystemPrompt: ""),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -1662,11 +1838,13 @@ extension AppModel {
                 }
                 return await MainActor.run { model.adminWebOverviewSnapshot() }
             },
-            analyticsProvider: { [weak self] in
+            analyticsProvider: { [weak self] period, includeMessageText in
                 guard let model = self else {
                     return AdminWebAnalyticsPayload.empty
                 }
-                return await model.adminWebAnalyticsSnapshot()
+                var payload = await model.adminWebAnalyticsSnapshot()
+                payload.period = await model.adminWebAnalyticsPeriod(period, includeMessageText: includeMessageText)
+                return payload
             },
             rewindProvider: { [weak self] in
                 guard let model = self else {
@@ -1688,7 +1866,7 @@ extension AppModel {
             configProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: false, prefix: "/"),
                         appleIntelligence: .init(localAIDMReplyEnabled: false, useAIInGuildChannels: false, allowDMs: false, localAISystemPrompt: ""),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -2144,6 +2322,20 @@ extension AppModel {
             },
             mediaGameArtworkProvider: { gameName in
                 await RecordingGameArtworkResponder.response(for: gameName)
+            },
+            accessProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebAccessPayload(restrictToListedUsers: false, allowedUserIDs: [], members: [], localFallbackEnabled: false)
+                }
+                return await MainActor.run { model.adminWebAccessSnapshot() }
+            },
+            activityProvider: { [weak self] limit in
+                guard let model = self else { return AdminWebActivityPayload(entries: [], totalCount: 0) }
+                return await MainActor.run { model.adminWebActivitySnapshot(limit: limit) }
+            },
+            accessUpdater: { [weak self] update in
+                guard let model = self else { return false }
+                return await model.applyAdminWebAccessUpdate(update)
             },
             sweepProvider: { [weak self] in
                 guard let model = self else {

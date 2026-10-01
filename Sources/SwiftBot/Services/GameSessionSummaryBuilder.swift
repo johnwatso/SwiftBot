@@ -36,23 +36,23 @@ enum GameSessionSummaryBuilder {
 
     static func totals(
         for session: GameSession,
-        rounds: [FinalsIDPlayedRound],
+        matches: [FinalsIDPlayedMatch],
         dateParser: (String) -> Date? = { ISO8601DateFormatter().date(from: $0) }
     ) -> Totals {
         var totals = Totals()
-        for round in rounds {
+        for match in matches {
             // Only count matches that actually fall in the session window; the
             // provider returns a rolling history, not just this session.
-            guard let started = dateParser(round.startedAt) else { continue }
+            guard let startedText = match.startedAt, let started = dateParser(startedText) else { continue }
             guard started >= session.startedAt.addingTimeInterval(-300) else { continue }
             if let ended = session.endedAt, started > ended.addingTimeInterval(300) { continue }
 
             totals.matches += 1
-            totals.kills += round.kills
-            totals.deaths += round.deaths
-            totals.damage += round.damage
-            if round.isRanked { totals.rankedMatches += 1 }
-            if round.rounds.contains(where: { $0.roundWon == true }) { totals.wins += 1 }
+            totals.kills += match.kills
+            totals.deaths += match.deaths
+            totals.damage += match.damage
+            if match.isRanked { totals.rankedMatches += 1 }
+            if match.isWin { totals.wins += 1 }
         }
         return totals
     }

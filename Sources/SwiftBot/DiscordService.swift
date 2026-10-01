@@ -252,7 +252,7 @@ actor DiscordService {
     ///   - clientId: The bot's application ID.
     ///   - includeSlashCommands: When true, appends `applications.commands` scope.
     /// - Returns: The invite URL string, or nil if clientId is empty or URL construction fails.
-    func generateInviteURL(clientId: String, includeSlashCommands: Bool, codeGrantRedirectURI: String? = nil) -> String? {
+    nonisolated func generateInviteURL(clientId: String, includeSlashCommands: Bool, codeGrantRedirectURI: String? = nil) -> String? {
         let trimmed = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 

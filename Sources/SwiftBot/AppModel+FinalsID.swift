@@ -144,6 +144,14 @@ extension AppModel {
             do {
                 let snapshot = try await fetchGameRankSnapshot(for: target)
                 successfulFetches += 1
+                await communityStatsStore.recordRank(
+                    playerID: target.id.uuidString,
+                    displayName: target.resolvedDisplayName,
+                    game: target.game.displayName,
+                    score: snapshot.score,
+                    rankName: snapshot.rankName,
+                    at: checkedAt
+                )
                 gameProviderConnectionFailures[target.provider] = nil
                 let key = target.id.uuidString
                 let baseline = GameRankBaseline(

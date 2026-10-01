@@ -67,71 +67,7 @@ struct ActivityLogView: View {
     }
 
     private var unifiedEntries: [ActivityEntry] {
-        var entries: [ActivityEntry] = []
-
-        for cmd in app.commandLog {
-            let detailParts = [
-                friendlyUserName(cmd.user),
-                friendlyServerName(cmd.server),
-                friendlyTextChannelName(cmd.channel, server: cmd.server),
-                cmd.executionRoute
-            ]
-                .filter { !$0.isEmpty }
-            let rawTitle = cmd.command.isEmpty ? "(empty command)" : cmd.command
-            entries.append(
-                ActivityEntry(
-                    id: "cmd-\(cmd.id.uuidString)",
-                    time: cmd.time,
-                    kind: .command,
-                    level: cmd.ok ? .ok : .error,
-                    title: Self.stripMarkers(rawTitle),
-                    detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
-                )
-            )
-        }
-
-        for audit in app.auditLog {
-            let level: ActivityLevel = {
-                switch audit.level {
-                case .ok: return .ok
-                case .warning: return .warning
-                case .error: return .error
-                case .info: return .info
-                }
-            }()
-            let titleParts = ["[\(audit.source.rawValue)]", audit.action]
-            let detailParts = [audit.actor, audit.detail ?? ""].filter { !$0.isEmpty }
-            entries.append(
-                ActivityEntry(
-                    id: "audit-\(audit.id.uuidString)",
-                    time: audit.time,
-                    kind: .audit,
-                    level: level,
-                    title: titleParts.joined(separator: " "),
-                    detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
-                )
-            )
-        }
-
-        for (idx, line) in app.logs.lines.enumerated() {
-            let parsed = parseLogLine(line)
-            let text = parsed.title.lowercased()
-            let isMesh = text.contains("mesh") || text.contains("standby") || text.contains("primary")
-                || text.contains("failover") || text.contains("cluster") || text.contains("replicat")
-                || text.contains("reclaim") || text.contains("worker") || text.contains("leader")
-            entries.append(
-                ActivityEntry(
-                    id: "log-\(idx)",
-                    time: parsed.time,
-                    kind: isMesh ? .mesh : .system,
-                    level: parsed.level,
-                    title: parsed.title,
-                    detail: nil
-                )
-            )
-        }
-
-        return entries.sorted { $0.time > $1.time }
+        ActivityFeed(app: app).entries()
     }
 
     private var visibleEntries: [ActivityEntry] {
@@ -369,127 +305,6 @@ struct ActivityLogView: View {
         let level = String(describing: entry.level).uppercased()
         let detail = entry.detail.map { " · \($0)" } ?? ""
         return "[\(time)] [\(kind)/\(level)] \(entry.title)\(detail)"
-    }
-
-    private func friendlyUserName(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return trimmed }
-        if let userID = discordMentionID(from: trimmed, marker: "@"),
-           let displayName = app.knownUsersById[userID],
-           !displayName.isEmpty {
-            return displayName
-        }
-        if let displayName = app.knownUsersById[trimmed], !displayName.isEmpty {
-            return displayName
-        }
-        if looksLikeDiscordID(trimmed) {
-            return "User \(trimmed.suffix(4))"
-        }
-        return trimmed
-    }
-
-    private func friendlyServerName(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return trimmed }
-        if let serverName = app.connectedServers[trimmed], !serverName.isEmpty {
-            return serverName
-        }
-        if looksLikeDiscordID(trimmed) {
-            return "Server \(trimmed.suffix(4))"
-        }
-        return trimmed
-    }
-
-    private func friendlyTextChannelName(_ raw: String, server: String?) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return trimmed }
-        if trimmed.hasPrefix("#") { return trimmed }
-
-        let channelID = discordMentionID(from: trimmed, marker: "#") ?? trimmed
-        if let serverID = resolvedServerID(from: server),
-           let channel = app.availableTextChannelsByServer[serverID]?.first(where: { matchesChannel($0, value: channelID) }) {
-            return "#\(channel.name)"
-        }
-        if let channel = app.availableTextChannelsByServer.values
-            .flatMap({ $0 })
-            .first(where: { matchesChannel($0, value: channelID) }) {
-            return "#\(channel.name)"
-        }
-
-        let lower = trimmed.lowercased()
-        if lower == "dm" || lower == "direct message" || trimmed == "-" {
-            return trimmed
-        }
-        if looksLikeDiscordID(channelID) {
-            return "Channel \(channelID.suffix(4))"
-        }
-        return "#\(trimmed)"
-    }
-
-    private func matchesChannel(_ channel: GuildTextChannel, value: String) -> Bool {
-        channel.id == value || channel.name.localizedCaseInsensitiveCompare(value) == .orderedSame
-    }
-
-    private func resolvedServerID(from raw: String?) -> String? {
-        guard let raw else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        if app.connectedServers[trimmed] != nil { return trimmed }
-        return app.connectedServers.first { _, name in
-            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-        }?.key
-    }
-
-    private func discordMentionID(from value: String, marker: Character) -> String? {
-        guard value.first == "<", value.dropFirst().first == marker, value.last == ">" else { return nil }
-        let body = value.dropFirst(2).dropLast()
-        return String(body).trimmingCharacters(in: CharacterSet(charactersIn: "!&"))
-    }
-
-    private func looksLikeDiscordID(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.count >= 15 && trimmed.unicodeScalars.allSatisfy { CharacterSet.decimalDigits.contains($0) }
-    }
-
-    /// Parses a `LogStore` line of the form `[<ISO8601>] <text>` back into a
-    /// timestamp + title + severity. Falls back to current time and `.info` if
-    /// the timestamp can't be recovered.
-    private struct ParsedLogLine {
-        let time: Date
-        let title: String
-        let level: ActivityLevel
-    }
-
-    private static let isoFormatter: ISO8601DateFormatter = ISO8601DateFormatter()
-
-    private func parseLogLine(_ line: String) -> ParsedLogLine {
-        var stripped = line
-        var time = Date()
-
-        if line.hasPrefix("["),
-           let closeIdx = line.firstIndex(of: "]") {
-            let stampStr = String(line[line.index(after: line.startIndex)..<closeIdx])
-            if let parsedTime = Self.isoFormatter.date(from: stampStr) {
-                time = parsedTime
-            }
-            let after = line.index(after: closeIdx)
-            stripped = String(line[after...]).trimmingCharacters(in: .whitespaces)
-        }
-
-        // Detect severity from bracket prefixes *or* legacy emoji markers,
-        // then strip them so the row's leading SF Symbol is the only visual.
-        let level: ActivityLevel = {
-            if stripped.hasPrefix("[ERR]") || stripped.contains("❌") { return .error }
-            if stripped.hasPrefix("[WARN]") || stripped.contains("⚠️") { return .warning }
-            if stripped.hasPrefix("[OK]") || stripped.contains("✅") { return .ok }
-            return .info
-        }()
-
-        return ParsedLogLine(
-            time: time,
-            title: GatewayEventPresentation.replaceProtocolNames(in: Self.stripMarkers(stripped)),
-            level: level
-        )
     }
 
     /// Removes bracket severity prefixes and emoji glyphs from a log line so
@@ -800,4 +615,201 @@ private struct ActivityFilterHelpPopover: View {
             }
         }
     }
+}
+
+/// Builds the unified activity feed (commands, audit log, system log) shared
+/// by the native Activity view and the WebUI's /api/activity.
+@MainActor
+struct ActivityFeed {
+    let app: AppModel
+
+    func entries() -> [ActivityLogView.ActivityEntry] {
+        var entries: [ActivityLogView.ActivityEntry] = []
+
+        for cmd in app.commandLog {
+            let detailParts = [
+                friendlyUserName(cmd.user),
+                friendlyServerName(cmd.server),
+                friendlyTextChannelName(cmd.channel, server: cmd.server),
+                cmd.executionRoute
+            ]
+                .filter { !$0.isEmpty }
+            let rawTitle = cmd.command.isEmpty ? "(empty command)" : cmd.command
+            entries.append(
+                ActivityLogView.ActivityEntry(
+                    id: "cmd-\(cmd.id.uuidString)",
+                    time: cmd.time,
+                    kind: .command,
+                    level: cmd.ok ? .ok : .error,
+                    title: ActivityLogView.stripMarkers(rawTitle),
+                    detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
+                )
+            )
+        }
+
+        for audit in app.auditLog {
+            let level: ActivityLogView.ActivityLevel = {
+                switch audit.level {
+                case .ok: return .ok
+                case .warning: return .warning
+                case .error: return .error
+                case .info: return .info
+                }
+            }()
+            let titleParts = ["[\(audit.source.rawValue)]", audit.action]
+            let detailParts = [audit.actor, audit.detail ?? ""].filter { !$0.isEmpty }
+            entries.append(
+                ActivityLogView.ActivityEntry(
+                    id: "audit-\(audit.id.uuidString)",
+                    time: audit.time,
+                    kind: .audit,
+                    level: level,
+                    title: titleParts.joined(separator: " "),
+                    detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
+                )
+            )
+        }
+
+        for (idx, line) in app.logs.lines.enumerated() {
+            let parsed = parseLogLine(line)
+            let text = parsed.title.lowercased()
+            let isMesh = text.contains("mesh") || text.contains("standby") || text.contains("primary")
+                || text.contains("failover") || text.contains("cluster") || text.contains("replicat")
+                || text.contains("reclaim") || text.contains("worker") || text.contains("leader")
+            entries.append(
+                ActivityLogView.ActivityEntry(
+                    id: "log-\(idx)",
+                    time: parsed.time,
+                    kind: isMesh ? .mesh : .system,
+                    level: parsed.level,
+                    title: parsed.title,
+                    detail: nil
+                )
+            )
+        }
+
+        return entries.sorted { $0.time > $1.time }
+    }
+
+    func friendlyUserName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let userID = discordMentionID(from: trimmed, marker: "@"),
+           let displayName = app.knownUsersById[userID],
+           !displayName.isEmpty {
+            return displayName
+        }
+        if let displayName = app.knownUsersById[trimmed], !displayName.isEmpty {
+            return displayName
+        }
+        if looksLikeDiscordID(trimmed) {
+            return "User \(trimmed.suffix(4))"
+        }
+        return trimmed
+    }
+
+    func friendlyServerName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let serverName = app.connectedServers[trimmed], !serverName.isEmpty {
+            return serverName
+        }
+        if looksLikeDiscordID(trimmed) {
+            return "Server \(trimmed.suffix(4))"
+        }
+        return trimmed
+    }
+
+    func friendlyTextChannelName(_ raw: String, server: String?) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if trimmed.hasPrefix("#") { return trimmed }
+
+        let channelID = discordMentionID(from: trimmed, marker: "#") ?? trimmed
+        if let serverID = resolvedServerID(from: server),
+           let channel = app.availableTextChannelsByServer[serverID]?.first(where: { matchesChannel($0, value: channelID) }) {
+            return "#\(channel.name)"
+        }
+        if let channel = app.availableTextChannelsByServer.values
+            .flatMap({ $0 })
+            .first(where: { matchesChannel($0, value: channelID) }) {
+            return "#\(channel.name)"
+        }
+
+        let lower = trimmed.lowercased()
+        if lower == "dm" || lower == "direct message" || trimmed == "-" {
+            return trimmed
+        }
+        if looksLikeDiscordID(channelID) {
+            return "Channel \(channelID.suffix(4))"
+        }
+        return "#\(trimmed)"
+    }
+
+    private func matchesChannel(_ channel: GuildTextChannel, value: String) -> Bool {
+        channel.id == value || channel.name.localizedCaseInsensitiveCompare(value) == .orderedSame
+    }
+
+    private func resolvedServerID(from raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if app.connectedServers[trimmed] != nil { return trimmed }
+        return app.connectedServers.first { _, name in
+            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+        }?.key
+    }
+
+    private func discordMentionID(from value: String, marker: Character) -> String? {
+        guard value.first == "<", value.dropFirst().first == marker, value.last == ">" else { return nil }
+        let body = value.dropFirst(2).dropLast()
+        return String(body).trimmingCharacters(in: CharacterSet(charactersIn: "!&"))
+    }
+
+    private func looksLikeDiscordID(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count >= 15 && trimmed.unicodeScalars.allSatisfy { CharacterSet.decimalDigits.contains($0) }
+    }
+
+    /// Parses a `LogStore` line of the form `[<ISO8601>] <text>` back into a
+    /// timestamp + title + severity. Falls back to current time and `.info` if
+    /// the timestamp can't be recovered.
+    private struct ParsedLogLine {
+        let time: Date
+        let title: String
+        let level: ActivityLogView.ActivityLevel
+    }
+
+    private static let isoFormatter: ISO8601DateFormatter = ISO8601DateFormatter()
+
+    private func parseLogLine(_ line: String) -> ParsedLogLine {
+        var stripped = line
+        var time = Date()
+
+        if line.hasPrefix("["),
+           let closeIdx = line.firstIndex(of: "]") {
+            let stampStr = String(line[line.index(after: line.startIndex)..<closeIdx])
+            if let parsedTime = Self.isoFormatter.date(from: stampStr) {
+                time = parsedTime
+            }
+            let after = line.index(after: closeIdx)
+            stripped = String(line[after...]).trimmingCharacters(in: .whitespaces)
+        }
+
+        // Detect severity from bracket prefixes *or* legacy emoji markers,
+        // then strip them so the row's leading SF Symbol is the only visual.
+        let level: ActivityLogView.ActivityLevel = {
+            if stripped.hasPrefix("[ERR]") || stripped.contains("❌") { return .error }
+            if stripped.hasPrefix("[WARN]") || stripped.contains("⚠️") { return .warning }
+            if stripped.hasPrefix("[OK]") || stripped.contains("✅") { return .ok }
+            return .info
+        }()
+
+        return ParsedLogLine(
+            time: time,
+            title: GatewayEventPresentation.replaceProtocolNames(in: ActivityLogView.stripMarkers(stripped)),
+            level: level
+        )
+    }
+
 }

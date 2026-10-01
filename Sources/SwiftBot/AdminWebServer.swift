@@ -471,6 +471,10 @@ struct AdminWebAnalyticsPayload: Codable {
     let feed: [AdminWebAnalyticsFeedEntryPayload]
     let health: AdminWebAnalyticsHealthPayload
     let insights: [AdminWebAnalyticsInsightPayload]
+    /// Who's around and what they use, from the command and voice logs.
+    var community: AdminWebAnalyticsCommunityPayload = .init()
+    /// The selected time window (`?period=7d|30d|365d`).
+    var period: AdminWebAnalyticsPeriodPayload?
 
     static let empty = AdminWebAnalyticsPayload(
         generatedAt: Date(),
@@ -494,11 +498,98 @@ struct AdminWebAnalyticsPayload: Codable {
     )
 }
 
+struct AdminWebAnalyticsCommunityPayload: Codable {
+    struct Ranked: Codable {
+        let title: String
+        let count: Int
+    }
+    struct InVoice: Codable {
+        let username: String
+        let channelName: String
+        let since: Date
+    }
+    var inVoice: [InVoice] = []
+    var topCommands: [Ranked] = []
+    var topCommandUsers: [Ranked] = []
+    var topChannels: [Ranked] = []
+    var topVoiceChannels: [Ranked] = []
+}
+
+struct AdminWebAnalyticsPeriodPayload: Codable {
+    typealias Ranked = AdminWebAnalyticsCommunityPayload.Ranked
+    struct Bucket: Codable {
+        let label: String
+        let start: Date
+        let voiceSessions: Int
+        let voiceMinutes: Int
+        let commands: Int
+        let messages: Int
+        let joins: Int
+        let leaves: Int
+    }
+    struct Totals: Codable {
+        let voiceSessions: Int
+        let voiceSeconds: Int
+        let averageSessionSeconds: Int
+        let commands: Int
+        let failedCommands: Int
+        let messages: Int
+        let joins: Int
+        let leaves: Int
+        let previousVoiceSessions: Int
+        let previousVoiceSeconds: Int
+        let previousMessages: Int
+    }
+    struct VoiceUser: Codable {
+        let name: String
+        let seconds: Int
+        let sessions: Int
+        let inVoiceNow: Bool
+    }
+    struct Streak: Codable {
+        let name: String
+        let days: Int
+    }
+    struct RankPoint: Codable {
+        let date: Date
+        let score: Int
+        let rankName: String?
+    }
+    struct RankSeries: Codable {
+        let name: String
+        let game: String
+        let points: [RankPoint]
+    }
+
+    let period: String
+    let label: String
+    let buckets: [Bucket]
+    let hourlyVoice: [Int]
+    let hourlyMessages: [Int]
+    let totals: Totals
+    let topVoiceUsers: [VoiceUser]
+    let voiceChannels: [Ranked]
+    let topCommands: [Ranked]
+    let topCommandUsers: [Ranked]
+    let topPosters: [Ranked]
+    let messageChannels: [Ranked]
+    /// Admin sessions only: these are fragments of members' messages.
+    let topWords: [Ranked]?
+    let topEmoji: [Ranked]?
+    let streak: Streak?
+    let rankSeries: [RankSeries]
+    let clipsByGame: [Ranked]
+    /// Rewind is on and has archived something.
+    let messagesAvailable: Bool
+    let rewindEnabled: Bool
+}
+
 struct AdminWebConfigPayload: Codable {
     struct Commands: Codable {
         let enabled: Bool
         let prefixEnabled: Bool
         let slashEnabled: Bool
+        /// Retired feature; always false. Kept so older Remote clients still decode.
         let bugTrackingEnabled: Bool
         let prefix: String
     }
@@ -538,6 +629,13 @@ struct AdminWebConfigPayload: Codable {
         let autoStart: Bool
         let webUIEnabled: Bool
         let webUIBaseURL: String
+        /// Bot install link; nil until the bot's application ID is known.
+        var inviteURL: String?
+        /// Read-only facts about the Mac running SwiftBot.
+        var appVersion: String = ""
+        var appBuild: String = ""
+        var hostName: String = ""
+        var osVersion: String = ""
     }
 
     struct UserTimezones: Codable {
@@ -565,7 +663,6 @@ struct AdminWebConfigPatch: Codable {
     var commandsEnabled: Bool?
     var prefixCommandsEnabled: Bool?
     var slashCommandsEnabled: Bool?
-    var bugTrackingEnabled: Bool?
     var prefix: String?
     var localAIDMReplyEnabled: Bool?
     var useAIInGuildChannels: Bool?
@@ -614,6 +711,62 @@ struct AdminWebCommandCatalogPayload: Codable {
     let slashCommandsEnabled: Bool
     let items: [AdminWebCommandCatalogItem]
     let musicLinkWatch: AdminWebMusicLinkWatchPayload
+}
+
+/// The unified activity feed, as the native Activity view shows it.
+struct AdminWebActivityPayload: Codable {
+    struct Entry: Codable {
+        let id: String
+        let time: Date
+        /// command / system / mesh / audit
+        let kind: String
+        /// info / ok / warning / error
+        let level: String
+        /// ActivityCategory raw value, for the row icon and the Gateway chip.
+        let category: String
+        let title: String
+        let detail: String?
+    }
+    let entries: [Entry]
+    let totalCount: Int
+}
+
+/// Who may sign in to the WebUI with Discord.
+struct AdminWebAccessPayload: Codable {
+    let restrictToListedUsers: Bool
+    let allowedUserIDs: [String]
+    let members: [AdminWebMemberOption]
+    /// Password fallback is configured in the macOS app; shown so admins know
+    /// there's a way back in.
+    let localFallbackEnabled: Bool
+}
+
+struct AdminWebAccessUpdate: Codable {
+    let restrictToListedUsers: Bool
+    let allowedUserIDs: [String]
+
+    enum GuardFailure: String, Error {
+        case emptyList = "empty_list"
+        case selfLockout = "self_lockout"
+        case invalidID = "invalid_id"
+    }
+
+    var normalizedIDs: [String] {
+        var seen = Set<String>()
+        return allowedUserIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// The lock-out guards. `editorUserID` is the signed-in admin; local
+    /// fallback sessions (`local:`) aren't subject to the list.
+    func validate(editorUserID: String) throws {
+        let ids = normalizedIDs
+        guard ids.allSatisfy({ $0.count >= 15 && $0.count <= 22 && $0.allSatisfy(\.isNumber) }) else { throw GuardFailure.invalidID }
+        guard restrictToListedUsers else { return }
+        guard !ids.isEmpty else { throw GuardFailure.emptyList }
+        if !editorUserID.hasPrefix("local:"), !ids.contains(editorUserID) { throw GuardFailure.selfLockout }
+    }
 }
 
 struct AdminWebCommandTogglePatch: Codable {
@@ -1107,7 +1260,7 @@ actor AdminWebServer {
     private var activeTransportUsesTLS = false
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
-    private var analyticsProvider: (@Sendable () async -> AdminWebAnalyticsPayload)?
+    private var analyticsProvider: (@Sendable (AnalyticsPeriod, Bool) async -> AdminWebAnalyticsPayload)?
     private var rewindProvider: (@Sendable () async -> AdminWebRewindPayload)?
     private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
     private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
@@ -1170,6 +1323,9 @@ actor AdminWebServer {
     private var gameTrackerCheckRunner: (@Sendable () async -> Bool)?
     private var gameTrackerUpdater: (@Sendable (AdminWebGameTrackerUpdate) async -> Bool)?
     private var mediaGameArtworkProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
+    private var accessProvider: (@Sendable () async -> AdminWebAccessPayload)?
+    private var activityProvider: (@Sendable (Int) async -> AdminWebActivityPayload)?
+    private var accessUpdater: (@Sendable (AdminWebAccessUpdate) async -> Bool)?
     private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
     private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
     private var createSweepPolicy: (@Sendable (AdminWebSweepPolicyCreatePatch) async -> SweepPolicy?)?
@@ -1239,7 +1395,7 @@ actor AdminWebServer {
         remoteSettingsProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
         updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
-        analyticsProvider: @escaping @Sendable () async -> AdminWebAnalyticsPayload,
+        analyticsProvider: @escaping @Sendable (AnalyticsPeriod, Bool) async -> AdminWebAnalyticsPayload,
         rewindProvider: @escaping @Sendable () async -> AdminWebRewindPayload,
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
@@ -1295,6 +1451,9 @@ actor AdminWebServer {
         gameTrackerCheckRunner: @escaping @Sendable () async -> Bool,
         gameTrackerUpdater: @escaping @Sendable (AdminWebGameTrackerUpdate) async -> Bool,
         mediaGameArtworkProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
+        accessProvider: @escaping @Sendable () async -> AdminWebAccessPayload,
+        activityProvider: @escaping @Sendable (Int) async -> AdminWebActivityPayload,
+        accessUpdater: @escaping @Sendable (AdminWebAccessUpdate) async -> Bool,
         sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
         setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
         updateSweepPolicy: @escaping @Sendable (SweepPolicy) async -> Bool,
@@ -1385,6 +1544,9 @@ actor AdminWebServer {
         self.gameTrackerCheckRunner = gameTrackerCheckRunner
         self.gameTrackerUpdater = gameTrackerUpdater
         self.mediaGameArtworkProvider = mediaGameArtworkProvider
+        self.accessProvider = accessProvider
+        self.activityProvider = activityProvider
+        self.accessUpdater = accessUpdater
         self.setSweepGlobalPaused = setSweepGlobalPaused
         self.updateSweepPolicy = updateSweepPolicy
         self.createSweepPolicy = createSweepPolicy
@@ -1412,6 +1574,7 @@ actor AdminWebServer {
         loadPersistedSessions()
         let previous = self.config
         self.config = config
+        revokeSessionsOutsideAllowList(previous: previous.allowedUserIDs)
 
         // Refresh the active public base URL so OAuth redirect URIs pick up config changes immediately.
         self.activePublicBaseURL = resolvedPublicBaseURL(usingTLS: activeTransportUsesTLS)
@@ -2066,10 +2229,13 @@ actor AdminWebServer {
             )
             return codableResponse(payload)
         case ("GET", "/api/analytics"):
-            guard authenticatedSession(for: request) != nil else {
+            guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
-            let payload = await analyticsProvider?() ?? AdminWebAnalyticsPayload.empty
+            // Word and emoji counts are message fragments, so only admins get
+            // them, matching /api/rewind.
+            let payload = await analyticsProvider?(AnalyticsPeriod(query: request.query["period"]), session.role == .admin)
+                ?? AdminWebAnalyticsPayload.empty
             return codableResponse(payload)
         case ("GET", "/api/rewind"):
             // Admin-only, unlike /api/analytics. Rewind's "top words" and "top
@@ -2163,6 +2329,55 @@ actor AdminWebServer {
             }
             await logger?("Admin Web UI updated configuration")
             audit(source: "Web Config", actor: actorLabel(session), action: "Updated configuration")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/activity"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            let limit = min(1_000, max(1, Int(request.query["limit"] ?? "") ?? 400))
+            if let payload = await activityProvider?(limit) {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "activity_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/access"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            if let payload = await accessProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "access_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/access/update"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let update = try? decoder.decode(AdminWebAccessUpdate.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            do {
+                try update.validate(editorUserID: session.userID)
+            } catch let failure as AdminWebAccessUpdate.GuardFailure {
+                return jsonResponse(["error": failure.rawValue], status: "400 Bad Request")
+            } catch {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await accessUpdater?(update) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: "Updated sign-in access",
+                  detail: update.restrictToListedUsers ? "Only \(update.normalizedIDs.count) listed people" : "Server managers")
             return jsonResponse(["ok": true])
         case ("GET", "/api/commands"):
             guard authenticatedSession(for: request) != nil else {
@@ -3685,7 +3900,9 @@ actor AdminWebServer {
                     title: "Access not allowed",
                     eyebrow: "SwiftBot Web Admin",
                     message: "This Discord account does not have permission to sign in.",
-                    detail: "Ask a SwiftBot administrator to add your Discord user ID, or sign in with an account that can manage one of the connected servers.",
+                    detail: config.allowedUserIDs.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                        ? "Only people on SwiftBot's sign-in list can use this page. Ask a SwiftBot administrator to add you."
+                        : "Sign in with an account that owns or can manage one of the connected servers, or ask a SwiftBot administrator to add you to the sign-in list.",
                     actionTitle: "Try another Discord account",
                     actionURL: "/auth/discord/login",
                     variant: .denied
@@ -4016,10 +4233,28 @@ actor AdminWebServer {
         return nil
     }
 
+    /// Signs out Discord sessions the allow-list no longer covers, so removing
+    /// someone takes effect immediately rather than when their session expires.
+    /// Local fallback sessions (`local:`) never go through the list.
+    private func revokeSessionsOutsideAllowList(previous: [String]) {
+        let allowed = Set(config.allowedUserIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !allowed.isEmpty, allowed != Set(previous) else { return }
+        let revoked = sessions.values.filter { !$0.userID.hasPrefix("local:") && !allowed.contains($0.userID) }
+        guard !revoked.isEmpty else { return }
+        for session in revoked {
+            sessions[session.id] = nil
+            audit(source: "Web Auth", actor: "\(session.username) (\(session.userID))", action: "Signed out", detail: "Removed from the access list", level: "warning")
+        }
+        persistSessions()
+    }
+
     private func isAuthorized(userID: String, guilds: [DiscordGuildSummary]) async -> Bool {
+        // A non-empty list is a strict allow-list: only the listed people get
+        // in, server managers included. The list only reaches here when
+        // "Only allow specific people" is on (see configureAdminWebServer).
         let allowed = config.allowedUserIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        if allowed.contains(userID) {
-            return true
+        if !allowed.isEmpty {
+            return allowed.contains(userID)
         }
 
         let connectedGuildIDs = await connectedGuildIDsProvider?() ?? []

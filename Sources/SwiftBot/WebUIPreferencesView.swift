@@ -1225,12 +1225,19 @@ struct AdminWebAuthenticationSection: View {
                 .padding(.vertical, 4)
 
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("Restrict access to specific users", isOn: $app.settings.adminWebUI.restrictAccessToSpecificUsers)
+                Toggle("Only allow specific users", isOn: $app.settings.adminWebUI.restrictAccessToSpecificUsers)
                     .toggleStyle(.switch)
 
-                Text("Access is automatically limited to Discord server administrators. Enable this to further restrict access to specific User IDs.")
+                Text("By default, anyone who owns a connected server or has Administrator or Manage Server can sign in. Turn this on to allow only the users listed, server managers included. Password sign-in isn't affected.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if app.settings.adminWebUI.restrictAccessToSpecificUsers,
+                   app.settings.adminWebUI.normalizedAllowedUserIDs.isEmpty {
+                    Label("Nobody is listed, so server managers can still sign in until you add someone.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
 
                 if app.settings.adminWebUI.restrictAccessToSpecificUsers {
                     VStack(alignment: .leading, spacing: 8) {

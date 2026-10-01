@@ -165,14 +165,18 @@ final class GameSessionSummaryTests: XCTestCase {
 
     private let base = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private func round(startedAt: Date, kills: Int, deaths: Int, damage: Double, mode: String) throws -> FinalsIDPlayedRound {
+    /// One round in the shape `/v1/profiles/{username}/rounds` returns.
+    private func round(
+        match: String, startedAt: Date, kills: Int, deaths: Int, damage: Double,
+        gameMode: String, roundWon: Bool, tournamentWon: Bool = false
+    ) throws -> FinalsIDRoundDetail {
         let iso = ISO8601DateFormatter().string(from: startedAt)
         let json = """
-        {"matchId":"m","mode":"\(mode)","gameMode":"TeamDeathmatch","startedAt":"\(iso)",
-         "endedAt":"\(iso)","roundCount":1,"kills":\(kills),"deaths":\(deaths),"damage":\(damage),
-         "rounds":[{"roundId":"r","matchId":"m","roundWon":true}]}
+        {"roundId":"\(UUID().uuidString)","matchId":"\(match)","gameMode":"\(gameMode)","startedAt":"\(iso)",
+         "endedAt":"\(iso)","kills":\(kills),"deaths":\(deaths),"damage":\(damage),"twists":[],
+         "roundWon":\(roundWon),"tournamentWon":\(tournamentWon)}
         """
-        return try JSONDecoder().decode(FinalsIDPlayedRound.self, from: Data(json.utf8))
+        return try JSONDecoder().decode(FinalsIDRoundDetail.self, from: Data(json.utf8))
     }
 
     func testTotalsOnlyCountMatchesInsideTheSessionWindow() throws {
@@ -180,20 +184,22 @@ final class GameSessionSummaryTests: XCTestCase {
             userID: "u", guildID: "g", gameName: "THE FINALS",
             startedAt: base, endedAt: base.addingTimeInterval(3_600)
         )
-        let inside = try round(startedAt: base.addingTimeInterval(600), kills: 14, deaths: 7, damage: 2984.6, mode: "casual")
-        let alsoInside = try round(startedAt: base.addingTimeInterval(2_400), kills: 6, deaths: 3, damage: 900, mode: "ranked")
-        let longBefore = try round(startedAt: base.addingTimeInterval(-86_400), kills: 99, deaths: 0, damage: 9_999, mode: "casual")
+        // A one-round QuickCash win, a three-round ranked tournament that was
+        // lost (rounds won along the way don't make it a win), and yesterday.
+        let rounds = [
+            try round(match: "quick", startedAt: base.addingTimeInterval(600), kills: 14, deaths: 7, damage: 2984.6, gameMode: "QuickCash", roundWon: true),
+            try round(match: "ranked", startedAt: base.addingTimeInterval(2_400), kills: 2, deaths: 1, damage: 300, gameMode: "Ranked", roundWon: true),
+            try round(match: "ranked", startedAt: base.addingTimeInterval(2_900), kills: 3, deaths: 1, damage: 400, gameMode: "Ranked", roundWon: true),
+            try round(match: "ranked", startedAt: base.addingTimeInterval(3_400), kills: 1, deaths: 1, damage: 200, gameMode: "Ranked", roundWon: false),
+            try round(match: "old", startedAt: base.addingTimeInterval(-86_400), kills: 99, deaths: 0, damage: 9_999, gameMode: "QuickCash", roundWon: true)
+        ]
+        let totals = GameSessionSummaryBuilder.totals(for: session, matches: FinalsIDPlayedMatch.group(rounds))
 
-        let totals = GameSessionSummaryBuilder.totals(
-            for: session,
-            rounds: [inside, alsoInside, longBefore]
-        )
-
-        XCTAssertEqual(totals.matches, 2, "Yesterday's match must not be counted")
+        XCTAssertEqual(totals.matches, 2, "Yesterday's match must not be counted, and a tournament's rounds are one match")
         XCTAssertEqual(totals.kills, 20)
         XCTAssertEqual(totals.deaths, 10)
         XCTAssertEqual(totals.rankedMatches, 1)
-        XCTAssertEqual(totals.wins, 2)
+        XCTAssertEqual(totals.wins, 1, "A tournament is only a win when tournamentWon is set")
         XCTAssertEqual(totals.killDeathRatio ?? 0, 2.0, accuracy: 0.001)
     }
 

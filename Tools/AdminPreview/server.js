@@ -81,6 +81,54 @@ function sendGameArt(res, game) {
   }).on('error', () => sendJSON(res, { error: 'artwork_unavailable' }, 404));
 }
 
+// Mirrors AdminWebAnalyticsPeriodPayload with plausible, deterministic numbers.
+function analyticsPeriodFixture(period) {
+  const p = ['7d', '30d', '365d'].includes(period) ? period : '7d';
+  const now = new Date();
+  const wave = (i, base, amp) => Math.max(0, Math.round(base + amp * Math.sin(i * 1.3) + (i % 3) * amp * 0.2));
+  let buckets;
+  if (p === '365d') {
+    buckets = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+      return { label: d.toLocaleDateString('en', { month: 'short' }), start: d.toISOString(), voiceSessions: wave(i, 380, 90), voiceMinutes: wave(i, 16000, 4000), commands: wave(i, 900, 250), messages: wave(i, 14000, 3500), joins: wave(i, 22, 9), leaves: wave(i, 8, 5) };
+    });
+  } else {
+    const n = p === '7d' ? 7 : 30;
+    buckets = Array.from({ length: n }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (n - 1 - i));
+      const label = n === 7 ? d.toLocaleDateString('en', { weekday: 'short' }) : d.toLocaleDateString('en', { day: 'numeric', month: 'short' });
+      return { label, start: d.toISOString(), voiceSessions: wave(i, 14, 8), voiceMinutes: wave(i, 600, 250), commands: wave(i, 40, 18), messages: wave(i, 480, 160), joins: wave(i, 1, 1.5), leaves: i % 4 === 0 ? 1 : 0 };
+    });
+  }
+  const sum = key => buckets.reduce((t, b) => t + b[key], 0);
+  const scale = { '7d': 1, '30d': 4, '365d': 50 }[p];
+  const rankPoints = (start, deltas) => deltas.map((d, i) => ({ date: new Date(now.getTime() - (deltas.length - i) * 86400000 * (p === '365d' ? 20 : p === '30d' ? 3 : 1)).toISOString(), score: start += d, rankName: 'Gold' }));
+  return {
+    period: p, label: { '7d': 'last 7 days', '30d': 'last 30 days', '365d': 'last 12 months' }[p], buckets,
+    hourlyVoice: [6,3,1,0,0,0,1,2,3,4,5,6,8,9,10,12,15,19,24,30,36,41,33,14].map(v => v * scale),
+    hourlyMessages: [20,8,3,1,0,1,4,12,25,30,34,40,52,48,45,50,58,66,72,80,90,95,70,40].map(v => v * scale),
+    totals: { voiceSessions: sum('voiceSessions'), voiceSeconds: sum('voiceMinutes') * 60, averageSessionSeconds: 2460, commands: sum('commands'), failedCommands: 3 * scale,
+      messages: sum('messages'), joins: sum('joins'), leaves: sum('leaves'), previousVoiceSessions: Math.round(sum('voiceSessions') * 0.88),
+      previousVoiceSeconds: Math.round(sum('voiceMinutes') * 60 * 1.05), previousMessages: Math.round(sum('messages') * 0.9) },
+    topVoiceUsers: [['sam', 50400, true], ['jonwatso', 41000, true], ['alex', 34860, false], ['jordan', 21900, true], ['Taylor', 9100, false]]
+      .map(([name, s, live]) => ({ name, seconds: s * scale, sessions: Math.round(s / 2400) * scale, inVoiceNow: live })),
+    voiceChannels: [['General Voice', 1900], ['Stream Room', 760], ['AFK', 40]].map(([title, c]) => ({ title, count: c * scale })),
+    topCommands: [['/announce', 41], ['/rank', 27], ['/timestamp', 15], ['/music', 9], ['/roll', 6]].map(([title, c]) => ({ title, count: c * scale })),
+    topCommandUsers: [['jonwatso', 38], ['Sam', 30], ['Alex', 17], ['Jordan', 8]].map(([title, c]) => ({ title, count: c * scale })),
+    topPosters: [['Sam', 1240], ['jonwatso', 980], ['Alex', 610], ['Jordan', 330], ['Taylor', 120]].map(([title, c]) => ({ title, count: c * scale })),
+    messageChannels: [['#general', 2100], ['#game-chat', 1240], ['#stream-chat', 380], ['#announcements', 60]].map(([title, c]) => ({ title, count: c * scale })),
+    topWords: [['finals', 212], ['tonight', 140], ['ranked', 131], ['gg', 120], ['stream', 96], ['patch', 77], ['cashout', 70], ['lol', 64], ['squad', 51], ['vault', 40]].map(([title, c]) => ({ title, count: c * scale })),
+    topEmoji: [['😂', 220], ['🔥', 140], ['💀', 96], ['👀', 71], ['🎉', 44], ['❤️', 30]].map(([title, c]) => ({ title, count: c * scale })),
+    streak: { name: 'sam', days: 5 },
+    rankSeries: [
+      { name: 'jonwatso', game: 'THE FINALS', points: rankPoints(27100, [0, 420, 380, -210, 816, -183, -674]) },
+      { name: 'sam', game: 'THE FINALS', points: rankPoints(17600, [0, 300, 120, 400]) }
+    ],
+    clipsByGame: [['THE FINALS', 3], ['Helldivers 2', 2], ['Apex Legends', 2], ['Minecraft', 3]].map(([title, c]) => ({ title, count: c * scale })),
+    messagesAvailable: true, rewindEnabled: true
+  };
+}
+
 async function handleAPI(req, res, pathname, query) {
   if (req.method === 'GET') {
     switch (pathname) {
@@ -89,12 +137,14 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/auth/options': return sendJSON(res, fixtures.authOptions);
       case '/api/overview': return sendJSON(res, fixtures.overview);
       case '/api/status': return sendJSON(res, fixtures.status);
-      case '/api/analytics': return sendJSON(res, fixtures.analytics);
+      case '/api/analytics': return sendJSON(res, { ...fixtures.analytics, period: analyticsPeriodFixture(query.get('period')) });
       case '/api/rewind': return sendJSON(res, fixtures.rewind);
       case '/api/announcer': return sendJSON(res, announcer);
       case '/api/config': return sendJSON(res, config);
       case '/api/settings': return sendJSON(res, { prefix: fixtures.config.commands.prefix });
       case '/api/commands': return sendJSON(res, fixtures.commands);
+      case '/api/access': return sendJSON(res, fixtures.access);
+      case '/api/activity': return sendJSON(res, fixtures.activity);
       case '/api/automations': {
         const category = query.get('category') || 'automation';
         return sendJSON(res, fixtures.automations(category, automationRules[category]));
@@ -330,6 +380,17 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/access/update') {
+      // Same guards as AdminWebAccessUpdate.validate.
+      const ids = [...new Set((body.allowedUserIDs || []).map(id => String(id).trim()).filter(Boolean))];
+      if (!ids.every(id => /^\d{15,22}$/.test(id))) return sendJSON(res, { error: 'invalid_id' }, 400);
+      if (body.restrictToListedUsers && !ids.length) return sendJSON(res, { error: 'empty_list' }, 400);
+      if (body.restrictToListedUsers && !String(fixtures.me.id).startsWith('local:') && !ids.includes(fixtures.me.id)) return sendJSON(res, { error: 'self_lockout' }, 400);
+      fixtures.access.restrictToListedUsers = !!body.restrictToListedUsers;
+      fixtures.access.allowedUserIDs = ids;
+      return sendJSON(res, { ok: true });
+    }
+
     if (pathname === '/api/commands/toggle') {
       const item = fixtures.commands.items.find(i => i.name === body.name);
       if (!item) return sendJSON(res, { error: 'unknown_command' }, 404);
@@ -349,7 +410,6 @@ async function handleAPI(req, res, pathname, query) {
         autoStart: ['general', 'autoStart'],
         commandsEnabled: ['commands', 'enabled'],
         slashCommandsEnabled: ['commands', 'slashEnabled'],
-        bugTrackingEnabled: ['commands', 'bugTrackingEnabled'],
         swiftMinerEnabled: ['swiftMiner', 'enabled'],
         userTimezones: ['userTimezones', 'mappings']
       };

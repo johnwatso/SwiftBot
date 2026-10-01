@@ -262,6 +262,20 @@ struct RewindPhraseReport: Sendable {
     }
 }
 
+/// Message activity over an Analytics period, across all archived servers.
+struct RewindPeriodSummary: Sendable {
+    var totalMessages = 0
+    var previousMessages = 0
+    var bucketCounts: [Int]
+    var hourly: [Int] = Array(repeating: 0, count: 24)
+    var topUsers: [RewindUserCount] = []
+    var topWords: [RewindTermCount] = []
+    var topEmoji: [RewindTermCount] = []
+    /// Channel IDs; names are resolved by the caller.
+    var topChannels: [RewindTermCount] = []
+    var hasArchive = false
+}
+
 struct RewindDayCount: Sendable, Hashable {
     let day: String
     let count: Int

@@ -70,93 +70,109 @@ final class FinalsIDTests: XCTestCase {
     /// read this payload's `mode` as `node`, which decoded to nil against live
     /// data while still passing a fixture written to match the model — so this
     /// test asserts on the real key names specifically.
-    func testRealLatestPlayedRoundPayloadDecodes() throws {
+    /// Shape of `GET /v1/profiles/{username}/rounds` as finals.id returns it
+    /// (sample captured 2026-10-01, names and ids anonymised): flat rounds,
+    /// with a ranked tournament spread over several rounds sharing a matchId.
+    func testRealRoundsPayloadDecodesAndGroupsIntoMatches() throws {
         let data = Data(
             """
             {
               "season": "s11",
-              "count": 1,
-              "results": [{
-                "matchId": "da7kvaianh600g6b2ni0",
-                "mode": "casual",
-                "gameMode": "TeamDeathmatch",
-                "startedAt": "2026-08-26T20:44:03Z",
-                "endedAt": "2026-08-26T20:57:48Z",
-                "roundCount": 1,
-                "kills": 14,
-                "deaths": 7,
-                "damage": 2984.6462,
-                "rounds": [{
-                  "roundId": "da7kvaianh600g6b2ni0",
-                  "matchId": "da7kvaianh600g6b2ni0",
-                  "map": "SYS$HORIZON",
+              "count": 4,
+              "results": [
+                {
+                  "roundId": "r-quick", "matchId": "m-quick", "map": "NOZOMI/CITADEL",
                   "twists": [{ "name": "Standard Issue", "slug": "standard-issue" }],
-                  "gameMode": "TeamDeathmatch",
-                  "startedAt": "2026-08-26T20:44:03Z",
-                  "endedAt": "2026-08-26T20:57:48Z",
-                  "squadName": "The Shock & Awe",
-                  "placedAt": 1,
-                  "kills": 14,
-                  "deaths": 7,
-                  "dbnos": 0,
-                  "damage": 2984.6462,
-                  "respawns": 7,
-                  "respawnsDone": 0,
-                  "revivesDone": 0,
-                  "roundWon": true,
-                  "partyMembers": { "leader": "Tyr#1000", "members": [{ "name": "Tyr#1000" }] }
-                }],
-                "items": [
-                  { "kind": "gadget", "name": "DOME", "slug": "dome", "xp": 863 },
-                  { "damage": 55, "id": "-1023601953", "kind": "gadget", "name": "LOCKBOLT", "slug": "lockbolt", "xp": 890 },
-                  { "damage": 672.06, "id": "104254149", "kills": 2, "kind": "gadget", "name": "RPG", "slug": "rpg", "xp": 1172 },
-                  { "id": "921868764", "xp": 20000 }
-                ],
-                "scorecard": {
-                  "assists": 10,
-                  "combat-score": 2295.318,
-                  "elimination-streak": 6,
-                  "eliminations": 14,
-                  "kill-death-ratio": 2,
-                  "support": 466.005
+                  "gameMode": "QuickCash", "startedAt": "2026-09-30T10:20:08Z", "endedAt": "2026-09-30T10:29:26Z",
+                  "squadName": "The Steamrollers", "placedAt": 1, "kills": 9, "deaths": 6, "dbnos": 0,
+                  "damage": 3743.2803, "respawns": 5, "respawnsDone": 0, "revivesDone": 2,
+                  "roundWon": true, "tournamentWon": false,
+                  "partyMembers": { "leader": "player#0002", "members": [{ "name": "player#0001" }, { "name": "player#0002" }] },
+                  "partyLeader": "player#0002"
                 },
-                "roster": [{ "name": "player#0001" }, { "name": "player#0001" }]
-              }],
-              "nextCursor": "NjAjNi0wOC0yNlQyMDo6NDowMywwMDowMHxkYTdrdmFpYW5oNjAwZzViMmE2MA"
+                { "roundId": "r3", "matchId": "m-ranked", "twists": [], "gameMode": "Ranked", "startedAt": "2026-09-24T11:11:06Z",
+                  "kills": 4, "deaths": 2, "damage": 1200.5, "placedAt": 2, "roundWon": false, "tournamentWon": false },
+                { "roundId": "r2", "matchId": "m-ranked", "twists": [], "gameMode": "Ranked", "startedAt": "2026-09-24T11:00:23Z",
+                  "kills": 5, "deaths": 1, "damage": 1500, "placedAt": 2, "roundWon": true, "tournamentWon": false },
+                { "roundId": "r-private", "matchId": "m-private", "mode": "Ranked", "private": true, "endedAt": "2026-09-23T09:00:00Z" }
+              ],
+              "nextCursor": "opaque"
             }
             """.utf8
         )
 
         let result = try JSONDecoder().decode(FinalsIDLatestRoundResponse.self, from: data)
-        let round = try XCTUnwrap(result.results.first)
-
         XCTAssertEqual(result.season, "s11")
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(round.matchID, "da7kvaianh600g6b2ni0")
+        XCTAssertEqual(result.results.count, 4)
 
-        // The queue type is `mode`, not `node`.
-        XCTAssertEqual(round.mode, "casual")
-        XCTAssertFalse(round.isRanked)
+        let quick = try XCTUnwrap(result.results.first)
+        XCTAssertEqual(quick.map, "NOZOMI/CITADEL")
+        XCTAssertEqual(quick.twists.first?.slug, "standard-issue")
+        XCTAssertEqual(quick.partyMembers.first?.leader, "player#0002")
 
-        XCTAssertEqual(round.kills, 14)
-        XCTAssertEqual(round.deaths, 7)
-        XCTAssertEqual(round.damage, 2984.6462)
-        XCTAssertEqual(round.scorecard?.combatScore, 2295.318)
-        XCTAssertEqual(round.scorecard?.killDeathRatio, 2)
-        XCTAssertEqual(round.items.count, 4)
-        XCTAssertEqual(round.roster.count, 2)
+        let matches = result.matches
+        XCTAssertEqual(matches.map(\.matchID), ["m-quick", "m-ranked"], "Private rounds carry no stats and are skipped")
+        let ranked = try XCTUnwrap(matches.last)
+        XCTAssertTrue(ranked.isRanked)
+        XCTAssertEqual(ranked.rounds.count, 2)
+        XCTAssertEqual(ranked.kills, 9)
+        XCTAssertEqual(ranked.startedAt, "2026-09-24T11:00:23Z", "A match starts at its earliest round")
+        XCTAssertFalse(ranked.isWin, "Winning a round of a tournament isn't winning the match")
+        XCTAssertTrue(matches[0].isWin)
+        XCTAssertFalse(matches[0].isRanked)
+    }
 
-        let detail = try XCTUnwrap(round.rounds.first)
-        XCTAssertEqual(detail.map, "SYS$HORIZON")
-        XCTAssertEqual(detail.squadName, "The Shock & Awe")
-        XCTAssertEqual(detail.dbnos, 0)
-        XCTAssertEqual(detail.roundWon, true)
-        XCTAssertEqual(detail.twists.first?.slug, "standard-issue")
+    /// Shape of `GET /v1/profiles/{username}` (anonymised).
+    private func profileCard(ranked: String, hidden: Bool = false) -> Data {
+        Data("""
+        {
+          "id": "p-0000000000000000", "boardOnly": false, "username": "player#0001",
+          "nameHistory": ["player#0001"], "season": "s11", "ranked": \(ranked),
+          "rankScoreHidden": \(hidden), "outdated": false,
+          "level": { "level": 159, "totalXp": 18405427 },
+          "hidden": { "matchHistory": false, "rankScore": \(hidden) }
+        }
+        """.utf8)
+    }
 
-        // partyMembers arrived as a single object here; an array must also work.
-        XCTAssertEqual(detail.partyMembers.first?.leader, "Tyr#1000")
-        XCTAssertEqual(detail.partyMembers.first?.members.first?.name, "Tyr#1000")
-        XCTAssertNotNil(result.nextCursor)
+    func testProfileCardRankedScoreDecodes() throws {
+        let snapshot = try FinalsIDRankResponseDecoder.decode(
+            data: profileCard(ranked: #"{"boardId":"s11","score":28160,"rankIndex":12,"leagueName":"Gold","globalRank":56866,"capturedAt":"2026-10-01T03:50:17.796427Z"}"#),
+            game: .theFinals, provider: .finalsID, fallbackPlayerID: "player#0001", fallbackDisplayName: "Player"
+        )
+        XCTAssertEqual(snapshot.score, 28_160)
+        XCTAssertEqual(snapshot.rankName, "Gold")
+        XCTAssertEqual(snapshot.season, "s11")
+        XCTAssertEqual(snapshot.displayName, "player#0001")
+        XCTAssertNotNil(snapshot.updatedAt, "Fractional-second capturedAt must parse")
+        XCTAssertEqual(snapshot.metrics[.rankTier], 12)
+    }
+
+    func testProfileCardWithoutAStandingIsUnranked() {
+        XCTAssertThrowsError(try FinalsIDRankResponseDecoder.decode(
+            data: profileCard(ranked: "null"),
+            game: .theFinals, provider: .finalsID, fallbackPlayerID: "x", fallbackDisplayName: "x"
+        )) { XCTAssertEqual($0 as? FinalsIDAPIError, .unranked) }
+    }
+
+    func testHiddenRankScoreIsReportedAsHidden() {
+        XCTAssertThrowsError(try FinalsIDRankResponseDecoder.decode(
+            data: profileCard(ranked: "null", hidden: true),
+            game: .theFinals, provider: .finalsID, fallbackPlayerID: "x", fallbackDisplayName: "x"
+        )) { XCTAssertEqual($0 as? FinalsIDAPIError, .rankHidden) }
+    }
+
+    /// A blank template, or the pre-release guess, resolves to the documented
+    /// endpoint; anything else the operator typed is kept.
+    func testRankEndpointDefaultsToTheDocumentedProfileEndpoint() throws {
+        let descriptor = try XCTUnwrap(GameProviderCatalog.descriptor(for: .finalsID))
+        var settings = GameProviderConnectionSettings(baseURL: "", token: "t0ken", rankEndpointTemplate: "")
+        XCTAssertEqual(settings.resolvedRankEndpointTemplate(for: descriptor), "/v1/profiles/{playerID}")
+        XCTAssertNil(settings.issue(for: descriptor), "A token alone is enough now the contract is documented")
+        settings.rankEndpointTemplate = "/v1/players/{playerID}/rank"
+        XCTAssertEqual(settings.connection(for: descriptor).rankEndpointTemplate, "/v1/profiles/{playerID}")
+        settings.rankEndpointTemplate = "/v2/custom/{playerID}"
+        XCTAssertEqual(settings.resolvedRankEndpointTemplate(for: descriptor), "/v2/custom/{playerID}")
     }
 
     func testPartyMembersDecodesFromEitherObjectOrArray() throws {
@@ -171,19 +187,15 @@ final class FinalsIDTests: XCTestCase {
         XCTAssertEqual(fromArray.entries, fromObject.entries)
     }
 
-    func testRoundDecodesWhenOptionalCollectionsAreAbsent() throws {
-        // A mode that omits items/roster/rounds must not fail the whole payload.
-        let data = Data(#"""
-        {"season":"s11","count":1,"results":[{"matchId":"m1","gameMode":"Ranked","startedAt":"a","endedAt":"b","roundCount":1,"kills":1,"deaths":0,"damage":10.5}]}
-        """#.utf8)
-
+    func testRoundDecodesWhenOptionalFieldsAreAbsent() throws {
+        // Upstream omits keys it didn't record; that must not fail the page.
+        let data = Data(#"{"count":1,"results":[{"roundId":"r","matchId":"m","twists":[],"roundWon":false,"tournamentWon":false}]}"#.utf8)
         let result = try JSONDecoder().decode(FinalsIDLatestRoundResponse.self, from: data)
         let round = try XCTUnwrap(result.results.first)
-
-        XCTAssertTrue(round.items.isEmpty)
-        XCTAssertTrue(round.roster.isEmpty)
-        XCTAssertTrue(round.rounds.isEmpty)
-        XCTAssertNil(round.mode)
+        XCTAssertNil(result.season)
+        XCTAssertNil(round.gameMode)
+        XCTAssertTrue(round.partyMembers.isEmpty)
+        XCTAssertEqual(result.matches.first?.kills, 0)
     }
 
     func testEvaluatorEstablishesAndChangesWithoutFalseSeasonReset() {
@@ -560,7 +572,7 @@ final class FinalsIDTests: XCTestCase {
 
         XCTAssertEqual(
             requestedURL.absoluteString,
-            "https://example.test/v1/players/some%20one%2F..%2Fadmin/rounds"
+            "https://example.test/v1/profiles/some%20one%2F..%2Fadmin/rounds"
         )
         XCTAssertEqual(requestedURL.host, "example.test")
     }

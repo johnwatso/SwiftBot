@@ -325,7 +325,6 @@ struct BotSettings: Codable, Hashable {
     var commandsEnabled: Bool = true
     var prefixCommandsEnabled: Bool = true
     var slashCommandsEnabled: Bool = true
-    var bugTrackingEnabled: Bool = true
     var disabledCommandKeys: Set<String> = []
     var autoStart: Bool = true
     var presenceMode: AppPresenceMode = .dock
@@ -418,7 +417,6 @@ struct BotSettings: Codable, Hashable {
         case commandsEnabled
         case prefixCommandsEnabled
         case slashCommandsEnabled
-        case bugTrackingEnabled
         case disabledCommandKeys
         case autoStart
         case presenceMode
@@ -467,7 +465,6 @@ struct BotSettings: Codable, Hashable {
         commandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .commandsEnabled) ?? true
         prefixCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .prefixCommandsEnabled) ?? true
         slashCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .slashCommandsEnabled) ?? true
-        bugTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugTrackingEnabled) ?? true
         disabledCommandKeys = try container.decodeIfPresent(Set<String>.self, forKey: .disabledCommandKeys) ?? []
         autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? true
         presenceMode = try container.decodeIfPresent(AppPresenceMode.self, forKey: .presenceMode) ?? .dock
@@ -529,7 +526,6 @@ struct BotSettings: Codable, Hashable {
         try container.encode(commandsEnabled, forKey: .commandsEnabled)
         try container.encode(prefixCommandsEnabled, forKey: .prefixCommandsEnabled)
         try container.encode(slashCommandsEnabled, forKey: .slashCommandsEnabled)
-        try container.encode(bugTrackingEnabled, forKey: .bugTrackingEnabled)
         try container.encode(disabledCommandKeys, forKey: .disabledCommandKeys)
         try container.encode(autoStart, forKey: .autoStart)
         try container.encode(presenceMode, forKey: .presenceMode)

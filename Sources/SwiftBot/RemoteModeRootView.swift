@@ -25,7 +25,6 @@ private enum RemoteSection: String, CaseIterable, Identifiable {
 private struct RemoteSettingsDraft: Equatable {
     var commandsEnabled = true
     var slashCommandsEnabled = true
-    var bugTrackingEnabled = true
     var localAIDMReplyEnabled = false
     var wikiBridgeEnabled = false
     var patchyMonitoringEnabled = false
@@ -42,7 +41,6 @@ private struct RemoteSettingsDraft: Equatable {
     init(payload: AdminWebConfigPayload) {
         commandsEnabled = payload.commands.enabled
         slashCommandsEnabled = payload.commands.slashEnabled
-        bugTrackingEnabled = payload.commands.bugTrackingEnabled
         localAIDMReplyEnabled = payload.appleIntelligence.localAIDMReplyEnabled
         wikiBridgeEnabled = payload.wikiBridge.enabled
         patchyMonitoringEnabled = payload.patchy.monitoringEnabled
@@ -59,7 +57,6 @@ private struct RemoteSettingsDraft: Equatable {
         AdminWebConfigPatch(
             commandsEnabled: commandsEnabled,
             slashCommandsEnabled: slashCommandsEnabled,
-            bugTrackingEnabled: bugTrackingEnabled,
             localAIDMReplyEnabled: localAIDMReplyEnabled,
             wikiBridgeEnabled: wikiBridgeEnabled,
             patchyMonitoringEnabled: patchyMonitoringEnabled,
@@ -390,7 +387,6 @@ struct RemoteModeRootView: View {
                 PreferencesCard("Automation", systemImage: "terminal") {
                     Toggle("Enable Commands", isOn: $settingsDraft.commandsEnabled)
                     Toggle("Enable Slash Commands", isOn: $settingsDraft.slashCommandsEnabled)
-                    Toggle("Enable Bug Tracking", isOn: $settingsDraft.bugTrackingEnabled)
                     Toggle("Auto Start Bot", isOn: $settingsDraft.autoStart)
                 }
 

@@ -408,6 +408,54 @@ actor RewindStore {
         return rankTerms(totals, limit: limit)
     }
 
+    /// Message activity across every archived server for the Analytics page,
+    /// read from the per-day aggregates only (no shard scans).
+    func periodSummary(buckets: [AnalyticsBucket], window: DateInterval, previous: DateInterval) -> RewindPeriodSummary {
+        let startDay = RewindCalendar.dayKey(for: previous.start)
+        let endDay = RewindCalendar.dayKey(for: window.end)
+        let windowStartDay = RewindCalendar.dayKey(for: window.start)
+        guard let startYear = RewindCalendar.year(from: startDay),
+              let endYear = RewindCalendar.year(from: endDay),
+              startYear <= endYear else { return RewindPeriodSummary(bucketCounts: Array(repeating: 0, count: buckets.count)) }
+
+        var summary = RewindPeriodSummary(bucketCounts: Array(repeating: 0, count: buckets.count))
+        var perUser: [String: Int] = [:]
+        var names: [String: String] = [:]
+        var words: [String: Int] = [:]
+        var emoji: [String: Int] = [:]
+        var channels: [String: Int] = [:]
+        let bucketDays = buckets.map { (RewindCalendar.dayKey(for: $0.start), RewindCalendar.dayKey(for: $0.end)) }
+
+        for guildID in archivedGuildIDs() {
+            for year in startYear...endYear {
+                for (day, aggregate) in aggregates(guildID: guildID, year: year) where day >= startDay && day <= endDay {
+                    guard day >= windowStartDay else {
+                        summary.previousMessages += aggregate.messageCount
+                        continue
+                    }
+                    summary.totalMessages += aggregate.messageCount
+                    if let index = bucketDays.firstIndex(where: { day >= $0.0 && day < $0.1 }) {
+                        summary.bucketCounts[index] += aggregate.messageCount
+                    }
+                    for (index, count) in aggregate.messagesByHour.enumerated() where index < 24 {
+                        summary.hourly[index] += count
+                    }
+                    aggregate.messagesByUser.forEach { perUser[$0.key, default: 0] += $0.value }
+                    aggregate.userNames.forEach { names[$0.key] = $0.value }
+                    aggregate.wordCounts.forEach { if !RewindTokenizer.isStopWord($0.key) { words[$0.key, default: 0] += $0.value } }
+                    aggregate.emojiCounts.forEach { emoji[$0.key, default: 0] += $0.value }
+                    aggregate.messagesByChannel.forEach { channels[$0.key, default: 0] += $0.value }
+                }
+            }
+        }
+        summary.topUsers = rankUsers(perUser, names: names, limit: 5)
+        summary.topWords = rankTerms(words, limit: 10)
+        summary.topEmoji = rankTerms(emoji, limit: 8)
+        summary.topChannels = rankTerms(channels, limit: 5)
+        summary.hasArchive = !archivedGuildIDs().isEmpty
+        return summary
+    }
+
     /// Years holding data for a guild, newest first.
     func availableYears(guildID: String) -> [Int] {
         let folder = guildURL(guildID)

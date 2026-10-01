@@ -8,6 +8,9 @@ enum FinalsIDAPIError: LocalizedError, Equatable {
     case httpStatus(Int)
     case missingRankedScore
     case invalidResponse
+    case playerNotFound
+    case rankHidden
+    case unranked
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +28,12 @@ enum FinalsIDAPIError: LocalizedError, Equatable {
             return "The finals.id response did not contain an explicit SR/RS value."
         case .invalidResponse:
             return "The finals.id response could not be decoded."
+        case .playerNotFound:
+            return "finals.id has no player with that name. Use the full name including the #tag, e.g. name#1234."
+        case .rankHidden:
+            return "This player has hidden their ranked score on finals.id."
+        case .unranked:
+            return "This player has no ranked score this season yet."
         }
     }
 }
@@ -63,9 +72,11 @@ actor FinalsIDAPIClient: GameRankProvider {
         guard let http = response as? HTTPURLResponse else {
             throw FinalsIDAPIError.invalidResponse
         }
-        if http.statusCode == 401 || http.statusCode == 403 {
-            throw FinalsIDAPIError.unauthorized
-        }
+        // finals.id: 404 means the name doesn't resolve, 403 that the owner
+        // hid the field from this key.
+        if http.statusCode == 401 { throw FinalsIDAPIError.unauthorized }
+        if http.statusCode == 403 { throw FinalsIDAPIError.rankHidden }
+        if http.statusCode == 404 { throw FinalsIDAPIError.playerNotFound }
         guard (200...299).contains(http.statusCode) else {
             throw FinalsIDAPIError.httpStatus(http.statusCode)
         }
@@ -80,9 +91,8 @@ actor FinalsIDAPIClient: GameRankProvider {
 
     /// Listing path for a player's recent rounds. Held here rather than at the
     /// call site so the player identifier is encoded by the same rule as the
-    /// rank endpoint. Still part of the unconfirmed public contract — see
-    /// `Documentation/FINALS_ID_API_CONTRACT.md`.
-    private static let latestRoundPathTemplate = "/v1/players/{playerID}/rounds"
+    /// rank endpoint. See `Documentation/FINALS_ID_API_CONTRACT.md`.
+    private static let latestRoundPathTemplate = "/v1/profiles/{playerID}/rounds"
 
     func fetchLatestRound(
         playerID: String,
@@ -111,9 +121,9 @@ actor FinalsIDAPIClient: GameRankProvider {
         guard let http = response as? HTTPURLResponse else {
             throw FinalsIDAPIError.invalidResponse
         }
-        if http.statusCode == 401 || http.statusCode == 403 {
-            throw FinalsIDAPIError.unauthorized
-        }
+        if http.statusCode == 401 { throw FinalsIDAPIError.unauthorized }
+        if http.statusCode == 403 { throw FinalsIDAPIError.rankHidden }
+        if http.statusCode == 404 { throw FinalsIDAPIError.playerNotFound }
         guard (200...299).contains(http.statusCode) else {
             throw FinalsIDAPIError.httpStatus(http.statusCode)
         }
@@ -179,6 +189,12 @@ enum FinalsIDRankResponseDecoder {
         guard let root = try? JSONSerialization.jsonObject(with: data) else {
             throw FinalsIDAPIError.invalidResponse
         }
+        if let profile = root as? [String: Any], let snapshot = try decodeProfileCard(
+            profile, game: game, provider: provider,
+            fallbackPlayerID: fallbackPlayerID, fallbackDisplayName: fallbackDisplayName
+        ) {
+            return snapshot
+        }
         guard let scoreNode = findScoreNode(in: root),
               let score = integer(from: value(forAnyKey: scoreKeys, in: scoreNode)) else {
             // Deliberately do not accept a generic `score`: the proposed round
@@ -210,6 +226,42 @@ enum FinalsIDRankResponseDecoder {
             score: score,
             updatedAt: updatedAtText.flatMap(parseDate),
             metrics: decodeMetrics(from: scoreNode, root: root)
+        )
+    }
+
+    /// `GET /v1/profiles/{username}`: the current-season standing sits under
+    /// a top-level `ranked` block as `score`. That `score` is only trusted
+    /// there; anywhere else a bare `score` could be a match's combat score.
+    /// Returns nil when the response isn't a profile card.
+    private static func decodeProfileCard(
+        _ profile: [String: Any],
+        game: GameID,
+        provider: GameProviderID,
+        fallbackPlayerID: String,
+        fallbackDisplayName: String
+    ) throws -> GameRankSnapshot? {
+        let looksLikeProfile = profile.keys.contains("ranked") && (profile.keys.contains("rankScoreHidden") || profile.keys.contains("nameHistory"))
+        guard looksLikeProfile else { return nil }
+        if profile["rankScoreHidden"] as? Bool == true { throw FinalsIDAPIError.rankHidden }
+        guard let ranked = profile["ranked"] as? [String: Any],
+              let score = integer(from: ranked["score"]) else {
+            throw FinalsIDAPIError.unranked
+        }
+        return GameRankSnapshot(
+            game: game,
+            provider: provider,
+            playerID: string(from: profile["id"]) ?? fallbackPlayerID,
+            displayName: string(from: profile["username"]) ?? fallbackDisplayName,
+            season: string(from: profile["season"]) ?? string(from: ranked["boardId"]) ?? "",
+            rankName: string(from: ranked["leagueName"]),
+            score: score,
+            updatedAt: string(from: ranked["capturedAt"]).flatMap(parseDate),
+            metrics: {
+                var metrics = GameMetricSet()
+                metrics[.rankedScore] = Double(score)
+                if let index = integer(from: ranked["rankIndex"]) { metrics[.rankTier] = Double(index) }
+                return metrics
+            }()
         )
     }
 

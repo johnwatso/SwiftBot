@@ -471,7 +471,7 @@ extension AppModel {
             }
     }
 
-    private func mediaGameName(for fileName: String) -> String {
+    func mediaGameName(for fileName: String) -> String {
         let baseName = (fileName as NSString).deletingPathExtension
         let normalized = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.isEmpty { return "Unlabeled" }

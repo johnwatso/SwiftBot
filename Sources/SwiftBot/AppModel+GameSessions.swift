@@ -119,7 +119,7 @@ extension AppModel {
                 playerID: player.playerID,
                 connection: connection
             )
-            return GameSessionSummaryBuilder.totals(for: session, rounds: response.results)
+            return GameSessionSummaryBuilder.totals(for: session, matches: response.matches)
         } catch {
             logs.append("[WARN] Game Tracker could not load session rounds: \(error.localizedDescription)")
             return nil

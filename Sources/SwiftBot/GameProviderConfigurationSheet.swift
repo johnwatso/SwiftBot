@@ -145,11 +145,14 @@ struct GameProviderConfigurationSheet: View {
 
             if descriptor.requiresRankEndpointTemplate {
                 LabeledContent("Rank Endpoint") {
-                    TextField("/v1/players/{playerID}/rank", text: $draft.rankEndpointTemplate)
+                    TextField(descriptor.defaultRankEndpointTemplate.isEmpty ? "/v1/players/{playerID}/rank" : descriptor.defaultRankEndpointTemplate,
+                              text: $draft.rankEndpointTemplate)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 300)
                 }
-                Text("The endpoint must contain {playerID}. Leave it blank until \(descriptor.id.displayName) confirms the public contract.")
+                Text(descriptor.defaultRankEndpointTemplate.isEmpty
+                     ? "The endpoint must contain {playerID}."
+                     : "Leave blank to use \(descriptor.id.displayName)'s documented endpoint. A custom endpoint must contain {playerID}.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

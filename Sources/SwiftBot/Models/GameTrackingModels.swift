@@ -98,6 +98,12 @@ struct GameProviderDescriptor: Hashable, Sendable {
     /// SF Symbol used wherever this provider is listed. Descriptor-supplied so
     /// Integrations never switches on a provider id to pick an icon.
     var symbolName: String = "point.3.connected.trianglepath.dotted"
+    /// The provider's documented rank endpoint, used when the operator hasn't
+    /// set one. Empty for providers without a published contract.
+    var defaultRankEndpointTemplate: String = ""
+    /// Templates from before the provider's API shipped. A stored value that
+    /// matches one of these is a guess, so the documented default replaces it.
+    var legacyRankEndpointTemplates: Set<String> = []
 
     /// Only providers that can report a ranked score need an endpoint template.
     /// A presence-only game such as Call of Duty has no rank API to point at.
@@ -146,7 +152,11 @@ enum GameProviderCatalog {
                 .rankedScore, .rankTier, .kills, .deaths, .assists,
                 .killDeathRatio, .damage, .matchesPlayed, .wins, .winRate
             ],
-            symbolName: "scope"
+            symbolName: "scope",
+            // https://api.finals.id/v1/openapi.json — the profile card carries
+            // the current-season standing under `ranked`.
+            defaultRankEndpointTemplate: "/v1/profiles/{playerID}",
+            legacyRankEndpointTemplates: ["/v1/players/{playerID}/rank"]
         )
     ]
 
@@ -236,12 +246,22 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         return trimmed.isEmpty ? descriptor.defaultBaseURL : trimmed
     }
 
+    /// The operator's template, or the provider's documented one when it's
+    /// blank or still the pre-release guess.
+    func resolvedRankEndpointTemplate(for descriptor: GameProviderDescriptor) -> String {
+        let trimmed = rankEndpointTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || descriptor.legacyRankEndpointTemplates.contains(trimmed) {
+            return descriptor.defaultRankEndpointTemplate
+        }
+        return trimmed
+    }
+
     func connection(for descriptor: GameProviderDescriptor) -> GameProviderConnection {
         GameProviderConnection(
             baseURL: resolvedBaseURL(for: descriptor),
             token: token,
             auth: descriptor.auth,
-            rankEndpointTemplate: rankEndpointTemplate
+            rankEndpointTemplate: resolvedRankEndpointTemplate(for: descriptor)
         )
     }
 
@@ -264,7 +284,7 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         }
         guard hasCredential else { return .missingCredential }
         if descriptor.requiresRankEndpointTemplate,
-           !rankEndpointTemplate.contains("{playerID}") {
+           !resolvedRankEndpointTemplate(for: descriptor).contains("{playerID}") {
             return .missingRankEndpointContract
         }
         return nil

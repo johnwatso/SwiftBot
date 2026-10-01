@@ -133,7 +133,8 @@ const announcer = {
 // Only the fields the dashboard shell reads on boot — enough to get past
 // bootstrap() and land on the Announcer view.
 const me = {
-  id: 'preview-user',
+  // A Discord sign-in, so the access editor's self-lockout guard applies.
+  id: '412378964087275541',
   username: 'Preview Admin',
   csrfToken: 'preview-csrf-token',
   avatarURL: '',
@@ -287,7 +288,19 @@ Object.assign(analytics, {
     label: ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'][i],
     count: [12, 24, 31, 9, 14, 18, 20][i]
   })),
-  hourlyActivity: Array.from({ length: 24 }, (_, h) => ({ hour: h, label: `${h}:00`, count: Math.round(10 + 30 * Math.max(0, Math.sin((h - 12) / 4))) })),
+  // Quiet mornings, building through the evening, peaking around 9pm.
+  hourlyActivity: Array.from({ length: 24 }, (_, h) => ({ hour: h, label: `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`, count: [6,3,1,0,0,0,1,2,3,4,5,6,8,9,10,12,15,19,24,30,36,41,33,14][h] })),
+  community: {
+    inVoice: [
+      { username: 'jonwatso', channelName: 'General Voice', since: minutesAgo(23) },
+      { username: 'sam', channelName: 'General Voice', since: minutesAgo(71) },
+      { username: 'jordan', channelName: 'Stream Room', since: minutesAgo(8) }
+    ],
+    topCommands: [{ title: '/announce', count: 41 }, { title: '/rank', count: 27 }, { title: '/timestamp', count: 15 }, { title: '/music', count: 9 }, { title: '/roll', count: 6 }],
+    topCommandUsers: [{ title: 'jonwatso', count: 38 }, { title: 'Sam', count: 30 }, { title: 'Alex', count: 17 }, { title: 'Jordan', count: 8 }],
+    topChannels: [{ title: '#general', count: 52 }, { title: '#game-chat', count: 31 }, { title: '#announcements', count: 9 }],
+    topVoiceChannels: [{ title: 'General Voice', count: 64 }, { title: 'Stream Room', count: 22 }]
+  },
   topUsers: [
     { id: 'u1', username: 'sam', initials: 'SA', totalTime: '14h 2m', activityShare: 32, isActive: true },
     { id: 'u2', username: 'alex', initials: 'AL', totalTime: '9h 41m', activityShare: 22, isActive: false },
@@ -304,12 +317,16 @@ Object.assign(analytics, {
 });
 
 const config = {
-  commands: { enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: false, prefix: '!' },
+  commands: { enabled: true, prefixEnabled: true, slashEnabled: true, prefix: '!' },
   appleIntelligence: { localAIDMReplyEnabled: true, useAIInGuildChannels: false, allowDMs: true, localAISystemPrompt: 'You are SwiftBot, a friendly Discord assistant.' },
   wikiBridge: { enabled: true, enabledSources: 2, totalSources: 2 },
   patchy: { monitoringEnabled: true, enabledTargets: 3, totalTargets: 4 },
   swiftMesh: { mode: 'standalone', nodeName: 'Preview Mac', leaderAddress: '', leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: false, offloadAIReplies: false, offloadWikiLookups: false, autoReclaimAfterHours: 6 },
-  general: { autoStart: true, webUIEnabled: true, webUIBaseURL: 'http://127.0.0.1:4179' },
+  general: {
+    autoStart: true, webUIEnabled: true, webUIBaseURL: 'http://127.0.0.1:4179',
+    inviteURL: 'https://discord.com/oauth2/authorize?client_id=000000000000000000&permissions=8&scope=bot+applications.commands',
+    appVersion: '1.26.3', appBuild: '2026100109', hostName: 'Preview Mac', osVersion: 'Version 26.1 (Build 25B78)'
+  },
   userTimezones: {
     mappings: { '412378964087275541': 'Pacific/Auckland', '280129381292318720': 'Pacific/Auckland', '512391234123412345': 'Europe/London' },
     members: [
@@ -592,7 +609,42 @@ const mediaExports = {
   ]
 };
 
+// Mirrors AdminWebActivityPayload (ActivityFeed in the app), newest first.
+const activityEntry = (i, mins, kind, level, category, title, detail = null) =>
+  ({ id: `a${i}`, time: minutesAgo(mins), kind, level, category, title, detail });
+const activity = (() => {
+  const entries = [
+    activityEntry(1, 1, 'command', 'ok', 'command', '/announce join', 'jonwatso · Swift Lounge · #general'),
+    activityEntry(2, 3, 'audit', 'ok', 'audit', '[Web Auth] Logged in', 'jonwatso (412378964087275541)'),
+    activityEntry(3, 4, 'audit', 'info', 'audit', '[Web Config] Updated sign-in access', 'jonwatso · Only 2 listed people'),
+    activityEntry(4, 4, 'audit', 'warning', 'audit', '[Web Auth] Signed out', 'Sam (280129381292318720) · Removed from the access list'),
+    activityEntry(5, 9, 'system', 'info', 'voice', 'Voice: jonwatso joined General Voice'),
+    activityEntry(6, 12, 'command', 'error', 'command', '/image a cat in a spacesuit', 'Alex · Swift Lounge · #general'),
+    activityEntry(7, 20, 'system', 'ok', 'patchy', 'Patchy: NVIDIA driver 581.42 posted to #announcements'),
+    activityEntry(8, 41, 'system', 'warning', 'gateway', 'Discord gateway reconnecting after missed heartbeat'),
+    activityEntry(9, 42, 'system', 'ok', 'gateway', 'Discord gateway connected (resumed session)'),
+    activityEntry(10, 65, 'command', 'ok', 'command', '/rank', 'Sam · Swift Lounge · #game-chat'),
+    activityEntry(11, 90, 'system', 'info', 'ai', 'Apple Intelligence replied to a DM from Jordan'),
+    activityEntry(12, 1500, 'mesh', 'warning', 'mesh', 'SwiftMesh: standby node Studio Mac missed 2 heartbeats'),
+    activityEntry(13, 1520, 'system', 'error', 'system', 'Sweep: missing Manage Messages permission in #general'),
+    activityEntry(14, 1600, 'command', 'ok', 'command', '/timestamp tomorrow 8pm', 'jonwatso · Swift Lounge · #general')
+  ];
+  return { entries, totalCount: entries.length };
+})();
+
 module.exports = {
+  activity,
   announcer, me, overview, status, analytics, rewind, authOptions,
+  access: {
+    restrictToListedUsers: false,
+    allowedUserIDs: ['412378964087275541', '280129381292318720'],
+    members: [
+      { id: '412378964087275541', name: 'jonwatso', username: null },
+      { id: '280129381292318720', name: 'Sam', username: 'samthegreat' },
+      { id: '280129381292318721', name: 'Alex', username: null },
+      { id: '280129381292318722', name: 'Jordan', username: 'jordan_ttv' }
+    ],
+    localFallbackEnabled: true
+  },
   config, commands, automations, automationRules, welcomeFlow, patchy, aibots, wikibridge, sweep, gametracker, media, mediaExports
 };

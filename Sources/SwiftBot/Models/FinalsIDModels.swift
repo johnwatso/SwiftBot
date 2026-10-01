@@ -22,61 +22,63 @@ struct LegacyFinalsIDSettings: Codable, Hashable, Sendable {
     }
 }
 
-// MARK: - Proposed latest-round contract
+// MARK: - Rounds
 
-/// Models the "Latest Played Round Result" proposal shared by finals.id.
-/// Fields not needed for the first SR notifier remain optional so additions to
-/// the upstream payload do not make SwiftBot's decoder brittle.
+/// `GET /v1/profiles/{username}/rounds` — one entry per round, newest first.
+/// A match is one round, or several rounds sharing a `matchId` for ranked and
+/// tournament modes; `matches` groups them.
 struct FinalsIDLatestRoundResponse: Codable, Hashable, Sendable {
-    let season: String
+    let season: String?
     let count: Int
-    let results: [FinalsIDPlayedRound]
+    let results: [FinalsIDRoundDetail]
     let nextCursor: String?
+
+    var matches: [FinalsIDPlayedMatch] {
+        FinalsIDPlayedMatch.group(results)
+    }
 }
 
-struct FinalsIDPlayedRound: Codable, Hashable, Sendable {
+/// A match built from its rounds. Not decoded: finals.id only lists rounds.
+struct FinalsIDPlayedMatch: Hashable, Sendable {
     let matchID: String
-    /// Queue type — `casual`, and presumably `ranked` for rated play. This is
-    /// how a session summary tells rated matches from unrated ones.
-    let mode: String?
-    let gameMode: String
-    let startedAt: String
-    let endedAt: String
-    let roundCount: Int
-    let kills: Int
-    let deaths: Int
-    let damage: Double
-    let scorecard: FinalsIDScorecard?
+    let gameMode: String?
+    let startedAt: String?
+    let rounds: [FinalsIDRoundDetail]
 
-    // Collections are decoded optionally and surfaced non-optional: a mode that
-    // omits one of them should not fail the whole payload.
-    private let roundsRaw: [FinalsIDRoundDetail]?
-    private let itemsRaw: [FinalsIDRoundItem]?
-    private let rosterRaw: [FinalsIDRosterMember]?
+    var kills: Int { rounds.reduce(0) { $0 + ($1.kills ?? 0) } }
+    var deaths: Int { rounds.reduce(0) { $0 + ($1.deaths ?? 0) } }
+    var damage: Double { rounds.reduce(0) { $0 + ($1.damage ?? 0) } }
 
-    var rounds: [FinalsIDRoundDetail] { roundsRaw ?? [] }
-    var items: [FinalsIDRoundItem] { itemsRaw ?? [] }
-    var roster: [FinalsIDRosterMember] { rosterRaw ?? [] }
-
-    /// True when this match was played in a rated queue.
+    /// finals.id labels rated play `gameMode: "Ranked"`.
     var isRanked: Bool {
-        (mode ?? "").lowercased().contains("rank")
+        (gameMode ?? "").lowercased().contains("rank")
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case matchID = "matchId"
-        case mode
-        case gameMode
-        case startedAt
-        case endedAt
-        case roundCount
-        case kills
-        case deaths
-        case damage
-        case scorecard
-        case roundsRaw = "rounds"
-        case itemsRaw = "items"
-        case rosterRaw = "roster"
+    /// Multi-round modes are won by winning the tournament; single-round
+    /// modes by winning the round.
+    var isWin: Bool {
+        rounds.count > 1
+            ? rounds.contains { $0.tournamentWon == true }
+            : rounds.contains { $0.roundWon == true }
+    }
+
+    static func group(_ rounds: [FinalsIDRoundDetail]) -> [FinalsIDPlayedMatch] {
+        var order: [String] = []
+        var byMatch: [String: [FinalsIDRoundDetail]] = [:]
+        for round in rounds where round.isPrivate != true {
+            if byMatch[round.matchID] == nil { order.append(round.matchID) }
+            byMatch[round.matchID, default: []].append(round)
+        }
+        return order.compactMap { id in
+            guard let rounds = byMatch[id] else { return nil }
+            let sorted = rounds.sorted { ($0.startedAt ?? "") < ($1.startedAt ?? "") }
+            return FinalsIDPlayedMatch(
+                matchID: id,
+                gameMode: sorted.compactMap(\.gameMode).first,
+                startedAt: sorted.compactMap(\.startedAt).first,
+                rounds: sorted
+            )
+        }
     }
 }
 
@@ -99,6 +101,10 @@ struct FinalsIDRoundDetail: Codable, Hashable, Sendable {
     let respawnsDone: Int?
     let revivesDone: Int?
     let roundWon: Bool?
+    /// Won the whole tournament (multi-round modes only).
+    let tournamentWon: Bool?
+    /// The player hid this round's details; only ids and timing are present.
+    let isPrivate: Bool?
 
     private let partyMembersRaw: FinalsIDPartyMemberList?
     var partyMembers: [FinalsIDPartyMember] { partyMembersRaw?.entries ?? [] }
@@ -121,6 +127,8 @@ struct FinalsIDRoundDetail: Codable, Hashable, Sendable {
         case respawnsDone
         case revivesDone
         case roundWon
+        case tournamentWon
+        case isPrivate = "private"
         case partyMembersRaw = "partyMembers"
     }
 }

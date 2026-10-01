@@ -30,6 +30,32 @@ struct VoiceUserRollingAverage: Codable, Hashable, Sendable {
     let sessionCount: Int
 }
 
+/// Voice activity over an `AnalyticsPeriod`, for the Analytics page.
+struct VoicePeriodReport: Sendable {
+    struct Bucket: Sendable {
+        let label: String
+        let start: Date
+        let sessions: Int
+        let seconds: Int
+    }
+    struct UserTotal: Sendable {
+        let userId: String
+        let username: String
+        let seconds: Int
+        let sessions: Int
+    }
+    var buckets: [Bucket] = []
+    var hourly: [Int] = Array(repeating: 0, count: 24)
+    var topUsers: [UserTotal] = []
+    var channels: [(name: String, seconds: Int)] = []
+    var totalSeconds = 0
+    var sessionCount = 0
+    var previousTotalSeconds = 0
+    var previousSessionCount = 0
+    /// Longest run of consecutive days in voice that is still going.
+    var currentStreak: (username: String, days: Int)?
+}
+
 actor VoiceSessionStore {
     private let activeURL: URL
     private let historyURL: URL
@@ -263,6 +289,78 @@ actor VoiceSessionStore {
 
     func getSessionCountThisWeek() -> Int {
         sessionsOverlappingLast7Days().count
+    }
+
+    func report(period: AnalyticsPeriod, now: Date = Date(), topLimit: Int = 5) -> VoicePeriodReport {
+        let calendar = Calendar.current
+        let buckets = period.buckets(now: now, calendar: calendar)
+        let window = period.window(now: now, calendar: calendar)
+        let previous = period.previousWindow(now: now, calendar: calendar)
+        let sessions = allSessions()
+
+        // Seconds a session spent inside [start, end).
+        func overlap(_ session: VoiceSession, _ start: Date, _ end: Date) -> Int {
+            let from = max(session.joinedAt, start)
+            let to = min(session.leftAt ?? now, end, now)
+            return max(0, Int(to.timeIntervalSince(from)))
+        }
+
+        var report = VoicePeriodReport()
+        var users: [String: (username: String, seconds: Int, sessions: Int)] = [:]
+        var channels: [String: Int] = [:]
+        var bucketSessions = Array(repeating: 0, count: buckets.count)
+        var bucketSeconds = Array(repeating: 0, count: buckets.count)
+
+        for session in sessions {
+            let inWindow = overlap(session, window.start, window.end)
+            if inWindow > 0 {
+                report.totalSeconds += inWindow
+                report.sessionCount += 1
+                report.hourly[calendar.component(.hour, from: max(session.joinedAt, window.start))] += 1
+                var user = users[session.userId, default: (session.username, 0, 0)]
+                user.username = session.username
+                user.seconds += inWindow
+                user.sessions += 1
+                users[session.userId] = user
+                if !session.channelName.isEmpty { channels[session.channelName, default: 0] += inWindow }
+                for (index, bucket) in buckets.enumerated() {
+                    let seconds = overlap(session, bucket.start, bucket.end)
+                    guard seconds > 0 else { continue }
+                    bucketSessions[index] += 1
+                    bucketSeconds[index] += seconds
+                }
+            }
+            let inPrevious = overlap(session, previous.start, previous.end)
+            if inPrevious > 0 {
+                report.previousTotalSeconds += inPrevious
+                report.previousSessionCount += 1
+            }
+        }
+
+        report.buckets = buckets.enumerated().map { index, bucket in
+            .init(label: bucket.label, start: bucket.start, sessions: bucketSessions[index], seconds: bucketSeconds[index])
+        }
+        report.topUsers = users
+            .map { .init(userId: $0.key, username: $0.value.username, seconds: $0.value.seconds, sessions: $0.value.sessions) }
+            .sorted { $0.seconds != $1.seconds ? $0.seconds > $1.seconds : $0.username < $1.username }
+            .prefix(topLimit)
+            .map { $0 }
+        report.channels = channels
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(topLimit)
+            .map { (name: $0.key, seconds: $0.value) }
+
+        // Streaks look at all history, not just the window.
+        let daysByUser = Dictionary(grouping: sessions, by: \.username).mapValues { list in
+            Set(list.map { calendar.startOfDay(for: $0.joinedAt) })
+        }
+        report.currentStreak = daysByUser
+            .compactMap { name, days -> (username: String, days: Int)? in
+                let streak = currentDayStreak(from: days, calendar: calendar)
+                return streak > 1 ? (name, streak) : nil
+            }
+            .max { $0.days != $1.days ? $0.days < $1.days : $0.username > $1.username }
+        return report
     }
 
     // MARK: - Private

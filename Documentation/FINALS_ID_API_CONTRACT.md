@@ -1,84 +1,72 @@
-# finals.id API contract expected by SwiftBot
+# finals.id API as used by SwiftBot
 
-> **Status (2026-08-27):** finals.id has not shipped public API support yet.
-> SwiftBot's provider is built and tested against the sample payload below, but
-> live polling stays disabled until the auth scheme and rank endpoint are
-> confirmed. Game Tracker is provider-neutral; finals.id is simply the first
-> provider registered.
+> **Status (2026-10-01):** finals.id's public API is live and documented at
+> <https://api.finals.id/> (OpenAPI: `/v1/openapi.json`). SwiftBot's provider
+> was rebuilt against it and verified with a personal key: rank, rounds and
+> error handling all work against real responses. The earlier proposal this
+> file used to describe (`/v1/players/{id}/rank`, nested match objects, a
+> `mode` queue field) never shipped.
 
-finals.id is the first provider for SwiftBot's provider-neutral Game Tracker service. Its connection remains unavailable for live polling until finals.id confirms the public contract below. SwiftBot schedules and posts ranked-score changes itself; finals.id does not need to schedule or push those announcements.
+finals.id is the first provider for SwiftBot's provider-neutral Game Tracker. SwiftBot schedules checks and posts ranked-score changes itself; finals.id only answers requests.
 
 ## Authentication
 
-- Preferred: a finals.id-issued bearer token sent as `Authorization: Bearer <token>`.
-- The token is stored in the macOS Keychain and is removed from SwiftBot's on-disk settings file.
-- SwiftBot should never receive or store a Steam password, Steam Guard code, Steam session cookie, or refresh token. If Steam sign-in is required, finals.id should complete that flow and issue its own API token afterward.
+- `Authorization: Bearer ftk_…`. A personal key can read the key owner's data and public fields other players' privacy settings allow.
+- The token is stored in the macOS Keychain (`game-provider-token-finalsID`), never in settings.json.
+- SwiftBot never handles Steam or Embark credentials.
 
-## Ranked-score endpoint
+## Player identifier
 
-SwiftBot needs one authenticated `GET` endpoint whose path contains a stable player identifier. The path is configurable using a `{playerID}` placeholder, for example:
+Every profile path takes `{username}`: the player's current name **including the `#tag`** (e.g. `name#1234`), a previous name, or their public id (`p-…`). SwiftBot percent-encodes it as a single path segment (`#` becomes `%23`).
 
-```text
-GET /v1/players/{playerID}/rank
-```
+## Ranked score — `GET /v1/profiles/{username}`
 
-The response must contain an explicit ranked-score field. SwiftBot currently recognises `sr`, `rs`, `rankedScore`, `rankScore`, `ranked_score`, or `rank_score`, including when nested beneath `data`, `result`, `profile`, `ranked`, `ranking`, or `rank`.
+The built-in rank endpoint template is `/v1/profiles/{playerID}`. A blank template, or the old guess `/v1/players/{playerID}/rank`, resolves to it automatically; any other template an operator types is kept.
 
-Suggested response:
+The profile card carries the current-season standing under a top-level `ranked` block:
 
 ```json
 {
-  "data": {
-    "playerId": "stable-player-id",
-    "displayName": "Player#1234",
-    "season": "s11",
-    "ranked": {
-      "rankedScore": 31520,
-      "rankName": "Platinum 2",
-      "updatedAt": "2026-08-27T09:00:00Z"
-    }
-  }
+  "id": "p-…", "username": "name#1234", "season": "s11",
+  "ranked": { "boardId": "s11", "score": 28160, "rankIndex": 12, "leagueName": "Gold", "globalRank": 56866, "capturedAt": "2026-10-01T03:50:17.796427Z" },
+  "rankScoreHidden": false
 }
 ```
 
-`playerId`, `displayName`, `season`, `rankName`, and `updatedAt` are useful metadata. The ranked score is the only required response value beyond a successful status code. SwiftBot deliberately rejects generic `score` and `combat-score` fields so match statistics cannot be announced as SR.
+- **SR** is `ranked.score`. A bare `score` is only trusted inside that top-level `ranked` block; anywhere else it could be a match's combat score, which must never be announced as SR. Other providers still go through the generic decoder, which requires an explicit `sr`/`rankedScore`-style key.
+- **Rank name** is `ranked.leagueName`; `ranked.rankIndex` is reported as the Rank metric so promotions can trigger announcements.
+- **Season** is `season` (falling back to `ranked.boardId`); a season change resets the baseline silently.
+- **Time** is `ranked.capturedAt` (fractional seconds).
+- `rankScoreHidden: true`, or HTTP 403, means the player hid their SR → "This player has hidden their ranked score". `ranked: null` means no standing this season → "no ranked score this season yet". HTTP 404 means the name doesn't resolve → a hint to include the `#tag`.
 
-## Polling behaviour
+## Rounds — `GET /v1/profiles/{username}/rounds`
 
-- Game Tracker polls enabled profiles once daily at the configured local hour (9 AM by default).
-- Each profile chooses its game, compatible data provider, stable provider player ID, display name, and Discord destination.
-- If SwiftBot starts after that hour and has not attempted the day's check, it catches up immediately.
-- The first successful result becomes a silent baseline.
-- Unchanged SR produces no Discord post.
-- A season change resets the baseline silently, avoiding a false large SR loss.
-- Changed players are combined into one Discord embed. Baselines advance only after successful Discord delivery.
-- In SwiftMesh, only the Standalone or Primary runtime polls and sends.
-
-Provider credentials and endpoint details live in **Settings → Integrations**. Profiles, baselines, schedules, manual checks, and recent activity live in **Services → Game Tracker**.
-
-## Latest-round data
-
-SwiftBot decodes the “Latest Played Round Result” payload (`season`, `count`, `results`, `nextCursor`) and uses it to build **play-session summaries**, which do not depend on ranked score at all.
-
-A verified sample response for a casual match contains no SR field of any kind. What it does carry per result is:
+Used for play-session summaries. Results are **flat rounds**, newest first, `limit` 50 by default:
 
 | Field | Notes |
 |---|---|
-| `matchId` | Stable match identifier |
-| `mode` | Queue type, e.g. `casual`. **Not** `node` — an earlier model misread this |
-| `gameMode` | e.g. `TeamDeathmatch` |
-| `startedAt` / `endedAt` | ISO-8601 timestamps, used to place a match inside a session window |
-| `roundCount`, `kills`, `deaths`, `damage` | Match totals; `damage` is fractional |
-| `rounds[]` | Per-round detail: `map`, `twists[]`, `squadName`, `placedAt`, `dbnos`, `respawns`, `roundWon`, `partyMembers` |
-| `items[]` | Heterogeneous — some entries carry only `id` and `xp`, others add `kind`/`name`/`slug`/`damage`/`kills` |
-| `scorecard` | `assists`, `combat-score`, `elimination-streak`, `eliminations`, `kill-death-ratio`, `support` |
-| `roster[]` | Player names |
+| `roundId`, `matchId` | A match is one round, or several rounds sharing a `matchId` (ranked and tournament modes) |
+| `gameMode` | e.g. `QuickCash`, `PointBreak`, `Ranked`; sometimes absent |
+| `startedAt` / `endedAt` | ISO-8601 |
+| `kills`, `deaths`, `damage`, `placedAt`, `dbnos`, `respawns`, … | Optional per round |
+| `roundWon`, `tournamentWon` | A multi-round match counts as won only when `tournamentWon` is set |
+| `partyMembers` | Observed as a single object; the decoder also accepts an array |
+| `private` | Present on rounds the player hid: only ids, `mode` and timing — skipped |
 
-Decoder notes:
+SwiftBot groups rounds into matches (`FinalsIDPlayedMatch`): kills, deaths and damage summed across rounds, ranked when `gameMode` contains "Ranked", started at the earliest round.
 
-- `combat-score` is **not** SR and is never announced as such. The sample payload confirms this field exists and is a match statistic, which is why the rank decoder rejects it explicitly.
-- `partyMembers` has been observed as a single object; the decoder accepts either an object or an array.
-- `rounds`, `items`, `roster`, and `twists` decode as optional and surface as empty arrays, so a mode that omits one does not fail the whole response.
+## Other endpoints worth knowing
+
+- `GET /v1/profiles/{username}/sessions` — finals.id's own play sessions with match, win, ranked and kill totals. SwiftBot defines sessions from Discord presence instead, so it doesn't use this yet.
+- `GET /v1/profiles/{username}/rank-history` — SR over time; SwiftBot records its own readings for Analytics instead.
+
+## Polling behaviour
+
+- Game Tracker polls enabled profiles once daily at the configured local hour (9 AM by default), catching up immediately if SwiftBot starts after that hour.
+- The first successful result becomes a silent baseline; unchanged SR posts nothing; a season change resets the baseline silently.
+- Changed players are combined into one Discord embed. Baselines advance only after successful delivery.
+- Each successful reading is also recorded for the Analytics "Ranked progress" chart.
+- In SwiftMesh, only the Standalone or Primary runtime polls and sends.
 
 ## Play-session tracking
 
@@ -90,7 +78,7 @@ Independently of any provider, SwiftBot detects play sessions from Discord rich 
 - Sessions shorter than a minimum (default 5 minutes) are discarded silently.
 - After a settle delay (default 2 minutes) the provider is queried for the session's matches; a game with no stats provider still gets a duration-only summary labelled as presence-derived.
 
-This path needs `latestSession` capability and a rounds endpoint, but **no** ranked-score endpoint — so it can ship for finals.id before the SR contract is settled, and works for presence-only titles such as Call of Duty that have no usable public API.
+This path needs `latestSession` capability and a rounds endpoint, but **no** ranked-score endpoint, so it also works for presence-only titles such as Call of Duty that have no usable public API.
 
 ## Items finals.id still needs to confirm
 

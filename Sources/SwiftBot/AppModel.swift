@@ -304,6 +304,8 @@ final class AppModel: ObservableObject {
     lazy var commandProcessor = makeCommandProcessor()
     let voicePresenceStore = VoicePresenceStore()
     let voiceSessionStore = VoiceSessionStore()
+    /// Day totals behind the Analytics period views.
+    let communityStatsStore = CommunityStatsStore()
     /// Rewind's message archive (see AppModel+Rewind.swift). Kept out of
     /// `AnalyticsRuntimeStore` on purpose: that one rewrites its whole file per
     /// append, which does not survive message volume.
@@ -650,6 +652,7 @@ final class AppModel: ObservableObject {
             await voiceSessionStore.load()
             let analyticsRuntimeSnapshot = await analyticsRuntimeStore.load()
             restoreAnalyticsRuntime(analyticsRuntimeSnapshot)
+            await communityStatsStore.backfillIfNeeded(from: analyticsRuntimeSnapshot.commandLog)
             var loadedSettings = await store.load()
             let loadedMeshSettings = await swiftMeshConfigStore.load()
             let loadedMediaSettings = await mediaLibraryConfigStore.load()
@@ -1164,6 +1167,7 @@ final class AppModel: ObservableObject {
         uptime = nil
         await clearVoicePresence()
         await stopRewind()
+        await communityStatsStore.flush()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         lastGatewayEventName = "-"
@@ -1331,6 +1335,8 @@ final class AppModel: ObservableObject {
     func addCommandLogEntry(_ entry: CommandLogEntry) {
         commandLog.insert(entry, at: 0)
         persistAnalyticsRuntime()
+        let stats = communityStatsStore
+        Task { await stats.recordCommand(entry) }
     }
 
     func addVoiceLogEntry(_ entry: VoiceEventLogEntry) {

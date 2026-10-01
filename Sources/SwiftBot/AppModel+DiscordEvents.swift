@@ -40,6 +40,7 @@ extension AppModel {
     }
 
     func handleMemberJoin(_ event: GatewayMemberJoinEvent) async {
+        await communityStatsStore.recordMemberJoin()
         let hasRules = automationStore.rules.contains {
             $0.enabled && $0.trigger.kind == .memberJoined
         }
@@ -111,6 +112,7 @@ extension AppModel {
 
     func handleMemberLeave(_ event: GatewayMemberLeaveEvent) async {
         let now = Date()
+        await communityStatsStore.recordMemberLeave(at: now)
         let guildId = event.guildID
         let userId = event.userID
 
