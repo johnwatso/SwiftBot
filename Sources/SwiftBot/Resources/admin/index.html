@@ -5274,9 +5274,18 @@
 
     /* ---- Sweep ---- */
     .sweep-suggestions { display: grid; gap: 10px; }
-    #appShell .sweep-suggestion { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+    #appShell .sweep-suggestion { display: grid; gap: 12px; padding: 16px; }
+    .sweep-suggestion-head { display: flex; align-items: flex-start; gap: 12px; }
     .sweep-suggestion-text { flex: 1; min-width: 0; display: grid; gap: 4px; }
-    .sweep-suggestion-actions { display: flex; gap: 8px; flex: 0 0 auto; align-self: center; }
+    .sweep-suggestion-facts { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 48px; }
+    .sweep-fact {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; color: var(--muted); background: var(--ub-fill); border: 1px solid var(--ub-stroke);
+    }
+    .sweep-fact svg { width: 13px; height: 13px; }
+    .sweep-fact.is-impact { color: var(--text); font-weight: 600; }
+    .sweep-suggestion-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .sweep-suggestion-actions .sweep-dismiss { margin-right: auto; margin-left: 38px; }
     .sweep-wrap { white-space: normal !important; }
     .sweep-task { padding: 12px; border-radius: 12px; background: var(--ub-fill); margin-bottom: 10px; }
     .sweep-task-head { display: flex; align-items: center; gap: 10px; }
@@ -5293,8 +5302,8 @@
     .sweep-inline { display: flex; gap: 8px; }
     .sweep-report-stats { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
     @media (max-width: 640px) {
-      #appShell .sweep-suggestion { flex-wrap: wrap; }
-      .sweep-suggestion-actions { width: 100%; justify-content: flex-end; }
+      .sweep-suggestion-facts { padding-left: 0; }
+      .sweep-suggestion-actions .sweep-dismiss { margin-left: 0; }
       .sweep-report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     }
 
@@ -6240,7 +6249,7 @@
         case 'showSweepReportById':
           showSweepReportById(el.dataset.id, el.dataset.projection === 'true');
           break;
-        case 'applySweepSuggestion': applySweepSuggestion(el.dataset.id); break;
+        case 'reviewSweepSuggestion': reviewSweepSuggestion(el.dataset.id); break;
         case 'dismissSweepSuggestion': dismissSweepSuggestion(el.dataset.id); break;
         case 'previewSweepPolicy': previewSweepPolicy(el.dataset.id); break;
         case 'editSweepPolicy': openSweepPolicyEditor(el.dataset.id); break;
@@ -6896,15 +6905,15 @@
 
       const items = commandsCatalog.items || [];
       const on = items.filter(i => i.enabled).length;
-      const master = !!commandsCatalog.commandsEnabled;
-      const slash = !!commandsCatalog.slashCommandsEnabled;
+      // Every command is a slash command now, so the old "slash commands"
+      // setting is folded into the one switch: on only when both are on.
+      const master = !!commandsCatalog.commandsEnabled && !!commandsCatalog.slashCommandsEnabled;
       const watch = commandsCatalog.musicLinkWatch || {};
       const watchCount = (watch.channelIDs || []).length;
       const watchText = watch.isEnabled ? `${watchCount} ${watchCount === 1 ? 'channel' : 'channels'}` : 'Off';
 
       top.innerHTML = [
-        ubStatusCell(master ? `${on} of ${items.length} on` : 'Commands off', master ? 'Commands' : 'Nothing responds', master ? (on ? 'healthy' : 'warning') : 'critical'),
-        ubStatusCell(slash ? 'Slash commands on' : 'Slash commands off', slash ? 'Registered with Discord' : 'Not shown in Discord', slash ? 'healthy' : 'neutral')
+        ubStatusCell(master ? `${on} of ${items.length} on` : 'Commands off', master ? 'Registered with Discord' : 'Nothing shows in Discord’s / menu', master ? (on ? 'healthy' : 'warning') : 'critical')
       ].join('');
 
       const sw = (id, checked, extra = '') => `<label class="switch"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''} ${extra}><span class="switch-track"><span class="switch-knob"></span></span></label>`;
@@ -6913,17 +6922,12 @@
           <div class="ub-group-head"><h2>Settings</h2></div>
           <div class="ub-group-card glass">
             <div class="ub-row">
-              <div class="ub-row-text"><div class="ub-row-title">All commands</div><div class="ub-row-desc">Turn off to stop SwiftBot answering any command.</div></div>
+              <div class="ub-row-text"><div class="ub-row-title">Commands</div><div class="ub-row-desc">Turn off to remove every command from Discord’s / menu.</div></div>
               ${sw('cmdMaster', master)}
-            </div>
-            <div class="ub-row${master ? '' : ' is-dimmed'}">
-              <div class="ub-row-text"><div class="ub-row-title">Slash commands</div><div class="ub-row-desc">Shows commands in Discord’s / menu.</div></div>
-              ${sw('cmdSlash', slash, master ? '' : 'disabled')}
             </div>
           </div>
         </section>`;
-      settings.querySelector('#cmdMaster')?.addEventListener('change', (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      settings.querySelector('#cmdSlash')?.addEventListener('change', (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+      settings.querySelector('#cmdMaster')?.addEventListener('change', (e) => saveConfigPatch({ commandsEnabled: e.target.checked, slashCommandsEnabled: e.target.checked }));
       const search = commandsSearchText.trim().toLowerCase();
       const matches = items.filter(item => !search
         || item.name.toLowerCase().includes(search)
@@ -8036,6 +8040,134 @@
       await loadAutomations(category);
       renderAutomationsView(category);
       hideModal();
+      if (automationEditorState.isNew) offerAnnouncerFollowUps(rule, category).catch(() => {});
+    }
+
+    // Join/leave announcers come in sets. After creating one, offer the rest
+    // of its set and a Sweep rule for wherever the posts land (they pile up
+    // fast), in one dialog. Nothing is offered that already exists.
+    const ANNOUNCER_TRIGGERS = ['memberJoined', 'memberLeft', 'userJoinedVoice', 'userLeftVoice', 'userMovedVoice'];
+    const ANNOUNCER_TEMPLATE_SETS = [
+      ['voice-join-notify', 'voice-leave-notify', 'voice-move-notify'],
+      ['mod-voice-join-audit', 'mod-voice-leave-audit', 'mod-voice-move-audit'],
+      ['mod-member-join-audit', 'mod-member-leave-audit']
+    ];
+    const ANNOUNCER_VERBS = { userJoinedVoice: 'joins voice', userLeftVoice: 'leaves voice', userMovedVoice: 'switches voice channel', memberJoined: 'joins the server', memberLeft: 'leaves the server' };
+
+    async function offerAnnouncerFollowUps(rule, category) {
+      const triggerKind = rule.trigger?.kind;
+      if (!ANNOUNCER_TRIGGERS.includes(triggerKind)) return;
+      const isVoice = triggerKind.endsWith('Voice');
+      const data = automationData[category] || {};
+      const ctx = data.serverContext || {};
+      // Same default as AutomationService.defaultSendTarget: voice events post
+      // in the channel, member join/leave events DM the member.
+      const target = (step) => step.sendTarget || (isVoice ? 'sameChannel' : 'directMessage');
+      const posts = (rule.steps || []).filter(step => step.kind === 'sendMessage' && target(step) !== 'directMessage');
+      const stepKinds = new Set((rule.steps || []).map(step => step.kind));
+
+      // Companions: the rest of the matching set that no existing rule covers.
+      const templates = data.templates || [];
+      const set = ANNOUNCER_TEMPLATE_SETS
+        .map(ids => ids.map(id => templates.find(t => t.id === id)).filter(Boolean))
+        .find(list => list.some(t => t.rule?.trigger?.kind === triggerKind && (t.rule.steps || []).some(st => stepKinds.has(st.kind)))) || [];
+      const covered = (kind) => (data.rules || []).some(r => r.id !== rule.id && r.trigger?.kind === kind && (r.steps || []).some(st => stepKinds.has(st.kind)));
+      const companions = set.filter(t => t.rule.trigger.kind !== triggerKind && !covered(t.rule.trigger.kind));
+
+      // Sweep: where the messages land — a chosen channel, or the voice
+      // channel's own chat (narrowed by an "In a channel" filter if set).
+      let sweep = null;
+      if (posts.length) {
+        const specific = posts.map(step => target(step) === 'specificChannel' ? step.channelId : null).filter(Boolean);
+        const voiceFilter = (rule.filters || []).find(f => f.kind === 'inChannel')?.channelIds || [];
+        const candidates = [...new Set(specific.length ? specific : (isVoice ? voiceFilter : []))];
+        await loadSweep().catch(() => null);
+        const swept = new Set((sweepData?.policies || []).map(p => p.channelID));
+        const unswept = candidates.filter(id => !swept.has(id));
+        if (sweepData && (!candidates.length || unswept.length)) {
+          const channelID = unswept.length === 1 ? unswept[0] : '';
+          const channelName = [...(ctx.textChannels || []), ...(ctx.voiceChannels || [])].find(c => c.id === channelID)?.name || '';
+          const where = channelID
+            ? ((ctx.voiceChannels || []).some(c => c.id === channelID) ? `🔊 ${channelName}’s chat` : `#${channelName}`)
+            : (isVoice && !specific.length ? 'each voice channel’s chat' : 'that channel');
+          sweep = { channelID, channelName, where };
+        }
+      }
+      if (!companions.length && !sweep) return;
+
+      // Companions inherit where the new rule posts and which channels it watches.
+      const sourcePost = posts[0];
+      const inChannel = (rule.filters || []).find(f => f.kind === 'inChannel');
+      const buildCompanion = (template) => {
+        const companion = autoRuleFromTemplate(template, category);
+        if (sourcePost && target(sourcePost) === 'specificChannel') {
+          companion.steps = companion.steps.map(st => st.kind === 'sendMessage' ? { ...st, sendTarget: 'specificChannel', channelId: sourcePost.channelId } : st);
+        }
+        if (inChannel && isVoice && companion.trigger.kind.endsWith('Voice')) {
+          companion.filters = [...(companion.filters || []).filter(f => f.kind !== 'inChannel'), { ...structuredClone(inChannel), id: autoNewID() }];
+        }
+        return companion;
+      };
+
+      const toggle = (id, title, desc, checked = true) => `
+        <label class="ac-toggle"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''}>
+          <span class="ac-toggle-text"><span class="ac-toggle-title">${title}</span><span class="ac-toggle-desc">${desc}</span></span>
+        </label>`;
+      const covers = ANNOUNCER_VERBS[triggerKind];
+      showModal(companions.length ? 'Complete the set?' : 'Keep it tidy with Sweep?', `
+        ${companions.length ? `
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="layers"></i> Also add</h3>
+            <p class="ub-help" style="margin-top:0;"><strong>${escapeHTML(rule.name || 'This rule')}</strong> only runs when someone ${escapeHTML(covers)}.</p>
+            ${companions.map(t => toggle(`followUp-${t.id}`, escapeHTML(t.title), escapeHTML(t.subtitle))).join('')}
+          </div>` : ''}
+        ${sweep ? `
+          <div class="automation-editor-section">
+            <h3><i class="lucide" data-lucide="brush"></i> Keep it tidy</h3>
+            ${toggle('followUpSweep', 'Set up a Sweep rule', `These posts land in ${escapeHTML(sweep.where)} and pile up quickly on a busy server. Sweep can delete bot posts there once they’re a day old, checking hourly. You’ll review it${sweep.channelID ? '' : ' and pick the channel'} before it’s created.`, true)}
+          </div>` : ''}
+      `, `
+        <span id="followUpHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Not now</button>
+        <button id="followUpAccept" class="primary-action" type="button">Add</button>
+      `);
+      refreshIcons();
+
+      const accept = document.getElementById('followUpAccept');
+      const chosen = () => companions.filter(t => document.getElementById(`followUp-${t.id}`)?.checked);
+      const wantsSweep = () => !!document.getElementById('followUpSweep')?.checked;
+      const update = () => {
+        const n = chosen().length;
+        accept.textContent = n && wantsSweep() ? `Add ${n} & set up Sweep` : n ? `Add ${n} ${n === 1 ? 'rule' : 'rules'}` : wantsSweep() ? 'Set up Sweep' : 'Add';
+        accept.disabled = !n && !wantsSweep();
+      };
+      document.getElementById('modalBody').addEventListener('change', update);
+      update();
+
+      accept.addEventListener('click', async () => {
+        accept.disabled = true;
+        try {
+          for (const template of chosen()) {
+            await postJSON('/api/automations/upsert', { rule: buildCompanion(template) });
+          }
+          await loadAutomations(category);
+          renderAutomationsView(category);
+        } catch (error) {
+          accept.disabled = false;
+          document.getElementById('followUpHint').textContent = error.message || 'Could not add the rules.';
+          return;
+        }
+        if (!wantsSweep()) { hideModal(); return; }
+        const draft = newSweepPolicyDraft();
+        Object.assign(draft, {
+          name: 'Tidy join & leave posts',
+          guildID: ctx.guildId || draft.guildID, guildName: ctx.guildName || '',
+          channelID: sweep.channelID, channelName: sweep.channelName,
+          strategies: [{ id: autoNewID(), kind: 'compact', ageHours: 24, keepCount: 1, fromBotsOnly: true }],
+          schedule: { interval: { minutes: 60 } }
+        });
+        openSweepPolicyEditor(null, draft);
+      });
     }
 
     function renderAutomationEditorBody() {
@@ -9596,7 +9728,7 @@
         await loadSweep();
         renderSweepView();
       };
-      newButton.onclick = () => openSweepPolicyEditor(null);
+      newButton.onclick = () => openSweepNewRule();
 
       metrics.innerHTML = [
         ubStatusCell(escapeHTML(sweepData.state), sweepData.globalPaused ? 'Paused by an admin' : `${sweepData.enabledPolicyCount} of ${sweepData.totalPolicyCount} rules on`,
@@ -9617,20 +9749,35 @@
             <h2>Suggestions · ${escapeHTML(scanLabel)}</h2>
             <button id="sweepScan" class="secondary-action" type="button" ${scanning ? 'disabled' : ''}><i class="lucide" data-lucide="sparkles"></i> Scan channels</button>
           </div>
-          ${suggestions.length ? `<div class="sweep-suggestions">${suggestions.map(s => `
+          ${suggestions.length ? `<div class="sweep-suggestions">${suggestions.map(s => {
+            const kind = SWEEP_KINDS[s.strategyKind] || {};
+            const report = s.projection;
+            // The dry run already ran during the scan, so show what it found
+            // rather than the scanner's rough confidence score.
+            const impact = report
+              ? `Would tidy ${report.matched} of ${report.scanned} messages${report.suppressed ? ` · ${report.suppressed} protected` : ''}`
+              : `${s.evidenceCount} matching ${s.evidenceCount === 1 ? 'message' : 'messages'}`;
+            return `
             <div class="sweep-suggestion glass" data-suggestion-id="${escapeHTML(s.id)}">
-              <span class="ub-item-icon" style="--brand:#8b5cf6;"><i class="lucide" data-lucide="${SWEEP_KINDS[s.strategyKind]?.icon || 'sparkles'}"></i></span>
-              <div class="sweep-suggestion-text">
-                <div class="ub-item-title">${escapeHTML(s.title)} <span class="badge">${Math.round((s.confidence || 0) * 100)}% match</span></div>
-                <div class="ub-item-sub sweep-wrap">${escapeHTML(s.rationale)}</div>
-                <div class="ub-item-sub">#${escapeHTML(s.channelName)} · ${escapeHTML(sweepScheduleLabel(s.proposedSchedule))}</div>
+              <div class="sweep-suggestion-head">
+                <span class="ub-item-icon" style="--brand:#8b5cf6;"><i class="lucide" data-lucide="${kind.icon || 'sparkles'}"></i></span>
+                <div class="sweep-suggestion-text">
+                  <div class="ub-item-title sweep-wrap">${escapeHTML(s.title)}</div>
+                  <div class="ub-item-sub sweep-wrap">${escapeHTML(s.rationale)}</div>
+                </div>
+              </div>
+              <div class="sweep-suggestion-facts">
+                <span class="sweep-fact is-impact"><i class="lucide" data-lucide="${report ? 'eraser' : 'search'}"></i>${escapeHTML(impact)}</span>
+                <span class="sweep-fact"><i class="lucide" data-lucide="hash"></i>${escapeHTML(s.channelName)}</span>
+                <span class="sweep-fact"><i class="lucide" data-lucide="clock"></i>${escapeHTML(sweepScheduleLabel(s.proposedSchedule))}</span>
               </div>
               <div class="sweep-suggestion-actions">
-                ${s.projection ? '<button class="secondary-action" type="button" data-suggestion-preview>Try run</button>' : ''}
-                <button class="secondary-action" type="button" data-suggestion-dismiss>Dismiss</button>
-                <button class="primary-action" type="button" data-suggestion-apply>Apply</button>
+                <button class="cmd-row-link sweep-dismiss" type="button" data-suggestion-dismiss>Dismiss</button>
+                ${report ? '<button class="secondary-action" type="button" data-suggestion-preview><i class="lucide" data-lucide="eye"></i> Preview</button>' : ''}
+                <button class="primary-action" type="button" data-suggestion-review>Review</button>
               </div>
-            </div>`).join('')}</div>`
+            </div>`;
+          }).join('')}</div>`
           : `<div class="placeholder">${scanning ? 'Looking for channels that could use a tidy…' : 'No suggestions right now. Scan to look for noisy or duplicate-heavy channels.'}</div>`}
         </section>`;
       suggestionsNode.querySelector('#sweepScan')?.addEventListener('click', async (e) => {
@@ -9642,7 +9789,7 @@
       suggestionsNode.querySelectorAll('[data-suggestion-id]').forEach(card => {
         const id = card.dataset.suggestionId;
         card.querySelector('[data-suggestion-preview]')?.addEventListener('click', () => showSweepReportById(id, true));
-        card.querySelector('[data-suggestion-apply]')?.addEventListener('click', () => applySweepSuggestion(id));
+        card.querySelector('[data-suggestion-review]')?.addEventListener('click', () => reviewSweepSuggestion(id));
         card.querySelector('[data-suggestion-dismiss]')?.addEventListener('click', () => dismissSweepSuggestion(id));
       });
 
@@ -9727,6 +9874,78 @@
       };
     }
 
+    // Starting points for New Rule. Each fills in tasks and a schedule; the
+    // channel is always picked in the editor. `bots` covers webhooks too.
+    const SWEEP_TEMPLATE_GROUPS = [
+      { title: 'Bots, webhooks & feeds', items: [
+        { id: 'trim-webhooks', title: 'Trim webhook & bot posts', sub: 'Delete bot and webhook posts older than a day. People’s messages stay.', icon: 'webhook', tint: '#0a84ff',
+          tasks: [{ kind: 'compact', ageHours: 24, fromBotsOnly: true }], schedule: { interval: { minutes: 60 } } },
+        { id: 'notification-channel', title: 'Clean a notification channel', sub: 'Remove repeats, then bot posts older than two days.', icon: 'bell-ring', tint: '#0a84ff',
+          tasks: [{ kind: 'reduceNoise', ageHours: 48 }], schedule: { interval: { minutes: 120 } } },
+        { id: 'latest-feed-post', title: 'Keep only the latest post', sub: 'For status or patch-note feeds where only the newest matters.', icon: 'list-ordered', tint: '#0a84ff',
+          tasks: [{ kind: 'keepLatest', keepCount: 1 }], schedule: { interval: { minutes: 180 } } },
+        { id: 'feed-repeats', title: 'Remove repeated feed posts', sub: 'Delete duplicate announcements, keeping the freshest copy.', icon: 'copy', tint: '#0a84ff',
+          tasks: [{ kind: 'deduplicate', ageHours: 24 }], schedule: { interval: { minutes: 60 } } },
+        { id: 'weekly-bot-clearout', title: 'Weekly bot clear-out', sub: 'Every night, delete bot and webhook posts older than a week.', icon: 'bot', tint: '#0a84ff',
+          tasks: [{ kind: 'compact', ageHours: 168, fromBotsOnly: true }], schedule: { daily: { hour: 4 } } }
+      ] },
+      { title: 'Chat channels', items: [
+        { id: 'reposted-links', title: 'Remove reposted links', sub: 'Delete messages that repeat something posted in the last week.', icon: 'link', tint: '#30d158',
+          tasks: [{ kind: 'deduplicate', ageHours: 168 }], schedule: { interval: { minutes: 120 } } },
+        { id: 'rolling-week', title: 'Keep a rolling week', sub: 'Every night, delete messages older than seven days.', icon: 'calendar-days', tint: '#30d158',
+          tasks: [{ kind: 'compact', ageHours: 168, fromBotsOnly: false }], schedule: { daily: { hour: 4 } } },
+        { id: 'rolling-month', title: 'Keep a rolling month', sub: 'Every night, delete messages older than 30 days.', icon: 'calendar', tint: '#30d158',
+          tasks: [{ kind: 'compact', ageHours: 720, fromBotsOnly: false }], schedule: { daily: { hour: 4 } } },
+        { id: 'last-50', title: 'Keep the last 50 messages', sub: 'Hourly, delete everything older than the newest 50.', icon: 'message-square', tint: '#30d158',
+          tasks: [{ kind: 'keepLatest', keepCount: 50 }], schedule: { interval: { minutes: 60 } } }
+      ] },
+      { title: 'Temporary channels', items: [
+        { id: 'bot-commands', title: 'Bot command channel', sub: 'Every 30 minutes, delete anything older than an hour.', icon: 'terminal', tint: '#ff9f0a',
+          tasks: [{ kind: 'compact', ageHours: 1, fromBotsOnly: false }], schedule: { interval: { minutes: 30 } } },
+        { id: 'looking-for-group', title: 'Looking-for-group posts', sub: 'Clear LFG posts once they’re six hours old.', icon: 'users', tint: '#ff9f0a',
+          tasks: [{ kind: 'compact', ageHours: 6, fromBotsOnly: false }], schedule: { interval: { minutes: 30 } } },
+        { id: 'nightly-reset', title: 'Nightly reset', sub: 'Clear the whole channel at 5am. Pinned and reacted messages are kept.', icon: 'rotate-ccw', tint: '#ff453a',
+          tasks: [{ kind: 'clearAll' }], schedule: { daily: { hour: 5 } } }
+      ] },
+      { title: 'Threads & digests', items: [
+        { id: 'archive-threads', title: 'Archive quiet threads', sub: 'Collapse threads nobody has posted in for three days.', icon: 'archive', tint: '#bf5af2',
+          tasks: [{ kind: 'archive', ageHours: 72 }], schedule: { daily: { hour: 4 } } },
+        { id: 'daily-digest', title: 'Daily AI digest', sub: 'Write an on-device summary into the run report. Discord isn’t touched.', icon: 'sparkles', tint: '#bf5af2',
+          tasks: [{ kind: 'summarise' }], schedule: { daily: { hour: 9 } } }
+      ] }
+    ];
+
+    function openSweepNewRule() {
+      const tile = (t) => `
+        <button class="ub-tile" type="button" data-sweep-template="${escapeHTML(t.id)}">
+          <span class="ub-item-icon" style="--brand:${t.tint};"><i class="lucide" data-lucide="${t.icon}"></i></span>
+          <span class="ub-tile-text"><span class="ub-tile-title">${escapeHTML(t.title)}</span><span class="ub-tile-sub">${escapeHTML(t.sub)}</span></span>
+        </button>`;
+      showModal('New Sweep rule', `
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="layout-grid"></i> Start from</h3>
+          <div class="ub-tile-grid">
+            <button class="ub-tile" type="button" data-sweep-template="">
+              <span class="ub-item-icon" style="--brand:#8e8e93;"><i class="lucide" data-lucide="plus"></i></span>
+              <span class="ub-tile-text"><span class="ub-tile-title">Blank rule</span><span class="ub-tile-sub">Choose tasks and a schedule yourself</span></span>
+            </button>
+          </div>
+          ${SWEEP_TEMPLATE_GROUPS.map(g => `<div class="ub-tile-group-title">${escapeHTML(g.title)}</div><div class="ub-tile-grid">${g.items.map(tile).join('')}</div>`).join('')}
+          <div class="ub-help">Every template can be changed before it’s created, and <strong>Try run</strong> shows what it would delete first.</div>
+        </div>
+      `, '<button class="secondary-action" type="button" data-action="hideModal">Cancel</button>', { wide: true });
+      document.querySelectorAll('#modalBody [data-sweep-template]').forEach(btn => btn.addEventListener('click', () => {
+        const template = SWEEP_TEMPLATE_GROUPS.flatMap(g => g.items).find(t => t.id === btn.dataset.sweepTemplate);
+        if (!template) { openSweepPolicyEditor(null); return; }
+        const draft = newSweepPolicyDraft();
+        draft.name = template.title;
+        draft.strategies = template.tasks.map(task => ({ id: autoNewID(), ageHours: 24, keepCount: 1, fromBotsOnly: false, ...task }));
+        draft.schedule = structuredClone(template.schedule);
+        openSweepPolicyEditor(null, draft);
+      }));
+      refreshIcons();
+    }
+
     // `resumeDraft` reopens the editor with unsaved edits (after a Try run).
     function openSweepPolicyEditor(policyID, resumeDraft = null) {
       const existing = policyID ? sweepData?.policies?.find(item => item.id === policyID) : null;
@@ -9758,7 +9977,8 @@
       const finalize = () => {
         readSweepEditorInto(draft);
         const server = (sweepData.servers || []).find(s => s.id === draft.guildID);
-        const channel = (sweepData.textChannelsByServer?.[draft.guildID] || []).find(c => c.id === draft.channelID);
+        const channel = [...(sweepData.textChannelsByServer?.[draft.guildID] || []), ...(sweepData.voiceChannelsByServer?.[draft.guildID] || [])]
+          .find(c => c.id === draft.channelID);
         return {
           ...draft,
           name: draft.name.trim() || `Tidy #${channel?.name || 'channel'}`,
@@ -9796,7 +10016,11 @@
         if (sweepEditorIssue(draft)) return;
         e.currentTarget.disabled = true;
         try {
-          await postJSON('/api/sweep/policy/update', finalize());
+          const saved = finalize();
+          const suggestionChannel = saved.fromSuggestionChannelID;
+          delete saved.fromSuggestionChannelID;
+          await postJSON('/api/sweep/policy/update', saved);
+          if (suggestionChannel) await clearSweepSuggestionsForChannel(suggestionChannel);
           await loadSweep();
           renderSweepView();
           hideModal();
@@ -9841,6 +10065,7 @@
 
       const servers = sweepData.servers || [];
       const channels = sweepData.textChannelsByServer?.[draft.guildID] || [];
+      const voiceChannels = sweepData.voiceChannelsByServer?.[draft.guildID] || [];
       const scheduleKind = draft.schedule?.interval ? 'interval' : (draft.schedule?.daily ? 'daily' : 'manual');
 
       const tasks = (draft.strategies || []).map((strategy, i) => {
@@ -9869,7 +10094,9 @@
       root.innerHTML = `
         ${section('hash', 'Channel',
           row('Server', `<select id="seGuild" class="field-select">${servers.map(s => `<option value="${escapeHTML(s.id)}" ${s.id === draft.guildID ? 'selected' : ''}>${escapeHTML(s.name)}</option>`).join('')}</select>`)
-          + row('Channel', `<select id="seChannel" class="field-select"><option value="">Select a channel</option>${channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>`)
+          + row('Channel', `<select id="seChannel" class="field-select"><option value="">Select a channel</option>${
+              voiceChannels.length ? `<optgroup label="Text channels">` : ''}${channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}${
+              voiceChannels.length ? `</optgroup><optgroup label="Voice channel chats">${voiceChannels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.channelID ? 'selected' : ''}>🔊 ${escapeHTML(c.name)}</option>`).join('')}</optgroup>` : ''}</select>`)
           + row('Rule name', `<input id="seName" class="field-input" value="${escapeHTML(draft.name)}" placeholder="Defaults to “Tidy #channel”">`))}
         ${section('list-checks', 'Tasks', `${tasks}<div class="wiki-actions"><button id="seAddTask" class="secondary-action" type="button"><i class="lucide" data-lucide="plus"></i> Add task</button></div>`)}
         ${section('calendar-clock', 'Schedule',
@@ -10014,11 +10241,27 @@
       renderSweepView();
     }
 
-    async function applySweepSuggestion(id) {
-      await postJSON('/api/sweep/suggestions/apply', { suggestionID: id });
-      setMessage('Rule added from suggestion.', 'success');
-      await loadSweep();
-      renderSweepView();
+    // Opens the normal rule editor pre-filled from a suggestion, so the
+    // channel, schedule and safety rails can be checked before anything is
+    // created. Saving clears that channel's suggestions, like the app does.
+    function reviewSweepSuggestion(id) {
+      const suggestion = (sweepData.suggestions || []).find(s => s.id === id);
+      if (!suggestion) return;
+      const draft = newSweepPolicyDraft();
+      Object.assign(draft, {
+        name: `${SWEEP_KINDS[suggestion.strategyKind]?.label || 'Tidy'} · #${suggestion.channelName}`,
+        guildID: suggestion.guildID, guildName: suggestion.guildName,
+        channelID: suggestion.channelID, channelName: suggestion.channelName,
+        strategies: [{ ...structuredClone(suggestion.proposedStrategy), id: autoNewID() }],
+        schedule: structuredClone(suggestion.proposedSchedule)
+      });
+      draft.fromSuggestionChannelID = suggestion.channelID;
+      openSweepPolicyEditor(null, draft);
+    }
+
+    async function clearSweepSuggestionsForChannel(channelID) {
+      const ids = (sweepData.suggestions || []).filter(s => s.channelID === channelID).map(s => s.id);
+      await Promise.all(ids.map(id => postJSON('/api/sweep/suggestions/dismiss', { suggestionID: id }).catch(() => {})));
     }
 
     async function dismissSweepSuggestion(id) {
@@ -11624,8 +11867,7 @@
             </div>
           `)}
           ${group('Commands', `
-            ${switchRow('setCmdEnabled', 'Command system', 'Master switch for every command.', cfg.commands.enabled)}
-            ${switchRow('setCmdSlash', 'Slash commands', 'Show commands in Discord’s / menu.', cfg.commands.slashEnabled)}
+            ${switchRow('setCmdEnabled', 'Commands', 'Turn off to remove every command from Discord’s / menu.', cfg.commands.enabled && cfg.commands.slashEnabled)}
             ${switchRow('setCmdBug', 'Bug tracking', 'Capture bug reports when the bot is mentioned.', cfg.commands.bugTrackingEnabled)}
           `)}
           ${group('Features', `
@@ -11649,8 +11891,7 @@
       `;
 
       panels.querySelector('#setAutoStart')?.addEventListener('change', e => saveConfigPatch({ autoStart: e.target.checked }));
-      panels.querySelector('#setCmdEnabled')?.addEventListener('change', e => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      panels.querySelector('#setCmdSlash')?.addEventListener('change', e => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+      panels.querySelector('#setCmdEnabled')?.addEventListener('change', e => saveConfigPatch({ commandsEnabled: e.target.checked, slashCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       panels.querySelector('#setSwiftMinerEnabled')?.addEventListener('change', e => saveConfigPatch({ swiftMinerEnabled: e.target.checked }));
       panels.querySelectorAll('[data-settings-link]').forEach(row => row.addEventListener('click', () => selectView(row.dataset.settingsLink)));

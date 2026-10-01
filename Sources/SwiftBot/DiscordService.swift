@@ -1220,6 +1220,9 @@ actor DiscordService {
             if case let .string(value)? = author["username"] { authorName = value }
             if case let .bool(value)? = author["bot"] { isBot = value }
         }
+        // Webhook posts (feeds, integrations) count as bot posts, so Sweep's
+        // "bots only" option covers them whatever the author flag says.
+        if case .string? = raw["webhook_id"] { isBot = true }
 
         return SweepFetchedMessage(
             id: id,

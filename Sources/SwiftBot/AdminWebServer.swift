@@ -260,6 +260,9 @@ struct AdminWebSweepPayload: Codable {
     let scanProgressTotal: Int
     let servers: [AdminWebSimpleOption]
     let textChannelsByServer: [String: [AdminWebSimpleOption]]
+    /// Voice channels have their own text chat, where join/leave
+    /// announcements land, so Sweep can tidy those too.
+    var voiceChannelsByServer: [String: [AdminWebSimpleOption]] = [:]
 }
 
 struct AdminWebGameTrackerPlayerPayload: Codable {

@@ -526,7 +526,8 @@ const sweep = {
     projection: sweepReport('a7a7a7a7-0000-4000-8000-0000000000c1', 'a7a7a7a7-0000-4000-8000-000000000001', 'Suggested: deduplicate', 600, { dryRun: true })
   }],
   isScanningSuggestions: false, lastSuggestionScanAt: minutesAgo(600),
-  scanProgressDone: 0, scanProgressTotal: 0, servers: serverOptions, textChannelsByServer: textByServer
+  scanProgressDone: 0, scanProgressTotal: 0, servers: serverOptions, textChannelsByServer: textByServer,
+  voiceChannelsByServer: Object.fromEntries(Object.entries(voiceChannelsByServer).map(([id, list]) => [id, list.map(c => ({ id: c.id, name: c.name }))]))
 };
 
 const gametracker = {

@@ -3295,6 +3295,11 @@ extension AppModel {
                         (serverID, (availableTextChannelsByServer[serverID] ?? [])
                             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                             .map { AdminWebSimpleOption(id: $0.id, name: $0.name) })
+                    }),
+                    voiceChannelsByServer: Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+                        (serverID, (availableVoiceChannelsByServer[serverID] ?? [])
+                            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                            .map { AdminWebSimpleOption(id: $0.id, name: $0.name) })
                     })
                 )
             }
