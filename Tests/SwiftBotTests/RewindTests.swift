@@ -137,6 +137,126 @@ final class RewindTests: XCTestCase {
         XCTAssertEqual(unfiltered.topWords.first?.term, "the")
     }
 
+    func testTopListsDropNumbersLaughterAndGrammarPhrases() async {
+        let store = makeStore()
+        let day = Date(timeIntervalSince1970: 1_767_225_600)
+
+        await store.record(message(id: "1", author: "john", text: "haha i think 6 gg guys finals push", at: day), retainContent: true)
+        await store.record(message(id: "2", author: "max", text: "hahaha in the finals push 1 lol", at: day), retainContent: true)
+        await store.flush()
+
+        let summary = await store.yearSummary(guildID: "guild-1", year: 2026, filterStopWords: true)
+        XCTAssertEqual(summary.topWords.map(\.term), ["finals", "push", "gg", "guys"])
+        XCTAssertEqual(summary.topBigrams.map(\.term), ["finals push", "gg guys", "guys finals"])
+    }
+
+    func testReplayWordsRankWhatSetThePeriodApartNotWhatIsAlwaysSaid() async {
+        let store = makeStore()
+        let day: TimeInterval = 86_400
+        let lastYear = Date(timeIntervalSince1970: 1_735_732_800) // 2025-01-01 12:00 UTC
+        let thisYear = Date(timeIntervalSince1970: 1_767_268_800) // 2026-01-01 12:00 UTC
+
+        // A year of history: "squad" is everyday talk on this server.
+        for index in 0..<40 {
+            await store.record(message(id: "old-\(index)", author: "john", text: "squad squad squad online", at: lastYear.addingTimeInterval(Double(index) * day)), retainContent: false)
+        }
+        // This year: still lots of "squad", but "finals" is what's new, and
+        // one afternoon of "spam" shouldn't define the year.
+        for index in 0..<10 {
+            await store.record(message(id: "new-\(index)", author: "max", text: "squad squad squad squad finals finals", at: thisYear.addingTimeInterval(Double(index) * day)), retainContent: false)
+        }
+        await store.record(message(id: "spam", author: "max", text: Array(repeating: "spam", count: 40).joined(separator: " "), at: thisYear), retainContent: false)
+        await store.flush()
+
+        let summary = await store.rangeSummary(
+            guildID: "guild-1",
+            start: thisYear.addingTimeInterval(-3_600),
+            end: thisYear.addingTimeInterval(20 * day),
+            buckets: [],
+            excludingUsers: [],
+            filterStopWords: true
+        )
+
+        XCTAssertTrue(summary.termsAreDistinctive)
+        XCTAssertEqual(summary.topWords.first?.term, "finals")
+        XCTAssertEqual(summary.topWords.first?.baselineCount, 0)
+        XCTAssertFalse(summary.topWords.contains { $0.term == "squad" })
+        XCTAssertFalse(summary.topWords.contains { $0.term == "spam" })
+        XCTAssertFalse(summary.topWords.contains { $0.term == "online" })
+    }
+
+    func testReplayWordsFallBackToFrequencyWithoutHistory() async {
+        let store = makeStore()
+        let day = Date(timeIntervalSince1970: 1_767_268_800)
+        await store.record(message(id: "1", author: "john", text: "squad squad finals", at: day), retainContent: false)
+        await store.flush()
+
+        let summary = await store.rangeSummary(
+            guildID: "guild-1", start: day.addingTimeInterval(-3_600), end: day.addingTimeInterval(3_600),
+            buckets: [], excludingUsers: [], filterStopWords: true
+        )
+
+        XCTAssertFalse(summary.termsAreDistinctive)
+        XCTAssertEqual(summary.topWords.map(\.term), ["squad", "finals"])
+    }
+
+    func testSignaturesFindWhatEachMemberSaysMoreThanEveryoneElse() async {
+        let store = makeStore()
+        let start = Date(timeIntervalSince1970: 1_767_268_800) // 2026-01-01 12:00 UTC
+        let filler = "squad online tonight ranked patch stream"
+
+        for index in 0..<20 {
+            let at = start.addingTimeInterval(Double(index) * 86_400)
+            await store.record(message(id: "m\(index)", author: "max", text: "cashout cashout \(filler) \(filler)", at: at), retainContent: true)
+            await store.record(message(id: "j\(index)", author: "john", text: "vault \(filler) \(filler) \(filler)", at: at), retainContent: true)
+            await store.record(message(id: "s\(index)", author: "sam", text: "\(filler) \(filler) \(filler) \(filler)", at: at), retainContent: true)
+        }
+        await store.flush()
+
+        let signatures = await store.signatures(
+            guildID: "guild-1", userIDs: ["max", "john", "sam"],
+            start: start.addingTimeInterval(-3_600), end: start.addingTimeInterval(30 * 86_400)
+        )
+
+        XCTAssertEqual(signatures["max"]?.words.first?.term, "cashout")
+        XCTAssertEqual(signatures["max"]?.words.first?.baselineCount, 0)
+        XCTAssertEqual(signatures["john"]?.words.first?.term, "vault")
+        // Sam only says what everyone says, so has nothing of their own.
+        XCTAssertNil(signatures["sam"])
+    }
+
+    func testSignaturesNeedMessageText() async {
+        let store = makeStore()
+        let start = Date(timeIntervalSince1970: 1_767_268_800)
+        for index in 0..<200 {
+            await store.record(message(id: "m\(index)", author: "max", text: "cashout squad", at: start), retainContent: false)
+        }
+        await store.flush()
+
+        let signatures = await store.signatures(guildID: "guild-1", userIDs: ["max"], start: start.addingTimeInterval(-60), end: start.addingTimeInterval(60))
+        XCTAssertTrue(signatures.isEmpty)
+    }
+
+    func testNotableWordsSkipLaughterButKeepRealWords() {
+        for word in ["haha", "hahahaha", "hehe", "lol", "lmao", "xd", "i'm", "im", "6", "2026", "k"] {
+            XCTAssertFalse(RewindTokenizer.isNotable(word: word), word)
+        }
+        for word in ["gg", "gabe", "finals", "hello", "haven", "ohio"] {
+            XCTAssertTrue(RewindTokenizer.isNotable(word: word), word)
+        }
+    }
+
+    @MainActor
+    func testReplayDurationRollsUpIntoDaysMonthsAndYears() {
+        XCTAssertEqual(AppModel.replayDuration(0), "0m")
+        XCTAssertEqual(AppModel.replayDuration(45 * 60), "45m")
+        XCTAssertEqual(AppModel.replayDuration(3 * 3_600 + 120), "3h 2m")
+        XCTAssertEqual(AppModel.replayDuration(511 * 3_600 + 7 * 60), "21d 7h")
+        XCTAssertEqual(AppModel.replayDuration(5_000 * 3_600), "6mo 28d")
+        XCTAssertEqual(AppModel.replayDuration(400 * 86_400), "1y 1mo")
+        XCTAssertEqual(AppModel.replayDuration(2 * 86_400), "2d")
+    }
+
     func testImportSkipsMessagesAlreadyStored() async {
         let store = makeStore()
         let day = Date(timeIntervalSince1970: 1_767_225_600)

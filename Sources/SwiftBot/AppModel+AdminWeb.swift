@@ -2589,6 +2589,12 @@ extension AppModel {
                 await MainActor.run { model.logs.append(message) }
             }
         )
+        await adminWebServer.setGameProviderCredentialUpdater { [weak self] providerRaw, token in
+            guard let model = self, let providerID = GameProviderID(rawValue: providerRaw) else {
+                return GameProviderCredentialResult.unsupported.rawValue
+            }
+            return await model.setGameProviderCredential(token, for: providerID).rawValue
+        }
         await adminWebServer.setAuditLogger { [weak self] source, actor, action, detail, level in
             guard let model = self else { return }
             let parsedSource: AuditLogEntry.Source = {
@@ -3751,7 +3757,12 @@ extension AppModel {
                     metrics: GameMetricID.allCases.filter { supported.contains($0) }.map {
                         .init(id: $0.rawValue, displayName: $0.displayName, canTrigger: $0.canTriggerAnnouncement)
                     },
-                    isConfigured: descriptor.map { settings.gameProviders[provider].configurationIssue(for: $0) == nil } ?? false
+                    isConfigured: descriptor.map { settings.gameProviders[provider].configurationIssue(for: $0) == nil } ?? false,
+                    credentialLabel: descriptor?.auth.credentialLabel ?? "API Key",
+                    hasCredential: settings.gameProviders[provider].hasCredential,
+                    credentialHint: settings.gameProviders[provider].credentialHint,
+                    credentialUpdatedAt: settings.gameProviders[provider].credentialUpdatedAt,
+                    issue: descriptor.flatMap { settings.gameProviders[provider].issue(for: $0)?.message(for: $0) }
                 )
             }
         )

@@ -591,6 +591,35 @@ extension AppModel {
         configurePatchyMonitoring()
         await configureAdminWebServer()
         await refreshAIStatus()
+        await pullGameProviderCredentialsIfNeeded()
+    }
+
+    /// Standby: copy the Primary's Game Tracker credentials into this node's
+    /// Keychain, so tracking keeps working after a failover. Runs once after
+    /// launch and again whenever a credential's `credentialUpdatedAt` changes
+    /// in the synced settings, never on every routine sync.
+    func pullGameProviderCredentialsIfNeeded() async {
+        guard settings.clusterMode == .standby else { return }
+        var revisions: [GameProviderID: Date] = [:]
+        for id in GameProviderID.allCases {
+            revisions[id] = settings.gameProviders[id].credentialUpdatedAt
+        }
+        guard pulledGameProviderCredentialRevisions != revisions else { return }
+        guard let tokens = await cluster.fetchGameProviderCredentials() else { return }
+
+        var changed = false
+        for id in GameProviderID.allCases {
+            let pulled = (tokens[id.rawValue] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if settings.gameProviders.token(for: id) != pulled {
+                settings.gameProviders.setToken(pulled, for: id)
+                changed = true
+            }
+        }
+        pulledGameProviderCredentialRevisions = revisions
+        guard changed else { return }
+        saveSettings()
+        configureGameTrackingMonitoring()
+        logs.append("[INFO] SwiftMesh pulled Game Tracker API keys from Primary.")
     }
 
     func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, leaderPort: Int, listenPort: Int, sharedSecret: String) async {

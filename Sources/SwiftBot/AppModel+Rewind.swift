@@ -17,7 +17,11 @@ extension AppModel {
 
         let settings = self.settings.rewind
         guard settings.collects(channelID: event.channelID) else { return }
-        guard settings.collects(userID: event.userID, isBot: event.isBot) else { return }
+        // Webhook posts (release feeds, integrations) count as bot posts, as
+        // they do for Sweep, so they stay out of word counts and leaderboards.
+        var isBot = event.isBot
+        if case .string? = event.rawMap["webhook_id"] { isBot = true }
+        guard settings.collects(userID: event.userID, isBot: isBot) else { return }
 
         // Nothing to count and nothing to store — an attachment-only post.
         guard !event.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -29,7 +33,7 @@ extension AppModel {
             channelID: event.channelID,
             authorID: event.userID,
             authorName: authorName,
-            isBot: event.isBot,
+            isBot: isBot,
             content: event.content,
             // Snowflake rather than the payload's `timestamp` string, so live
             // ingest and the REST backfill derive the date the same way.

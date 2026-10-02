@@ -240,6 +240,10 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
     /// `{playerID}` is replaced with a percent-encoded player identifier at
     /// request time. Unused by providers that do not advertise `.rankedScore`.
     var rankEndpointTemplate: String = ""
+    /// When the credential was last set or removed. Not secret, so it travels
+    /// in settings.json: a SwiftMesh Standby compares it with what it last
+    /// pulled to know when to fetch the credential again.
+    var credentialUpdatedAt: Date?
 
     func resolvedBaseURL(for descriptor: GameProviderDescriptor) -> String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -269,6 +273,14 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
     /// credentialled is not the same as being usable — see `issue(for:)`.
     var hasCredential: Bool {
         !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The last four characters, so the WebUI can say which key is in use
+    /// without ever sending it. Nil for a credential too short to hint at.
+    var credentialHint: String? {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 12 else { return nil }
+        return String(trimmed.suffix(4))
     }
 
     /// `nil` when this connection is usable for the given provider. Typed so
@@ -301,6 +313,19 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         token = token.trimmingCharacters(in: .whitespacesAndNewlines)
         rankEndpointTemplate = rankEndpointTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+/// What happened to a credential entered in the WebUI.
+enum GameProviderCredentialResult: String, Sendable {
+    case saved
+    /// The provider answered 401: the key is wrong or revoked.
+    case rejected
+    /// No usable answer (offline, rate limited, 5xx). Nothing was saved.
+    case unreachable
+    /// The base URL or endpoint contract is broken; fix it in the Mac app.
+    case misconfigured
+    case invalid
+    case unsupported
 }
 
 /// Provider connections keyed by provider id. Backed by raw-value string keys so

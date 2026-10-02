@@ -5365,6 +5365,10 @@
     /* Content spans the page like the header above it. */
     #appShell .gt-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
     #appShell .gt-shell .ub-row-text { min-width: 0; }
+    .gt-conn-title { display: flex; align-items: center; gap: 8px; }
+    .gt-conn-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .gt-key-field { display: flex; gap: 8px; align-items: center; }
+    .gt-key-field input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     #appShell .gt-notices { display: grid; gap: 10px; margin-bottom: 18px; }
     .ub-notice { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; font-size: 13px; line-height: 1.45; }
     .ub-notice > svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; color: var(--notice); }
@@ -5584,6 +5588,8 @@
     .rw-hl-value { font-size: 17px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .rw-hl-sub { font-size: 12px; color: var(--muted); }
     .rw-hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+    .rw-sig { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 6px; font-style: italic; }
+    .rw-me-words { display: grid; gap: 6px; margin-top: 12px; }
     .rw-clickable { cursor: pointer; border-radius: 10px; }
     .rw-clickable:hover .ub-item-title { color: var(--accent, #0a84ff); }
     .rw-clickable:focus-visible { outline: 2px solid var(--ub-focus, rgba(10,132,255,0.5)); }
@@ -6448,6 +6454,7 @@
 
           <div id="gametrackerNotice" class="hidden gt-notices"></div>
           <div class="gt-shell">
+            <div id="gametrackerConnections"></div>
             <div id="gametrackerPlayers"></div>
             <div id="gametrackerAutomation"></div>
             <div id="gametrackerHistory"></div>
@@ -8700,6 +8707,20 @@
       return `${scaled.toFixed(1)} ${units[unit]}`;
     }
 
+    // Replay durations use the two largest units ("21d 7h", "6mo 26d") so a
+    // year of voice doesn't read as "5110h". Same rule as
+    // AppModel.replayDuration, which formats the Discord recaps.
+    function rwDuration(seconds) {
+      const minutes = Math.floor(Math.max(0, seconds || 0) / 60);
+      const hours = Math.floor(minutes / 60), days = Math.floor(hours / 24);
+      const pair = (major, mu, minor, nu) => minor > 0 ? `${major}${mu} ${minor}${nu}` : `${major}${mu}`;
+      if (days >= 365) return pair(Math.floor(days / 365), 'y', Math.floor((days % 365) / 30), 'mo');
+      if (days >= 30) return pair(Math.floor(days / 30), 'mo', days % 30, 'd');
+      if (days >= 1) return pair(days, 'd', hours % 24, 'h');
+      if (hours >= 1) return pair(hours, 'h', minutes % 60, 'm');
+      return `${Math.max(minutes, seconds > 0 ? 1 : 0)}m`;
+    }
+
     // ---- Rewind & Replay -------------------------------------------------
     // dashboardRewind (/api/rewind) carries archive status; the Replay for the
     // chosen server and period comes from /api/rewind/replay.
@@ -8731,6 +8752,12 @@
       if (!key) return '';
       const [y, m, d] = key.split('-').map(Number);
       return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    // A day with its year, for spans that can cover several years.
+    function rwDate(key) {
+      if (!key) return '';
+      const [y, m, d] = key.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
     }
     const rwHour = (h) => `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`;
 
@@ -8770,7 +8797,7 @@
           <div class="ub-group-head"><h2>Archive</h2></div>
           <div class="ub-group-card glass">
             <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Collecting</div><div class="ub-row-desc">${data.isEnabled ? (data.retainsContent ? 'Counting messages and keeping their text for phrase search' : 'Counting messages only (text isn’t kept)') : 'Off'}</div></div><span class="ub-row-value"><span class="ops-dot" data-state="${data.isEnabled ? 'healthy' : 'neutral'}"></span> ${data.isEnabled ? 'On' : 'Off'}</span></div>
-            <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Messages archived</div><div class="ub-row-desc">${data.earliestDay ? `${escapeHTML(rwDay(data.earliestDay))} → ${escapeHTML(rwDay(data.latestDay))}` : 'Nothing yet'}</div></div><span class="ub-row-value">${Number(data.messageCount || 0).toLocaleString()}</span></div>
+            <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Messages archived</div><div class="ub-row-desc">${data.earliestDay ? `${escapeHTML(rwDate(data.earliestDay))} → ${escapeHTML(rwDate(data.latestDay))}` : 'Nothing yet'}</div></div><span class="ub-row-value">${Number(data.messageCount || 0).toLocaleString()}</span></div>
             <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">On disk</div><div class="ub-row-desc">Message text kept ${data.retentionDays ? `for ${data.retentionDays} days` : 'forever'}</div></div><span class="ub-row-value">${rewindBytes(data.diskBytes)}</span></div>
           </div>
           <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Turning Rewind on, what it keeps and ignored channels are set in the SwiftBot app on the Mac, on purpose: a message archive shouldn’t be switched on remotely.</p>
@@ -8799,19 +8826,20 @@
         return `<div class="ub-list glass">${items.map((item, i) => `
           <div class="ub-item an-rank${clickable && item.id ? ' rw-clickable' : ''}" ${clickable && item.id ? `data-member="${escapeHTML(item.id)}" role="button" tabindex="0"` : ''}>
             <span class="an-rank-n">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
-            <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(item.title)}</span><span class="an-bar"><span style="width:${Math.max(4, Math.round(item.count / max * 100))}%;"></span></span></span>
+            <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(item.title)}${item.signature ? `<span class="rw-sig" title="Says this far more than anyone else">“${escapeHTML(item.signature)}”</span>` : ''}</span><span class="an-bar"><span style="width:${Math.max(4, Math.round(item.count / max * 100))}%;"></span></span></span>
             <span class="an-rank-count">${fmt(item.count)}</span>
             ${clickable && item.id ? '<i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>' : ''}
           </div>`).join('')}</div>`;
       };
       const unit = r.isYear ? 'month' : 'day';
-      const cloud = (items, cls = '') => items?.length ? `<div class="an-cloud ${cls}">${items.map(w => `<span class="an-word" title="${w.count.toLocaleString()} times">${escapeHTML(w.title)}<em>${w.count.toLocaleString()}</em></span>`).join('')}</div>` : '';
+      const cloud = (items, cls = '') => items?.length ? `<div class="an-cloud ${cls}">${items.map(w => `<span class="an-word" title="${w.count.toLocaleString()} times${w.note ? ` · ${escapeHTML(w.note)}` : ''}">${escapeHTML(w.title)}<em>${w.note ? escapeHTML(w.note) : w.count.toLocaleString()}</em></span>`).join('')}</div>` : '';
+      const periodWord = r.isYear ? 'year' : 'month';
       const highlights = [
         r.busiestDay ? ['calendar-heart', 'Busiest day', rwDay(r.busiestDay), `${r.busiestDayMessages.toLocaleString()} messages`] : null,
         r.peakHour != null ? ['clock', 'Most active', `around ${rwHour(r.peakHour)}`, 'when chat peaks'] : null,
         r.topChannels?.[0] ? ['hash', 'Busiest channel', r.topChannels[0].title, `${r.topChannels[0].count.toLocaleString()} messages`] : null,
-        r.topVoiceChannels?.[0] ? ['volume-2', 'Favourite voice', r.topVoiceChannels[0].title, anDuration(r.topVoiceChannels[0].count)] : null,
-        r.topWords?.[0] ? ['quote', `Word of the ${r.isYear ? 'year' : 'month'}`, `“${r.topWords[0].title}”`, `${r.topWords[0].count.toLocaleString()} times`] : null,
+        r.topVoiceChannels?.[0] ? ['volume-2', 'Favourite voice', r.topVoiceChannels[0].title, rwDuration(r.topVoiceChannels[0].count)] : null,
+        r.topWords?.[0] ? ['quote', `Word of the ${periodWord}`, `“${r.topWords[0].title}”`, `${r.topWords[0].count.toLocaleString()} times${r.topWords[0].note ? ` · ${r.topWords[0].note}` : ''}`] : null,
         r.joins ? ['user-plus', 'New members', `+${r.joins}`, `${r.leaves || 0} left`] : null
       ].filter(Boolean);
 
@@ -8821,7 +8849,7 @@
           <div class="rw-hero-title">${escapeHTML(r.periodTitle)}${r.isComplete ? '' : ' <span class="rw-so-far">so far</span>'}</div>
           <div class="rw-hero-stats">
             <div><strong>${r.messages.toLocaleString()}</strong><span>messages</span></div>
-            <div><strong>${anDuration(r.voiceSeconds)}</strong><span>in voice</span></div>
+            <div><strong>${rwDuration(r.voiceSeconds)}</strong><span>in voice</span></div>
             <div><strong>${r.chattingMembers.toLocaleString()}</strong><span>people chatting</span></div>
             <div><strong>${r.activeDays}</strong><span>active days</span></div>
           </div>
@@ -8836,12 +8864,13 @@
             { name: 'messages', color: '#bf5af2', value: b => b.messages }
           ], { height: 150 })}</div>`)}
         <div class="an-grid">
-          ${group('Most talkative', ranked(r.topMembers, n => `${n.toLocaleString()} msgs`, { clickable: true }), '<span class="rw-hint">Click someone for their Replay</span>')}
-          ${group('Most time in voice', ranked(r.topVoiceMembers, anDuration, { clickable: true }))}
+          ${group('Most talkative', ranked(r.topMembers, n => `${n.toLocaleString()} msgs`, { clickable: true }), `<span class="rw-hint">${r.topMembers?.some(m => m.signature) ? 'With the word that’s most them · ' : ''}Click someone for their Replay</span>`)}
+          ${group('Most time in voice', ranked(r.topVoiceMembers, rwDuration, { clickable: true }))}
         </div>
         ${r.topWords?.length || r.topEmoji?.length ? group('What people said', `<div class="ub-group-card glass an-chart-card">
-          ${r.topWords?.length ? `<div class="ub-row-title">Top words</div>${cloud(r.topWords)}` : ''}
-          ${r.topPhrases?.length ? `<div class="ub-row-title">Top phrases</div>${cloud(r.topPhrases)}` : ''}
+          ${r.wordsAreDistinctive ? `<div class="ub-row-desc">What this ${periodWord} talked about more than usual, compared with everything else Rewind has archived. Everyday words score low however often they’re said.</div>` : ''}
+          ${r.topWords?.length ? `<div class="ub-row-title">${r.wordsAreDistinctive ? 'Words' : 'Top words'}</div>${cloud(r.topWords)}` : ''}
+          ${r.topPhrases?.length ? `<div class="ub-row-title">${r.wordsAreDistinctive ? 'Phrases' : 'Top phrases'}</div>${cloud(r.topPhrases)}` : ''}
           ${r.topEmoji?.length ? `<div class="ub-row-title">Top emoji</div>${cloud(r.topEmoji, 'is-emoji')}` : ''}
         </div>`) : ''}
         ${group('Phrase explorer', `<div class="ub-group-card glass an-chart-card">
@@ -8888,12 +8917,37 @@
       const max = Math.max(...p.byUser.map(u => u.count), 1);
       return `
         <div class="rw-phrase-head">
-          <div><span class="rw-phrase-big">${p.total.toLocaleString()}</span> times <span class="ub-row-desc">in ${p.messages.toLocaleString()} messages, out of ${p.scanned.toLocaleString()}</span></div>
+          <div><span class="rw-phrase-big">${p.total.toLocaleString()}</span> ${p.total === 1 ? 'time' : 'times'} <span class="ub-row-desc">${p.messages !== p.total ? `in ${p.messages.toLocaleString()} messages, ` : ''}out of ${p.scanned.toLocaleString()} messages searched</span></div>
           <div class="ub-row-desc">First ${fmtDate(p.firstSeen)} · latest ${fmtDate(p.lastSeen)}${p.topChannel ? ` · mostly in ${escapeHTML(p.topChannel)}` : ''}</div>
         </div>
-        ${p.byMonth.length > 1 ? anColumnChart(p.byMonth.map(m => ({ label: rwPeriodLabel(m.title).replace(/ \d{4}$/, ''), count: m.count })), [{ name: 'times', color: '#bf5af2', value: b => b.count }], { height: 100 }) : ''}
+        ${rwPhraseChart(p.byMonth)}
         <div class="ub-row-title" style="margin-top:6px;">Who says it most</div>
         <div class="rw-phrase-users">${p.byUser.map(u => `<div class="rw-phrase-user"><span>${escapeHTML(u.title)}</span><span class="an-bar"><span style="width:${Math.round(u.count / max * 100)}%;"></span></span><em>${u.count.toLocaleString()}</em></div>`).join('')}</div>`;
+    }
+
+    // Months while the phrase spans a year or two; whole years beyond that,
+    // so a 2021–2026 archive isn't 60 bars of repeating month names.
+    // The archive only lists months the phrase was said in, so gaps are
+    // filled with zeros to keep the time axis honest.
+    function rwPhraseChart(byMonth) {
+      if (!byMonth?.length) return '';
+      const counts = Object.fromEntries(byMonth.map(m => [m.title, m.count]));
+      const [firstY, firstM] = byMonth[0].title.split('-').map(Number);
+      const [lastY, lastM] = byMonth[byMonth.length - 1].title.split('-').map(Number);
+      const points = [];
+      if (lastY - firstY > 1) {
+        for (let y = firstY; y <= lastY; y++) {
+          points.push({ label: String(y), count: byMonth.filter(m => m.title.startsWith(`${y}-`)).reduce((sum, m) => sum + m.count, 0) });
+        }
+      } else {
+        for (let y = firstY, mo = firstM; y < lastY || (y === lastY && mo <= lastM); mo === 12 ? (y++, mo = 1) : mo++) {
+          const key = `${y}-${String(mo).padStart(2, '0')}`;
+          const label = new Date(y, mo - 1, 1).toLocaleDateString(undefined, firstY !== lastY ? { month: 'short', year: '2-digit' } : { month: 'short' });
+          points.push({ label, count: counts[key] || 0 });
+        }
+      }
+      if (points.length < 2) return '';
+      return anColumnChart(points, [{ name: 'times', color: '#bf5af2', value: b => b.count }], { height: 100 });
     }
 
     function rwRecapDropsHTML(g) {
@@ -9020,7 +9074,7 @@
               <div class="wf-message-main"><div class="wf-author">SwiftBot <span class="wf-bot-tag">APP</span></div>
                 <div class="wf-embed" style="--embed:#bf5af2;"><div class="wf-embed-main">
                   <div class="wf-embed-title">📼 ${escapeHTML(r.guildName)} · ${escapeHTML(r.periodTitle)} Replay</div>
-                  <div class="wf-embed-text">💬 <strong>${r.messages.toLocaleString()}</strong> messages from <strong>${r.chattingMembers}</strong> people<br>🔊 <strong>${anDuration(r.voiceSeconds)}</strong> in voice${r.busiestDay ? `<br>📅 Busiest day: <strong>${escapeHTML(rwDay(r.busiestDay))}</strong>` : ''}</div>
+                  <div class="wf-embed-text">💬 <strong>${r.messages.toLocaleString()}</strong> messages from <strong>${r.chattingMembers}</strong> people<br>🔊 <strong>${rwDuration(r.voiceSeconds)}</strong> in voice${r.busiestDay ? `<br>📅 Busiest day: <strong>${escapeHTML(rwDay(r.busiestDay))}</strong>` : ''}</div>
                   <div class="wf-embed-footer">+ top members, channels, words and games</div>
                 </div></div>
               </div>
@@ -9067,8 +9121,8 @@
             ${tile('message-square', p.messages.toLocaleString(), 'messages')}
             ${tile('text', p.words.toLocaleString(), 'words')}
             ${tile('calendar-days', p.activeDays, 'active days')}
-            ${tile('volume-2', anDuration(p.voiceSeconds), `in voice${p.voiceRank ? ` · #${p.voiceRank}` : ''}`)}
-            ${p.voiceSessions ? tile('timer', anDuration(p.longestSessionSeconds), 'longest session') : ''}
+            ${tile('volume-2', rwDuration(p.voiceSeconds), `in voice${p.voiceRank ? ` · #${p.voiceRank}` : ''}`)}
+            ${p.voiceSessions ? tile('timer', rwDuration(p.longestSessionSeconds), 'longest session') : ''}
             ${p.commands != null ? tile('terminal', p.commands, 'commands') : ''}
           </div>
           <div class="rw-me-facts">
@@ -9078,6 +9132,11 @@
             ${trend(msgChange, 'messages')}
             ${trend(voiceChange, 'time in voice')}
           </div>
+          ${p.signatureWords?.length ? `<div class="rw-me-words">
+            <div class="ub-row-title">${p.signatureWords.length > 1 ? 'Words' : 'A word'} that’s very ${escapeHTML((p.name || '').split(' ')[0] || 'them')}</div>
+            <div class="ub-row-desc">Said far more than anyone else in ${escapeHTML(p.guildName)} this ${p.periodKey.length === 4 ? 'year' : 'month'}.</div>
+            <div class="an-cloud">${[...p.signatureWords, ...(p.signaturePhrases || [])].map(w => `<span class="an-word" title="${w.count.toLocaleString()} times${w.note ? ` · ${escapeHTML(w.note)}` : ''}">${escapeHTML(w.title)}<em>${escapeHTML(w.note || w.count.toLocaleString())}</em></span>`).join('')}</div>
+          </div>` : ''}
           ${note ? `<p class="ub-help">${note}</p>` : ''}
         </div>`;
     }
@@ -9105,9 +9164,9 @@
       if (r.messages) cards.push({ tone: 'blue', html: `<div class="rs-kicker">You all sent</div>${big(r.messages.toLocaleString())}<div class="rs-sub">messages, from ${r.chattingMembers} people, across ${r.activeDays} days.</div>` });
       if (r.busiestDay) cards.push({ tone: 'orange', html: `<div class="rs-kicker">The busiest day was</div><div class="rs-title">${escapeHTML(rwDay(r.busiestDay))}</div><div class="rs-sub">${r.busiestDayMessages.toLocaleString()} messages${r.peakHour != null ? `, and chat usually peaks around ${rwHour(r.peakHour)}` : ''}.</div>` });
       if (r.topMembers?.length) cards.push({ tone: 'pink', html: `<div class="rs-kicker">Most talkative</div><div class="rs-title">${escapeHTML(r.topMembers[0].title)}</div><div class="rs-sub">${r.topMembers[0].count.toLocaleString()} messages</div><ol class="rs-list" style="counter-reset: rs 1;">${r.topMembers.slice(1, 5).map(m => `<li><span>${escapeHTML(m.title)}</span><em>${m.count.toLocaleString()}</em></li>`).join('')}</ol>` });
-      if (r.voiceSeconds) cards.push({ tone: 'green', html: `<div class="rs-kicker">Time in voice</div>${big(anDuration(r.voiceSeconds))}<div class="rs-sub">over ${r.voiceSessions.toLocaleString()} sessions${r.topVoiceMembers?.[0] ? `. <strong>${escapeHTML(r.topVoiceMembers[0].title)}</strong> was there the most, at ${anDuration(r.topVoiceMembers[0].count)}` : ''}.</div>` });
+      if (r.voiceSeconds) cards.push({ tone: 'green', html: `<div class="rs-kicker">Time in voice</div>${big(rwDuration(r.voiceSeconds))}<div class="rs-sub">over ${r.voiceSessions.toLocaleString()} sessions${r.topVoiceMembers?.[0] ? `. <strong>${escapeHTML(r.topVoiceMembers[0].title)}</strong> was there the most, at ${rwDuration(r.topVoiceMembers[0].count)}` : ''}.</div>` });
       if (r.topChannels?.length) cards.push({ tone: 'teal', html: `<div class="rs-kicker">Where it happened</div><div class="rs-title">${escapeHTML(r.topChannels[0].title)}</div><ol class="rs-list" style="counter-reset: rs 1;">${r.topChannels.slice(1, 4).map(c => `<li><span>${escapeHTML(c.title)}</span><em>${c.count.toLocaleString()}</em></li>`).join('')}</ol>` });
-      if (r.topWords?.length) cards.push({ tone: 'indigo', html: `<div class="rs-kicker">Word of the ${r.isYear ? 'year' : 'month'}</div><div class="rs-title">“${escapeHTML(r.topWords[0].title)}”</div><div class="rs-sub">said ${r.topWords[0].count.toLocaleString()} times</div>${r.topEmoji?.length ? `<div class="rs-emoji">${r.topEmoji.slice(0, 5).map(e => `<span>${escapeHTML(e.title)}</span>`).join('')}</div>` : ''}` });
+      if (r.topWords?.length) cards.push({ tone: 'indigo', html: `<div class="rs-kicker">Word of the ${r.isYear ? 'year' : 'month'}</div><div class="rs-title">“${escapeHTML(r.topWords[0].title)}”</div><div class="rs-sub">said ${r.topWords[0].count.toLocaleString()} times${r.topWords[0].note === 'new' ? ', and never before' : r.topWords[0].note ? `, ${escapeHTML(r.topWords[0].note.replace(' usual', ''))} as often as usual` : ''}</div>${r.topEmoji?.length ? `<div class="rs-emoji">${r.topEmoji.slice(0, 5).map(e => `<span>${escapeHTML(e.title)}</span>`).join('')}</div>` : ''}` });
       if (r.clipsByGame?.length || r.rankChanges?.length) cards.push({ tone: 'red', html: `<div class="rs-kicker">Games</div>${r.clipsByGame?.length ? `<div class="rs-title">${escapeHTML(r.clipsByGame[0].title)}</div><div class="rs-sub">${r.clipsByGame[0].count} clips recorded</div>` : ''}${r.rankChanges?.length ? `<ol class="rs-list">${r.rankChanges.slice(0, 3).map(c => `<li><span>${escapeHTML(c.name)}</span><em>${c.to - c.from >= 0 ? '+' : ''}${(c.to - c.from).toLocaleString()} SR</em></li>`).join('')}</ol>` : ''}` });
       if (r.joins) cards.push({ tone: 'blue', html: `<div class="rs-kicker">New faces</div>${big(`+${r.joins}`)}<div class="rs-sub">people joined the server.</div>` });
       cards.push({ tone: 'violet', html: `<div class="rs-kicker">That was</div><div class="rs-title">${escapeHTML(r.periodTitle)}</div><div class="rs-sub">Members can see their own Replay with <strong>/replay</strong>.</div>` });
@@ -9122,8 +9181,12 @@
       const cards = [{ tone: 'violet', html: `<div class="rs-kicker">${escapeHTML(p.guildName)}</div><div class="rs-title">${escapeHTML(first)}’s<br>${escapeHTML(p.periodTitle)}</div><div class="rs-sub">Here’s how you showed up.</div>` }];
       if (p.messages) cards.push({ tone: 'blue', html: `<div class="rs-kicker">You sent</div>${big(p.messages.toLocaleString())}<div class="rs-sub">messages, about ${p.words.toLocaleString()} words, across ${p.activeDays} days.</div>` });
       if (p.rank) cards.push({ tone: 'pink', html: `<div class="rs-kicker">Most talkative</div>${big(`#${p.rank}`)}<div class="rs-sub">out of ${p.rankedMembers} people chatting.</div>` });
+      if (p.signatureWords?.length) {
+        const w = p.signatureWords[0];
+        cards.push({ tone: 'indigo', html: `<div class="rs-kicker">Your word</div><div class="rs-title">“${escapeHTML(w.title)}”</div><div class="rs-sub">${w.count.toLocaleString()} times${w.note === 'only you' ? ', and nobody else said it once' : w.note ? `, ${escapeHTML(w.note.replace(' everyone else', ''))} as often as everyone else` : ''}.</div>${p.signatureWords.length > 1 ? `<ol class="rs-list" style="counter-reset: rs 1;">${p.signatureWords.slice(1, 4).map(x => `<li><span>${escapeHTML(x.title)}</span><em>${x.count.toLocaleString()}</em></li>`).join('')}</ol>` : ''}` });
+      }
       if (p.busiestDay) cards.push({ tone: 'orange', html: `<div class="rs-kicker">Your biggest day</div><div class="rs-title">${escapeHTML(rwDay(p.busiestDay))}</div><div class="rs-sub">${p.busiestDayMessages.toLocaleString()} messages in one day.</div>` });
-      if (p.voiceSeconds) cards.push({ tone: 'green', html: `<div class="rs-kicker">You spent</div>${big(anDuration(p.voiceSeconds))}<div class="rs-sub">in voice${p.favouriteVoiceChannel ? `, mostly in <strong>${escapeHTML(p.favouriteVoiceChannel)}</strong>` : ''}. Your longest session was ${anDuration(p.longestSessionSeconds)}.</div>` });
+      if (p.voiceSeconds) cards.push({ tone: 'green', html: `<div class="rs-kicker">You spent</div>${big(rwDuration(p.voiceSeconds))}<div class="rs-sub">in voice${p.favouriteVoiceChannel ? `, mostly in <strong>${escapeHTML(p.favouriteVoiceChannel)}</strong>` : ''}. Your longest session was ${rwDuration(p.longestSessionSeconds)}.</div>` });
       if (p.previousMessages > 0 && p.previousPeriodTitle) {
         const pct = Math.round((p.messages - p.previousMessages) / p.previousMessages * 100);
         cards.push({ tone: 'teal', html: `<div class="rs-kicker">Compared with ${escapeHTML(p.previousPeriodTitle)}</div>${big(`${pct >= 0 ? '+' : '−'}${Math.abs(pct)}%`)}<div class="rs-sub">${pct >= 0 ? 'more' : 'fewer'} messages.</div>` });
@@ -11273,6 +11336,124 @@
       return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     }
 
+    // Over plain http a pasted key crosses the network readable; the server
+    // refuses it too, this just says so before anyone pastes.
+    const gtSecureContext = () => location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+
+    // One row per provider. Keys are write-only: the page only ever learns
+    // whether one is set, its last four characters and when it changed.
+    function renderGameTrackerConnections(data, readOnly) {
+      const host = document.getElementById('gametrackerConnections');
+      if (!host) return;
+      const providers = data.catalog?.providers || [];
+      if (!providers.length) { host.innerHTML = ''; return; }
+      const secure = gtSecureContext();
+      host.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Connections</h2></div>
+          <div class="ub-group-card glass">
+            ${providers.map(p => {
+              const label = p.credentialLabel || 'API Key';
+              const state = p.isConfigured ? 'healthy' : p.hasCredential ? 'warning' : 'neutral';
+              const desc = p.hasCredential
+                ? `${escapeHTML(label)}${p.credentialHint ? ` ending in <code>…${escapeHTML(p.credentialHint)}</code>` : ' set'}${p.credentialUpdatedAt ? ` · changed ${escapeHTML(relativeTime(p.credentialUpdatedAt))}` : ''}${p.issue ? ` · ${escapeHTML(p.issue)}` : ''}`
+                : `Not connected. SwiftBot needs a ${escapeHTML(label)} to check ranks.`;
+              return `
+                <div class="ub-row" data-provider="${escapeHTML(p.id)}">
+                  <div class="ub-row-text">
+                    <div class="ub-row-title gt-conn-title"><span class="ops-dot" data-state="${state}"></span>${escapeHTML(p.displayName)}</div>
+                    <div class="ub-row-desc">${desc}</div>
+                  </div>
+                  <div class="gt-conn-actions">
+                    ${p.hasCredential && !readOnly ? `<button class="secondary-action" type="button" data-conn-remove ${secure ? '' : 'disabled'}>Remove</button>` : ''}
+                    ${readOnly ? '' : `<button class="${p.hasCredential ? 'secondary-action' : 'primary-action'}" type="button" data-conn-set ${secure ? '' : 'disabled'}>${p.hasCredential ? 'Replace' : 'Connect'}</button>`}
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+          ${!readOnly && !secure ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> Open the WebUI over https to change API keys. Over plain http a key could be read by anyone on the network.</p>' : ''}
+        </section>`;
+      host.querySelectorAll('[data-provider]').forEach(row => {
+        const provider = providers.find(p => p.id === row.dataset.provider);
+        row.querySelector('[data-conn-set]')?.addEventListener('click', () => openProviderKeyEditor(provider));
+        row.querySelector('[data-conn-remove]')?.addEventListener('click', () => confirmRemoveProviderKey(provider));
+      });
+    }
+
+    // The server answers errors as JSON with a readable `message`.
+    function gtCredentialError(error) {
+      try { return JSON.parse(error.message); } catch { return { message: 'Something went wrong. Nothing was changed.' }; }
+    }
+
+    async function postProviderCredential(body, hintEl) {
+      try {
+        await postJSON('/api/gametracker/credential', body);
+        hideModal();
+        await loadGameTracker();
+        renderGameTrackerView();
+        return true;
+      } catch (error) {
+        const info = gtCredentialError(error);
+        hintEl.innerHTML = escapeHTML(info.message || 'Something went wrong. Nothing was changed.')
+          + (info.error === 'reauth_required' ? ' <button class="cmd-row-link" type="button" data-gt-signout>Sign out</button>' : '');
+        hintEl.querySelector('[data-gt-signout]')?.addEventListener('click', () => logout());
+        return false;
+      }
+    }
+
+    function openProviderKeyEditor(p) {
+      const label = p.credentialLabel || 'API Key';
+      showModal(`${p.hasCredential ? 'Replace' : 'Connect'} ${p.displayName}`, `
+        <p class="ub-help" style="margin-top:0;">Paste the ${escapeHTML(label)} from ${escapeHTML(p.displayName)}. SwiftBot tries it with ${escapeHTML(p.displayName)} first and only saves it if it works${p.hasCredential ? ', replacing the current one' : ''}.</p>
+        <div class="gt-key-field">
+          <input id="gtKeyInput" class="field-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${escapeHTML(label)}" aria-label="${escapeHTML(label)}">
+          <button id="gtKeyReveal" class="secondary-action" type="button" title="Show"><i class="lucide" data-lucide="eye"></i></button>
+        </div>
+        <p class="ub-help"><i class="lucide" data-lucide="lock"></i> Kept in the Keychain on the Mac running SwiftBot, and copied to a SwiftMesh failover node so tracking survives a handover. This page can’t show it again once saved.</p>
+      `, `
+        <span id="gtKeyHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="gtKeySave" class="primary-action" type="button">Check &amp; save</button>
+      `);
+      refreshIcons();
+      const input = document.getElementById('gtKeyInput');
+      const save = document.getElementById('gtKeySave');
+      const hint = document.getElementById('gtKeyHint');
+      input.focus();
+      document.getElementById('gtKeyReveal').addEventListener('click', () => { input.type = input.type === 'password' ? 'text' : 'password'; });
+      const submit = async () => {
+        const token = input.value.trim();
+        if (!token) { hint.textContent = `Paste a ${label} first.`; return; }
+        save.disabled = true;
+        hint.textContent = `Checking with ${p.displayName}…`;
+        if (await postProviderCredential({ provider: p.id, token }, hint)) {
+          setMessage(`${p.displayName} connected.`, 'success');
+        } else {
+          save.disabled = false;
+        }
+      };
+      save.addEventListener('click', submit);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+    }
+
+    function confirmRemoveProviderKey(p) {
+      showModal(`Remove the ${p.displayName} key?`, `
+        <p class="ub-help" style="margin-top:0;">Game Tracker stops checking ${escapeHTML(p.displayName)} ranks until a new ${escapeHTML(p.credentialLabel || 'API Key')} is added. Tracked players and their history stay.</p>
+      `, `
+        <span id="gtKeyHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="gtKeyRemove" class="primary-action is-destructive" type="button">Remove</button>
+      `);
+      document.getElementById('gtKeyRemove').addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        if (await postProviderCredential({ provider: p.id, remove: true }, document.getElementById('gtKeyHint'))) {
+          setMessage(`${p.displayName} key removed.`, 'success');
+        } else {
+          e.currentTarget.disabled = false;
+        }
+      });
+    }
+
     async function postGameTrackerUpdate(update) {
       await postJSON('/api/gametracker/update', update);
       await loadGameTracker();
@@ -11395,6 +11576,8 @@
               .catch(error => setMessage(error.message || 'Could not update player.', 'error')));
         });
       }
+
+      renderGameTrackerConnections(data, readOnly);
 
       // Automation
       const hourOptions = Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === data.checkHour ? 'selected' : ''}>${gameTrackerHourLabel(h)}</option>`).join('');

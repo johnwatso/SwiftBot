@@ -29,8 +29,9 @@ struct RewindSettings: Codable, Hashable, Sendable {
     /// Channels excluded from collection entirely.
     var ignoredChannelIDs: Set<String> = []
 
-    /// Filter "the/and/a" out of top-word results. Phrase queries are never
-    /// stop-word filtered — `/rewind "how often is"` has to match literally.
+    /// Leave everyday words, numbers and laughter out of top words and top
+    /// phrases (`RewindTokenizer.isNotable`). Phrase queries are never
+    /// filtered — `/rewind "how often is"` has to match literally.
     var filterStopWords: Bool = true
 
     /// Restrict `/rewind` to guild owners and administrators.
@@ -271,6 +272,19 @@ struct RewindDailyAggregate: Codable, Sendable {
 }
 
 enum RewindLimits {
+    /// Archived days outside a range needed before its words are ranked
+    /// against them; with less, there is no "usual" to compare to and the
+    /// range falls back to plain frequency.
+    static let distinctiveBaselineDays = 30
+    /// A term must be at least this many times more common than usual.
+    static let distinctiveMinimumLift = 1.5
+    /// Words a member must have written in a range before they get a
+    /// signature, and words everyone else must have written to compare with.
+    static let signatureMinimumWords = 100
+    static let signatureMinimumBaselineWords = 500
+    /// How long a range's per-member word counts are reused. A personal-Replay
+    /// DM run asks for every member in turn; one scan serves them all.
+    static let signatureCacheLifetime: TimeInterval = 600
     /// Distinct terms kept per day, per term map.
     static let termsPerDay = 2_000
     /// Messages buffered in memory before an append is forced.
@@ -287,6 +301,12 @@ enum RewindLimits {
 struct RewindTermCount: Sendable, Hashable, Identifiable {
     let term: String
     let count: Int
+    /// Set when the term was ranked against the rest of the archive: how many
+    /// times more often this period used it than usual (by share of words),
+    /// and how often it was said outside the period. A `baselineCount` of 0
+    /// means the period introduced it.
+    var lift: Double? = nil
+    var baselineCount: Int? = nil
 
     var id: String { term }
 }
@@ -348,6 +368,9 @@ struct RewindRangeSummary: Sendable {
     var topEmoji: [RewindTermCount] = []
     /// Channel IDs; resolved to names by the caller.
     var topChannels: [RewindTermCount] = []
+    /// `topWords` and `topBigrams` are what set this range apart from the rest
+    /// of the archive, not simply what was said most.
+    var termsAreDistinctive = false
 }
 
 /// One member's messages over a Replay range.
@@ -373,6 +396,16 @@ struct RewindPeriodSummary: Sendable {
     /// Channel IDs; names are resolved by the caller.
     var topChannels: [RewindTermCount] = []
     var hasArchive = false
+}
+
+/// The words and phrases one member uses far more than the rest of the
+/// server over a range — their "signature". Terms carry `lift` against
+/// everyone else and a `baselineCount` of 0 when nobody else said them.
+struct RewindSignature: Sendable {
+    var words: [RewindTermCount] = []
+    var phrases: [RewindTermCount] = []
+
+    var isEmpty: Bool { words.isEmpty && phrases.isEmpty }
 }
 
 struct RewindDayCount: Sendable, Hashable {
@@ -572,29 +605,89 @@ enum RewindTokenizer {
         return count
     }
 
-    /// Words too common to be interesting in a "top words" list. Deliberately
-    /// short — this filters plumbing, not personality, so "lol", "gg" and
-    /// "actually" all survive.
+    /// Words too common to say anything about a server: grammar, contractions,
+    /// everyday conversational verbs and adjectives, and the generic gaming
+    /// vocabulary every server shares. What's left is what makes a server
+    /// sound like itself — names, games, in-jokes, "gg".
     static let stopWords: Set<String> = [
-        "a", "about", "after", "all", "also", "am", "an", "and", "any", "are", "as", "at",
-        "back", "be", "because", "been", "before", "being", "but", "by",
-        "can", "could", "did", "do", "does", "doing", "don't", "down",
-        "even", "for", "from", "get", "go", "going", "got",
-        "had", "has", "have", "he", "her", "here", "him", "his", "how",
-        "i", "if", "in", "into", "is", "it", "it's", "its",
-        "just", "know", "like", "me", "more", "most", "my",
-        "no", "not", "now", "of", "off", "on", "one", "only", "or", "other", "our", "out", "over",
-        "really", "said", "same", "see", "she", "should", "so", "some", "still", "such",
-        "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "those",
-        "through", "to", "too", "up", "us", "use",
-        "very", "want", "was", "way", "we", "well", "were", "what", "when", "where", "which",
-        "while", "who", "why", "will", "with", "would",
-        "yeah", "you", "your", "you're"
+        // Grammar
+        "a", "about", "above", "after", "again", "against", "all", "also", "am", "an", "and", "any",
+        "are", "around", "as", "at", "away", "back", "be", "because", "been", "before", "being",
+        "below", "between", "both", "but", "by", "can", "could", "did", "do", "does", "doing",
+        "done", "down", "during", "each", "either", "else", "enough", "etc", "even", "ever",
+        "every", "few", "for", "from", "further", "had", "has", "have", "having", "he", "her",
+        "here", "hers", "herself", "him", "himself", "his", "how", "i", "if", "in", "into", "is",
+        "it", "its", "itself", "just", "least", "less", "many", "may", "me", "might", "mine",
+        "more", "most", "much", "must", "my", "myself", "neither", "never", "no", "nor", "not",
+        "now", "of", "off", "often", "on", "once", "one", "only", "onto", "or", "other", "others",
+        "our", "ours", "out", "over", "own", "per", "same", "shall", "she", "should", "since", "so",
+        "some", "such", "than", "that", "the", "their", "theirs", "them", "themselves", "then",
+        "there", "these", "they", "this", "those", "though", "through", "thru", "till", "to",
+        "too", "under", "until", "up", "upon", "us", "very", "via", "was", "we", "were", "what",
+        "whatever", "when", "where", "whether", "which", "while", "who", "whom", "whose", "why",
+        "will", "with", "within", "without", "would", "yet", "you", "your", "yours", "yourself",
+        // Contractions, with and without the apostrophe
+        "ain't", "aren't", "can't", "cant", "couldn't", "couldnt", "didn't", "didnt", "doesn't",
+        "doesnt", "don't", "dont", "hadn't", "hasn't", "haven't", "havent", "he'd", "he'll",
+        "he's", "hes", "here's", "how's", "i'd", "i'll", "ill", "i'm", "im", "i've", "ive",
+        "isn't", "isnt", "it'd", "it'll", "it's", "let's", "lets", "she'd", "she'll", "she's",
+        "shouldn't", "shouldnt", "that'd", "that'll", "that's", "thats", "there's", "theres",
+        "they'd", "they'll", "they're", "theyre", "they've", "wasn't", "wasnt", "we'd", "we'll",
+        "we're", "we've", "weren't", "what's", "whats", "where's", "who's", "won't", "wont",
+        "wouldn't", "wouldnt", "y'all", "you'd", "you'll", "you're", "youre", "you've",
+        // Everyday verbs
+        "ask", "asked", "come", "comes", "coming", "came", "feel", "find", "found", "get", "gets",
+        "getting", "give", "go", "goes", "going", "gone", "gonna", "got", "gotta", "guess",
+        "keep", "know", "knew", "leave", "let", "look", "looks", "looking", "made", "make",
+        "makes", "making", "mean", "need", "needs", "put", "said", "say", "says", "see", "seen",
+        "seems", "tell", "take", "takes", "taking", "think", "thinking", "thought", "told",
+        "took", "try", "trying", "tried", "use", "used", "using", "wait", "want", "wanna",
+        "wants", "went", "work", "works", "working",
+        // Everyday adjectives, adverbs and nouns
+        "actually", "already", "always", "another", "anyone", "anything", "bad", "best", "better",
+        "big", "bit", "day", "days", "different", "else", "everyone", "everything", "first", "good",
+        "great", "kind", "last", "little", "long", "lot", "lots", "maybe", "new", "next", "nice",
+        "old", "people", "pretty", "probably", "quite", "real", "really", "right", "someone",
+        "something", "soon", "sure", "thing", "things", "time", "times", "today", "tomorrow",
+        "tonight", "way", "week", "well", "whole", "year", "years", "yesterday",
+        // Chat filler
+        "ah", "ahh", "aight", "alright", "bro", "btw", "cool", "eh", "fine", "hey", "hi",
+        "hm", "hmm", "idk", "imo", "k", "kk", "like", "mhm", "nah", "nope", "ok", "okay", "oh",
+        "omg", "please", "pls", "plz", "rn", "tbh", "thanks", "thank", "thx", "u", "uh", "um",
+        "ur", "wow", "ya", "yea", "yeah", "yep", "yes", "yo", "yup",
+        // Generic gaming talk every server shares
+        "game", "games", "play", "played", "player", "players", "playing", "plays"
     ]
 
     static func isStopWord(_ word: String) -> Bool {
         stopWords.contains(word)
     }
+
+    /// Worth a place in a "top words" list: not a stop word, a number, a
+    /// single character or a laugh. Phrase queries never go through this.
+    static func isNotable(word: String) -> Bool {
+        guard word.count > 1, !isStopWord(word), !isLaughter(word) else { return false }
+        return !word.allSatisfy(\.isNumber)
+    }
+
+    /// A top phrase must be two notable words: "in the" and "i think" are
+    /// grammar, not something the server says.
+    static func isNotable(bigram: String) -> Bool {
+        let parts = bigram.split(separator: " ")
+        return parts.count == 2 && parts.allSatisfy { isNotable(word: String($0)) }
+    }
+
+    /// "haha", "hahahaha", "hehe", "lol", "lmao", "xd" and their stretched-out
+    /// spellings. Everyone laughs; it says nothing about a server.
+    static func isLaughter(_ word: String) -> Bool {
+        let range = NSRange(word.startIndex..<word.endIndex, in: word)
+        return laughterExpression?.firstMatch(in: word, options: [.anchored], range: range)?.range == range
+    }
+
+    private static let laughterExpression: NSRegularExpression? = try? NSRegularExpression(
+        pattern: "a?(?:h+[aeiou]+)+h*|lo+l+(?:o+l+)*z?|lm+f?a+o+|rofl+|xd+|kekw?|ja(?:ja)+",
+        options: [.caseInsensitive]
+    )
 }
 
 // MARK: - Day keys

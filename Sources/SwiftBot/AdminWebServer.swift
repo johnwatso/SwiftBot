@@ -420,6 +420,15 @@ struct AdminWebGameTrackerCatalog: Codable {
         let supportedGames: [String]
         let metrics: [Metric]
         let isConfigured: Bool
+        /// "API Token" or "API Key". The credential itself never leaves the
+        /// Mac; the WebUI only learns whether one is set, its last four
+        /// characters and when it changed.
+        var credentialLabel: String = "API Key"
+        var hasCredential: Bool = false
+        var credentialHint: String?
+        var credentialUpdatedAt: Date?
+        /// Why the connection isn't usable yet, if it isn't.
+        var issue: String?
     }
 
     let games: [Game]
@@ -459,6 +468,15 @@ struct AdminWebMemberOption: Codable {
     let id: String
     let name: String
     let username: String?
+}
+
+/// Sets or removes a Game Tracker provider credential from the WebUI. The
+/// response never carries the credential back.
+struct AdminWebGameProviderCredentialUpdate: Codable {
+    let provider: String
+    /// The new credential; nil with `remove` to delete it.
+    var token: String?
+    var remove: Bool?
 }
 
 /// One WebUI edit to Game Tracker. Mirrors what the native view can change.
@@ -1547,6 +1565,11 @@ actor AdminWebServer {
     private var gameTrackerProvider: (@Sendable () async -> AdminWebGameTrackerPayload)?
     private var gameTrackerCheckRunner: (@Sendable () async -> Bool)?
     private var gameTrackerUpdater: (@Sendable (AdminWebGameTrackerUpdate) async -> Bool)?
+    /// Saves (token) or removes (nil) a provider credential; returns a
+    /// `GameProviderCredentialResult` raw value.
+    private var gameProviderCredentialUpdater: (@Sendable (String, String?) async -> String)?
+    /// Credential changes need a sign-in this recent, since sessions last a day.
+    private let credentialReauthWindow: TimeInterval = 15 * 60
     private var mediaGameArtworkProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var accessProvider: (@Sendable () async -> AdminWebAccessPayload)?
     private var activityProvider: (@Sendable (Int) async -> AdminWebActivityPayload)?
@@ -3200,6 +3223,8 @@ actor AdminWebServer {
             } catch {
                 return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
+        case ("POST", "/api/gametracker/credential"):
+            return await handleGameProviderCredential(request)
         case ("GET", "/api/sweep"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -4962,6 +4987,74 @@ actor AdminWebServer {
 
     /// Installs (or replaces) the structured audit-log sink. Hooks AppModel's
     /// `recordAudit(...)` to the web server's auth/config events.
+    func setGameProviderCredentialUpdater(_ updater: @escaping @Sendable (String, String?) async -> String) {
+        self.gameProviderCredentialUpdater = updater
+    }
+
+    /// `POST /api/gametracker/credential`. Write-only: a stolen session can
+    /// replace or remove a key but never read one. On top of the usual admin
+    /// and CSRF checks it needs a recent sign-in and an encrypted connection.
+    private func handleGameProviderCredential(_ request: HTTPRequest) async -> Data {
+        guard let session = authenticatedSession(for: request) else {
+            return unauthorizedResponse()
+        }
+        guard requireRole(.admin, session: session) else {
+            return forbiddenResponse()
+        }
+        guard validateCSRF(session: session, request: request) else {
+            return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+        }
+        guard activeTransportUsesTLS || Self.isLoopbackPeer(request.peerIP) else {
+            return jsonResponse([
+                "error": "insecure_transport",
+                "message": "Open the WebUI over https to change API keys. Over plain http the key could be read by anyone on the network."
+            ], status: "400 Bad Request")
+        }
+        let signedInAt = session.expiresAt.addingTimeInterval(-sessionTTL)
+        guard Date().timeIntervalSince(signedInAt) <= credentialReauthWindow else {
+            return jsonResponse([
+                "error": "reauth_required",
+                "message": "For security, sign out and back in to change API keys. You signed in more than 15 minutes ago."
+            ], status: "401 Unauthorized")
+        }
+        guard let update = try? apiDecoder.decode(AdminWebGameProviderCredentialUpdate.self, from: request.body),
+              let providerID = GameProviderID(rawValue: update.provider) else {
+            return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+        }
+        let removing = update.remove == true
+        guard removing || !(update.token ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return jsonResponse(["error": "invalid_payload", "message": "Paste a key, or remove the current one."], status: "400 Bad Request")
+        }
+        guard let updater = gameProviderCredentialUpdater else {
+            return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+        }
+
+        let result = await updater(providerID.rawValue, removing ? nil : update.token)
+        let label = "\(providerID.displayName) \(GameProviderCatalog.descriptor(for: providerID)?.auth.credentialLabel ?? "credential")"
+        switch result {
+        case GameProviderCredentialResult.saved.rawValue:
+            audit(source: "Web Config", actor: actorLabel(session), action: removing ? "Removed \(label)" : "Replaced \(label)", level: "ok")
+            return jsonResponse(["ok": true])
+        case GameProviderCredentialResult.rejected.rawValue:
+            audit(source: "Web Config", actor: actorLabel(session), action: "Tried a \(label) that was rejected", level: "warning")
+            return jsonResponse(["error": "rejected", "message": "\(providerID.displayName) didn’t accept that key. Nothing was changed."], status: "400 Bad Request")
+        case GameProviderCredentialResult.unreachable.rawValue:
+            return jsonResponse(["error": "unreachable", "message": "Couldn’t reach \(providerID.displayName) to check the key, so it wasn’t saved. Try again in a minute."], status: "502 Bad Gateway")
+        case GameProviderCredentialResult.misconfigured.rawValue:
+            return jsonResponse(["error": "misconfigured", "message": "\(providerID.displayName)’s API address is set up wrong. Fix it under Integrations in the SwiftBot app on the Mac."], status: "400 Bad Request")
+        default:
+            return jsonResponse(["error": "invalid_payload", "message": "That doesn’t look like a valid key."], status: "400 Bad Request")
+        }
+    }
+
+    /// Loopback peers: a local browser, or a tunnel (cloudflared) on the same
+    /// Mac that has already terminated TLS.
+    nonisolated static func isLoopbackPeer(_ peerIP: String?) -> Bool {
+        guard var address = peerIP?.lowercased() else { return false }
+        if let scope = address.firstIndex(of: "%") { address = String(address[..<scope]) }
+        return address == "127.0.0.1" || address == "::1" || address == "::ffff:127.0.0.1" || address.hasPrefix("127.")
+    }
+
     func setAuditLogger(_ sink: @escaping @Sendable (String, String, String, String?, String) -> Void) {
         self.auditLogger = sink
     }

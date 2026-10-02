@@ -215,10 +215,13 @@ function replayFixture(periodKey) {
     messages, words: messages * 7, activeDays: isYear ? 274 : timeline.length - 2, chattingMembers: isYear ? 64 : 31,
     busiestDay: isYear ? `${year}-03-14` : `${periodKey}-${String(Math.min(timeline.length, 13)).padStart(2, '0')}`, busiestDayMessages: isYear ? 2412 : 640, peakHour: 21,
     timeline, hourly: [20,8,3,1,0,1,4,12,25,30,34,40,52,48,45,50,58,66,72,80,90,95,70,40],
-    topMembers: replayMembers.slice(0, 6).map(([id, title], i) => ({ id, title, count: n([24100, 19880, 12004, 8810, 5020, 2400][i]) })),
+    topMembers: replayMembers.slice(0, 6).map(([id, title], i) => ({ id, title, count: n([24100, 19880, 12004, 8810, 5020, 2400][i]), signature: ['cashout', 'ranked', 'vault', 'patch', 'stream', null][i] || undefined })),
     topChannels: [['#general', 61000], ['#game-chat', 38400], ['#stream-chat', 9100], ['#memes', 6200]].map(([title, c]) => ({ title, count: n(c) })),
-    topWords: [['finals', 4821], ['tonight', 3902], ['ranked', 3544], ['gg', 3302], ['stream', 2104], ['patch', 1980], ['cashout', 1702], ['lol', 1640], ['squad', 1288], ['vault', 990]].map(([title, c]) => ({ title, count: n(c) })),
-    topPhrases: [['gg guys', 812], ['one more', 640], ['good game', 410]].map(([title, c]) => ({ title, count: n(c) })),
+    // Ranked against the rest of the archive, as AppModel.serverReplay does
+    // once there's history: each term carries its "new" / "4× usual" note.
+    wordsAreDistinctive: true,
+    topWords: [['finals', 4821, '6× usual'], ['cashout', 1702, 'new'], ['ranked', 3544, '2.4× usual'], ['vault', 990, 'new'], ['patch', 1980, '3× usual'], ['stream', 2104, '1.8× usual'], ['gabe', 760, '2.1× usual'], ['tonight', 3902, '1.6× usual']].map(([title, c, note]) => ({ title, count: n(c), note })),
+    topPhrases: [['gg guys', 812, '2× usual'], ['world tour', 640, 'new'], ['ranked grind', 410, '4.5× usual']].map(([title, c, note]) => ({ title, count: n(c), note })),
     topEmoji: [['😂', 5210], ['🔥', 2410], ['💀', 1890], ['👀', 1200], ['🎉', 1044]].map(([title, c]) => ({ title, count: n(c) })),
     voiceSeconds: n(1_840_000), voiceSessions: n(2900),
     topVoiceMembers: replayMembers.slice(0, 5).map(([id, title], i) => ({ id, title, count: n([402000, 351000, 219000, 140000, 92000][i]) })),
@@ -257,7 +260,7 @@ async function handleAPI(req, res, pathname, query) {
           replay: { guildID: '1001', guildName: 'Swift Lounge', userID: '300000000000000003', name: 'Gabe', periodKey: r.periodKey, periodTitle: r.periodTitle,
             messages: msgs, words: msgs * 6, activeDays: r.isYear ? 161 : 19, busiestDay: r.busiestDay, busiestDayMessages: Math.round(msgs / 30),
             rank: i + 1, rankedMembers: r.chattingMembers, voiceSeconds: r.topVoiceMembers[i]?.count || 0, voiceSessions: 100, longestSessionSeconds: 15800,
-            favouriteVoiceChannel: 'General Voice', voiceRank: i + 1, commands: 700, previousPeriodTitle: r.isYear ? String(Number(key) - 1) : 'last month',
+            favouriteVoiceChannel: 'General Voice', voiceRank: i + 1, commands: 700, signatureWords: [{ title: 'cashout', count: 212, note: '6× everyone else' }, { title: 'vault', count: 88, note: 'only you' }, { title: 'tonight', count: 140, note: '2.5× everyone else' }], signaturePhrases: [{ title: 'one more', count: 41, note: '3× everyone else' }], previousPeriodTitle: r.isYear ? String(Number(key) - 1) : 'last month',
             previousMessages: Math.round(msgs * 0.8), previousVoiceSeconds: Math.round((r.topVoiceMembers[i]?.count || 0) * 1.1) }
         });
       }
@@ -296,7 +299,7 @@ async function handleAPI(req, res, pathname, query) {
         return sendJSON(res, { guildID: '1001', guildName: 'Swift Lounge', userID: id, name: replayMembers[i][1], periodKey: r.periodKey, periodTitle: r.periodTitle,
           messages: msgs, words: msgs * 6, activeDays: r.isYear ? 201 - i * 20 : 22 - i, busiestDay: r.busiestDay, busiestDayMessages: Math.round(msgs / 30),
           rank: i + 1, rankedMembers: r.chattingMembers, voiceSeconds: r.topVoiceMembers[i]?.count || 0, voiceSessions: 120 - i * 10, longestSessionSeconds: 17400 - i * 1800,
-          favouriteVoiceChannel: 'General Voice', voiceRank: i + 1, commands: 900 - i * 100, optedOut: false });
+          favouriteVoiceChannel: 'General Voice', voiceRank: i + 1, commands: 900 - i * 100, optedOut: false, signatureWords: [{ title: 'cashout', count: 212, note: '6× everyone else' }, { title: 'vault', count: 88, note: 'only you' }, { title: 'tonight', count: 140, note: '2.5× everyone else' }], signaturePhrases: [{ title: 'one more', count: 41, note: '3× everyone else' }], });
       }
       case '/api/rewind/phrase': {
         const q = (query.get('q') || '').trim();
@@ -491,6 +494,21 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/gametracker/credential') {
+      // Like handleGameProviderCredential: write-only, and a key starting
+      // "bad" is rejected the way finals.id's 401 is. The key is never logged.
+      const provider = gametracker.catalog.providers.find((p) => p.id === body.provider);
+      if (!provider) return sendJSON(res, { error: 'invalid_payload' }, 400);
+      if (body.remove) {
+        Object.assign(provider, { hasCredential: false, credentialHint: null, isConfigured: false, credentialUpdatedAt: new Date().toISOString() });
+        return sendJSON(res, { ok: true });
+      }
+      const token = String(body.token || '').trim();
+      if (/^bad/i.test(token)) return sendJSON(res, { error: 'rejected', message: 'finals.id didn’t accept that key. Nothing was changed.' }, 400);
+      if (/^old/i.test(token)) return sendJSON(res, { error: 'reauth_required', message: 'For security, sign out and back in to change API keys. You signed in more than 15 minutes ago.' }, 401);
+      Object.assign(provider, { hasCredential: true, credentialHint: token.length >= 12 ? token.slice(-4) : null, isConfigured: true, credentialUpdatedAt: new Date().toISOString() });
+      return sendJSON(res, { ok: true });
+    }
     if (pathname === '/api/gametracker/update') {
       // Same actions as AdminWebGameTrackerUpdate.
       const players = gametracker.players;

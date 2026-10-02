@@ -98,6 +98,10 @@ struct ServerReplay: Codable, Sendable {
         let title: String
         let count: Int
         var id: String?
+        /// Short context for a word or phrase: "new" or "4× usual".
+        var note: String?
+        /// A member's signature word, on the "Most talkative" list.
+        var signature: String?
     }
     struct Bucket: Codable, Sendable {
         let label: String
@@ -134,6 +138,9 @@ struct ServerReplay: Codable, Sendable {
     var topWords: [Ranked]?
     var topPhrases: [Ranked]?
     var topEmoji: [Ranked]?
+    /// Words and phrases are ranked by how much more than usual the period
+    /// used them, not by raw count.
+    var wordsAreDistinctive = false
 
     var voiceSeconds = 0
     var voiceSessions = 0
@@ -175,6 +182,10 @@ struct PersonalReplay: Codable, Sendable {
     var favouriteVoiceChannel: String?
     var voiceRank: Int?
     var commands: Int?
+    /// What this member says far more than the rest of the server, with
+    /// notes like "only you" or "5× everyone else". Nil without message text.
+    var signatureWords: [ServerReplay.Ranked]?
+    var signaturePhrases: [ServerReplay.Ranked]?
     /// The same numbers for the period before, for "vs last month" lines.
     var previousPeriodTitle: String?
     var previousMessages = 0

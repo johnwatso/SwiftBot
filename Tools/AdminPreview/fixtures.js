@@ -569,7 +569,8 @@ const gametracker = {
   catalog: {
     games: [{ id: 'theFinals', displayName: 'THE FINALS', symbolName: 'scope' }],
     providers: [{
-      id: 'finalsID', displayName: 'Finals ID', supportedGames: ['theFinals'], isConfigured: true,
+      id: 'finalsID', displayName: 'finals.id', supportedGames: ['theFinals'], isConfigured: true,
+      credentialLabel: 'API Token', hasCredential: true, credentialHint: 'a4f2', credentialUpdatedAt: new Date(Date.now() - 3 * 86400000).toISOString(), issue: null,
       metrics: [
         ['rankedScore', 'Ranked Score', true], ['rankTier', 'Rank', true], ['kills', 'Kills', false], ['deaths', 'Deaths', false],
         ['assists', 'Assists', false], ['killDeathRatio', 'K/D', true], ['damage', 'Damage', false],

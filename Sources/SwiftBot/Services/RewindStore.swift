@@ -37,6 +37,30 @@ actor RewindStore {
     private var aggregateCache: [String: [String: RewindDailyAggregate]] = [:]
     private var flushTask: Task<Void, Never>?
 
+    /// Per-member word counts for a range, from the message text. `days`
+    /// counts runs of days, which is exact for live-ingested shards and close
+    /// enough for backfilled ones (imported newest page first) — it only
+    /// gates one-day bursts.
+    private struct TermTally {
+        var count = 0
+        var days = 0
+        var lastDay = ""
+
+        mutating func add(day: String) {
+            count += 1
+            if day != lastDay { days += 1; lastDay = day }
+        }
+    }
+    private struct MemberTerms {
+        var computedAt: Date
+        var words: [String: [String: TermTally]] = [:]
+        var bigrams: [String: [String: TermTally]] = [:]
+        var activeDays: [String: Set<String>] = [:]
+        var totalWords: [String: Int] = [:]
+        var totalBigrams: [String: Int] = [:]
+    }
+    private var memberTermsCache: [String: MemberTerms] = [:]
+
     init(rootURL: URL = SwiftBotStorage.folderURL().appendingPathComponent("rewind", isDirectory: true)) {
         self.rootURL = rootURL
 
@@ -273,6 +297,87 @@ actor RewindStore {
         )
     }
 
+    // MARK: - Signature words
+
+    /// What each member says far more than the rest of the server over a
+    /// range: "Max's word of the year". Needs message text, so it's empty when
+    /// Rewind only keeps counts. `userIDs` limits which members are ranked;
+    /// everyone still counts towards the comparison.
+    func signatures(guildID: String, userIDs: Set<String>, start: Date, end: Date) -> [String: RewindSignature] {
+        let terms = memberTerms(guildID: guildID, start: start, end: end)
+        var result: [String: RewindSignature] = [:]
+        for userID in userIDs {
+            guard let words = terms.words[userID] else { continue }
+            let written = words.values.reduce(0) { $0 + $1.count }
+            guard written >= RewindLimits.signatureMinimumWords else { continue }
+            let minimumDays = min(3, max(1, (terms.activeDays[userID]?.count ?? 0) / 4))
+            var signature = RewindSignature()
+            signature.words = rankAgainstOthers(words, totals: terms.totalWords, minimumDays: minimumDays, limit: 5)
+            signature.phrases = rankAgainstOthers(terms.bigrams[userID] ?? [:], totals: terms.totalBigrams, minimumDays: minimumDays, limit: 3)
+            if !signature.isEmpty { result[userID] = signature }
+        }
+        return result
+    }
+
+    /// One member's terms ranked against everyone else's in the same range.
+    private func rankAgainstOthers(
+        _ mine: [String: TermTally],
+        totals: [String: Int],
+        minimumDays: Int,
+        limit: Int
+    ) -> [RewindTermCount] {
+        var others = totals
+        for (term, tally) in mine {
+            let remaining = (others[term] ?? 0) - tally.count
+            others[term] = remaining > 0 ? remaining : nil
+        }
+        guard others.values.reduce(0, +) >= RewindLimits.signatureMinimumBaselineWords else { return [] }
+        return rankDistinctive(
+            mine.mapValues(\.count),
+            days: mine.mapValues(\.days),
+            baseline: others,
+            minimumDays: minimumDays,
+            limit: limit
+        )
+    }
+
+    /// Scans the range's shards once and tallies every member's notable words
+    /// and phrases, reusing a recent scan of the same range.
+    private func memberTerms(guildID: String, start: Date, end: Date) -> MemberTerms {
+        let cacheKey = "\(guildID)|\(start.timeIntervalSince1970)|\(RewindCalendar.dayKey(for: end))"
+        let now = Date()
+        if let cached = memberTermsCache[cacheKey], now.timeIntervalSince(cached.computedAt) < RewindLimits.signatureCacheLifetime {
+            return cached
+        }
+        memberTermsCache = memberTermsCache.filter { now.timeIntervalSince($0.value.computedAt) < RewindLimits.signatureCacheLifetime }
+
+        var terms = MemberTerms(computedAt: now)
+        var scanned = 0
+        for month in RewindCalendar.monthKeys(from: start, to: end) {
+            forEachMessage(in: ShardKey(guildID: guildID, month: month)) { message in
+                guard message.createdAt >= start, message.createdAt <= end, !message.isBot else { return true }
+                scanned += 1
+                guard scanned <= RewindLimits.phraseScanCeiling else { return false }
+
+                let user = message.authorID
+                let day = RewindCalendar.dayKey(for: message.createdAt)
+                terms.activeDays[user, default: []].insert(day)
+                let words = RewindTokenizer.words(in: message.content)
+                for word in words where RewindTokenizer.isNotable(word: word) {
+                    terms.words[user, default: [:]][word, default: TermTally()].add(day: day)
+                    terms.totalWords[word, default: 0] += 1
+                }
+                for bigram in RewindTokenizer.bigrams(from: words) where RewindTokenizer.isNotable(bigram: bigram) {
+                    terms.bigrams[user, default: [:]][bigram, default: TermTally()].add(day: day)
+                    terms.totalBigrams[bigram, default: 0] += 1
+                }
+                return true
+            }
+        }
+        memberTermsCache[cacheKey] = terms
+        return terms
+    }
+
     // MARK: - Aggregate queries
 
     func yearSummary(guildID: String, year: Int, filterStopWords: Bool) -> RewindYearSummary {
@@ -316,7 +421,8 @@ actor RewindStore {
         }
 
         if filterStopWords {
-            words = words.filter { !RewindTokenizer.isStopWord($0.key) }
+            words = words.filter { RewindTokenizer.isNotable(word: $0.key) }
+            bigrams = bigrams.filter { RewindTokenizer.isNotable(bigram: $0.key) }
         }
 
         let peak = hours.enumerated().max { lhs, rhs in lhs.element < rhs.element }
@@ -399,7 +505,7 @@ actor RewindStore {
         for year in startYear...endYear {
             for (day, aggregate) in aggregates(guildID: guildID, year: year) where day >= startDay && day <= endDay {
                 for (word, count) in aggregate.wordCounts {
-                    if filterStopWords && RewindTokenizer.isStopWord(word) { continue }
+                    if filterStopWords && !RewindTokenizer.isNotable(word: word) { continue }
                     totals[word, default: 0] += count
                 }
             }
@@ -442,7 +548,7 @@ actor RewindStore {
                     }
                     aggregate.messagesByUser.forEach { perUser[$0.key, default: 0] += $0.value }
                     aggregate.userNames.forEach { names[$0.key] = $0.value }
-                    aggregate.wordCounts.forEach { if !RewindTokenizer.isStopWord($0.key) { words[$0.key, default: 0] += $0.value } }
+                    aggregate.wordCounts.forEach { if RewindTokenizer.isNotable(word: $0.key) { words[$0.key, default: 0] += $0.value } }
                     aggregate.emojiCounts.forEach { emoji[$0.key, default: 0] += $0.value }
                     aggregate.messagesByChannel.forEach { channels[$0.key, default: 0] += $0.value }
                 }
@@ -488,6 +594,8 @@ actor RewindStore {
         var names: [String: String] = [:]
         var words: [String: Int] = [:]
         var bigrams: [String: Int] = [:]
+        var wordDays: [String: Int] = [:]
+        var bigramDays: [String: Int] = [:]
         var emoji: [String: Int] = [:]
         var channels: [String: Int] = [:]
         let bucketDays = buckets.map { (RewindCalendar.dayKey(for: $0.start), RewindCalendar.dayKey(for: $0.end)) }
@@ -508,18 +616,43 @@ actor RewindStore {
             for (index, value) in aggregate.messagesByHour.enumerated() where index < 24 { summary.hourly[index] += value }
             for (userID, value) in aggregate.messagesByUser where !excluded.contains(userID) { perUser[userID, default: 0] += value }
             aggregate.userNames.forEach { names[$0.key] = $0.value }
-            aggregate.wordCounts.forEach { words[$0.key, default: 0] += $0.value }
-            aggregate.bigramCounts.forEach { bigrams[$0.key, default: 0] += $0.value }
+            for (word, value) in aggregate.wordCounts {
+                words[word, default: 0] += value
+                wordDays[word, default: 0] += 1
+            }
+            for (bigram, value) in aggregate.bigramCounts {
+                bigrams[bigram, default: 0] += value
+                bigramDays[bigram, default: 0] += 1
+            }
             aggregate.emojiCounts.forEach { emoji[$0.key, default: 0] += $0.value }
             aggregate.messagesByChannel.forEach { channels[$0.key, default: 0] += $0.value }
         }
-        if filterStopWords { words = words.filter { !RewindTokenizer.isStopWord($0.key) } }
+        if filterStopWords {
+            words = words.filter { RewindTokenizer.isNotable(word: $0.key) }
+            bigrams = bigrams.filter { RewindTokenizer.isNotable(bigram: $0.key) }
+        }
         let peak = summary.hourly.enumerated().max { $0.element < $1.element }
         summary.peakHour = (peak?.element ?? 0) > 0 ? peak?.offset : nil
         summary.memberCount = perUser.count
         summary.topUsers = rankUsers(perUser, names: names, limit: 25)
-        summary.topWords = rankTerms(words, limit: 12)
-        summary.topBigrams = rankTerms(bigrams, limit: 6)
+
+        // With the filter on, rank words by what set this range apart rather
+        // than raw frequency: "haha" and "game" are common every month, so they
+        // score near zero, and what's left is what the server was actually
+        // talking about. Without enough history to compare to, fall back.
+        let baseline = filterStopWords ? baselineTerms(guildID: guildID, outside: days.keys) : nil
+        if let baseline, baseline.days >= RewindLimits.distinctiveBaselineDays {
+            // A term has to come up on a few separate days, so one person
+            // pasting something forty times in an afternoon doesn't define a year.
+            let minimumDays = min(3, max(1, summary.activeDays / 4))
+            summary.topWords = rankDistinctive(words, days: wordDays, baseline: baseline.words, minimumDays: minimumDays, limit: 12)
+            summary.topBigrams = rankDistinctive(bigrams, days: bigramDays, baseline: baseline.bigrams, minimumDays: minimumDays, limit: 6)
+            summary.termsAreDistinctive = !summary.topWords.isEmpty
+            if summary.topWords.isEmpty { summary.topWords = rankTerms(words, limit: 12) }
+        } else {
+            summary.topWords = rankTerms(words, limit: 12)
+            summary.topBigrams = rankTerms(bigrams, limit: 6)
+        }
         summary.topEmoji = rankTerms(emoji, limit: 8)
         summary.topChannels = rankTerms(channels, limit: 5)
         return summary
@@ -651,6 +784,7 @@ actor RewindStore {
     /// Erases one user from the archive — their message text and their entries
     /// in every aggregate. Backs `/rewind forget`.
     func purge(userID: String, guildID: String?) {
+        memberTermsCache.removeAll()
         let manager = FileManager.default
         let guilds = guildID.map { [$0] } ?? archivedGuildIDs()
 
@@ -688,6 +822,7 @@ actor RewindStore {
     /// Deletes everything Rewind has stored.
     func deleteAll() {
         pending.removeAll()
+        memberTermsCache.removeAll()
         aggregateCache.removeAll()
         dirtyAggregates.removeAll()
         try? FileManager.default.removeItem(at: rootURL)
@@ -896,6 +1031,63 @@ actor RewindStore {
     }
 
     // MARK: - Ranking
+
+    /// Notable word and phrase totals for every archived day of a guild
+    /// outside `excluded`: the "usual" a Replay range is compared with.
+    private func baselineTerms(
+        guildID: String,
+        outside excluded: Dictionary<String, RewindDailyAggregate>.Keys
+    ) -> (words: [String: Int], bigrams: [String: Int], days: Int) {
+        let skip = Set(excluded)
+        var words: [String: Int] = [:]
+        var bigrams: [String: Int] = [:]
+        var days = 0
+        for year in availableYears(guildID: guildID) {
+            for (day, aggregate) in aggregates(guildID: guildID, year: year) where !skip.contains(day) && aggregate.messageCount > 0 {
+                days += 1
+                for (word, count) in aggregate.wordCounts where RewindTokenizer.isNotable(word: word) {
+                    words[word, default: 0] += count
+                }
+                for (bigram, count) in aggregate.bigramCounts where RewindTokenizer.isNotable(bigram: bigram) {
+                    bigrams[bigram, default: 0] += count
+                }
+            }
+        }
+        return (words, bigrams, days)
+    }
+
+    /// Terms a range used far more than usual, ranked by `count × ln(lift)`
+    /// so a term needs both volume and distinctiveness: a word said 4 times
+    /// that was never said before doesn't beat one said 300 times at triple
+    /// its normal rate. Shares are smoothed so an unseen baseline term gets a
+    /// large but finite lift.
+    private func rankDistinctive(
+        _ counts: [String: Int],
+        days: [String: Int],
+        baseline: [String: Int],
+        minimumDays: Int,
+        limit: Int
+    ) -> [RewindTermCount] {
+        let total = Double(counts.values.reduce(0, +))
+        let baselineTotal = Double(baseline.values.reduce(0, +))
+        guard total > 0, baselineTotal > 0 else { return [] }
+        let smoothing = 0.5
+        let vocabulary = Double(Set(counts.keys).union(baseline.keys).count)
+
+        let scored: [(term: RewindTermCount, score: Double)] = counts.compactMap { term, count in
+            guard count >= 3, (days[term] ?? 0) >= minimumDays else { return nil }
+            let usual = baseline[term] ?? 0
+            let share = (Double(count) + smoothing) / (total + smoothing * vocabulary)
+            let usualShare = (Double(usual) + smoothing) / (baselineTotal + smoothing * vocabulary)
+            let lift = share / usualShare
+            guard lift >= RewindLimits.distinctiveMinimumLift else { return nil }
+            return (RewindTermCount(term: term, count: count, lift: lift, baselineCount: usual), Double(count) * log(lift))
+        }
+        return scored
+            .sorted { $0.score == $1.score ? $0.term.term < $1.term.term : $0.score > $1.score }
+            .prefix(limit)
+            .map(\.term)
+    }
 
     private func rankTerms(_ counts: [String: Int], limit: Int = 15) -> [RewindTermCount] {
         counts.sorted { lhs, rhs in

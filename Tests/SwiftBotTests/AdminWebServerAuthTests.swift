@@ -343,4 +343,134 @@ final class AdminWebServerAuthTests: XCTestCase {
         let response = await server.testProcessRequest(Data("not an http request at all".utf8))
         XCTAssertEqual(statusCode(from: response), 400)
     }
+
+    // MARK: - Provider credentials
+
+    private actor CredentialRecorder {
+        var calls: [(provider: String, token: String?)] = []
+        func record(_ provider: String, _ token: String?) { calls.append((provider, token)) }
+    }
+
+    /// A session signed in just now: sessions last a day, so a fresh one
+    /// expires 24 hours out.
+    private func freshSession(_ server: AdminWebServer) async -> (id: String, csrf: String) {
+        await server.testSeedSession(expiresIn: 24 * 60 * 60)
+    }
+
+    private func credentialRequest(_ session: (id: String, csrf: String), body: String) -> Data {
+        makeRequest(method: "POST", path: "/api/gametracker/credential", cookie: session.id, csrf: session.csrf, body: Data(body.utf8))
+    }
+
+    func testCredentialIsRefusedOverPlainHTTPFromTheNetwork() async {
+        let server = AdminWebServer()
+        let recorder = CredentialRecorder()
+        await server.setGameProviderCredentialUpdater { provider, token in await recorder.record(provider, token); return "saved" }
+        let session = await freshSession(server)
+
+        let response = await server.testProcessRequest(
+            credentialRequest(session, body: #"{"provider":"finalsID","token":"fid_secret_123456789"}"#),
+            peerIP: "192.168.1.20"
+        )
+
+        XCTAssertEqual(statusCode(from: response), 400)
+        XCTAssertTrue(bodyString(from: response).contains("insecure_transport"))
+        let calls = await recorder.calls
+        XCTAssertTrue(calls.isEmpty, "The key must not reach the updater over plain http")
+    }
+
+    func testCredentialNeedsARecentSignIn() async {
+        let server = AdminWebServer()
+        let recorder = CredentialRecorder()
+        await server.setGameProviderCredentialUpdater { provider, token in await recorder.record(provider, token); return "saved" }
+        // Signed in about 23 hours ago.
+        let session = await server.testSeedSession(expiresIn: 3_600)
+
+        let response = await server.testProcessRequest(
+            credentialRequest(session, body: #"{"provider":"finalsID","token":"fid_secret_123456789"}"#),
+            peerIP: "127.0.0.1"
+        )
+
+        XCTAssertEqual(statusCode(from: response), 401)
+        XCTAssertTrue(bodyString(from: response).contains("reauth_required"))
+        let calls = await recorder.calls
+        XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testCredentialIsSavedButNeverEchoed() async {
+        let server = AdminWebServer()
+        let recorder = CredentialRecorder()
+        await server.setGameProviderCredentialUpdater { provider, token in await recorder.record(provider, token); return "saved" }
+        let session = await freshSession(server)
+
+        let response = await server.testProcessRequest(
+            credentialRequest(session, body: #"{"provider":"finalsID","token":"fid_secret_123456789"}"#),
+            peerIP: "127.0.0.1"
+        )
+
+        XCTAssertEqual(statusCode(from: response), 200)
+        XCTAssertFalse(bodyString(from: response).contains("fid_secret"))
+        let calls = await recorder.calls
+        XCTAssertEqual(calls.first?.provider, "finalsID")
+        XCTAssertEqual(calls.first?.token, "fid_secret_123456789")
+    }
+
+    func testRejectedCredentialReportsWithoutEchoingTheKey() async {
+        let server = AdminWebServer()
+        await server.setGameProviderCredentialUpdater { _, _ in "rejected" }
+        let session = await freshSession(server)
+
+        let response = await server.testProcessRequest(
+            credentialRequest(session, body: #"{"provider":"finalsID","token":"fid_wrong_123456789"}"#),
+            peerIP: "::1"
+        )
+
+        XCTAssertEqual(statusCode(from: response), 400)
+        XCTAssertTrue(bodyString(from: response).contains("rejected"))
+        XCTAssertFalse(bodyString(from: response).contains("fid_wrong"))
+    }
+
+    func testRemovingACredentialPassesNil() async {
+        let server = AdminWebServer()
+        let recorder = CredentialRecorder()
+        await server.setGameProviderCredentialUpdater { provider, token in await recorder.record(provider, token); return "saved" }
+        let session = await freshSession(server)
+
+        let response = await server.testProcessRequest(
+            credentialRequest(session, body: #"{"provider":"finalsID","remove":true}"#),
+            peerIP: "127.0.0.1"
+        )
+
+        XCTAssertEqual(statusCode(from: response), 200)
+        let calls = await recorder.calls
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertNil(calls.first?.token)
+    }
+
+    func testViewersCannotSetCredentials() async {
+        let server = AdminWebServer()
+        let session = await server.testSeedSession(expiresIn: 24 * 60 * 60, viewerRole: true)
+        let response = await server.testProcessRequest(
+            credentialRequest(session, body: #"{"provider":"finalsID","token":"fid_secret_123456789"}"#),
+            peerIP: "127.0.0.1"
+        )
+        XCTAssertEqual(statusCode(from: response), 403)
+    }
+
+    func testCredentialHintIsOnlyTheLastFourOfALongKey() {
+        var connection = GameProviderConnectionSettings()
+        connection.token = "fid_secret_123456789"
+        XCTAssertEqual(connection.credentialHint, "6789")
+        connection.token = "short"
+        XCTAssertNil(connection.credentialHint, "A short key would give too much of itself away")
+    }
+
+    func testLoopbackPeerDetection() {
+        for peer in ["127.0.0.1", "::1", "::1%lo0", "::ffff:127.0.0.1", "127.0.0.2"] {
+            XCTAssertTrue(AdminWebServer.isLoopbackPeer(peer), peer)
+        }
+        for peer in ["192.168.1.20", "10.0.0.1", "fe80::1", "", "1127.0.0.1"] {
+            XCTAssertFalse(AdminWebServer.isLoopbackPeer(peer), peer)
+        }
+        XCTAssertFalse(AdminWebServer.isLoopbackPeer(nil))
+    }
 }

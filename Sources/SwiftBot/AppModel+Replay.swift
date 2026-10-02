@@ -56,10 +56,19 @@ extension AppModel {
         replay.topMembers = m.topUsers.prefix(10).map {
             .init(title: replayName(userID: $0.userID, fallback: $0.userName), count: $0.count, id: $0.userID)
         }
+        if includeText {
+            let signatures = await rewindStore.signatures(
+                guildID: guildID, userIDs: Set(replay.topMembers.compactMap(\.id)), start: interval.start, end: interval.end
+            )
+            for index in replay.topMembers.indices {
+                replay.topMembers[index].signature = replay.topMembers[index].id.flatMap { signatures[$0]?.words.first?.term }
+            }
+        }
         replay.topChannels = m.topChannels.map { .init(title: "#\(replayChannelName(guildID: guildID, channelID: $0.term))", count: $0.count) }
         if includeText {
-            replay.topWords = m.topWords.map { .init(title: $0.term, count: $0.count) }
-            replay.topPhrases = m.topBigrams.map { .init(title: $0.term, count: $0.count) }
+            replay.topWords = m.topWords.map { .init(title: $0.term, count: $0.count, note: Self.replayTermNote($0)) }
+            replay.topPhrases = m.topBigrams.map { .init(title: $0.term, count: $0.count, note: Self.replayTermNote($0)) }
+            replay.wordsAreDistinctive = m.termsAreDistinctive
             replay.topEmoji = m.topEmoji.map { .init(title: $0.term, count: $0.count) }
         }
 
@@ -115,6 +124,10 @@ extension AppModel {
         replay.longestSessionSeconds = voice.longestSessionSeconds
         replay.favouriteVoiceChannel = voice.favouriteChannel
         replay.voiceRank = voiceRanking.firstIndex { $0.userId == userID }.map { $0 + 1 }
+        if let signature = await rewindStore.signatures(guildID: guildID, userIDs: [userID], start: interval.start, end: interval.end)[userID] {
+            replay.signatureWords = signature.words.map { .init(title: $0.term, count: $0.count, note: Self.replaySignatureNote($0)) }
+            replay.signaturePhrases = signature.phrases.map { .init(title: $0.term, count: $0.count, note: Self.replaySignatureNote($0)) }
+        }
         let previous = period.previous
         let previousInterval = previous.interval(now: now)
         replay.previousPeriodTitle = previous.title()
@@ -143,11 +156,39 @@ extension AppModel {
 
     // MARK: Formatting
 
+    /// The two largest units, so a year of voice reads "6mo 26d" rather than
+    /// "5,000h". Months are 30 days and years 365, which is plenty for a
+    /// recap. Mirrors `rwDuration` in the WebUI.
     static func replayDuration(_ seconds: Int) -> String {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        if hours >= 100 { return "\(hours.formatted())h" }
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(max(minutes, seconds > 0 ? 1 : 0))m"
+        let minutes = seconds / 60
+        let hours = minutes / 60
+        let days = hours / 24
+        if days >= 365 { return pair(days / 365, "y", (days % 365) / 30, "mo") }
+        if days >= 30 { return pair(days / 30, "mo", days % 30, "d") }
+        if days >= 1 { return pair(days, "d", hours % 24, "h") }
+        if hours >= 1 { return pair(hours, "h", minutes % 60, "m") }
+        return "\(max(minutes, seconds > 0 ? 1 : 0))m"
+
+        func pair(_ major: Int, _ majorUnit: String, _ minor: Int, _ minorUnit: String) -> String {
+            minor > 0 ? "\(major)\(majorUnit) \(minor)\(minorUnit)" : "\(major)\(majorUnit)"
+        }
+    }
+
+    /// "new" for a term the period introduced, otherwise how many times its
+    /// usual rate it ran at. Nil for terms ranked by plain frequency.
+    static func replayTermNote(_ term: RewindTermCount) -> String? {
+        guard let lift = term.lift, let usual = term.baselineCount else { return nil }
+        if usual == 0 { return "new" }
+        let multiple = lift < 10 ? (lift * 10).rounded() / 10 : lift.rounded()
+        let text = multiple == multiple.rounded() ? String(Int(multiple)) : String(format: "%.1f", multiple)
+        return "\(text)× usual"
+    }
+
+    /// "only you" when nobody else in the server said it, otherwise how many
+    /// times more than everyone else (by share of words) this member says it.
+    static func replaySignatureNote(_ term: RewindTermCount) -> String? {
+        guard term.baselineCount != 0 else { return "only you" }
+        return replayTermNote(term).map { $0.replacingOccurrences(of: "usual", with: "everyone else") }
     }
 
     static func replayHour(_ hour: Int) -> String {
@@ -165,7 +206,8 @@ extension AppModel {
     private static func rankedLines(_ items: [ServerReplay.Ranked], limit: Int, value: (Int) -> String) -> String {
         items.prefix(limit).enumerated().map { index, item in
             let marker = index < medals.count ? medals[index] : "**\(index + 1).**"
-            return "\(marker) \(item.title) — \(value(item.count))"
+            let signature = item.signature.map { " · *“\($0)”*" } ?? ""
+            return "\(marker) \(item.title) — \(value(item.count))\(signature)"
         }.joined(separator: "\n")
     }
 
@@ -210,7 +252,13 @@ extension AppModel {
             places.append(["name": "Busiest voice", "value": Self.rankedLines(replay.topVoiceChannels, limit: 3) { Self.replayDuration($0) }, "inline": true])
         }
         if let words = replay.topWords, !words.isEmpty {
-            places.append(["name": "Words of the \(replay.isYear ? "year" : "month")", "value": words.prefix(8).map { "`\($0.title)`" }.joined(separator: " "), "inline": false])
+            let name = replay.wordsAreDistinctive
+                ? "What set \(replay.periodTitle) apart"
+                : "Words of the \(replay.isYear ? "year" : "month")"
+            let value = words.prefix(8).map { word in
+                word.note.map { "`\(word.title)` *\($0)*" } ?? "`\(word.title)`"
+            }.joined(separator: "  ")
+            places.append(["name": name, "value": value, "inline": false])
         }
         if let emoji = replay.topEmoji, !emoji.isEmpty {
             places.append(["name": "Favourite emoji", "value": emoji.prefix(6).map { "\($0.title) \($0.count.formatted())" }.joined(separator: "  "), "inline": false])
@@ -256,6 +304,11 @@ extension AppModel {
             if let top = replay.topPercent, top <= 25 { lines.append("⭐ Top **\(top)%** most talkative in \(replay.guildName)") }
             lines.append("📅 Active on **\(replay.activeDays)** days")
             if let day = replay.busiestDay { lines.append("🔥 Biggest day: **\(Self.replayDay(day))** (\(replay.busiestDayMessages) messages)") }
+            if let words = replay.signatureWords, let top = words.first {
+                lines.append("🗣️ Your word: **“\(top.title)”** (\(top.count.formatted())×\(top.note.map { ", \($0)" } ?? ""))")
+                let more = words.dropFirst().prefix(3).map { "`\($0.title)`" } + (replay.signaturePhrases ?? []).prefix(1).map { "`\($0.title)`" }
+                if !more.isEmpty { lines.append("   also very you: \(more.joined(separator: " "))") }
+            }
         }
         if replay.voiceSeconds > 0 {
             var line = "🔊 **\(Self.replayDuration(replay.voiceSeconds))** in voice over \(replay.voiceSessions) sessions"

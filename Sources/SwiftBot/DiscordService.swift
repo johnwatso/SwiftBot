@@ -870,6 +870,7 @@ actor DiscordService {
                 if authorName.isEmpty, case let .string(value)? = author["username"] { authorName = value }
                 if case let .bool(value)? = author["bot"] { isBot = value }
             }
+            if case .string? = raw["webhook_id"] { isBot = true }
             guard !authorID.isEmpty else { return nil }
 
             let content: String = {

@@ -173,6 +173,9 @@ final class AppModel: ObservableObject {
     /// "Connection Failed" state in Settings › Integrations, so an unconfigured
     /// provider is never mistaken for a broken one.
     @Published var gameProviderConnectionFailures: [GameProviderID: String] = [:]
+    /// Standby: the `credentialUpdatedAt` values last pulled from the Primary,
+    /// so credentials are fetched once per change rather than on every sync.
+    var pulledGameProviderCredentialRevisions: [GameProviderID: Date]?
     // MARK: - P0.4 Diagnostics state
 
     @Published var connectionDiagnostics = ConnectionDiagnostics()
@@ -867,6 +870,16 @@ final class AppModel: ObservableObject {
             await cluster.setCursorsChangedHandler { [weak self] cursors in
                 Task { [weak self] in
                     await self?.saveMeshCursors(cursors)
+                }
+            }
+            // Primary-side: serve Game Tracker credentials the same way, since
+            // settings.json reaches the Standby with them stripped.
+            await cluster.setGameProviderCredentialsProvider { [weak self] in
+                guard let self else { return [:] }
+                return await MainActor.run {
+                    Dictionary(uniqueKeysWithValues: GameProviderID.allCases.map {
+                        ($0.rawValue, self.settings.gameProviders.token(for: $0))
+                    })
                 }
             }
             // Primary-side: serve the Discord token to mesh-authenticated

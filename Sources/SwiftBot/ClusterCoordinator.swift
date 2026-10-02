@@ -203,6 +203,8 @@ actor ClusterCoordinator {
     /// Fires on the Standby side when a fresh Discord token has been pulled
     /// from the Primary. AppModel persists it via the Keychain-backed path.
     private var onDiscordTokenFetched: (@Sendable (String) async -> Void)?
+    /// Primary-side: every Game Tracker provider credential, for a Standby.
+    private var gameProviderCredentialsProvider: (@Sendable () async -> [String: String])?
     private var onLeaderRegistrationSyncNeeded: (@Sendable (String) async -> Void)?
     private var followerStateProvider: FollowerStateProvider?
     /// Primary-side handler for inbound config mutations from Failover GUIs.
@@ -296,6 +298,10 @@ actor ClusterCoordinator {
     /// Wires the Primary-side Discord-token provider.
     func setDiscordTokenProvider(_ provider: @escaping @Sendable () async -> String?) {
         self.discordTokenProvider = provider
+    }
+
+    func setGameProviderCredentialsProvider(_ provider: @escaping @Sendable () async -> [String: String]) {
+        self.gameProviderCredentialsProvider = provider
     }
 
     /// Wires the Standby-side handler invoked when a pulled token arrives.
@@ -2046,6 +2052,20 @@ actor ClusterCoordinator {
             return await handleHandoverTestEnd(request.body)
         case ("GET", "/v1/mesh/discord-token"):
             return await handleDiscordTokenRequest()
+        case ("GET", "/v1/mesh/game-provider-credentials"):
+            guard mode == .leader else {
+                return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
+            }
+            // Mesh responses are not encrypted by default (only request bodies
+            // are), and the mesh usually runs over plain http, so seal this one:
+            // it carries API keys. No plaintext fallback.
+            let payload = MeshGameProviderCredentialsResponse(tokens: await gameProviderCredentialsProvider?() ?? [:])
+            guard let plaintext = try? encoder.encode(payload),
+                  let key = try? MeshCrypto.deriveKey(from: sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let sealed = try? MeshCrypto.seal(plaintext, using: key) else {
+                return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"seal_failed"}"#.utf8))
+            }
+            return httpResponse(status: "200 OK", body: sealed)
         case ("POST", "/v1/mesh/config/mutate"):
             return await handleConfigMutation(request.body)
         default:
@@ -3879,6 +3899,30 @@ actor ClusterCoordinator {
             let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return data
+        } catch {
+            return nil
+        }
+    }
+
+    /// Standby only: the Primary's Game Tracker credentials. Nil when the
+    /// Primary can't be reached or predates the route, so the caller leaves
+    /// its local copies alone.
+    func fetchGameProviderCredentials() async -> [String: String]? {
+        guard mode == .standby,
+              let baseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
+              !baseURL.isEmpty,
+              let url = URL(string: baseURL + "/v1/mesh/game-provider-credentials") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMeshAuth(to: &request, path: "/v1/mesh/game-provider-credentials")
+        request.timeoutInterval = 10
+        do {
+            let (data, response) = try await meshSession.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let key = try? MeshCrypto.deriveKey(from: sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let opened = try? MeshCrypto.open(data, using: key),
+                  let payload = try? decoder.decode(MeshGameProviderCredentialsResponse.self, from: opened) else { return nil }
+            return payload.tokens
         } catch {
             return nil
         }

@@ -644,6 +644,15 @@ struct MeshDiscordTokenResponse: Codable, Sendable {
     let available: Bool
 }
 
+/// Response body for `GET /v1/mesh/game-provider-credentials`. settings.json
+/// reaches a Standby with every credential stripped (they live in the
+/// Primary's Keychain), so without this a Failover that takes over would have
+/// no Game Tracker API keys. Same mesh HMAC gate as the Discord token route.
+struct MeshGameProviderCredentialsResponse: Codable, Sendable {
+    /// Provider ID → credential, "" when the Primary has none for it.
+    let tokens: [String: String]
+}
+
 /// Coordinated handover test payload. Sent by the current Primary to its
 /// Failover to request a temporary takeover, then sent back from the
 /// temporary-Primary at the end of the window so the original Primary can

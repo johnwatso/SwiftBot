@@ -210,7 +210,7 @@ struct RewindView: View {
 
                 settingRow(
                     title: "Filter common words",
-                    detail: "Drops “the”, “and”, “a” from top-word lists. Phrase searches always match literally.",
+                    detail: "Leaves everyday words, numbers and laughter (“the”, “think”, “haha”) out of top words and phrases. Phrase searches always match literally.",
                     isOn: $app.settings.rewind.filterStopWords
                 )
 

@@ -330,9 +330,70 @@ extension AppModel {
     ) {
         var normalized = connection
         normalized.normalize()
+        if normalized.token != settings.gameProviders[providerID].token {
+            normalized.credentialUpdatedAt = Date()
+        }
         settings.gameProviders[providerID] = normalized
         gameProviderConnectionFailures[providerID] = nil
         gameTrackingSettingsDidChange()
+    }
+
+    /// Sets (or, with `nil`, removes) a provider's credential from the WebUI.
+    /// A new credential is tried against the provider first and only saved if
+    /// it's accepted, so a typo can't quietly stop tracking.
+    func setGameProviderCredential(_ token: String?, for providerID: GameProviderID) async -> GameProviderCredentialResult {
+        guard let descriptor = GameProviderCatalog.descriptor(for: providerID) else { return .unsupported }
+        var connection = settings.gameProviders[providerID]
+
+        if let token {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.count <= 512, !trimmed.contains(where: \.isNewline) else { return .invalid }
+            connection.token = trimmed
+            let verdict = await verifyGameProviderCredential(connection, descriptor: descriptor)
+            guard verdict == .saved else { return verdict }
+        } else {
+            guard connection.hasCredential else { return .saved }
+            connection.token = ""
+        }
+
+        connection.normalize()
+        connection.credentialUpdatedAt = Date()
+        settings.gameProviders[providerID] = connection
+        gameProviderConnectionFailures[providerID] = nil
+        gameTrackingSettingsDidChange()
+        return .saved
+    }
+
+    /// One real request with the candidate credential. Only an explicit
+    /// rejection (401) fails it: "no such player" or "rank hidden" still prove
+    /// the provider accepted the key. Uses a tracked player when there is one.
+    private func verifyGameProviderCredential(
+        _ connection: GameProviderConnectionSettings,
+        descriptor: GameProviderDescriptor
+    ) async -> GameProviderCredentialResult {
+        var probe = settings.gameTracking.players.first { $0.provider == descriptor.id } ?? GameTrackedPlayer()
+        if probe.provider != descriptor.id || probe.playerID.isEmpty {
+            probe.provider = descriptor.id
+            probe.game = descriptor.supportedGames.sorted { $0.rawValue < $1.rawValue }.first ?? probe.game
+            probe.playerID = "swiftbot#0000"
+        }
+        do {
+            _ = try await gameProviderRegistry.fetchRankSnapshot(for: probe, connection: connection.connection(for: descriptor))
+            return .saved
+        } catch FinalsIDAPIError.unauthorized {
+            return .rejected
+        } catch FinalsIDAPIError.httpStatus(let status) where status == 429 || status >= 500 {
+            return .unreachable
+        } catch let error as FinalsIDAPIError {
+            switch error {
+            case .invalidBaseURL, .endpointContractMissing, .invalidEndpoint: return .misconfigured
+            default: return .saved
+            }
+        } catch is URLError {
+            return .unreachable
+        } catch {
+            return .unreachable
+        }
     }
 
     func gameTrackingSettingsDidChange() {
