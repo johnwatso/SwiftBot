@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.27.0 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.27.0</h1>
+    <p class="meta">Version 1.27.0</p>
+    <p>SwiftBot 1.27.0</p>
+<p>The web admin is now a full home for SwiftBot, and server members can<br>sign in to see their own Replay and clips.</p>
+<p>Members<br>- Server members can sign in with Discord (off by default) to a home<br>screen of apps: their own Replay and the clips they're in.<br>- Members only ever see their own data: every admin page is closed to<br>them, and every video they play is checked against the clips they're in.</p>
+<p>Clips and Recordings<br>- SwiftBot works out who was in each clip from voice history and the<br>folder's &quot;Recorded by&quot; member. Filter Recordings by person, and see who<br>is in each clip and which game it's from.<br>- A redesigned Recordings page with game artwork, a Plex-style game page<br>and a cleaner player.<br>- Smoother playback: a lighter copy is prepared for newer clips, and<br>hidden previews stop streaming. This fixes audio cutting out and video<br>freezing while audio carried on.<br>- The clip editor and exports are retired for now.</p>
+<p>Operators<br>- Each Mac and SwiftMesh node can have an operator, who gets a Discord DM<br>when Discord disconnects, a Mac goes offline, a recordings folder can't<br>be reached, errors pile up, or a node's role changes. Each alert can be<br>switched off, and there's a test alert.<br>- About this server shows each Mac's model.</p>
+<p>Rewind and Replay<br>- Members can be DM'd their personal Replay, with an opt-out from the DMs.<br>The Rewind opt-out is gone.<br>- Rewind can fill gaps in its archive automatically each night.</p>
+<p>Apple Intelligence<br>- Apple Intelligence settings have moved into Settings, with three<br>personalities plus a custom one.<br>- The bot can answer activity questions like &quot;what time does Sam usually<br>jump on?&quot; from real voice history.<br>- Requests use Private Cloud Compute where available and fall back to the<br>on-device model.</p>
+<p>Web admin<br>- New pages: Community analytics, the Activity feed, Access, Game Tracker<br>editing, and SwiftMesh, including the handover test and node actions.<br>- Sweep now covers voice-channel chats and webhook posts. A review step<br>runs before a rule is saved, and new rules can start from templates.<br>- The Overview's health status is the same in the app and on the web.<br>- A redesigned sign-in screen, Preferences page (with light and dark<br>wallpapers) and SwiftMesh page.</p>
+<p>Native app<br>- A calmer sidebar, with grouped sections and clearer status.<br>- SwiftBot builds with Xcode 26 (Swift 6.2) as well as Xcode 27. Xcode 26 builds use<br>the on-device Apple Intelligence model.</p>
+<p>Version 1.27.0, build 2026100220.</p>
+<p>Co-Authored-By: Claude Opus 5.5 &lt;noreply@anthropic.com&gt;</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/c9b6a091ef978e6f74aa12a9fa77239a31d3a47f">c9b6a09</a></p>
+  </main>
+</body>
+</html>
