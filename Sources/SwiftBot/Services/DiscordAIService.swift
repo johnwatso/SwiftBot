@@ -81,10 +81,17 @@ enum FoundationModelRouter {
         isPrivateCloudComputeAvailable || SystemLanguageModel.default.availability == .available
     }
 
+    // The macOS 27 parts (Private Cloud Compute, model variants, the larger
+    // context window, LanguageModelError) only exist in the macOS 27 SDK, so
+    // they're compiled only by Xcode 27's Swift 6.4 or later. An older Xcode
+    // (ShipHook's build Mac) builds an app that always uses the on-device
+    // model, which is what macOS 26 runs anyway.
     static var isPrivateCloudComputeAvailable: Bool {
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *) {
             return PrivateCloudComputeLanguageModel().isAvailable
         }
+        #endif
         return false
     }
 
@@ -93,16 +100,22 @@ enum FoundationModelRouter {
         if isPrivateCloudComputeAvailable { return "Private Cloud Compute" }
         let model = SystemLanguageModel.default
         guard model.availability == .available else { return nil }
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *) {
             return "On-device · \(model.variant.displayName)"
         }
+        #endif
         return "On-device"
     }
 
     /// Context window of the on-device fallback (4096 before macOS 27). Prompts
     /// are sized to fit it so a request that falls back from PCC still runs.
     static var fallbackContextSize: Int {
-        SystemLanguageModel.default.contextSize
+        #if compiler(>=6.4)
+        return SystemLanguageModel.default.contextSize
+        #else
+        return 4_096
+        #endif
     }
 
     static func instructions(_ text: String) -> Transcript.Entry {
@@ -119,6 +132,7 @@ enum FoundationModelRouter {
         transcript: Transcript,
         _ body: (LanguageModelSession) async throws -> T
     ) async throws -> T {
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *) {
             let pcc = PrivateCloudComputeLanguageModel()
             if pcc.isAvailable {
@@ -129,6 +143,7 @@ enum FoundationModelRouter {
                 }
             }
         }
+        #endif
         let model = SystemLanguageModel.default
         guard case .available = model.availability else { throw RouterError.unavailable }
         return try await body(LanguageModelSession(model: model, transcript: transcript))
@@ -142,12 +157,14 @@ enum FoundationModelRouter {
             default: return true
             }
         }
+        #if compiler(>=6.4)
         if #available(macOS 27.0, *), let error = error as? LanguageModelError {
             switch error {
             case .guardrailViolation, .refusal: return false
             default: return true
             }
         }
+        #endif
         return true
     }
 }
