@@ -91,20 +91,22 @@ extension AppModel {
     /// then lets the next index use them.
     private func readClipDurations(_ items: [MediaLibraryItem]) {
         let batch = Array(items.prefix(300))
-        Task.detached(priority: .utility) { [weak self] in
-            var found: [String: TimeInterval] = [:]
-            for item in batch {
-                let asset = AVURLAsset(url: URL(fileURLWithPath: item.absolutePath))
-                if let duration = try? await asset.load(.duration), duration.seconds.isFinite, duration.seconds > 0 {
-                    found[item.id] = min(duration.seconds, 4 * 3_600)
+        Task { [weak self] in
+            // The reading happens off the main actor and never touches self,
+            // which older compilers (Xcode 26) insist on.
+            let found = await Task.detached(priority: .utility) { () -> [String: TimeInterval] in
+                var found: [String: TimeInterval] = [:]
+                for item in batch {
+                    let asset = AVURLAsset(url: URL(fileURLWithPath: item.absolutePath))
+                    if let duration = try? await asset.load(.duration), duration.seconds.isFinite, duration.seconds > 0 {
+                        found[item.id] = min(duration.seconds, 4 * 3_600)
+                    }
                 }
-            }
-            guard !found.isEmpty else { return }
-            await MainActor.run {
-                guard let self else { return }
-                self.clipDurationCache.merge(found) { _, new in new }
-                self.clipPeopleCache = nil
-            }
+                return found
+            }.value
+            guard let self, !found.isEmpty else { return }
+            self.clipDurationCache.merge(found) { _, new in new }
+            self.clipPeopleCache = nil
         }
     }
 
