@@ -165,7 +165,7 @@ struct RewindView: View {
                 value: settings.isEnabled ? "On" : "Off",
                 subtitle: settings.includeBotMessages ? "Members and bots" : "Members only",
                 symbol: "dot.radiowaves.left.and.right",
-                detail: settings.optedOutUserIDs.isEmpty ? "" : "\(settings.optedOutUserIDs.count) opted out",
+                detail: "",
                 color: settings.isEnabled ? .green : .secondary
             ),
             DashboardMetricDescriptor(
@@ -253,26 +253,6 @@ struct RewindView: View {
                 .modifier(RewindRowChrome())
                 .disabled(!settings.isEnabled)
 
-                if !settings.optedOutUserIDs.isEmpty {
-                    HStack {
-                        Label(
-                            "\(settings.optedOutUserIDs.count) member(s) opted out of Rewind",
-                            systemImage: "person.crop.circle.badge.minus"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Clear list") {
-                            app.settings.rewind.optedOutUserIDs.removeAll()
-                            app.saveSettings()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.caption)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .modifier(RewindRowChrome())
-                }
             }
         }
     }

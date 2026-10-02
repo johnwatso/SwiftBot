@@ -27,7 +27,8 @@ final class AdminWebCopyTests: XCTestCase {
             .commands: "commands",
             .activity: "activity",
             .wikiBridge: "wikibridge",
-            .appleIntelligence: "aibots",
+            // Apple Intelligence lives in Settings on the web.
+            .appleIntelligence: "settings",
             .voice: "announcer",
             .recordings: "recordings",
             .analytics: "analytics",
@@ -45,23 +46,21 @@ final class AdminWebCopyTests: XCTestCase {
         }
     }
 
-    func testAIBotsWebViewMirrorsNativeAppleIntelligenceSurface() throws {
+    /// Apple Intelligence is a group in Settings: reply switches,
+    /// personality (with Try it), member activity answers, and memory.
+    func testAppleIntelligenceSettingsCoverTheNativeControls() throws {
         let adminHTML = try XCTUnwrap(
             Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "admin")
         )
         let html = try String(contentsOf: adminHTML, encoding: .utf8)
 
-        XCTAssertTrue(html.contains("/api/aibots"), "AI Bots view must read the dedicated snapshot endpoint")
+        XCTAssertTrue(html.contains("/api/aibots"), "Settings must read the Apple Intelligence snapshot endpoint")
         XCTAssertTrue(html.contains("/api/aibots/memory/clear"), "Conversation memory must be clearable from the web")
+        XCTAssertTrue(html.contains("/api/aibots/try"), "Personality changes can be tried before saving")
+        XCTAssertTrue(html.contains("group('Apple Intelligence'"), "Apple Intelligence is a Settings group")
 
-        // Section parity with AppleIntelligenceView.
-        for panel in ["Personality", "Reply Rules", "Conversation Memory", "Capabilities"] {
-            XCTAssertTrue(html.contains("</i> \(panel)</div>"), "AI Bots view is missing the \(panel) panel")
-        }
-
-        // Reply rule copy is authored natively and must not drift on the web.
-        for rule in ["Reply when mentioned", "Reply to DMs", "Allow DMs from anyone", "Ignore bot accounts"] {
-            XCTAssertTrue(html.contains(rule), "AI Bots view is missing the '\(rule)' reply rule")
+        for row in ["Reply when mentioned", "Reply to DMs", "Accept direct messages", "Answer questions about members", "Personality", "Memory"] {
+            XCTAssertTrue(html.contains(row), "Apple Intelligence settings are missing '\(row)'")
         }
         XCTAssertFalse(
             html.contains("Guild Mention Replies"),
@@ -175,15 +174,19 @@ final class AdminWebCopyTests: XCTestCase {
         XCTAssertFalse(html.contains("actions.classList"), "Use automationsView instead of the removed actions view variable")
     }
 
-    func testAuthScreenExplainsMissingDiscordOAuthButton() throws {
+    /// The public sign-in page hides an unconfigured Discord button and
+    /// says sign-in isn't available, without describing how the instance is
+    /// set up to whoever finds the URL.
+    func testAuthScreenHandlesMissingDiscordOAuthWithoutSetupDetails() throws {
         let adminHTML = try XCTUnwrap(
             Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "admin")
         )
         let html = try String(contentsOf: adminHTML, encoding: .utf8)
 
         XCTAssertTrue(html.contains(#"id="discordAuthButton""#))
-        XCTAssertTrue(html.contains(#"id="authSetupHint""#))
-        XCTAssertTrue(html.contains("Discord sign-in is not configured yet."))
-        XCTAssertTrue(html.contains("setupHint.style.display = authOptions.discordEnabled ? 'none' : '';"))
+        XCTAssertTrue(html.contains("discordButton.classList.toggle('hidden', !discord)"))
+        XCTAssertTrue(html.contains("Sign-in isn’t available from here."))
+        XCTAssertFalse(html.contains("Discord sign-in is not configured yet."), "Don't tell visitors how the instance is configured")
+        XCTAssertFalse(html.contains("OAuth client ID and secret"), "Don't tell visitors how the instance is configured")
     }
 }

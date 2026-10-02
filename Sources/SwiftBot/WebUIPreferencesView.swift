@@ -2,23 +2,6 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-@MainActor
-private func sharedAdminWebHostname(in settings: AdminWebUISettings) -> String {
-    settings.normalizedHostname
-}
-
-@MainActor
-private func sharedAdminWebHostnameBinding(for app: AppModel) -> Binding<String> {
-    Binding(
-        get: {
-            app.settings.adminWebUI.hostname
-        },
-        set: { newValue in
-            app.settings.adminWebUI.hostname = newValue
-        }
-    )
-}
-
 struct WebUIPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
@@ -196,67 +179,84 @@ struct InternetAccessConfigurationSection: View {
     @State private var showingNonPrimaryWarning = false
     @State private var showingSetupStatusWindow = false
 
-    // Progressive Setup State (Transients)
+    // Cloudflare account state (transient — zones are reloaded from the saved token)
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
     @State private var isVerifyingToken = false
     @State private var hasVerifiedToken = false
     @State private var tokenVerificationTask: Task<Void, Never>?
-    @State private var isCredentialsExpanded = true
+    @State private var tokenDraft = ""
+    @State private var isReplacingToken = false
+    @State private var tokenError: String?
 
-    private var selectedZone: CloudflareDNSProvider.ZoneSummary? {
-        availableZones.first(where: { $0.id == app.settings.adminWebUI.selectedZoneID })
+    // Hostname drafts. Written straight through while Internet Access is off;
+    // held back behind "Apply Changes" while it's on, because the live server
+    // derives its public hostname from these settings.
+    @State private var draftSubdomain = ""
+    @State private var draftZoneID = ""
+
+    // MARK: Derived state
+
+    private var settings: AdminWebUISettings { app.settings.adminWebUI }
+
+    private var isBusy: Bool { isEnabling || isDisabling }
+
+    private var isInternetAccessActive: Bool {
+        settings.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled
+    }
+
+    private var hasSavedToken: Bool {
+        !settings.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var showsTokenEntry: Bool {
+        !hasSavedToken || isReplacingToken
+    }
+
+    private var draftZoneName: String {
+        if let zone = availableZones.first(where: { $0.id == draftZoneID }) {
+            return zone.name
+        }
+        if !draftZoneID.isEmpty, draftZoneID == settings.selectedZoneID {
+            return settings.selectedZoneName.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ""
+    }
+
+    private var draftHostname: String {
+        let subdomain = draftSubdomain.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let zone = draftZoneName.lowercased()
+        guard !subdomain.isEmpty, !zone.isEmpty else { return "" }
+        return "\(subdomain).\(zone)"
+    }
+
+    private var hasPendingHostnameChange: Bool {
+        settings.internetAccessEnabled
+            && (draftSubdomain != settings.subdomain || draftZoneID != settings.selectedZoneID)
+    }
+
+    private var isConfigurationComplete: Bool {
+        hasSavedToken && !isReplacingToken && !draftHostname.isEmpty
     }
 
     private var publicURLString: String {
-        if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled {
-            return app.adminWebPublicAccessURL()?.absoluteString ?? ""
+        if isInternetAccessActive, let url = app.adminWebPublicAccessURL() {
+            return url.absoluteString
         }
-
-        let hostname = app.settings.adminWebUI.normalizedHostname
+        let hostname = settings.normalizedHostname
         return hostname.isEmpty ? "" : "https://\(hostname)"
     }
 
-    private var isInternetAccessActive: Bool {
-        app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled
+    private var addressPreview: String {
+        draftHostname.isEmpty ? "—" : "https://\(draftHostname)"
     }
 
-    private var selectedZoneDisplayName: String {
-        if let selectedZone {
-            return selectedZone.name
-        }
-
-        return app.settings.adminWebUI.selectedZoneName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var hostnamePreviewString: String {
-        let subdomain = app.settings.adminWebUI.subdomain
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let zoneName = selectedZoneDisplayName
-
-        if !subdomain.isEmpty && !zoneName.isEmpty {
-            return "https://\(subdomain).\(zoneName)"
-        }
-
-        return publicURLString.isEmpty ? "https://swiftbot.example.com" : publicURLString
-    }
-
-    private var sharedHostname: String {
-        sharedAdminWebHostname(in: app.settings.adminWebUI)
-    }
-
-    private var hasCloudflareAuthentication: Bool {
-        !app.settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var canEnable: Bool {
-        !app.settings.adminWebUI.internetAccessEnabled
-            && !isEnabling
-            && !isDisabling
-            && hasVerifiedToken
-            && !app.settings.adminWebUI.selectedZoneID.isEmpty
-            && !app.settings.adminWebUI.subdomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var statusSubtitle: (text: String, color: Color) {
+        if isEnabling { return ("Setting up…", .orange) }
+        if isDisabling { return ("Turning off…", .secondary) }
+        if isInternetAccessActive { return ("Available at \(URL(string: publicURLString)?.host ?? publicURLString)", .secondary) }
+        if settings.internetAccessEnabled { return ("Tunnel isn't running", .orange) }
+        if !isConfigurationComplete { return ("Connect Cloudflare and choose an address to turn on", .secondary) }
+        return ("Off", .secondary)
     }
 
     private var checklistItems: [CertificateManager.ValidationItem] {
@@ -264,7 +264,7 @@ struct InternetAccessConfigurationSection: View {
             return setupProgress.items
         }
 
-        if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled {
+        if isInternetAccessActive {
             return [
                 .init(id: "cloudflare-access", title: "Verify Cloudflare API", status: .success, detail: "Cloudflare authentication is ready."),
                 .init(id: "cloudflare-zone", title: "Detect zone", status: .success, detail: "The hostname is associated with your Cloudflare account."),
@@ -276,517 +276,385 @@ struct InternetAccessConfigurationSection: View {
         }
 
         return [
-            .init(
-                id: "cloudflare-access",
-                title: "Verify Cloudflare API",
-                status: hasCloudflareAuthentication ? .pending : .warning,
-                detail: hasCloudflareAuthentication
-                    ? "Ready to verify when setup starts."
-                    : "Cloudflare authentication required."
-            ),
-            .init(
-                id: "cloudflare-zone",
-                title: "Detect zone",
-                status: .pending,
-                detail: "SwiftBot will detect the matching Cloudflare zone."
-            ),
-            .init(
-                id: "create-tunnel",
-                title: "Detect or create tunnel",
-                status: .pending,
-                detail: "Detected or created during setup."
-            ),
-            .init(
-                id: "create-dns",
-                title: "Configure DNS route",
-                status: .pending,
-                detail: "Configured automatically during setup."
-            ),
-            .init(
-                id: "issue-certificate",
-                title: "Issue HTTPS certificate",
-                status: .pending,
-                detail: "Issued automatically via Cloudflare Edge."
-            ),
-            .init(
-                id: "enable-access",
-                title: "Enable Internet Access",
-                status: .pending,
-                detail: canEnable ? "Ready to enable Internet Access." : "Complete the fields above to continue."
-            )
+            .init(id: "cloudflare-access", title: "Verify Cloudflare API", status: hasSavedToken ? .pending : .warning,
+                  detail: hasSavedToken ? "Ready to verify when setup starts." : "Cloudflare authentication required."),
+            .init(id: "cloudflare-zone", title: "Detect zone", status: .pending, detail: "SwiftBot will detect the matching Cloudflare zone."),
+            .init(id: "create-tunnel", title: "Detect or create tunnel", status: .pending, detail: "Detected or created during setup."),
+            .init(id: "create-dns", title: "Configure DNS route", status: .pending, detail: "Configured automatically during setup."),
+            .init(id: "issue-certificate", title: "Issue HTTPS certificate", status: .pending, detail: "Issued automatically via Cloudflare Edge."),
+            .init(id: "enable-access", title: "Enable Internet Access", status: .pending,
+                  detail: isConfigurationComplete ? "Ready to enable Internet Access." : "Complete the fields above to continue.")
         ]
     }
 
-    private var statusColor: Color {
-        if isEnabling { return .orange }
-        return app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled ? .green : .secondary
-    }
-
-    private var statusText: String {
-        if isEnabling { return "Setting up" }
-        if isDisabling { return "Disabling" }
-        return app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled ? "Enabled" : "Disabled"
-    }
+    // MARK: Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Toggle("Enable Internet Access", isOn: Binding(
-                get: { app.settings.adminWebUI.internetAccessEnabled },
-                set: { newValue in
-                    if newValue {
-                        if app.isFailoverManagedNode {
-                            showingNonPrimaryWarning = true
-                        } else {
-                            enable()
-                        }
+        enableRow
+            .alert("Re-run Internet Access Setup?", isPresented: $showingReRunSetupConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Repair Configuration") {
+                    enable()
+                }
+                Button("Reset and Start Over", role: .destructive) {
+                    reset()
+                }
+            } message: {
+                Text("You can attempt to repair the existing configuration, or remove the configuration and start setup again.")
+            }
+            .sheet(isPresented: $showingSetupStatusWindow) {
+                InternetAccessSetupStatusWindow(
+                    items: checklistItems,
+                    feedback: setupFeedback,
+                    isProcessing: isEnabling,
+                    currentProcessingItemID: checklistItems.first(where: { $0.status == .warning })?.id
+                )
+                .interactiveDismissDisabled(isEnabling)
+            }
+            .alert("Web UI Configuration on Non-Primary Node", isPresented: $showingNonPrimaryWarning) {
+                Button("Cancel", role: .cancel) { }
+                Button("Continue Anyway") {
+                    enable()
+                }
+            } message: {
+                let primaryHost = app.settings.clusterLeaderAddress
+                let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead." // swiftlint:disable:this line_length
+
+                if !primaryHost.isEmpty {
+                    Text("\(message)\n\nPrimary node detected at: \(primaryHost)")
+                } else {
+                    Text(message)
+                }
+            }
+            .onAppear {
+                syncDraftsFromSettings()
+                if hasSavedToken && !hasVerifiedToken {
+                    verifySavedToken()
+                }
+            }
+            .onDisappear {
+                tokenVerificationTask?.cancel()
+            }
+            .onChange(of: settings.internetAccessEnabled) { _, _ in
+                syncDraftsFromSettings()
+            }
+            .onChange(of: settings.subdomain) { _, _ in
+                if !settings.internetAccessEnabled { syncDraftsFromSettings() }
+            }
+            .onChange(of: settings.selectedZoneID) { _, _ in
+                if !settings.internetAccessEnabled { syncDraftsFromSettings() }
+            }
+
+        tokenRow
+
+        Picker("Domain", selection: zoneSelection) {
+            if availableZones.isEmpty {
+                if !draftZoneName.isEmpty {
+                    Text(draftZoneName).tag(draftZoneID)
+                } else {
+                    Text(isVerifyingToken ? "Loading…" : "None").tag("")
+                }
+            } else {
+                if draftZoneID.isEmpty {
+                    Text("Choose…").tag("")
+                }
+                ForEach(availableZones, id: \.id) { zone in
+                    Text(zone.name).tag(zone.id)
+                }
+            }
+        }
+        .disabled(availableZones.isEmpty || isBusy)
+
+        TextField("Subdomain", text: subdomainBinding, prompt: Text(AdminWebUISettings.defaultSubdomain))
+            .disabled(isBusy)
+
+        LabeledContent("Address") {
+            HStack(spacing: 8) {
+                Text(addressPreview)
+                    .foregroundStyle(draftHostname.isEmpty ? .tertiary : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+
+                if isInternetAccessActive && !hasPendingHostnameChange {
+                    Button {
+                        openURL()
+                    } label: {
+                        Image(systemName: "safari")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Open in browser")
+
+                    Button {
+                        copyURL()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy address")
+                }
+            }
+        }
+
+        Toggle(isOn: $app.settings.adminWebUI.tunnelHealthCheckEnabled) {
+            Text("Auto-repair tunnel")
+            Text("Checks the address every 10 minutes and restarts the tunnel if it's been unreachable for about 30 minutes.")
+        }
+        .disabled(!settings.internetAccessEnabled)
+
+        if let actionRow = actionRowContent {
+            actionRow
+        }
+    }
+
+    // MARK: Rows
+
+    private var enableRow: some View {
+        Toggle(isOn: Binding(
+            get: { settings.internetAccessEnabled },
+            set: { newValue in
+                if newValue {
+                    requestEnable()
+                } else {
+                    stop()
+                }
+            }
+        )) {
+            Text("Internet Access")
+            Text(statusSubtitle.text)
+                .foregroundStyle(statusSubtitle.color)
+        }
+        .disabled(isBusy || (!settings.internetAccessEnabled && !isConfigurationComplete))
+    }
+
+    @ViewBuilder
+    private var tokenRow: some View {
+        if showsTokenEntry {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    SecureField("API Token", text: $tokenDraft, prompt: Text("Paste token"))
+                        .labelsHidden()
+                        .frame(maxWidth: 220)
+                        .onSubmit(verifyDraftToken)
+                        .disabled(isVerifyingToken)
+
+                    if isVerifyingToken {
+                        ProgressView().controlSize(.small)
                     } else {
-                        stop()
-                    }
-                }
-            ))
-            .toggleStyle(.switch)
-            .disabled(isEnabling || isDisabling)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Toggle("Auto-repair stale tunnel", isOn: $app.settings.adminWebUI.tunnelHealthCheckEnabled)
-                    .toggleStyle(.switch)
-                    .disabled(!app.settings.adminWebUI.internetAccessEnabled)
-
-                Text("Checks \(publicURLString.isEmpty ? "the public URL" : "\(publicURLString)/live") every 10 minutes and restarts the Cloudflare tunnel if it's been unreachable for ~30 minutes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if isInternetAccessActive && !isEnabling && !isDisabling {
-                configuredInternetAccessSummary
-            } else {
-                DisclosureGroup(isExpanded: $isCredentialsExpanded) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Cloudflare API Token")
-                                .font(.subheadline.weight(.medium))
-
-                            cloudflareTokenControl
-
-                            Text("Stored securely in your macOS Keychain. The token needs DNS:Edit and Tunnel:Edit permissions.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        hostnameEditor
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    Text("Cloudflare Setup")
-                        .font(.subheadline.weight(.semibold))
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                if !isInternetAccessActive {
-                    HStack(spacing: 8) {
-                        Text("Status:")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Text(statusText)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(statusColor)
+                        Button("Verify", action: verifyDraftToken)
+                            .disabled(tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
 
-                    if let feedback = setupFeedback {
-                        Label(feedback.message, systemImage: feedback.status == .error ? "exclamationmark.octagon.fill" : "info.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(feedback.status == .error ? .red : .secondary)
-                    }
-                }
-            }
-
-            if !app.settings.adminWebUI.internetAccessEnabled && !isEnabling && !isDisabling {
-                HStack(spacing: 10) {
-                    if canEnable {
-                        if lastError is CloudflareDNSProvider.TunnelDNSConflict {
-                            HStack(spacing: 8) {
-                                Button("Override DNS") {
-                                    if app.isFailoverManagedNode {
-                                        showingNonPrimaryWarning = true
-                                    } else {
-                                        enable(forceReplaceDNS: true)
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button("Override & Don't Warn Again") {
-                                    let hostname = app.settings.adminWebUI.normalizedHostname
-                                    app.dismissDNSConflict(for: hostname)
-                                    if app.isFailoverManagedNode {
-                                        showingNonPrimaryWarning = true
-                                    } else {
-                                        enable(forceReplaceDNS: true)
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        } else {
-                            Button {
-                                if app.isFailoverManagedNode {
-                                    showingNonPrimaryWarning = true
-                                } else {
-                                    enable()
-                                }
-                            } label: {
-                                Label("Enable Internet Access", systemImage: "network")
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                    }
-
-                    if isEnabling || isDisabling {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-            }
-
-            if !hasCloudflareAuthentication && !app.settings.adminWebUI.internetAccessEnabled {
-                Label("Cloudflare authentication required.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-        }
-        .alert("Re-run Internet Access Setup?", isPresented: $showingReRunSetupConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Repair Configuration") {
-                enable()
-            }
-            Button("Reset and Start Over", role: .destructive) {
-                reset()
-            }
-        } message: {
-            Text("You can attempt to repair the existing configuration, or remove the configuration and start setup again.")
-        }
-        .sheet(isPresented: $showingSetupStatusWindow) {
-            InternetAccessSetupStatusWindow(
-                items: checklistItems,
-                feedback: setupFeedback,
-                isProcessing: isEnabling,
-                currentProcessingItemID: checklistItems.first(where: { $0.status == .warning })?.id
-            )
-            .interactiveDismissDisabled(isEnabling)
-        }
-        .alert("Web UI Configuration on Non-Primary Node", isPresented: $showingNonPrimaryWarning) {
-            Button("Cancel", role: .cancel) { }
-            Button("Continue Anyway") {
-                enable()
-            }
-        } message: {
-            let primaryHost = app.settings.clusterLeaderAddress
-            let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead." // swiftlint:disable:this line_length
-
-            if !primaryHost.isEmpty {
-                Text("\(message)\n\nPrimary node detected at: \(primaryHost)")
-            } else {
-                Text(message)
-            }
-        }
-        .onAppear {
-            isCredentialsExpanded = !(app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled)
-        }
-        .onChange(of: app.settings.adminWebUI.internetAccessEnabled) { _, newValue in
-            if !newValue {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isCredentialsExpanded = true
-                }
-            }
-        }
-        .onChange(of: app.adminWebPublicAccessStatus.isEnabled) { _, newValue in
-            if newValue {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isCredentialsExpanded = false
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var hostnameEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Hostname")
-                .font(.subheadline.weight(.medium))
-
-            HStack(alignment: .top, spacing: 6) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Subdomain")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    TextField(AdminWebUISettings.defaultSubdomain, text: $app.settings.adminWebUI.subdomain)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 140)
-                        .disabled(app.settings.adminWebUI.internetAccessEnabled)
-                        .onChange(of: app.settings.adminWebUI.subdomain) { _, newValue in
-                            let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
-                            if filtered != newValue {
-                                app.settings.adminWebUI.subdomain = filtered
-                            }
-                        }
-                }
-
-                Text(".")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 27)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Domain")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
-                        if availableZones.isEmpty {
-                            if !app.settings.adminWebUI.selectedZoneName.isEmpty {
-                                Text(app.settings.adminWebUI.selectedZoneName)
-                                    .tag(app.settings.adminWebUI.selectedZoneID)
-                            } else {
-                                Text("Verify token to load zones")
-                                    .tag("")
-                            }
-                        } else {
-                            ForEach(availableZones, id: \.id) { zone in
-                                Text(zone.name).tag(zone.id)
-                            }
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(minWidth: 180, alignment: .leading)
-                    .disabled(availableZones.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
-                    .onChange(of: app.settings.adminWebUI.selectedZoneID) { _, newValue in
-                        if let zone = availableZones.first(where: { $0.id == newValue }) {
-                            app.settings.adminWebUI.selectedZoneName = zone.name
+                    if isReplacingToken {
+                        Button("Cancel") {
+                            tokenVerificationTask?.cancel()
+                            isVerifyingToken = false
+                            isReplacingToken = false
+                            tokenDraft = ""
+                            tokenError = nil
                         }
                     }
                 }
-
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 4) {
-                Text("SwiftBot will be available at:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(hostnamePreviewString)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
-    private var configuredInternetAccessSummary: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.green)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Internet access configured")
-                    .font(.subheadline.weight(.semibold))
-                Text(URL(string: publicURLString)?.host ?? publicURLString)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
-            }
-
-            Spacer(minLength: 8)
-
-            Button {
-                openURL()
             } label: {
-                Label("Open Webpage", systemImage: "safari")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .disabled(publicURLString.isEmpty)
-
-            Button {
-                copyURL()
-            } label: {
-                Image(systemName: "doc.on.doc")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .disabled(publicURLString.isEmpty)
-            .help("Copy public URL")
-
-            Button {
-                showingReRunSetupConfirmation = true
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .help("Repair or reset Internet Access")
-        }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var cloudflareTokenControl: some View {
-        let tokenIsSet = !app.settings.adminWebUI.cloudflareAPIToken
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let locked = app.settings.adminWebUI.internetAccessEnabled
-
-        if tokenIsSet && (hasVerifiedToken || locked) {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text(verifiedCloudflareTokenLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Spacer(minLength: 6)
-
-                Button("Replace…") {
-                    replaceCloudflareToken()
+                Text("Cloudflare API Token")
+                if let tokenError {
+                    Text(tokenError).foregroundStyle(.red)
+                } else {
+                    Text("Needs Zone › DNS › Edit and Account › Cloudflare Tunnel › Edit. [Create a token…](https://dash.cloudflare.com/profile/api-tokens)")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(locked)
-            }
-        } else if tokenIsSet {
-            HStack(spacing: 8) {
-                Button {
-                    verifyToken()
-                } label: {
-                    HStack(spacing: 6) {
-                        if isVerifyingToken {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "checkmark.shield")
-                        }
-                        Text(isVerifyingToken ? "Verifying…" : "Verify Saved Token")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(isVerifyingToken)
-
-                Button("Replace…") {
-                    replaceCloudflareToken()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isVerifyingToken)
             }
         } else {
-            HStack(spacing: 8) {
-                Button {
-                    pasteAndVerifyCloudflareToken()
-                } label: {
-                    HStack(spacing: 6) {
-                        if isVerifyingToken {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "doc.on.clipboard")
-                        }
-                        Text(isVerifyingToken ? "Verifying…" : "Paste & Verify Token")
+            LabeledContent {
+                HStack(spacing: 8) {
+                    if isVerifyingToken {
+                        ProgressView().controlSize(.small)
+                        Text("Verifying…").foregroundStyle(.secondary)
+                    } else if hasVerifiedToken {
+                        Label("Verified", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else if tokenError != nil {
+                        Button("Retry", action: verifySavedToken)
                     }
+
+                    Button("Replace…") {
+                        tokenDraft = ""
+                        tokenError = nil
+                        isReplacingToken = true
+                    }
+                    .disabled(isVerifyingToken || isBusy)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(isVerifyingToken)
+            } label: {
+                Text("Cloudflare API Token")
+                if let tokenError {
+                    Text(tokenError).foregroundStyle(.red)
+                } else {
+                    Text("Stored in your Keychain.")
+                }
             }
         }
     }
 
-    private var verifiedCloudflareTokenLabel: String {
-        let zone = app.settings.adminWebUI.selectedZoneName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return zone.isEmpty ? "Token verified" : "Token verified for \(zone)"
-    }
+    private var actionRowContent: AnyView? {
+        let showsConflict = lastError is CloudflareDNSProvider.TunnelDNSConflict && isConfigurationComplete
+        let showsApply = hasPendingHostnameChange && isConfigurationComplete
+        let showsRetry = settings.internetAccessEnabled && !isInternetAccessActive && !hasPendingHostnameChange
+        let showsRepair = isInternetAccessActive && !hasPendingHostnameChange
+        let feedback = setupFeedback
 
-    private func pasteAndVerifyCloudflareToken() {
-        let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
-        let trimmed = CloudflareDNSProvider.normalizedAPIToken(from: clipboard)
-        guard !trimmed.isEmpty else {
-            setupFeedback = InternetAccessFeedback(
-                status: .warning,
-                message: "Clipboard is empty. Copy your Cloudflare API token first."
-            )
-            return
+        guard !isBusy, showsConflict || showsApply || showsRetry || showsRepair || feedback != nil else {
+            return nil
         }
-        app.settings.adminWebUI.cloudflareAPIToken = trimmed
-        hasVerifiedToken = false
-        availableZones = []
-        app.settings.adminWebUI.selectedZoneID = ""
-        verifyToken()
+
+        return AnyView(
+            HStack(spacing: 8) {
+                if let feedback {
+                    Label(feedback.message, systemImage: feedback.status == .error ? "exclamationmark.octagon.fill" : "info.circle")
+                        .font(.callout)
+                        .foregroundStyle(feedback.status == .error ? .red : .secondary)
+                        .lineLimit(2)
+                } else if showsApply {
+                    Text("Address changes take effect after setup re-runs.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                if showsConflict {
+                    Button("Override & Don't Warn Again") {
+                        app.dismissDNSConflict(for: draftHostname)
+                        commitDrafts()
+                        requestEnable(forceReplaceDNS: true)
+                    }
+                    Button("Override DNS") {
+                        commitDrafts()
+                        requestEnable(forceReplaceDNS: true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if showsApply {
+                    Button("Revert") {
+                        syncDraftsFromSettings()
+                    }
+                    Button("Apply Changes") {
+                        commitDrafts()
+                        requestEnable()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if showsRetry {
+                    Button("Retry Setup") {
+                        requestEnable()
+                    }
+                } else if showsRepair {
+                    Button("Repair…") {
+                        showingReRunSetupConfirmation = true
+                    }
+                }
+            }
+        )
     }
 
-    private func replaceCloudflareToken() {
-        app.settings.adminWebUI.cloudflareAPIToken = ""
-        hasVerifiedToken = false
-        availableZones = []
-        app.settings.adminWebUI.selectedZoneID = ""
-        app.settings.adminWebUI.selectedZoneName = ""
+    // MARK: Bindings
+
+    private var zoneSelection: Binding<String> {
+        Binding(
+            get: { draftZoneID },
+            set: { newValue in
+                draftZoneID = newValue
+                lastError = nil
+                if !settings.internetAccessEnabled { commitDrafts() }
+            }
+        )
     }
 
-    private func verifyToken() {
-        guard !isVerifyingToken else { return }
+    private var subdomainBinding: Binding<String> {
+        Binding(
+            get: { draftSubdomain },
+            set: { newValue in
+                draftSubdomain = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+                lastError = nil
+                if !settings.internetAccessEnabled { commitDrafts() }
+            }
+        )
+    }
 
-        isVerifyingToken = true
-        setupFeedback = nil
+    private func syncDraftsFromSettings() {
+        draftSubdomain = settings.subdomain
+        draftZoneID = settings.selectedZoneID
+    }
+
+    private func commitDrafts() {
+        let zoneName = draftZoneName
+        app.settings.adminWebUI.subdomain = draftSubdomain
+        app.settings.adminWebUI.selectedZoneID = draftZoneID
+        app.settings.adminWebUI.selectedZoneName = zoneName
+    }
+
+    // MARK: Token verification
+
+    private func verifyDraftToken() {
+        let token = CloudflareDNSProvider.normalizedAPIToken(from: tokenDraft)
+        guard !token.isEmpty else { return }
+        verify(token: token, saveOnSuccess: true)
+    }
+
+    private func verifySavedToken() {
+        let token = CloudflareDNSProvider.normalizedAPIToken(from: settings.cloudflareAPIToken)
+        guard !token.isEmpty else { return }
+        verify(token: token, saveOnSuccess: false)
+    }
+
+    /// Verifies a token and loads its zones. A replacement token is only saved
+    /// once Cloudflare accepts it, so a typo never wipes a working setup.
+    private func verify(token: String, saveOnSuccess: Bool) {
         tokenVerificationTask?.cancel()
+        isVerifyingToken = true
+        tokenError = nil
 
         tokenVerificationTask = Task { @MainActor in
             do {
-                let token = CloudflareDNSProvider.normalizedAPIToken(from: app.settings.adminWebUI.cloudflareAPIToken)
-                app.settings.adminWebUI.cloudflareAPIToken = token
                 let zones = try await app.verifyCloudflareTokenAndListZones(token: token)
                 guard !Task.isCancelled else { return }
 
-                self.availableZones = zones
-                self.hasVerifiedToken = true
-                self.isVerifyingToken = false
+                if saveOnSuccess {
+                    app.settings.adminWebUI.cloudflareAPIToken = token
+                    tokenDraft = ""
+                    isReplacingToken = false
+                }
+                availableZones = zones
+                hasVerifiedToken = true
+                isVerifyingToken = false
 
-                // Auto-select if only one zone
-                if zones.count == 1, let firstZone = zones.first {
-                    app.settings.adminWebUI.selectedZoneID = firstZone.id
-                    app.settings.adminWebUI.selectedZoneName = firstZone.name
+                if !zones.contains(where: { $0.id == draftZoneID }) {
+                    draftZoneID = zones.count == 1 ? zones[0].id : ""
+                    if !settings.internetAccessEnabled { commitDrafts() }
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                self.hasVerifiedToken = false
-                self.isVerifyingToken = false
-                self.setupFeedback = InternetAccessFeedback(
-                    status: .error,
-                    message: app.userFacingAdminWebPublicAccessMessage(for: error)
-                )
+                if !saveOnSuccess { hasVerifiedToken = false }
+                isVerifyingToken = false
+                tokenError = app.userFacingAdminWebPublicAccessMessage(for: error)
             }
+        }
+    }
+
+    // MARK: Actions
+
+    private func requestEnable(forceReplaceDNS: Bool = false) {
+        if app.isFailoverManagedNode {
+            showingNonPrimaryWarning = true
+        } else {
+            enable(forceReplaceDNS: forceReplaceDNS)
         }
     }
 
     private func enable(forceReplaceDNS: Bool = false) {
         guard !isEnabling else { return }
 
-        let fullHostname: String
-        if !app.settings.adminWebUI.selectedZoneID.isEmpty, !app.settings.adminWebUI.subdomain.isEmpty, let zone = selectedZone {
-            fullHostname = "\(app.settings.adminWebUI.subdomain.lowercased()).\(zone.name)"
-        } else {
-            fullHostname = app.settings.adminWebUI.normalizedHostname
-        }
+        if !settings.internetAccessEnabled { commitDrafts() }
+        let fullHostname = settings.normalizedHostname
 
         guard !fullHostname.isEmpty else {
-            setupFeedback = InternetAccessFeedback(status: .warning, message: "Configure a hostname first.")
+            setupFeedback = InternetAccessFeedback(status: .warning, message: "Choose a domain and subdomain first.")
             return
         }
 
@@ -801,7 +669,7 @@ struct InternetAccessConfigurationSection: View {
 
         Task { @MainActor in
             do {
-                let resultMessage = try await app.startInternetAccessSetup(
+                _ = try await app.startInternetAccessSetup(
                     progress: { event in
                         guard var progress = setupProgress else { return }
                         progress.apply(event)
@@ -812,8 +680,9 @@ struct InternetAccessConfigurationSection: View {
                 guard !Task.isCancelled else { return }
 
                 setupProgress = nil
-                setupFeedback = InternetAccessFeedback(status: .success, message: resultMessage)
+                setupFeedback = nil
                 isEnabling = false
+                syncDraftsFromSettings()
             } catch {
                 guard !Task.isCancelled else { return }
 
@@ -838,13 +707,13 @@ struct InternetAccessConfigurationSection: View {
 
         isDisabling = true
         setupFeedback = nil
+        lastError = nil
 
         Task { @MainActor in
             await app.stopInternetAccess()
             guard !Task.isCancelled else { return }
 
             setupProgress = nil
-            setupFeedback = InternetAccessFeedback(status: .success, message: "Internet Access stopped")
             isDisabling = false
         }
     }
@@ -855,6 +724,7 @@ struct InternetAccessConfigurationSection: View {
 
         isDisabling = true
         setupFeedback = nil
+        lastError = nil
         availableZones = []
         hasVerifiedToken = false
 
@@ -863,8 +733,9 @@ struct InternetAccessConfigurationSection: View {
             guard !Task.isCancelled else { return }
 
             setupProgress = nil
-            setupFeedback = InternetAccessFeedback(status: .success, message: "Internet Access reset")
             isDisabling = false
+            syncDraftsFromSettings()
+            if hasSavedToken { verifySavedToken() }
         }
     }
 
@@ -877,7 +748,6 @@ struct InternetAccessConfigurationSection: View {
         guard !publicURLString.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(publicURLString, forType: .string)
-        setupFeedback = InternetAccessFeedback(status: .success, message: "URL copied")
     }
 
     private func feedbackStatus(for error: Error) -> CertificateManager.ValidationStatus {

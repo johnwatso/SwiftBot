@@ -134,6 +134,7 @@ final class VoiceUntilEmptyTests: XCTestCase {
     @MainActor
     func testAnnouncesHumanWhoLeavesAnActiveAnnouncerChannel() async throws {
         let app = makeConnectedApp()
+        app.activeVoice = [presence("swiftbot-self"), presence("alice")]
         let announcer = try XCTUnwrap(app.voiceAnnouncementService)
         await announcer.setPaused(true)
 
@@ -146,6 +147,43 @@ final class VoiceUntilEmptyTests: XCTestCase {
 
         let pending = await announcer.pending
         XCTAssertEqual(pending.map(\.text), ["Gabe has left."])
+    }
+
+    @MainActor
+    func testSkipsFinalHumanDepartureAndDisconnectsWithoutSpeechRetries() async throws {
+        let app = makeConnectedApp()
+        app.knownBotUserIds = ["music-bot"]
+        app.activeVoice = [presence("swiftbot-self"), presence("music-bot"), presence("other", channelId: "voice-2")]
+        let announcer = try XCTUnwrap(app.voiceAnnouncementService)
+        await announcer.setPaused(true)
+
+        await app.announceMemberVoiceDeparture(
+            userID: "gabe", displayName: "Gabe", channelID: "voice-1", guildID: "guild-1"
+        )
+        let pending = await announcer.pending
+        XCTAssertTrue(pending.isEmpty)
+        XCTAssertTrue(app.voiceLog.contains {
+            $0.description.contains("no human listeners remain")
+        })
+        await app.handleUntilEmptyCheck(leftChannelId: "voice-1", guildId: "guild-1")
+        XCTAssertFalse(app.voiceConnectionStatus.isConnected)
+    }
+
+    @MainActor
+    func testHumanInAnotherGuildDoesNotReceiveDepartureSpeech() async throws {
+        let app = makeConnectedApp()
+        let otherGuild = VoiceMemberPresence(
+            id: "guild-2-alice", userId: "alice", username: "Alice", guildId: "guild-2",
+            channelId: "voice-1", channelName: "General", joinedAt: Date()
+        )
+        app.activeVoice = [presence("swiftbot-self"), otherGuild]
+        let announcer = try XCTUnwrap(app.voiceAnnouncementService)
+        await announcer.setPaused(true)
+        await app.announceMemberVoiceDeparture(
+            userID: "gabe", displayName: "Gabe", channelID: "voice-1", guildID: "guild-1"
+        )
+        let pending = await announcer.pending
+        XCTAssertTrue(pending.isEmpty)
     }
 
     @MainActor

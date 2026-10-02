@@ -155,6 +155,19 @@ enum LogExporter {
         out += "pendingGuildID=\(SwiftBotLogRedactor.redact(app.voicePendingGuildID ?? "-"))\n"
         out += "pendingChannelID=\(SwiftBotLogRedactor.redact(app.voicePendingChannelID ?? "-"))\n"
         out += "activeConfiguration=\(SwiftBotLogRedactor.redact(activeConfig?.name ?? "-")) enabled=\(activeConfigEnabled)\n"
+        out += "isPaused=\(voiceHealth.isPaused) isDraining=\(voiceHealth.isDraining)\n"
+        out += "configuredGuildID=\(SwiftBotLogRedactor.redact(app.settings.voice.guildID)) configuredChannelID=\(SwiftBotLogRedactor.redact(app.settings.voice.voiceChannelID))\n"
+        out += "announcerConfigurations=\(app.settings.voice.announcerConfigs.count)\n"
+        let botIDs = app.knownBotUserIds.union(app.botUserId.map { [$0] } ?? [])
+        for config in app.settings.voice.announcerConfigs {
+            let listeners = app.activeVoice.filter {
+                $0.guildId == app.settings.voice.guildID && $0.channelId == config.voiceChannelID
+                    && !botIDs.contains($0.userId)
+            }.count
+            out += "announcerConfiguration name=\(SwiftBotLogRedactor.redact(config.name)) channelID=\(SwiftBotLogRedactor.redact(config.voiceChannelID))"
+            out += " enabled=\(config.enabled) autoJoin=\(config.autoJoin) autoJoinOnStream=\(config.autoJoinOnStream) mode=\(config.connectionMode.rawValue)"
+            out += " emptyGraceSeconds=\(config.emptyChannelGraceSeconds) textChannels=\(config.textChannels.count) readVoiceChannelChat=\(config.readVoiceChannelChat) humanListeners=\(listeners)\n"
+        }
         out += "lastVoiceStateAt=\(app.lastVoiceStateAt.map { iso.string(from: $0) } ?? "-")\n"
         out += "lastVoiceStateSummary=\(SwiftBotLogRedactor.redact(app.lastVoiceStateSummary))\n"
         let recoveryDelays = app.voiceRecovery.schedule.map { duration in

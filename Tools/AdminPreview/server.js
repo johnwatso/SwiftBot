@@ -137,6 +137,29 @@ function textChannelsForPreview() {
 const replayMembers = [['412378964087275541', 'jonwatso'], ['280129381292318720', 'Sam'], ['280129381292318721', 'Alex'], ['280129381292318722', 'Jordan'], ['280129381292318723', 'Taylor'], ['280129381292318724', 'Morgan']];
 const recapState = { channelID: 't101', monthly: true, yearly: false, lastMonthlyKey: null, lastYearlyKey: null, personalDMs: false };
 let dmProgress = null;
+// Operators, shaped like AdminWebOperatorsPayload.
+const operatorState = {
+  byNode: { 'Preview Mac': '412378964087275541' },
+  alerts: { discordDisconnected: true, nodeOffline: true, recordingsUnreachable: true, errorBurst: true, roleChanges: false }
+};
+const operatorAlertTitles = { discordDisconnected: 'Discord disconnected', nodeOffline: 'Mac went offline', recordingsUnreachable: 'Recordings folder unreachable', errorBurst: 'Errors piling up', roleChanges: 'Role changes' };
+function operatorsFixture() {
+  const names = ['Preview Mac', 'Studio', 'Old MacBook'];
+  return {
+    thisNode: 'Preview Mac',
+    nodes: names.map(name => ({ name, operatorID: operatorState.byNode[name] || null, isThisNode: name === 'Preview Mac' })),
+    alerts: Object.keys(operatorAlertTitles).map(id => ({ id, title: operatorAlertTitles[id], enabled: !!operatorState.alerts[id] })),
+    members: fixtures.config.userTimezones.members
+  };
+}
+// Who was in each sample clip, as AppModel.clipPeopleIndex would work out.
+const clipCrew = [['300000000000000003', 'Gabe'], ['280129381292318720', 'Sam'], ['280129381292318721', 'Alex'], ['412378964087275541', 'jonwatso'], ['280129381292318722', 'Jordan']];
+const sourceOwners = { clips: '412378964087275541' };
+function withClipPeople(item, i) {
+  const recordedByID = sourceOwners.clips || null;
+  const people = clipCrew.filter(([id], j) => id === recordedByID || (j === 0 ? i % 3 !== 2 : (i + j) % 3 === 0)).map(([id, name]) => ({ id, name }));
+  return { ...item, people, recordedByID };
+}
 // SwiftMesh: a Primary with one Fail Over, mirroring AdminWebSwiftMeshPayload.
 const meshState = { handoverScheduledAt: null, handoverEndsAt: null, lastRunAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRunOK: true, forgotten: new Set() };
 function swiftMeshFixture() {
@@ -210,9 +233,35 @@ function replayFixture(periodKey) {
 async function handleAPI(req, res, pathname, query) {
   if (req.method === 'GET') {
     switch (pathname) {
+      case '/api/media/game-details':
+        if ((query.get('game') || '').toLowerCase() !== 'the finals') return sendJSON(res, { error: 'details_unavailable' }, 404);
+        return sendJSON(res, { appID: '2073850', description: 'Preview description: a competitive combat game show with destructible arenas and team-based action.', genres: ['Action', 'Free to Play'], developers: ['Embark Studios'], positivePercent: 84, reviewLabel: 'Very Positive', reviewCount: 123456 }); // Illustrative preview rating, not live Steam data.
       case '/api/media/game-art': return sendGameArt(res, query.get('game'));
-      case '/api/me': return sendJSON(res, fixtures.me);
-      case '/api/auth/options': return sendJSON(res, fixtures.authOptions);
+      case '/api/me':
+        if (!signedIn) return sendJSON(res, { error: 'unauthorized' }, 401);
+        return sendJSON(res, signedInAs === 'member'
+          ? { ...fixtures.me, id: '300000000000000003', username: 'gabe', globalName: 'Gabe', role: 'member' }
+          : { ...fixtures.me, role: 'admin' });
+      case '/api/member/replay': {
+        // Gabe's own Replay, shaped like AdminWebMemberReplayPayload.
+        const now = new Date();
+        const months = Array.from({ length: 14 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+        const periods = [];
+        months.forEach(m => { const y = m.slice(0, 4); if (!periods.includes(y)) periods.push(y); periods.push(m); });
+        const key = periods.includes(query.get('period')) ? query.get('period') : String(now.getFullYear());
+        const r = replayFixture(key);
+        const i = 2;
+        const msgs = r.topMembers[i]?.count || 0;
+        return sendJSON(res, {
+          rewindEnabled: true, guilds: [{ id: '1001', name: 'Swift Lounge' }, { id: '1002', name: 'Dev Bunker' }], guildID: query.get('guild') || '1001', periods, periodKey: key,
+          replay: { guildID: '1001', guildName: 'Swift Lounge', userID: '300000000000000003', name: 'Gabe', periodKey: r.periodKey, periodTitle: r.periodTitle,
+            messages: msgs, words: msgs * 6, activeDays: r.isYear ? 161 : 19, busiestDay: r.busiestDay, busiestDayMessages: Math.round(msgs / 30),
+            rank: i + 1, rankedMembers: r.chattingMembers, voiceSeconds: r.topVoiceMembers[i]?.count || 0, voiceSessions: 100, longestSessionSeconds: 15800,
+            favouriteVoiceChannel: 'General Voice', voiceRank: i + 1, commands: 700, previousPeriodTitle: r.isYear ? String(Number(key) - 1) : 'last month',
+            previousMessages: Math.round(msgs * 0.8), previousVoiceSeconds: Math.round((r.topVoiceMembers[i]?.count || 0) * 1.1) }
+        });
+      }
+      case '/api/auth/options': return sendJSON(res, { ...fixtures.authOptions, botOnline: true });
       case '/api/overview': return sendJSON(res, fixtures.overview);
       case '/api/status': return sendJSON(res, fixtures.status);
       case '/api/analytics': return sendJSON(res, { ...fixtures.analytics, period: analyticsPeriodFixture(query.get('period')) });
@@ -227,6 +276,18 @@ async function handleAPI(req, res, pathname, query) {
         return sendJSON(res, { count: /^\d{4}$/.test(query.get('period') || '') ? 61 : 28 });
       }
       case '/api/rewind/replay': return sendJSON(res, replayFixture(query.get('period') || String(new Date().getFullYear())));
+      case '/api/member/clips': {
+        // Clips Gabe was in, with who else was there, like AppModel.memberClips.
+        const all = fixtures.media.items.map(withClipPeople).map(item => ({ ...item, nodeName: '', sourceName: '', relativePath: '' }))
+          .filter(item => item.people.some(p => p.id === '300000000000000003'));
+        const game = query.get('game');
+        const items = game ? all.filter(i => i.gameName === game) : all;
+        const pageSize = Number(query.get('pageSize')) || 24;
+        const games = [...new Set(all.map(i => i.gameName))];
+        return sendJSON(res, { generatedAt: new Date().toISOString(), sources: [], items: items.slice(0, pageSize), games,
+          gameSummaries: games.map(name => ({ name, clipCount: all.filter(i => i.gameName === name).length, latestAt: null, totalBytes: 0 })),
+          selectedSourceID: null, selectedDateRange: 'all', selectedGame: game || null, page: 1, pageSize, totalItems: items.length, totalPages: 1 });
+      }
       case '/api/rewind/member': {
         const id = query.get('user');
         const r = replayFixture(query.get('period') || String(new Date().getFullYear()));
@@ -258,7 +319,12 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/welcome-flow': return sendJSON(res, welcomeFlow);
       case '/api/patchy': return sendJSON(res, patchy);
       case '/api/aibots': return sendJSON(res, fixtures.aibots);
-      case '/api/swiftmesh': return sendJSON(res, swiftMeshFixture());
+      case '/api/swiftmesh': {
+        const mesh = swiftMeshFixture();
+        mesh.nodes = mesh.nodes.map(n => ({ ...n, operatorID: operatorState.byNode[n.displayName] || null }));
+        return sendJSON(res, mesh);
+      }
+      case '/api/operators': return sendJSON(res, operatorsFixture());
       case '/api/wikibridge': return sendJSON(res, wikibridge);
       case '/api/sweep': return sendJSON(res, sweep);
       case '/api/gametracker': return sendJSON(res, gametracker);
@@ -266,13 +332,16 @@ async function handleAPI(req, res, pathname, query) {
         const game = query.get ? query.get('game') : query.game;
         const range = (query.get ? query.get('dateRange') : query.dateRange) || 'all';
         const days = { '7d': 7, '30d': 30, '90d': 90 }[range];
-        const inRange = fixtures.media.items.filter(item => !days || Date.now() - new Date(item.modifiedAt).getTime() < days * 86400000);
+        const person = query.get('person');
+        const inRange = fixtures.media.items.map(withClipPeople)
+          .filter(item => !days || Date.now() - new Date(item.modifiedAt).getTime() < days * 86400000)
+          .filter(item => !person || item.people.some(p => p.id === person));
         const items = inRange.filter(item => !game || item.gameName === game);
         const gameSummaries = [...new Set(inRange.map(i => i.gameName))].map(name => {
           const entries = inRange.filter(i => i.gameName === name);
           return { name, clipCount: entries.length, latestAt: entries.map(i => i.modifiedAt).sort().pop(), totalBytes: entries.reduce((t, i) => t + i.sizeBytes, 0) };
         }).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
-        return sendJSON(res, { ...fixtures.media, items, totalItems: items.length, gameSummaries, games: gameSummaries.map(g => g.name).sort(), selectedGame: game || null, selectedDateRange: range });
+        return sendJSON(res, { ...fixtures.media, sources: fixtures.media.sources.map(s => ({ ...s, ownerID: sourceOwners[s.id] || null })), items, totalItems: items.length, gameSummaries, games: gameSummaries.map(g => g.name).sort(), selectedGame: game || null, selectedDateRange: range });
       }
       case '/api/media/exports': return sendJSON(res, fixtures.mediaExports);
       case '/api/media/export-status': return sendJSON(res, { installed: true, version: '7.1' });
@@ -487,6 +556,14 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/media/source-owner') {
+      if (body.userID) sourceOwners[body.sourceID] = body.userID; else delete sourceOwners[body.sourceID];
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/access/members') {
+      fixtures.access.memberAccessEnabled = !!body.enabled;
+      return sendJSON(res, { ok: true });
+    }
     if (pathname === '/api/access/update') {
       // Same guards as AdminWebAccessUpdate.validate.
       const ids = [...new Set((body.allowedUserIDs || []).map(id => String(id).trim()).filter(Boolean))];
@@ -527,6 +604,14 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/operators') {
+      if (body.node) { if (body.userID) operatorState.byNode[body.node] = body.userID; else delete operatorState.byNode[body.node]; }
+      else if (body.alert) operatorState.alerts[body.alert] = !!body.enabled;
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/operators/test') {
+      return operatorState.byNode['Preview Mac'] ? sendJSON(res, { ok: true }) : sendJSON(res, { error: 'no_operator' }, 409);
+    }
     if (pathname === '/api/swiftmesh/action') {
       const mesh = swiftMeshFixture();
       switch (body.action) {
@@ -661,11 +746,38 @@ async function handleAPI(req, res, pathname, query) {
   return sendJSON(res, {}, 405);
 }
 
+// Signed in by default. Log out to see the sign-in page; "Continue with
+// Discord" signs straight back in, standing in for the OAuth round trip.
+let signedIn = true;
+let signedInAs = 'admin'; // /auth/discord/login?as=member signs in as Gabe, a server member
+
 const server = http.createServer(async (req, res) => {
   const pathname = decodeURIComponent(req.url.split('?')[0]);
 
+  if (pathname === '/auth/logout') {
+    signedIn = false;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end('{"ok":true}');
+  }
+  if (pathname === '/auth/discord/login') {
+    signedIn = true;
+    signedInAs = new URLSearchParams(req.url.split('?')[1] || '').get('as') === 'member' ? 'member' : 'admin';
+    // A moment's pause so the button's "Opening Discord…" state shows.
+    return setTimeout(() => { res.writeHead(302, { Location: '/' }); res.end(); }, 700);
+  }
+
   if (pathname.startsWith('/api/')) {
     return handleAPI(req, res, pathname, new URLSearchParams(req.url.split('?')[1] || ''));
+  }
+
+  // The app serves its logo from the bundle's Resources folder, one level
+  // above the admin files; mirror that so the preview isn't missing it.
+  if (pathname === '/assets/SwiftBird3.png') {
+    return fs.readFile(path.resolve(ROOT, '../SwiftBird3.png'), (error, data) => {
+      if (error) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+      res.end(data);
+    });
   }
 
   const relative = pathname === '/' ? '/index.html' : pathname;

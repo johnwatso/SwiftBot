@@ -12,7 +12,7 @@ extension AppModel {
         let followers = Array(snapshot.followerStates.values)
         let nodes = clusterNodes.map { node -> AdminWebSwiftMeshPayload.Node in
             let follower = followers.first { $0.nodeName.caseInsensitiveCompare(node.displayName) == .orderedSame }
-            return AdminWebSwiftMeshPayload.Node(
+            var result = AdminWebSwiftMeshPayload.Node(
                 id: node.id,
                 displayName: node.displayName,
                 hostname: node.hostname,
@@ -37,6 +37,8 @@ extension AppModel {
                     )
                 }
             )
+            result.operatorID = operatorID(forNode: node.displayName)
+            return result
         }
 
         let isTestPending = snapshot.isHandoverTestActive || snapshot.scheduledHandoverTestAt != nil

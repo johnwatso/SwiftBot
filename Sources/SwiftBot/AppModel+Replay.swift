@@ -15,16 +15,15 @@ extension AppModel {
         await rewindStore.flush()
         let interval = period.interval(now: now)
         let buckets = period.buckets()
-        let excluded = settings.rewind.optedOutUserIDs
         let isOnlyGuild = connectedServers.count <= 1
 
         async let messages = rewindStore.rangeSummary(
             guildID: guildID, start: interval.start, end: interval.end, buckets: buckets,
-            excludingUsers: excluded, filterStopWords: settings.rewind.filterStopWords
+            excludingUsers: [], filterStopWords: settings.rewind.filterStopWords
         )
         async let voice = voiceSessionStore.report(
             window: interval, buckets: buckets, previous: nil,
-            guildId: guildID, excludingUsers: excluded, now: now, topLimit: 5
+            guildId: guildID, excludingUsers: [], now: now, topLimit: 5
         )
         async let community = communityStatsStore.summary(buckets: buckets, in: interval)
         async let ranks = communityStatsStore.rankHistory(since: interval.start)
@@ -89,7 +88,6 @@ extension AppModel {
     func personalReplay(guildID: String, userID: String, period: ReplayPeriod, now: Date = Date()) async -> PersonalReplay {
         await rewindStore.flush()
         let interval = period.interval(now: now)
-        let excluded = settings.rewind.optedOutUserIDs
         var replay = PersonalReplay(
             guildID: guildID,
             guildName: connectedServers[guildID] ?? "Server",
@@ -98,15 +96,11 @@ extension AppModel {
             periodKey: period.key,
             periodTitle: period.title()
         )
-        guard !excluded.contains(userID) else {
-            replay.optedOut = true
-            return replay
-        }
-        let messages = await rewindStore.userRangeSummary(guildID: guildID, userID: userID, start: interval.start, end: interval.end, excludingUsers: excluded)
+        let messages = await rewindStore.userRangeSummary(guildID: guildID, userID: userID, start: interval.start, end: interval.end, excludingUsers: [])
         let voice = await voiceSessionStore.userReport(userId: userID, guildId: guildID, window: interval, now: now)
         let voiceRanking = await voiceSessionStore.report(
             window: interval, buckets: [], previous: nil, guildId: guildID,
-            excludingUsers: excluded, now: now, topLimit: 1_000
+            excludingUsers: [], now: now, topLimit: 1_000
         ).topUsers
         if replay.name == "Member", let name = messages.userName { replay.name = name }
         replay.messages = messages.messages
@@ -125,7 +119,7 @@ extension AppModel {
         let previousInterval = previous.interval(now: now)
         replay.previousPeriodTitle = previous.title()
         replay.previousMessages = await rewindStore.userRangeSummary(
-            guildID: guildID, userID: userID, start: previousInterval.start, end: previousInterval.end, excludingUsers: excluded
+            guildID: guildID, userID: userID, start: previousInterval.start, end: previousInterval.end, excludingUsers: []
         ).messages
         replay.previousVoiceSeconds = await voiceSessionStore.userReport(userId: userID, guildId: guildID, window: previousInterval, now: now).seconds
         if connectedServers.count <= 1 {
@@ -244,9 +238,6 @@ extension AppModel {
     }
 
     func personalReplayEmbed(_ replay: PersonalReplay, asDM: Bool = false) -> [String: Any] {
-        guard !replay.optedOut else {
-            return ["title": "📼 Your \(replay.periodTitle) Replay", "description": "You've opted out of Rewind, so there's nothing to show.", "color": 0x8E8E93]
-        }
         func change(_ now: Int, _ before: Int) -> String? {
             guard before > 0, let title = replay.previousPeriodTitle else { return nil }
             let percent = Int(((Double(now) - Double(before)) / Double(before) * 100).rounded())
@@ -337,13 +328,12 @@ extension AppModel {
     static let replayDMOptOutCustomID = "replay.dm.optout"
 
     /// Members who get a personal Replay DM for a period: anyone who posted or
-    /// was in voice, minus bots and anyone who opted out of Rewind or of DMs.
+    /// was in voice, minus bots and anyone who turned Replay DMs off.
     func replayDMRecipients(guildID: String, period: ReplayPeriod, now: Date = Date()) async -> [String] {
         let interval = period.interval(now: now)
         var ids = await rewindStore.activeUserIDs(guildID: guildID, start: interval.start, end: interval.end)
         let voice = await voiceSessionStore.report(window: interval, buckets: [], previous: nil, guildId: guildID, now: now, topLimit: 100_000)
         ids.formUnion(voice.topUsers.filter { $0.seconds >= 60 }.map(\.userId))
-        ids.subtract(settings.rewind.optedOutUserIDs)
         ids.subtract(settings.rewind.replayDMOptOutUserIDs)
         ids.subtract(knownBotUserIds)
         if let botUserId { ids.remove(botUserId) }
@@ -492,7 +482,6 @@ extension AppModel {
             now.addingTimeInterval(-14 * 86_400)
         )
         let includeBots = settings.rewind.includeBotMessages
-        let optedOut = settings.rewind.optedOutUserIDs
         let ignored = settings.rewind.ignoredChannelIDs
         var imported = 0
         for guildID in connectedServers.keys {
@@ -505,7 +494,6 @@ extension AppModel {
                     let fresh = page.messages.filter { message in
                         message.createdAt >= since
                             && (includeBots || !message.isBot)
-                            && !optedOut.contains(message.authorID)
                             && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     }
                     imported += await rewindStore.importMessages(fresh, retainContent: true)
@@ -527,6 +515,35 @@ extension AppModel {
 // MARK: - WebUI
 
 extension AppModel {
+    /// A signed-in person's own Replay. `allowedGuildIDs` is the member's
+    /// servers from sign-in, or nil for an admin (any connected server).
+    /// Opting out of Replay DMs doesn't hide it.
+    func memberReplay(userID: String, allowedGuildIDs: [String]?, guildID requested: String?, periodKey: String?) async -> AdminWebMemberReplayPayload {
+        let allowed = Set(allowedGuildIDs ?? Array(connectedServers.keys))
+        let guilds = connectedServers
+            .filter { allowed.contains($0.key) }
+            .sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
+            .map { AdminWebSimpleOption(id: $0.key, name: $0.value) }
+        let guildID = guilds.first { $0.id == requested }?.id ?? guilds.first?.id
+        guard settings.rewind.isEnabled, let guildID else {
+            return AdminWebMemberReplayPayload(rewindEnabled: settings.rewind.isEnabled, guilds: guilds, guildID: guildID, periods: [], periodKey: nil, replay: nil)
+        }
+        let months = await rewindStore.availableMonths(guildID: guildID)
+        var periods: [String] = []
+        for month in months {
+            let year = String(month.prefix(4))
+            if !periods.contains(year) { periods.append(year) }
+            periods.append(month)
+        }
+        let currentYear = String(Calendar.current.component(.year, from: Date()))
+        let key = periodKey.flatMap { periods.contains($0) ? $0 : nil } ?? (periods.contains(currentYear) ? currentYear : periods.first)
+        guard let key, let period = ReplayPeriod(key: key) else {
+            return AdminWebMemberReplayPayload(rewindEnabled: true, guilds: guilds, guildID: guildID, periods: periods, periodKey: nil, replay: nil)
+        }
+        let replay = await personalReplay(guildID: guildID, userID: userID, period: period)
+        return AdminWebMemberReplayPayload(rewindEnabled: true, guilds: guilds, guildID: guildID, periods: periods, periodKey: key, replay: replay)
+    }
+
     func adminWebRewind(_ request: AdminWebRewindRequest) async -> AdminWebRewindResult {
         switch request {
         case .replay(let guildID, let period):
@@ -546,7 +563,6 @@ extension AppModel {
                 guildID: guildID, phrase: trimmed,
                 start: Date(timeIntervalSince1970: 1_420_070_400), end: Date()
             )
-            let excluded = settings.rewind.optedOutUserIDs
             return .phrase(AdminWebRewindPhrasePayload(
                 phrase: trimmed,
                 total: report.totalOccurrences,
@@ -554,7 +570,7 @@ extension AppModel {
                 scanned: report.scannedMessages,
                 firstSeen: report.firstSeen,
                 lastSeen: report.lastSeen,
-                byUser: report.byUser.filter { !excluded.contains($0.userID) }.prefix(8).map {
+                byUser: report.byUser.prefix(8).map {
                     .init(title: knownUsersById[$0.userID] ?? $0.userName, count: $0.count, id: $0.userID)
                 },
                 byMonth: report.byMonth.sorted { $0.term < $1.term }.map { .init(title: $0.term, count: $0.count) },

@@ -9,6 +9,19 @@
 
 ## Recent Engineering Log
 
+### 2026-10-02 — Hardware recording streams
+
+- [x] Added required hardware H.264 streaming copies capped at 1920/1280 pixels on the long edge with 8/3 Mbps video targets and 128 kbps AAC; preserved source frame cadence and originals. Auto playback uses a two-rendition HLS master; remote SwiftMesh MP4 playback forwards quality requests. Encoding is serialized, completed files are published atomically, and the newest settled recording prepares in the background. Transcode and HLS caches each prune old entries above a soft 10 GiB budget while retaining entries used within the last hour.
+- [x] Debug app build, isolated hardware encoding/HLS/traversal checks, all eight focused Xcode `HLSPackagerTests` (including AAC preservation), and admin JavaScript syntax validation passed. The initial test-target compile blocker in unrelated `VoiceUntilEmptyTests` was resolved by concurrent work. First playback still waits for whole-file preparation; representative gameplay quality and browser adaptation need manual validation. Working tree changes, not committed.
+
+### 2026-10-02 — Announcer empty-channel speech and diagnostics
+
+- [x] Skip departure speech when no humans remain in the same guild/channel, avoiding pointless DAVE sole-member retries; clear the retry streak on owner recovery and include saved auto-join/channel settings in disconnected diagnostics. Debug Xcode build and all 36 targeted announcer/diagnostics tests passed; live Discord verification remains. Working tree changes, not committed.
+
+### 2026-10-02 — Web recordings game details
+
+- [x] Added a game detail header with Steam description, genres, developer and aggregate user review percentage above recordings; authenticated same-origin metadata with an hourly cache and unavailable fallback. Working tree changes, not committed.
+
 ### 2026-09-02 — SwiftMiner Discord avatar startup recovery
 
 - [x] Resolve linked SwiftMiner users through Discord REST when the gateway cache has not supplied their avatar hashes since startup. The companion `/v1/users` response now returns real Discord avatar URLs immediately without probing every member in larger servers, while users with no custom avatar retain Discord's generated fallback.

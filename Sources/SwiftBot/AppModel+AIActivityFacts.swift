@@ -17,7 +17,6 @@ enum AIActivityFacts {
         var sessions: [VoiceSession] = []
         var messages: Int?
         var playingNow: [String] = []
-        var optedOut = false
     }
 
     static let windowDays = 30
@@ -135,9 +134,6 @@ enum AIActivityFacts {
     static func describe(_ record: MemberRecord, now: Date, timeZone: TimeZone, isAsker: Bool) -> String {
         let label = record.member.username.map { "\(record.member.name) (@\($0))" } ?? record.member.name
         let who = isAsker ? "\(label), the person asking" : label
-        if record.optedOut {
-            return "- \(who): has opted out of activity stats. Say you can't share their activity."
-        }
         var parts: [String] = []
         let timeFormatter = DateFormatter()
         timeFormatter.locale = Locale(identifier: "en_US")
@@ -241,29 +237,24 @@ extension AppModel {
         let timeZone = zoneID.flatMap(TimeZone.init(identifier:)) ?? .current
         let now = Date()
         let since = now.addingTimeInterval(-Double(AIActivityFacts.windowDays) * 86_400)
-        let optedOut = settings.rewind.optedOutUserIDs
         let guildIDs = guildID.map { [$0] } ?? Array(connectedServers.keys)
 
         var lines: [String] = []
         for member in targets {
             var record = AIActivityFacts.MemberRecord(member: member)
-            record.optedOut = optedOut.contains(member.id)
-            if !record.optedOut {
-                record.sessions = await voiceSessionStore.sessions(userId: member.id, guildId: guildID, since: since)
-                if settings.rewind.isEnabled {
-                    var total = 0
-                    for id in guildIDs {
-                        total += await rewindStore.userRangeSummary(guildID: id, userID: member.id, start: since, end: now, excludingUsers: optedOut).messages
-                    }
-                    record.messages = total
+            record.sessions = await voiceSessionStore.sessions(userId: member.id, guildId: guildID, since: since)
+            if settings.rewind.isEnabled {
+                var total = 0
+                for id in guildIDs {
+                    total += await rewindStore.userRangeSummary(guildID: id, userID: member.id, start: since, end: now, excludingUsers: []).messages
                 }
-                record.playingNow = gameSessionTracker.activeGames(for: member.id)
+                record.messages = total
             }
+            record.playingNow = gameSessionTracker.activeGames(for: member.id)
             lines.append(AIActivityFacts.describe(record, now: now, timeZone: timeZone, isAsker: member.id == askerID))
         }
         if targets.isEmpty, AIActivityFacts.asksAboutServer(question) {
             let sessions = await voiceSessionStore.sessions(guildId: guildID, since: since)
-                .filter { !optedOut.contains($0.userId) }
             if let line = AIActivityFacts.describeServer(sessions, timeZone: timeZone) { lines.append(line) }
         }
         return AIActivityFacts.block(lines: lines, timeZone: timeZone)

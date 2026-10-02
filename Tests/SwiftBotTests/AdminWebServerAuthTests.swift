@@ -145,6 +145,50 @@ final class AdminWebServerAuthTests: XCTestCase {
         XCTAssertEqual(statusCode(from: response), 403, "A viewer must be refused, not silently upgraded")
     }
 
+    // MARK: - Members
+
+    /// A server member signs in to their own Replay. The gate in `process`
+    /// must keep them off every admin route, including the ones that only
+    /// check for a signed-in session.
+    func testMemberIsKeptOffAdminRoutes() async {
+        let server = AdminWebServer()
+        let session = await server.testSeedSession(memberRole: true)
+        for path in ["/api/overview", "/api/config", "/api/status", "/api/commands", "/api/access", "/api/rewind/replay", "/api/media"] {
+            let response = await server.testProcessRequest(makeRequest(path: path, cookie: session.id))
+            XCTAssertEqual(statusCode(from: response), 403, "\(path) must be refused to a member")
+        }
+        let write = await server.testProcessRequest(
+            makeRequest(method: "POST", path: "/api/access/members", cookie: session.id, csrf: session.csrf, body: Data(#"{"enabled":true}"#.utf8))
+        )
+        XCTAssertEqual(statusCode(from: write), 403, "A member must not change who can sign in")
+    }
+
+    func testMemberReachesTheirOwnRoutes() async {
+        let server = AdminWebServer()
+        let session = await server.testSeedSession(memberRole: true)
+        let me = await server.testProcessRequest(makeRequest(path: "/api/me", cookie: session.id))
+        XCTAssertEqual(statusCode(from: me), 200)
+        XCTAssertTrue(bodyString(from: me).contains(#""role":"member""#))
+        // No provider in an unconfigured server: 503 means the gate let it through.
+        let replay = await server.testProcessRequest(makeRequest(path: "/api/member/replay", cookie: session.id))
+        XCTAssertEqual(statusCode(from: replay), 503)
+        let page = await server.testProcessRequest(makeRequest(path: "/", cookie: session.id))
+        XCTAssertNotEqual(statusCode(from: page), 403)
+    }
+
+    /// Members can only play clips they're in. With no clip index (an
+    /// unconfigured server), every playback request is refused.
+    func testMemberPlaybackNeedsAClipTheyAreIn() async {
+        let server = AdminWebServer()
+        let session = await server.testSeedSession(memberRole: true)
+        for path in ["/api/media/stream?id=abc", "/api/media/thumbnail?id=abc", "/api/media/hls?id=abc", "/api/media/stream"] {
+            let response = await server.testProcessRequest(makeRequest(path: path, cookie: session.id))
+            XCTAssertEqual(statusCode(from: response), 403, "\(path) must be refused")
+        }
+        let clips = await server.testProcessRequest(makeRequest(path: "/api/member/clips", cookie: session.id))
+        XCTAssertEqual(statusCode(from: clips), 503, "Their own clip list gets through the gate")
+    }
+
     // MARK: - CSRF
 
     func testMutationWithoutCSRFHeaderIsRejected() async {

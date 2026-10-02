@@ -213,6 +213,23 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         XCTAssertTrue(pendingAfter.isEmpty)
     }
 
+    func testOwnerResumeClearsRecoveryRetryStreakBeforeNextRead() async throws {
+        let playback = FakeAnnouncementPlayback()
+        await playback.setError(VoicePipelineError.daveNotReady)
+        let announcer = try makeAnnouncer(playback: playback)
+        await announcer.enqueue("recover me")
+        await waitUntil { await announcer.healthSnapshot.isPaused }
+        let failed = await announcer.healthSnapshot
+        XCTAssertGreaterThan(failed.retryStreak, 0)
+        // Remove pending work so the reset cannot be attributed to a later
+        // successful playback; owner recovery must clear it independently.
+        await announcer.clearPending()
+        await announcer.setPaused(false)
+        let resumed = await announcer.healthSnapshot
+        XCTAssertEqual(resumed.retryStreak, 0)
+        XCTAssertNil(resumed.lastFailureReason)
+    }
+
     func testMediaReadyDuringFinalDaveRetryDoesNotLeaveQueuePaused() async throws {
         let playback = FinalDaveRetryPlayback()
         let announcer = try VoiceAnnouncementService(

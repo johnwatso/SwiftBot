@@ -26,10 +26,6 @@ struct RewindSettings: Codable, Hashable, Sendable {
     /// default because bot output would otherwise dominate every word count.
     var includeBotMessages: Bool = false
 
-    /// Users who asked not to be counted. Their messages are dropped at ingest,
-    /// never written, and `/rewind forget` also purges what was already stored.
-    var optedOutUserIDs: Set<String> = []
-
     /// Channels excluded from collection entirely.
     var ignoredChannelIDs: Set<String> = []
 
@@ -52,8 +48,8 @@ struct RewindSettings: Codable, Hashable, Sendable {
     var recapDrops: [String: RewindRecapDrop] = [:]
 
     /// Members who asked not to get personal Replay DMs (from the DM's button
-    /// or `/replay dms:stop`). Separate from `optedOutUserIDs`, which stops
-    /// their messages being archived at all.
+    /// or `/replay dms:stop`). The only opt-out: everyone's activity counts
+    /// towards Rewind, and anyone can see their own Replay.
     var replayDMOptOutUserIDs: Set<String> = []
 
     /// When the nightly catch-up last finished; the next one fetches from here.
@@ -70,7 +66,6 @@ struct RewindSettings: Codable, Hashable, Sendable {
         retainMessageContent = try c.decodeIfPresent(Bool.self, forKey: .retainMessageContent) ?? d.retainMessageContent
         retentionDays = try c.decodeIfPresent(Int.self, forKey: .retentionDays) ?? d.retentionDays
         includeBotMessages = try c.decodeIfPresent(Bool.self, forKey: .includeBotMessages) ?? d.includeBotMessages
-        optedOutUserIDs = try c.decodeIfPresent(Set<String>.self, forKey: .optedOutUserIDs) ?? d.optedOutUserIDs
         ignoredChannelIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ignoredChannelIDs) ?? d.ignoredChannelIDs
         filterStopWords = try c.decodeIfPresent(Bool.self, forKey: .filterStopWords) ?? d.filterStopWords
         restrictToAdmins = try c.decodeIfPresent(Bool.self, forKey: .restrictToAdmins) ?? d.restrictToAdmins
@@ -81,7 +76,7 @@ struct RewindSettings: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, retainMessageContent, retentionDays, includeBotMessages, optedOutUserIDs
+        case isEnabled, retainMessageContent, retentionDays, includeBotMessages
         case ignoredChannelIDs, filterStopWords, restrictToAdmins, excludeFromBackups, recapDrops
         case replayDMOptOutUserIDs, lastCatchUpAt
     }
@@ -92,8 +87,7 @@ struct RewindSettings: Codable, Hashable, Sendable {
 
     func collects(userID: String, isBot: Bool) -> Bool {
         guard isEnabled else { return false }
-        if isBot && !includeBotMessages { return false }
-        return !optedOutUserIDs.contains(userID)
+        return !isBot || includeBotMessages
     }
 }
 

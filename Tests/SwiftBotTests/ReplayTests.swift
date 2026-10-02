@@ -46,7 +46,7 @@ final class ReplayTests: XCTestCase {
         var settings = BotSettings()
         settings.rewind.isEnabled = true
         settings.rewind.retentionDays = 90
-        settings.rewind.optedOutUserIDs = ["123"]
+        settings.rewind.replayDMOptOutUserIDs = ["123"]
         var drop = RewindRecapDrop()
         drop.channelID = "c1"
         drop.monthly = true
@@ -57,7 +57,7 @@ final class ReplayTests: XCTestCase {
         let loaded = try JSONDecoder().decode(BotSettings.self, from: data)
         XCTAssertTrue(loaded.rewind.isEnabled)
         XCTAssertEqual(loaded.rewind.retentionDays, 90)
-        XCTAssertEqual(loaded.rewind.optedOutUserIDs, ["123"])
+        XCTAssertEqual(loaded.rewind.replayDMOptOutUserIDs, ["123"])
         XCTAssertEqual(loaded.rewind.recapDrops["g1"]?.channelID, "c1")
         XCTAssertEqual(loaded.rewind.recapDrops["g1"]?.lastMonthlyKey, "2026-09")
     }

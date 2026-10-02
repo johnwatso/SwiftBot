@@ -246,7 +246,8 @@ const rewind = {
   ]
 };
 
-const authOptions = { discordEnabled: false, localEnabled: true, botName: 'SwiftBot (Preview)', botAvatarURL: '' };
+// Like a real install: Discord sign-in only (password sign-in needs dev features).
+const authOptions = { discordEnabled: true, localEnabled: false, botName: 'SwiftBot (Preview)', botAvatarURL: '' };
 
 // ---------------------------------------------------------------------------
 // Fixtures for the remaining views. Shapes mirror the AdminWeb*Payload structs
@@ -327,7 +328,7 @@ const config = {
   general: {
     autoStart: true, webUIEnabled: true, webUIBaseURL: 'http://127.0.0.1:4179',
     inviteURL: 'https://discord.com/oauth2/authorize?client_id=000000000000000000&permissions=8&scope=bot+applications.commands',
-    appVersion: '1.26.3', appBuild: '2026100109', hostName: 'Preview Mac', osVersion: 'Version 26.1 (Build 25B78)'
+    appVersion: '1.26.3', appBuild: '2026100109', hostName: 'Preview Mac', osVersion: 'Version 26.1 (Build 25B78)', macModel: 'Mac mini (M1, 2020) · 16 GB memory'
   },
   userTimezones: {
     mappings: { '412378964087275541': 'Pacific/Auckland', '280129381292318720': 'Pacific/Auckland', '512391234123412345': 'Europe/London' },

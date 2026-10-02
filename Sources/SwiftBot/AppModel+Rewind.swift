@@ -262,7 +262,6 @@ extension AppModel {
         )
 
         let includeBots = settings.rewind.includeBotMessages
-        let optedOut = settings.rewind.optedOutUserIDs
         let ignoredChannels = settings.rewind.ignoredChannelIDs
 
         rewindBackfillTask = Task { [weak self] in
@@ -303,7 +302,6 @@ extension AppModel {
 
                     let keep = page.messages.filter { message in
                         if message.isBot && !includeBots { return false }
-                        if optedOut.contains(message.authorID) { return false }
                         return !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     }
 

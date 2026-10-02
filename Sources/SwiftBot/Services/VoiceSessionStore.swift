@@ -175,6 +175,12 @@ actor VoiceSessionStore {
             .sorted { $0.joinedAt < $1.joinedAt }
     }
 
+    /// Sessions that overlap a window at all, including ones that started
+    /// before it or are still running.
+    func sessions(overlapping window: DateInterval, now: Date = Date()) -> [VoiceSession] {
+        allSessions().filter { $0.joinedAt < window.end && ($0.leftAt ?? now) > window.start }
+    }
+
     /// Every session that started on or after `start`, for server-wide patterns.
     func sessions(guildId: String?, since start: Date) -> [VoiceSession] {
         allSessions().filter { (guildId == nil || $0.guildId == guildId) && $0.joinedAt >= start }

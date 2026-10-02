@@ -175,7 +175,6 @@ struct PersonalReplay: Codable, Sendable {
     var favouriteVoiceChannel: String?
     var voiceRank: Int?
     var commands: Int?
-    var optedOut = false
     /// The same numbers for the period before, for "vs last month" lines.
     var previousPeriodTitle: String?
     var previousMessages = 0

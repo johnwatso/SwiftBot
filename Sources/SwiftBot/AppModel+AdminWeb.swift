@@ -966,7 +966,8 @@ extension AppModel {
                 appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
                 appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
                 hostName: settings.clusterNodeName,
-                osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+                osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                macModel: MacHardwareInfo.summary
             ),
             userTimezones: .init(
                 mappings: settings.userTimezones,
@@ -1176,7 +1177,7 @@ extension AppModel {
 
     func adminWebAccessSnapshot() -> AdminWebAccessPayload {
         let web = settings.adminWebUI
-        return AdminWebAccessPayload(
+        var payload = AdminWebAccessPayload(
             restrictToListedUsers: web.restrictAccessToSpecificUsers,
             allowedUserIDs: web.normalizedAllowedUserIDs,
             members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) },
@@ -1184,6 +1185,17 @@ extension AppModel {
                 && !web.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !web.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
+        payload.memberAccessEnabled = web.memberAccessEnabled
+        return payload
+    }
+
+    /// Turning it off signs current members out (see AdminWebServer.configure).
+    func applyAdminWebMemberAccess(_ enabled: Bool) async -> Bool {
+        guard !isFailoverManagedNode else { return false }
+        settings.adminWebUI.memberAccessEnabled = enabled
+        saveSettings()
+        await configureAdminWebServer()
+        return true
     }
 
     /// Guards already ran in AdminWebServer; this saves and pushes the new
@@ -1767,7 +1779,8 @@ extension AppModel {
                 #else
                 return false
                 #endif
-            }()
+            }(),
+            memberAccessEnabled: settings.adminWebUI.memberAccessEnabled
         )
 
         let runtimeState = await adminWebServer.configure(
@@ -2295,9 +2308,9 @@ extension AppModel {
                 guard let model = self else { return nil }
                 return await model.adminWebMediaHLSPlaylistResponse(token: token, accessToken: accessToken)
             },
-            mediaHLSSegmentProvider: { [weak self] token, segment in
+            mediaHLSSegmentProvider: { [weak self] token, segment, accessToken in
                 guard let model = self else { return nil }
-                return await model.adminWebMediaHLSSegmentResponse(token: token, segment: segment)
+                return await model.adminWebMediaHLSSegmentResponse(token: token, segment: segment, accessToken: accessToken)
             },
             mediaThumbnailProvider: { [weak self] token in
                 guard let model = self else { return nil }
@@ -2368,6 +2381,10 @@ extension AppModel {
             accessUpdater: { [weak self] update in
                 guard let model = self else { return false }
                 return await model.applyAdminWebAccessUpdate(update)
+            },
+            memberAccessUpdater: { [weak self] enabled in
+                guard let model = self else { return false }
+                return await model.applyAdminWebMemberAccess(enabled)
             },
             sweepProvider: { [weak self] in
                 guard let model = self else {
@@ -2486,6 +2503,38 @@ extension AppModel {
             swiftMeshProvider: { [weak self] in
                 guard let model = self else { return nil }
                 return await model.adminWebSwiftMeshSnapshot()
+            },
+            memberReplayProvider: { [weak self] userID, guildIDs, guildID, period in
+                guard let model = self else { return nil }
+                return await model.memberReplay(userID: userID, allowedGuildIDs: guildIDs, guildID: guildID, periodKey: period)
+            },
+            memberClipsProvider: { [weak self] userID, query in
+                guard let model = self else { return nil }
+                return await model.memberClips(userID: userID, query: query)
+            },
+            memberMayPlay: { [weak self] userID, token in
+                guard let model = self else { return false }
+                return await model.memberMayPlay(userID: userID, token: token)
+            },
+            mediaPlaybackChoiceProvider: { [weak self] token in
+                guard let model = self else { return nil }
+                return await model.mediaPlaybackChoice(token: token)
+            },
+            operatorsProvider: { [weak self] in
+                guard let model = self else { return nil }
+                return await MainActor.run { model.adminWebOperatorsSnapshot() }
+            },
+            updateOperators: { [weak self] patch in
+                guard let model = self else { return false }
+                return await MainActor.run { model.applyAdminWebOperatorsPatch(patch) }
+            },
+            sendOperatorTest: { [weak self] in
+                guard let model = self else { return "unavailable" }
+                return await model.sendOperatorTestAlert()
+            },
+            setMediaSourceOwner: { [weak self] sourceID, userID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.setRecordingSourceOwner(sourceKey: sourceID, userID: userID) }
             },
             runSwiftMeshAction: { [weak self] action in
                 guard let model = self else { return "unavailable" }

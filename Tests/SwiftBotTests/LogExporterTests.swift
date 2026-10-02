@@ -29,6 +29,24 @@ final class LogExporterTests: XCTestCase {
     }
 
     @MainActor
+    func testDisconnectedAnnouncerReportIncludesAutoJoinConfiguration() async {
+        let app = AppModel()
+        app.settings.voice.announcerConfigs = [AnnouncerVoiceChannelConfig(
+            id: "config-1", name: "Friends", voiceChannelID: "voice-1",
+            autoJoin: false, autoJoinOnStream: true, connectionMode: .untilEmpty,
+            emptyChannelGraceSeconds: 15, textChannels: ["text-1"]
+        )]
+        app.voicePendingChannelID = nil
+
+        let report = await LogExporter.buildAnnouncerReport(from: app)
+
+        XCTAssertTrue(report.contains("activeConfiguration=- enabled=-"))
+        XCTAssertTrue(report.contains("announcerConfigurations=1"))
+        XCTAssertTrue(report.contains("announcerConfiguration name=Friends channelID=voice-1 enabled=true autoJoin=false autoJoinOnStream=true mode=untilEmpty"))
+        XCTAssertTrue(report.contains("emptyGraceSeconds=15 textChannels=1 readVoiceChannelChat=true humanListeners=0"))
+    }
+
+    @MainActor
     func testAnnouncerReportContainsOnlyVoiceDiagnosticsAndFlightRecorder() async {
         let app = AppModel()
         app.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "voice-only event"))

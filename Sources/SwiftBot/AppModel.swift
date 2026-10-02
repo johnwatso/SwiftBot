@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
                 configurePatchyMonitoring()
                 configureGameTrackingMonitoring()
                 configureReplayDrops()
+                configureOperatorMonitoring()
             }
         }
     }
@@ -284,6 +285,14 @@ final class AppModel: ObservableObject {
     /// part of the provider-neutral rank protocol yet.
     lazy var finalsIDLatestRoundClient = FinalsIDAPIClient(session: discordRESTSession)
     var gameSessionTracker = GamePresenceSessionTracker()
+    /// Operator alerts: the once-a-minute check and what it has seen.
+    var operatorMonitorTask: Task<Void, Never>?
+    var operatorIssues = OperatorIssueTracker()
+    var lastObservedClusterMode: ClusterMode?
+    /// Clip lengths read from local files, keyed by library item ID.
+    var clipDurationCache: [String: TimeInterval] = [:]
+    /// Who was in each clip, keyed "node|itemID"; rebuilt at most once a minute.
+    var clipPeopleCache: (builtAt: Date, people: [String: [String]])?
     var gameSessionSweeperTask: Task<Void, Never>?
     lazy var playlistImportService = PlaylistImportService(session: discordRESTSession)
     lazy var service = DiscordService(
@@ -789,9 +798,9 @@ final class AppModel: ObservableObject {
                     guard let self else { return MediaLibraryPayload(nodeName: "SwiftBot", configFilePath: "", sources: [], items: [], generatedAt: Date()) }
                     return await self.localMediaLibrarySnapshot()
                 },
-                mediaStreamHandler: { [weak self] itemID, rangeHeader in
+                mediaStreamHandler: { [weak self] itemID, rangeHeader, quality in
                     guard let self else { return nil }
-                    return await self.localMediaStreamResponse(itemID: itemID, rangeHeader: rangeHeader)
+                    return await self.localMediaStreamResponse(itemID: itemID, rangeHeader: rangeHeader, quality: quality)
                 },
                 mediaThumbnailHandler: { [weak self] itemID, _ in
                     guard let self else { return nil }

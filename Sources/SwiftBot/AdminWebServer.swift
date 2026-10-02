@@ -101,6 +101,7 @@ struct AdminWebSwiftMeshPayload: Codable {
         let latencyMs: Double?
         let isThisNode: Bool
         let follower: Follower?
+        var operatorID: String?
     }
     struct Handover: Codable {
         let isActive: Bool
@@ -134,6 +135,43 @@ struct AdminWebSwiftMeshPayload: Codable {
     let localGatewayLatencyMs: Int?
     let handover: Handover
     let nodes: [Node]
+}
+
+/// GET /api/member/replay: a member's own Replay for one of their servers.
+struct AdminWebMemberReplayPayload: Codable {
+    let rewindEnabled: Bool
+    let guilds: [AdminWebSimpleOption]
+    let guildID: String?
+    /// Years and months with archived messages, newest first.
+    let periods: [String]
+    let periodKey: String?
+    let replay: PersonalReplay?
+}
+
+/// GET /api/operators: who runs each Mac and which alerts are on.
+struct AdminWebOperatorsPayload: Codable {
+    struct Node: Codable {
+        let name: String
+        let operatorID: String?
+        let isThisNode: Bool
+    }
+    struct Alert: Codable {
+        let id: String
+        let title: String
+        let enabled: Bool
+    }
+    let thisNode: String
+    let nodes: [Node]
+    let alerts: [Alert]
+    let members: [AdminWebMemberOption]
+}
+
+/// POST /api/operators: set a node's operator, or switch an alert.
+struct AdminWebOperatorsPatch: Codable {
+    var node: String?
+    var userID: String?
+    var alert: String?
+    var enabled: Bool?
 }
 
 /// POST /api/swiftmesh/action.
@@ -774,6 +812,8 @@ struct AdminWebConfigPayload: Codable {
         var appBuild: String = ""
         var hostName: String = ""
         var osVersion: String = ""
+        /// "Mac mini (M1, 2020) · 16 GB memory".
+        var macModel: String = ""
     }
 
     struct UserTimezones: Codable {
@@ -878,6 +918,13 @@ struct AdminWebAccessPayload: Codable {
     /// Password fallback is configured in the macOS app; shown so admins know
     /// there's a way back in.
     let localFallbackEnabled: Bool
+    /// Server members can sign in to their own Replay and clips.
+    var memberAccessEnabled = false
+}
+
+/// POST /api/access/members.
+struct AdminWebMemberAccessUpdate: Codable {
+    let enabled: Bool
 }
 
 struct AdminWebAccessUpdate: Codable {
@@ -1196,6 +1243,14 @@ struct AdminWebMediaSourcePayload: Codable {
     let nodeName: String
     let sourceName: String
     let itemCount: Int
+    /// "Recorded by": the member whose voice channel decides who's in its clips.
+    var ownerID: String?
+}
+
+/// POST /api/media/source-owner.
+struct AdminWebMediaSourceOwnerPatch: Codable {
+    let sourceID: String
+    let userID: String
 }
 
 struct AdminWebMediaItemPayload: Codable {
@@ -1210,6 +1265,10 @@ struct AdminWebMediaItemPayload: Codable {
     let modifiedAt: Date
     let thumbnailURL: String
     let streamURL: String
+    /// Who was in voice with the recorder while it was recorded.
+    var people: [AdminWebSimpleOption] = []
+    /// The folder's "Recorded by" member, when one is set.
+    var recordedByID: String?
 }
 
 struct AdminWebMediaLibraryPayload: Codable {
@@ -1326,6 +1385,8 @@ actor AdminWebServer {
         var redirectPath: String
         var allowedUserIDs: [String]
         var devFeaturesEnabled: Bool
+        /// Server members who aren't admins can sign in to a member-only view.
+        var memberAccessEnabled: Bool = false
     }
 
     private struct HTTPRequest {
@@ -1340,6 +1401,9 @@ actor AdminWebServer {
     private enum Role: String, Codable {
         case admin
         case viewer
+        /// A server member: their own Replay and clips, nothing else. Kept
+        /// to the member routes by the gate at the top of `process`.
+        case member
     }
 
     private struct Session: Codable {
@@ -1355,6 +1419,9 @@ actor AdminWebServer {
         // sent (e.g. native Remote clients) — in that case binding is not enforced.
         var userAgentHash: String? = nil
         var role: Role = .admin
+        /// Members: the connected servers they belonged to at sign-in, which
+        /// scopes what they can see.
+        var guildIDs: [String]? = nil
     }
 
     private struct PendingState {
@@ -1468,7 +1535,7 @@ actor AdminWebServer {
     private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
     private var mediaStreamProvider: (@Sendable (String, String?, String?) async -> BinaryHTTPResponse?)?
     private var mediaHLSPlaylistProvider: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
-    private var mediaHLSSegmentProvider: (@Sendable (String, String) async -> BinaryHTTPResponse?)?
+    private var mediaHLSSegmentProvider: (@Sendable (String, String, String?) async -> BinaryHTTPResponse?)?
     private var mediaThumbnailProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var mediaFrameProvider: (@Sendable (String, Double) async -> BinaryHTTPResponse?)?
     private var mediaExportStatusProvider: (@Sendable () async -> MediaExportStatus)?
@@ -1485,6 +1552,7 @@ actor AdminWebServer {
     private var activityProvider: (@Sendable (Int) async -> AdminWebActivityPayload)?
     private var rewindHandler: (@Sendable (AdminWebRewindRequest) async -> AdminWebRewindResult)?
     private var accessUpdater: (@Sendable (AdminWebAccessUpdate) async -> Bool)?
+    private var memberAccessUpdater: (@Sendable (Bool) async -> Bool)?
     private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
     private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
     private var createSweepPolicy: (@Sendable (AdminWebSweepPolicyCreatePatch) async -> SweepPolicy?)?
@@ -1501,6 +1569,15 @@ actor AdminWebServer {
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var generateSwiftMeshJoinCode: (@Sendable () async -> String?)?
     private var swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)?
+    /// (userID, servers a member may see or nil for an admin, guild, period).
+    private var memberReplayProvider: (@Sendable (String, [String]?, String?, String?) async -> AdminWebMemberReplayPayload?)?
+    private var memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)?
+    private var memberMayPlay: (@Sendable (String, String) async -> Bool)?
+    private var mediaPlaybackChoiceProvider: (@Sendable (String) async -> (quality: String, preparing: Bool)?)?
+    private var operatorsProvider: (@Sendable () async -> AdminWebOperatorsPayload?)?
+    private var updateOperators: (@Sendable (AdminWebOperatorsPatch) async -> Bool)?
+    private var sendOperatorTest: (@Sendable () async -> String?)?
+    private var setMediaSourceOwner: (@Sendable (String, String) async -> Bool)?
     private var runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     /// Registers a companion-app hostname (e.g. SwiftMiner's dashboard) on the
@@ -1601,7 +1678,7 @@ actor AdminWebServer {
         mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
         mediaStreamProvider: @escaping @Sendable (String, String?, String?) async -> BinaryHTTPResponse?,
         mediaHLSPlaylistProvider: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse?,
-        mediaHLSSegmentProvider: @escaping @Sendable (String, String) async -> BinaryHTTPResponse?,
+        mediaHLSSegmentProvider: @escaping @Sendable (String, String, String?) async -> BinaryHTTPResponse?,
         mediaThumbnailProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         mediaFrameProvider: @escaping @Sendable (String, Double) async -> BinaryHTTPResponse?,
         mediaExportStatusProvider: @escaping @Sendable () async -> MediaExportStatus,
@@ -1617,6 +1694,7 @@ actor AdminWebServer {
         activityProvider: @escaping @Sendable (Int) async -> AdminWebActivityPayload,
         rewindHandler: @escaping @Sendable (AdminWebRewindRequest) async -> AdminWebRewindResult,
         accessUpdater: @escaping @Sendable (AdminWebAccessUpdate) async -> Bool,
+        memberAccessUpdater: (@Sendable (Bool) async -> Bool)? = nil,
         sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
         setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
         updateSweepPolicy: @escaping @Sendable (SweepPolicy) async -> Bool,
@@ -1634,6 +1712,14 @@ actor AdminWebServer {
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         generateSwiftMeshJoinCode: @escaping @Sendable () async -> String?,
         swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)? = nil,
+        memberReplayProvider: (@Sendable (String, [String]?, String?, String?) async -> AdminWebMemberReplayPayload?)? = nil,
+        memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)? = nil,
+        memberMayPlay: (@Sendable (String, String) async -> Bool)? = nil,
+        mediaPlaybackChoiceProvider: (@Sendable (String) async -> (quality: String, preparing: Bool)?)? = nil,
+        operatorsProvider: (@Sendable () async -> AdminWebOperatorsPayload?)? = nil,
+        updateOperators: (@Sendable (AdminWebOperatorsPatch) async -> Bool)? = nil,
+        sendOperatorTest: (@Sendable () async -> String?)? = nil,
+        setMediaSourceOwner: (@Sendable (String, String) async -> Bool)? = nil,
         runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)? = nil,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))? = nil,
@@ -1714,6 +1800,7 @@ actor AdminWebServer {
         self.activityProvider = activityProvider
         self.rewindHandler = rewindHandler
         self.accessUpdater = accessUpdater
+        self.memberAccessUpdater = memberAccessUpdater
         self.setSweepGlobalPaused = setSweepGlobalPaused
         self.updateSweepPolicy = updateSweepPolicy
         self.createSweepPolicy = createSweepPolicy
@@ -1730,6 +1817,14 @@ actor AdminWebServer {
         self.refreshSwiftMesh = refreshSwiftMesh
         self.generateSwiftMeshJoinCode = generateSwiftMeshJoinCode
         self.swiftMeshProvider = swiftMeshProvider
+        self.memberReplayProvider = memberReplayProvider
+        self.memberClipsProvider = memberClipsProvider
+        self.memberMayPlay = memberMayPlay
+        self.mediaPlaybackChoiceProvider = mediaPlaybackChoiceProvider
+        self.operatorsProvider = operatorsProvider
+        self.updateOperators = updateOperators
+        self.sendOperatorTest = sendOperatorTest
+        self.setMediaSourceOwner = setMediaSourceOwner
         self.runSwiftMeshAction = runSwiftMeshAction
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.swiftMinerTunnelHostnameHandler = swiftMinerTunnelHostnameHandler
@@ -1744,6 +1839,13 @@ actor AdminWebServer {
         let previous = self.config
         self.config = config
         revokeSessionsOutsideAllowList(previous: previous.allowedUserIDs)
+        if !config.memberAccessEnabled {
+            let members = sessions.values.filter { $0.role == .member }
+            if !members.isEmpty {
+                members.forEach { sessions[$0.id] = nil }
+                persistSessions()
+            }
+        }
 
         // Refresh the active public base URL so OAuth redirect URIs pick up config changes immediately.
         self.activePublicBaseURL = resolvedPublicBaseURL(usingTLS: activeTransportUsesTLS)
@@ -2124,6 +2226,24 @@ actor AdminWebServer {
         return 0
     }
 
+    private static let memberPlaybackPaths: Set<String> = [
+        "/api/media/stream", "/api/media/hls", "/api/media/hls-segment",
+        "/api/media/thumbnail", "/api/media/frame", "/api/media/game-art", "/api/media/game-details",
+        "/api/media/playback"
+    ]
+
+    private static func isMemberRoute(method: String, path: String) -> Bool {
+        if path.hasPrefix("/api/member/") { return true }
+        if path.hasPrefix("/auth/") { return true }
+        switch path {
+        case "/api/me", "/api/auth/options", "/api/auth/session":
+            return true
+        default:
+            // The page and its static files; never another API.
+            return method == "GET" && !path.hasPrefix("/api/") && !path.hasPrefix("/v1/") && !path.hasPrefix("/media")
+        }
+    }
+
     private func requireRole(_ role: Role, session: Session) -> Bool {
         if session.role == .admin { return true }
         return session.role == role
@@ -2156,6 +2276,23 @@ actor AdminWebServer {
 
         if request.method == "GET" && request.path == config.redirectPath {
             return await handleDiscordCallback(request: request)
+        }
+
+        // Members only reach the page, sign-in and their own routes. One gate
+        // here, rather than trusting every admin endpoint to check the role.
+        if let session = authenticatedSession(for: request), session.role == .member,
+           !Self.isMemberRoute(method: request.method, path: request.path) {
+            // Playback is allowed only for clips this member is in.
+            guard Self.memberPlaybackPaths.contains(request.path), ["GET", "HEAD"].contains(request.method) else {
+                return jsonResponse(["error": "admins_only"], status: "403 Forbidden")
+            }
+            // Game art and Steam details aren't anyone's clips.
+            if request.path != "/api/media/game-art" && request.path != "/api/media/game-details" {
+                guard let token = request.query["id"], !token.isEmpty,
+                      await memberMayPlay?(session.userID, token) == true else {
+                    return jsonResponse(["error": "not_your_clip"], status: "403 Forbidden")
+                }
+            }
         }
 
         switch (request.method, request.path) {
@@ -2468,7 +2605,8 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
-            guard requireRole(.admin, session: session) else {
+            // Admins and members; a viewer session has no page to show.
+            guard session.role == .admin || session.role == .member else {
                 return forbiddenResponse()
             }
             return jsonResponse([
@@ -2478,6 +2616,7 @@ actor AdminWebServer {
                 "discriminator": session.discriminator ?? "",
                 "avatar": session.avatar ?? "",
                 "csrfToken": session.csrfToken,
+                "role": session.role.rawValue,
                 // For the Preferences page's account card.
                 "signInMethod": session.userID.hasPrefix("local:") ? "password" : "discord",
                 "sessionExpiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
@@ -2595,6 +2734,24 @@ actor AdminWebServer {
             }
             audit(source: "Web Config", actor: actorLabel(session), action: "Updated sign-in access",
                   detail: update.restrictToListedUsers ? "Only \(update.normalizedIDs.count) listed people" : "Server managers")
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/access/members"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let update = try? decoder.decode(AdminWebMemberAccessUpdate.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await memberAccessUpdater?(update.enabled) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: update.enabled ? "Let server members sign in" : "Stopped member sign-in")
             return jsonResponse(["ok": true])
         case ("GET", "/api/commands"):
             guard authenticatedSession(for: request) != nil else {
@@ -3347,6 +3504,16 @@ actor AdminWebServer {
                 contentType: response.contentType,
                 headers: response.headers
             )
+        case ("GET", "/api/media/game-details"):
+            guard mediaAccessAuthorized(request) else { return unauthorizedResponse() }
+            guard let game = request.query["game"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !game.isEmpty, game.count <= 200 else {
+                return jsonResponse(["error": "invalid_game"], status: "400 Bad Request")
+            }
+            guard let data = await RecordingSteamArtworkService.shared.gameDetailsData(for: game) else {
+                return jsonResponse(["error": "details_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(status: "200 OK", body: data, contentType: "application/json")
         case ("GET", "/api/media/game-art"):
             // Portrait poster for a game: custom artwork when set, otherwise
             // Steam library art fetched and cached by the app, so the page
@@ -3383,6 +3550,13 @@ actor AdminWebServer {
                 contentType: response.contentType,
                 headers: response.headers
             )
+        case ("GET", "/api/media/playback"):
+            guard mediaAccessAuthorized(request) else { return unauthorizedResponse() }
+            guard let token = request.query["id"], !token.isEmpty,
+                  let choice = await mediaPlaybackChoiceProvider?(token) else {
+                return jsonResponse(["error": "unknown_item"], status: "404 Not Found")
+            }
+            return jsonResponse(["quality": choice.quality, "preparing": choice.preparing])
         case ("GET", "/api/media/stream"):
             guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()
@@ -3444,7 +3618,7 @@ actor AdminWebServer {
                   let segment = request.query["seg"], !segment.isEmpty else {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
-            guard let response = await mediaHLSSegmentProvider?(token, segment) else {
+            guard let response = await mediaHLSSegmentProvider?(token, segment, request.query["token"]) else {
                 return jsonResponse(["error": "hls_segment_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
@@ -3618,6 +3792,71 @@ actor AdminWebServer {
             }
             _ = await refreshSwiftMesh?()
             await logger?("Admin Web UI requested SwiftMesh refresh")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/member/replay"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            // Admins can open it too (to see their own); members only ever
+            // get their own user ID and servers.
+            let guildIDs = session.role == .member ? (session.guildIDs ?? []) : nil
+            guard let payload = await memberReplayProvider?(session.userID, guildIDs, request.query["guild"], request.query["period"]) else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            return codableResponse(payload)
+        case ("GET", "/api/member/clips"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard let payload = await memberClipsProvider?(session.userID, request.query) else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            return codableResponse(payload)
+        case ("POST", "/api/media/source-owner"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebMediaSourceOwnerPatch.self, from: request.body),
+                  await setMediaSourceOwner?(patch.sourceID, patch.userID) == true else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: "Set who records a folder", detail: patch.userID.isEmpty ? "Cleared" : patch.userID)
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/operators"):
+            guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+            guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+            guard let payload = await operatorsProvider?() else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            return codableResponse(payload)
+        case ("POST", "/api/operators"):
+            guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+            guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebOperatorsPatch.self, from: request.body),
+                  await updateOperators?(patch) == true else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: patch.node != nil ? "Set the operator for \(patch.node ?? "")" : "Changed operator alerts",
+                  detail: patch.alert.map { "\($0): \(patch.enabled == true ? "on" : "off")" } ?? (patch.userID?.isEmpty == false ? patch.userID! : "Cleared"))
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/operators/test"):
+            guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+            guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            if let problem = await sendOperatorTest?() {
+                return jsonResponse(["error": problem], status: "409 Conflict")
+            }
             return jsonResponse(["ok": true])
         case ("GET", "/api/swiftmesh"):
             guard authenticatedSession(for: request) != nil else {
@@ -4156,14 +4395,20 @@ actor AdminWebServer {
             let token = try await exchangeDiscordCode(code: code, codeVerifier: pendingState.codeVerifier)
             let user = try await fetchDiscordUser(accessToken: token)
             let guilds = try await fetchDiscordGuilds(accessToken: token)
-            guard await isAuthorized(userID: user.id, guilds: guilds) else {
+            let isAdmin = await isAuthorized(userID: user.id, guilds: guilds)
+            let connectedGuildIDs = await connectedGuildIDsProvider?() ?? []
+            let memberGuildIDs = guilds.map(\.id).filter { connectedGuildIDs.contains($0) }
+            if !isAdmin, config.memberAccessEnabled, !memberGuildIDs.isEmpty {
+                return await startMemberSession(user: user, guildIDs: memberGuildIDs, request: request, pendingState: pendingState)
+            }
+            guard isAdmin else {
                 await logger?("Admin Web UI login denied for \(user.username) (\(user.id))")
                 audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Login denied", detail: "User not authorized for this bot", level: "warning")
                 return authStatusPageResponse(
                     status: "403 Forbidden",
                     title: "Access not allowed",
                     eyebrow: "SwiftBot Web Admin",
-                    message: "This Discord account does not have permission to sign in.",
+                    message: "You're signed in to Discord as @\(user.username), but that account can't sign in here.",
                     detail: config.allowedUserIDs.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                         ? "Only people on SwiftBot's sign-in list can use this page. Ask a SwiftBot administrator to add you."
                         : "Sign in with an account that owns or can manage one of the connected servers, or ask a SwiftBot administrator to add you to the sign-in list.",
@@ -4370,7 +4615,9 @@ actor AdminWebServer {
             "localEnabled": localEnabled && devFeaturesEnabled,
             "devFeaturesEnabled": devFeaturesEnabled,
             "botName": botName,
-            "botAvatarURL": botAvatarURL
+            "botAvatarURL": botAvatarURL,
+            // Just up or not: nothing about servers or members before sign-in.
+            "botOnline": status?.botStatus == "running"
         ])
     }
 
@@ -4503,7 +4750,7 @@ actor AdminWebServer {
     private func revokeSessionsOutsideAllowList(previous: [String]) {
         let allowed = Set(config.allowedUserIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !allowed.isEmpty, allowed != Set(previous) else { return }
-        let revoked = sessions.values.filter { !$0.userID.hasPrefix("local:") && !allowed.contains($0.userID) }
+        let revoked = sessions.values.filter { $0.role != .member && !$0.userID.hasPrefix("local:") && !allowed.contains($0.userID) }
         guard !revoked.isEmpty else { return }
         for session in revoked {
             sessions[session.id] = nil
@@ -4531,6 +4778,29 @@ actor AdminWebServer {
             let manageGuildBit: UInt64 = 1 << 5
             return (permissions & administratorBit) != 0 || (permissions & manageGuildBit) != 0
         }
+    }
+
+    /// Signs a server member in to the member view. No 2FA requirement:
+    /// members only ever see their own Replay and clips.
+    private func startMemberSession(user: DiscordUser, guildIDs: [String], request: HTTPRequest, pendingState: PendingState) async -> Data {
+        var session = Session(
+            id: randomToken(),
+            userID: user.id,
+            username: user.username,
+            globalName: user.globalName,
+            discriminator: user.discriminator,
+            avatar: user.avatar,
+            csrfToken: randomToken(),
+            expiresAt: Date().addingTimeInterval(sessionTTL),
+            userAgentHash: userAgentHash(for: request),
+            role: .member
+        )
+        session.guildIDs = guildIDs
+        sessions[session.id] = session
+        persistSessions()
+        await logger?("Web UI member sign-in for \(user.username) (\(user.id))")
+        audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Member signed in", detail: "\(guildIDs.count) server\(guildIDs.count == 1 ? "" : "s")", level: "ok")
+        return redirectResponse(to: "/", headers: ["Set-Cookie": sessionCookie(for: session.id)])
     }
 
     private func isMemberOfConnectedGuild(guilds: [DiscordGuildSummary]) async -> Bool {
@@ -5510,7 +5780,8 @@ extension AdminWebServer {
     func testSeedSession(
         userAgent: String? = nil,
         expiresIn: TimeInterval = 3_600,
-        viewerRole: Bool = false
+        viewerRole: Bool = false,
+        memberRole: Bool = false
     ) -> (id: String, csrf: String) {
         let session = Session(
             id: randomToken(),
@@ -5522,7 +5793,7 @@ extension AdminWebServer {
             csrfToken: randomToken(),
             expiresAt: Date().addingTimeInterval(expiresIn),
             userAgentHash: userAgent.map { sha256Hex($0) },
-            role: viewerRole ? .viewer : .admin
+            role: memberRole ? .member : viewerRole ? .viewer : .admin
         )
         sessions[session.id] = session
         return (session.id, session.csrfToken)

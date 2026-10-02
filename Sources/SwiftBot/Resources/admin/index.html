@@ -496,6 +496,207 @@
       gap: 10px;
     }
 
+    /* ---- Member home ---- */
+    .member-shell {
+      position: fixed; inset: 0; z-index: 5; overflow-y: auto;
+      background: var(--home-wallpaper); background-color: var(--home-wallpaper-base);
+      color: var(--text);
+    }
+    .member-shell.hidden { display: none; }
+    .member-bar {
+      position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 20px; background: var(--home-tile-bg); border-bottom: 1px solid var(--home-tile-stroke);
+      backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+    }
+    .member-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+    .member-brand img { width: 34px; height: 26px; object-fit: contain; }
+    .member-user { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+    .member-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; }
+    .member-content { max-width: 920px; margin: 0 auto; padding: 28px 20px 48px; display: grid; gap: 20px; }
+    .member-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .member-content .media-library { display: grid; gap: 22px; }
+    .member-content .media-layout-toggle button { display: inline-flex; align-items: center; gap: 6px; }
+    .member-content .media-layout-toggle svg { width: 14px; height: 14px; }
+    .member-hero h1 { margin: 2px 0 6px; font-size: 32px; font-weight: 800; letter-spacing: -0.02em; }
+    .member-hero p { margin: 0; color: var(--muted); font-size: 14.5px; }
+    .member-kicker { font-size: 12.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .member-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .member-controls .field-select { width: auto; min-width: 160px; height: 40px; border-radius: 12px; }
+    .member-shell .primary-action {
+      display: inline-flex; align-items: center; gap: 8px; min-height: 0; height: 40px; padding: 0 16px; border: 0; border-radius: 999px;
+      color: #fff; font-weight: 650; cursor: pointer;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 88%, #fff), var(--accent, #2563eb));
+    }
+    .member-shell .primary-action svg, .member-shell .secondary-action svg { width: 16px; height: 16px; }
+    .member-card { padding: 18px; border-radius: 22px; }
+    .member-back {
+      appearance: none; width: 32px; height: 32px; display: grid; place-items: center; margin-right: 2px; padding: 0; cursor: pointer;
+      border-radius: 50%; border: 1px solid var(--home-tile-stroke); background: var(--home-tile-bg); color: var(--text);
+    }
+    .member-back.hidden { display: none; }
+    .member-back svg { width: 18px; height: 18px; }
+    .member-apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+    .member-app {
+      appearance: none; display: grid; justify-items: center; gap: 6px; padding: 22px 12px 18px; cursor: pointer; text-align: center;
+      font: inherit; color: var(--text); border-radius: 22px; border: 1px solid var(--home-tile-stroke); background: var(--home-tile-bg);
+      backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .member-app:hover { transform: translateY(-2px); box-shadow: 0 16px 34px -18px rgba(0, 0, 0, 0.45); }
+    .member-app:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent, #2563eb) 55%, transparent); outline-offset: 2px; }
+    .member-app-icon {
+      width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; color: #fff; margin-bottom: 6px;
+      background: var(--app-grad); box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.5);
+    }
+    .member-app-icon svg { width: 30px; height: 30px; }
+    .member-app-title { font-size: 15.5px; font-weight: 700; }
+    .member-app-sub { font-size: 12.5px; color: var(--muted); }
+    .member-people { display: flex; padding: 0 14px; }
+    .member-person {
+      width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; margin-right: -6px;
+      font-size: 11px; font-weight: 700; color: #fff; background: linear-gradient(145deg, #5865f2, #8e44ff); border: 2px solid var(--home-tile-bg);
+    }
+    .member-person:nth-child(2) { background: linear-gradient(145deg, #30d158, #0a84ff); }
+    .member-person:nth-child(3) { background: linear-gradient(145deg, #ff9f0a, #ff375f); }
+    .member-person:nth-child(4) { background: linear-gradient(145deg, #64d2ff, #5e5ce6); }
+    .member-person.is-more { background: var(--muted); }
+    .member-more { display: flex; justify-content: center; }
+    .media-playback-note { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12.5px; color: var(--muted); background: var(--ub-fill, rgba(255,255,255,0.05)); }
+    .media-playback-note svg { width: 14px; height: 14px; flex: none; }
+    #modalOverlay .ub-item:has(.who-records-select) { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+    #modalOverlay .ub-item:has(.who-records-select) .ub-item-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+    #modalOverlay select.who-records-select { width: 190px; flex: 0 0 auto; position: static; }
+    @media (max-width: 560px) { #modalOverlay .ub-item:has(.who-records-select) { flex-wrap: wrap; } #modalOverlay select.who-records-select { width: 100%; } }
+    #modalOverlay .member-video { width: 100%; max-height: 70vh; border-radius: 14px; background: #000; display: block; }
+    /* Clip details under both players */
+    .clip-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 14px 18px; margin-top: 14px; align-items: start; }
+    .clip-game {
+      appearance: none; display: flex; align-items: center; gap: 12px; padding: 10px; text-align: left; cursor: pointer; min-width: 0;
+      font: inherit; color: var(--text); border-radius: 14px; border: 1px solid var(--ub-stroke, var(--glass-stroke)); background: var(--ub-fill, var(--glass-bottom));
+    }
+    .clip-game:hover { background: var(--glass-top); }
+    .clip-game-art { position: relative; flex: 0 0 auto; width: 46px; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--poster-tint, #333); }
+    .clip-game-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .clip-game-art .media-poster-fallback { position: absolute; inset: 0; align-items: center; justify-content: center; color: #fff; padding: 0; }
+    .clip-game-art .media-poster-fallback strong { font-size: 15px; }
+    .clip-game-text { display: grid; gap: 1px; min-width: 0; flex: 1; }
+    .clip-game-name { font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .clip-game-chevron { width: 16px; height: 16px; color: var(--muted); flex: 0 0 auto; }
+    .clip-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .clip-when { grid-column: 1; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+    .clip-when span { display: inline-flex; align-items: center; gap: 5px; }
+    .clip-when svg { width: 14px; height: 14px; }
+    .clip-length.hidden { display: none !important; }
+    .clip-people { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--ub-stroke, var(--glass-stroke)); background: var(--ub-fill, var(--glass-bottom)); }
+    .clip-people-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .clip-person { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--glass-top, rgba(255,255,255,0.08)); border: 1px solid var(--ub-stroke, var(--glass-stroke)); font-size: 13px; font-weight: 600; }
+    .clip-person-avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: #fff; background: linear-gradient(145deg, #5865f2, #8e44ff); }
+    .clip-person:nth-child(4n+2) .clip-person-avatar { background: linear-gradient(145deg, #30d158, #0a84ff); }
+    .clip-person:nth-child(4n+3) .clip-person-avatar { background: linear-gradient(145deg, #ff9f0a, #ff375f); }
+    .clip-person:nth-child(4n+4) .clip-person-avatar { background: linear-gradient(145deg, #64d2ff, #5e5ce6); }
+    .clip-person-tag { font-size: 10.5px; font-weight: 700; color: #ff9f0a; background: color-mix(in srgb, #ff9f0a 15%, transparent); padding: 1px 7px; border-radius: 999px; }
+    @media (max-width: 640px) {
+      .clip-details { grid-template-columns: minmax(0, 1fr); }
+      .clip-people { grid-column: 1; grid-row: auto; }
+    }
+    .member-shell .secondary-action {
+      display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+      font: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+      background: var(--home-tile-bg); border: 1px solid var(--home-tile-stroke);
+    }
+    .member-shell .ub-empty { padding: 28px 22px; border-radius: 22px; text-align: center; }
+    .member-brand { min-width: 0; }
+    .member-brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 560px) {
+      .member-user #memberName, .member-logout-label { display: none; }
+      .member-hero h1 { font-size: 26px; }
+      .member-controls { width: 100%; }
+      .member-controls > * { flex: 1; }
+    }
+
+    /* ---- Sign-in ---- */
+    .signin-shell {
+      position: fixed; inset: 0; z-index: 5; overflow-y: auto;
+      display: grid; place-items: center; padding: 24px 16px;
+      background: var(--home-wallpaper); background-color: var(--home-wallpaper-base);
+    }
+    .signin-shell.hidden { display: none; }
+    .signin-backdrop { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+    .signin-card {
+      position: relative; z-index: 2; width: 100%; max-width: 380px;
+      display: flex; flex-direction: column; align-items: stretch; text-align: center;
+      padding: 30px 26px 22px; border-radius: 28px;
+      background: var(--home-tile-bg); border: 1px solid var(--home-tile-stroke);
+      backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+      box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.45);
+      color: var(--home-text);
+      animation: signin-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    @keyframes signin-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+    .signin-avatar-wrap { align-self: center; margin-bottom: 14px; }
+    .signin-logo {
+      width: 96px; height: 72px; object-fit: contain; display: block;
+      filter: drop-shadow(0 10px 18px rgba(30, 30, 70, 0.28));
+    }
+    .signin-logo.hidden, .signin-avatar.hidden { display: none; }
+    .signin-avatar { width: 84px; height: 84px; border-radius: 50%; }
+    .signin-avatar-fallback {
+      display: grid; place-items: center; font-size: 34px; font-weight: 700; color: #fff;
+      background: linear-gradient(145deg, #5865f2, #8e44ff);
+    }
+    .signin-title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--home-text); }
+    .signin-status {
+      align-self: center; display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 0;
+      font-size: 12.5px; font-weight: 600; color: var(--home-text-soft);
+      padding: 3px 10px; border-radius: 999px; background: var(--home-tile-bg); border: 1px solid var(--home-tile-stroke);
+    }
+    .signin-status.hidden { display: none; }
+    .signin-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #8e8e93; }
+    .signin-status.is-online .signin-status-dot { background: #30d158; box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.2); }
+    .signin-greeting { margin: 14px 0 20px; font-size: 14.5px; color: var(--home-text-soft); }
+    .signin-notice {
+      margin: -6px 0 16px; padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.4;
+      color: var(--home-text); background: color-mix(in srgb, #ff9f0a 14%, transparent); border: 1px solid color-mix(in srgb, #ff9f0a 35%, transparent);
+    }
+    .signin-notice.hidden { display: none; }
+    .signin-discord {
+      display: flex; align-items: center; justify-content: center; gap: 10px; height: 50px; border-radius: 14px;
+      background: #5865f2; color: #fff; font-size: 15.5px; font-weight: 650; text-decoration: none;
+      box-shadow: 0 10px 24px -10px rgba(88, 101, 242, 0.75); transition: background 0.15s ease, transform 0.1s ease;
+    }
+    .signin-discord:hover { background: #4f5bdb; }
+    .signin-discord:active { transform: scale(0.98); }
+    .signin-discord:focus-visible, .signin-submit:focus-visible, .signin-link:focus-visible { outline: 3px solid color-mix(in srgb, #5865f2 55%, transparent); outline-offset: 2px; }
+    .signin-discord svg { width: 22px; height: 22px; flex: 0 0 auto; }
+    .signin-discord.is-loading { pointer-events: none; opacity: 0.85; }
+    .signin-discord.is-loading svg { animation: ai-pulse 1s ease-in-out infinite; }
+    .signin-discord.hidden { display: none; }
+    .signin-link {
+      appearance: none; border: 0; background: none; margin: 14px auto 0; padding: 4px 8px; border-radius: 8px;
+      font: inherit; font-size: 13.5px; font-weight: 550; color: var(--home-text-soft); cursor: pointer;
+    }
+    .signin-link:hover { color: var(--home-text); }
+    .signin-link.hidden { display: none; }
+    .signin-form { display: grid; gap: 10px; margin-top: 16px; text-align: left; }
+    .signin-form.hidden { display: none; }
+    .signin-discord:not(.hidden) ~ .signin-form { padding-top: 16px; border-top: 1px solid var(--home-tile-stroke); }
+    .signin-field { display: grid; gap: 5px; }
+    .signin-field span { font-size: 12px; font-weight: 600; color: var(--home-text-soft); padding-left: 2px; }
+    #authScreen .signin-field input {
+      height: 44px; border-radius: 12px; font-size: 14.5px; padding: 0 12px; width: 100%;
+      color: var(--home-text); background: var(--home-tile-bg); border: 1px solid var(--home-tile-stroke);
+    }
+    #authScreen .signin-field input:focus { outline: none; border-color: color-mix(in srgb, var(--accent, #2563eb) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #2563eb) 22%, transparent); }
+    .signin-submit {
+      appearance: none; height: 46px; margin-top: 4px; border: 0; border-radius: 12px; cursor: pointer;
+      font: inherit; font-size: 15px; font-weight: 650; color: #fff;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 88%, #fff), var(--accent, #2563eb));
+    }
+    .signin-submit:disabled { opacity: 0.6; cursor: default; }
+    #authScreen .auth-feedback { font-size: 13px; margin-top: 12px; min-height: 0; }
+    #authScreen .auth-feedback:empty { display: none; }
+    #authScreen .auth-feedback.error { color: #ff453a; }
+
     .auth-feedback {
       min-height: 18px;
       font-size: 11px;
@@ -1695,6 +1896,9 @@
     @media (max-width: 640px) {
     }
     .mesh-diag { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .mesh-operator { display: inline-flex; align-items: center; gap: 5px; }
+    .mesh-operator svg { width: 13px; height: 13px; }
+    #appShell .mesh-operator-btn { flex: none; }
     .mesh-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     #appShell .mesh-choice {
       display: grid; gap: 8px; justify-items: start; text-align: left; padding: 18px; border-radius: 18px;
@@ -3000,35 +3204,6 @@
       line-height: 1.3;
     }
 
-    /* Login screen — pull header closer to auth card, trim padding */
-    .onboarding-shell { padding: 24px 20px; }
-    .onboarding > div:first-child { margin-bottom: 20px !important; }
-    .onboarding-shell .auth-card { padding: 24px !important; border-radius: 24px !important; }
-    .onboarding-shell .auth-card h1,
-    .onboarding-shell h1 { line-height: 1.05; }
-    .onboarding-shell .auth-card > div:first-child { margin-bottom: 20px !important; }
-
-    #authBotAvatar {
-      filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));
-      transform: translateZ(0); /* Safari GPU hint */
-    }
-    .auth-logo-glow {
-      background: rgba(255, 255, 255, 0.05);
-      filter: blur(28px);
-      opacity: 0; /* Hide by default to prevent Safari square flash */
-      transform: translateZ(0); /* Safari GPU hint */
-    }
-    html[data-theme="dark"] .auth-logo-glow {
-      opacity: 1;
-    }
-
-    @media (max-height: 820px) {
-      .onboarding-shell { padding: 12px 20px; }
-      .onboarding > div:first-child { margin-bottom: 12px !important; }
-      .onboarding-shell h1 { font-size: 36px !important; }
-      .onboarding-shell img[alt="SwiftBot Logo"] { width: 88px !important; height: 88px !important; }
-    }
-
     /* Buttons — primary / secondary tuned to Canvas blues */
     #appShell .primary-action,
     #modalOverlay .primary-action {
@@ -3484,115 +3659,6 @@
     .cv-template-chev {
       color: var(--muted);
       flex-shrink: 0;
-    }
-
-    /* ============================================================
-       LOGIN SCREEN — light-theme overrides
-       The auth screen markup uses inline styles, so light-mode
-       overrides must use !important to win the cascade. Applied for
-       explicit data-theme="light" and the auto case via prefers-color-scheme.
-       ============================================================ */
-    html[data-theme="light"] #authScreen,
-    html[data-theme="light"] .onboarding-shell {
-      background: transparent !important;
-      color: #1d1d1f !important;
-    }
-    html[data-theme="light"] #authScreen #authBotName {
-      color: #1d1d1f !important;
-    }
-    html[data-theme="light"] #authScreen .onboarding > div:first-child p:nth-of-type(1) {
-      color: rgba(0, 0, 0, 0.7) !important;
-    }
-    html[data-theme="light"] #authScreen .onboarding > div:first-child p:nth-of-type(2) {
-      color: rgba(0, 0, 0, 0.5) !important;
-    }
-    html[data-theme="light"] #authScreen .auth-card {
-      background: rgba(255, 255, 255, 0.45) !important;
-      border-color: rgba(255, 255, 255, 0.4) !important;
-      backdrop-filter: blur(12px) saturate(1.8) !important;
-      -webkit-backdrop-filter: blur(12px) saturate(1.8) !important;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.06) !important;
-    }
-    html[data-theme="light"] #authScreen .auth-card h2 {
-      color: #1d1d1f !important;
-    }
-    html[data-theme="light"] #authScreen #authPromptText {
-      color: rgba(0, 0, 0, 0.55) !important;
-    }
-    html[data-theme="light"] #authScreen #localAuthForm .field-input {
-      background: rgba(0, 0, 0, 0.04) !important;
-      border-color: rgba(0, 0, 0, 0.08) !important;
-      color: #1d1d1f !important;
-    }
-    html[data-theme="light"] #authScreen #localAuthForm .field-input::placeholder {
-      color: rgba(0, 0, 0, 0.42) !important;
-    }
-    html[data-theme="light"] #authScreen #localAuthSubmit {
-      background: #1d1d1f !important;
-      color: #ffffff !important;
-    }
-    html[data-theme="light"] #authScreen #authDivider {
-      color: rgba(0, 0, 0, 0.5) !important;
-    }
-    /* Tone down the dark-blue background orbs so they don't look muddy on white. */
-    html[data-theme="light"] #authScreen .bg-orb:nth-of-type(1) {
-      background: rgba(99, 102, 241, 0.10) !important;
-    }
-    html[data-theme="light"] #authScreen .bg-orb:nth-of-type(2) {
-      background: rgba(168, 85, 247, 0.10) !important;
-    }
-    /* Logo white-glow doesn't read on white — swap for a soft dark shadow. */
-    html[data-theme="light"] #authScreen #authBotAvatar {
-      filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
-    }
-
-    @media (prefers-color-scheme: light) {
-      html:not([data-theme]) #authScreen,
-      html:not([data-theme]) .onboarding-shell {
-        background: transparent !important;
-        color: #1d1d1f !important;
-      }
-      html:not([data-theme]) #authScreen #authBotName { color: #1d1d1f !important; }
-      html:not([data-theme]) #authScreen .onboarding > div:first-child p:nth-of-type(1) {
-        color: rgba(0, 0, 0, 0.7) !important;
-      }
-      html:not([data-theme]) #authScreen .onboarding > div:first-child p:nth-of-type(2) {
-        color: rgba(0, 0, 0, 0.5) !important;
-      }
-      html:not([data-theme]) #authScreen .auth-card {
-        background: rgba(255, 255, 255, 0.45) !important;
-        border-color: rgba(255, 255, 255, 0.4) !important;
-        backdrop-filter: blur(12px) saturate(1.8) !important;
-        -webkit-backdrop-filter: blur(12px) saturate(1.8) !important;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.06) !important;
-      }
-      html:not([data-theme]) #authScreen .auth-card h2 { color: #1d1d1f !important; }
-      html:not([data-theme]) #authScreen #authPromptText { color: rgba(0, 0, 0, 0.55) !important; }
-      html:not([data-theme]) #authScreen #localAuthForm .field-input {
-        background: rgba(0, 0, 0, 0.04) !important;
-        border-color: rgba(0, 0, 0, 0.08) !important;
-        color: #1d1d1f !important;
-      }
-      html:not([data-theme]) #authScreen #localAuthForm .field-input::placeholder {
-        color: rgba(0, 0, 0, 0.42) !important;
-      }
-      html:not([data-theme]) #authScreen #localAuthSubmit {
-        background: #1d1d1f !important;
-        color: #ffffff !important;
-      }
-      html:not([data-theme]) #authScreen #authDivider { color: rgba(0, 0, 0, 0.5) !important; }
-      html:not([data-theme]) #authScreen .bg-orb:nth-of-type(1) {
-        background: rgba(99, 102, 241, 0.10) !important;
-      }
-      html:not([data-theme]) #authScreen .bg-orb:nth-of-type(2) {
-        background: rgba(168, 85, 247, 0.10) !important;
-      }
-      html:not([data-theme]) #authScreen #authBotAvatar {
-        filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
-      }
-    }
-
-    @media (prefers-color-scheme: light) {
     }
 
     /* Editor modal — wider than default */
@@ -4504,6 +4570,7 @@
        (headers, cards, rows, fields, buttons) without per-view CSS.
        ============================================================ */
     #appShell.active,
+    #memberHome,
     #modalOverlay {
       accent-color: #2f7cf6;
       --ub-fill: rgba(255, 255, 255, 0.06);
@@ -4514,6 +4581,7 @@
       --ub-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='.6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     }
     html[data-theme="light"] #appShell.active,
+    html[data-theme="light"] #memberHome,
     html[data-theme="light"] #modalOverlay {
       --ub-fill: rgba(0, 0, 0, 0.04);
       --ub-fill-hover: rgba(0, 0, 0, 0.07);
@@ -4524,6 +4592,7 @@
     }
     @media (prefers-color-scheme: light) {
       html:not([data-theme]) #appShell.active,
+      html:not([data-theme]) #memberHome,
       html:not([data-theme]) #modalOverlay {
         --ub-fill: rgba(0, 0, 0, 0.04);
         --ub-fill-hover: rgba(0, 0, 0, 0.07);
@@ -5809,7 +5878,7 @@
     .media-filter-clear:hover { color: var(--text); background: var(--ub-fill); }
     .media-filter-clear svg { width: 14px; height: 14px; }
 
-    .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px 14px; }
+    .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px 14px; }
     .media-card {
       all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; cursor: pointer; min-width: 0;
     }
@@ -5841,7 +5910,16 @@
     .media-card:hover .media-play, .media-card:focus-visible .media-play { opacity: 1; }
     .media-card:focus-visible .media-thumb { outline: 3px solid var(--ub-focus, rgba(10,132,255,0.5)); outline-offset: 2px; }
     .media-card-text { display: flex; flex-direction: column; gap: 1px; padding: 0 2px; min-width: 0; }
-    .media-card-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Clip cards, Plex/YouTube style: a compact thumbnail with its badges,
+       and the title and details underneath. */
+    .media-card .media-thumb { border-radius: 12px; }
+    .media-card .media-badge { bottom: 6px; }
+    .media-card .media-badge.is-new { left: 6px; }
+    .media-card .media-badge.is-size { right: 6px; }
+    .media-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); }
+    .media-card-meta > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .media-meta-people { padding: 0; flex: none; }
+    .media-meta-people .member-person { width: 18px; height: 18px; font-size: 9px; border: 0; margin-right: -5px; box-shadow: 0 0 0 1.5px var(--home-wallpaper-base, #111); }
     .media-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .media-pager { display: inline-flex; align-items: center; gap: 10px; }
     .media-pager .secondary-action { width: 32px; height: 32px; padding: 0; justify-content: center; }
@@ -5867,15 +5945,63 @@
     .media-poster .media-badge.is-count { top: 8px; right: 8px; bottom: auto; }
     .media-poster:hover .media-poster-art, .media-poster:focus-visible .media-poster-art { transform: translateY(-3px) scale(1.015); box-shadow: 0 16px 32px rgba(0,0,0,0.3), inset 0 0 0 1px var(--ub-stroke); }
     .media-poster:focus-visible .media-poster-art { outline: 3px solid var(--ub-focus, rgba(10,132,255,0.5)); outline-offset: 2px; }
-    .media-game-hero { display: flex; align-items: flex-end; gap: 18px; margin-top: -8px; }
     .media-poster.is-hero { cursor: default; width: 120px; flex: none; }
-    .media-game-hero-text { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
-    .media-game-hero-text h2 { margin: 6px 0 0; font-size: 26px; font-weight: 750; line-height: 1.1; color: var(--text); }
+    /* Game page hero: no box. The art is blurred across the full width and
+       fades into the page; text uses the theme's colours. */
+    .game-hero { position: relative; isolation: isolate; padding: 8px 0 4px; }
+    /* Plex-style backdrop: the art sits behind the right of the hero and
+       fades out on every side, so there's never a hard edge. */
+    .game-hero-backdrop {
+      position: absolute; top: -40px; right: 0; bottom: -60px; width: 78%; z-index: -1; pointer-events: none; overflow: hidden;
+      -webkit-mask-image:
+        linear-gradient(to bottom, transparent 0%, #000 22%, #000 50%, transparent 100%),
+        linear-gradient(to right, transparent 0%, #000 45%, #000 85%, transparent 100%);
+      -webkit-mask-composite: source-in;
+      mask-image:
+        linear-gradient(to bottom, transparent 0%, #000 22%, #000 50%, transparent 100%),
+        linear-gradient(to right, transparent 0%, #000 45%, #000 85%, transparent 100%);
+      mask-composite: intersect;
+    }
+    /* Scaled up so the blur's own soft border stays outside the box. */
+    .game-hero-backdrop img { width: 100%; height: 100%; object-fit: cover; filter: blur(48px) saturate(1.5); opacity: 0.6; transform: scale(1.35); }
+    .game-hero-backdrop span { display: none; }
+    .game-hero-body { display: flex; gap: 28px; align-items: flex-end; }
+    .game-hero .media-poster.is-hero { width: 176px; }
+    .game-hero .media-poster-art { border-radius: 14px; box-shadow: 0 24px 50px -12px rgba(0, 0, 0, 0.55); }
+    .game-hero-info { display: grid; gap: 8px; min-width: 0; flex: 1; padding-bottom: 4px; }
+    .game-hero-meta { font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .game-hero-info h2 { margin: 0; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.02; color: var(--text); }
+    .game-hero-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; font-size: 14px; color: var(--muted); }
+    .game-hero-dot { margin: 0 8px; opacity: 0.6; }
+    .game-hero-regulars { display: inline-flex; align-items: center; gap: 8px; }
+    .game-hero-desc {
+      margin: 4px 0 0; max-width: 680px; font-size: 14px; line-height: 1.6; color: var(--text); opacity: 0.85;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .game-hero-desc.is-open { -webkit-line-clamp: unset; display: block; }
+    .game-hero-more { appearance: none; border: 0; background: none; padding: 0; justify-self: start; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .game-hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 8px; }
+    #appShell .game-hero .primary-action, .member-shell .game-hero .primary-action {
+      display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 22px; border-radius: 999px; border: 0; font-weight: 700;
+    }
+    .game-hero .primary-action svg { width: 16px; height: 16px; fill: currentColor; }
+    .game-hero-link { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 600; color: var(--muted); text-decoration: none; }
+    .game-hero-link:hover { color: var(--text); }
+    .game-hero-link svg { width: 14px; height: 14px; }
+    .game-hero-people { padding: 0; }
+    .game-hero-people .member-person { width: 24px; height: 24px; font-size: 11px; border-color: transparent; box-shadow: 0 0 0 2px var(--home-wallpaper-base, #111); }
+    .media-wall-head { margin-top: 4px; }
+    .latest-strip { grid-auto-columns: 200px; }
+    @media (max-width: 640px) {
+      .game-hero-body { flex-direction: column; align-items: flex-start; gap: 18px; }
+      .game-hero .media-poster.is-hero { width: 128px; }
+      .game-hero-info h2 { font-size: 30px; }
+      .latest-strip { grid-auto-columns: 160px; }
+    }
     @media (max-width: 880px) {
       .media-poster-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 16px 10px; }
       .media-poster-fallback strong { font-size: 26px; }
       .media-poster.is-hero { width: 90px; }
-      .media-game-hero-text h2 { font-size: 21px; }
     }
     .media-stage { border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 18px 40px rgba(0,0,0,0.28); }
     .media-stage video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 70vh; object-fit: contain; background: #000; }
@@ -5901,6 +6027,7 @@
     .media-job .ops-dot { width: 8px; height: 8px; flex: none; }
     @media (max-width: 880px) {
       .media-tools, .media-field-row { grid-template-columns: 1fr; }
+      /* Two across on a phone, more on a tablet. */
       .media-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 10px; }
       .media-filter select { max-width: 140px; }
     }
@@ -5910,61 +6037,52 @@
   <div class="bg-stream" id="bgStream" aria-hidden="true"></div>
 
   <main class="page">
-    <section id="authScreen" class="onboarding-shell hidden" style="background: transparent;">
-      <!-- BACKGROUND ANIMATION LAYER -->
-      <div class="absolute inset-0 z-0" style="position: absolute; inset: 0; pointer-events: none;">
-        <div class="bg-grid"></div>
-        <div id="bgSymbols" class="bg-symbols">
-          <span style="left:8%;width:30px;height:30px;animation:float-up 42s linear infinite -8s;"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M12 7h5M12 17h5"/></svg></span>
-          <span style="left:18%;width:24px;height:24px;animation:float-up 38s linear infinite -18s;"><svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/><path d="M5 4v4M3 6h4M19 16v4M17 18h4"/></svg></span>
-          <span style="left:31%;width:34px;height:34px;animation:float-up 54s linear infinite -28s;"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
-          <span style="left:45%;width:28px;height:28px;animation:float-up 47s linear infinite -6s;"><svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg></span>
-          <span style="left:59%;width:22px;height:22px;animation:float-up 36s linear infinite -20s;"><svg viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5-5-5"/><path d="M12 19h8"/></svg></span>
-          <span style="left:73%;width:32px;height:32px;animation:float-up 61s linear infinite -38s;"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-13h-7z"/></svg></span>
-          <span style="left:86%;width:26px;height:26px;animation:float-up 45s linear infinite -12s;"><svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/></svg></span>
-        </div>
+    <section id="authScreen" class="signin-shell hidden">
+      <!-- The floating icons: the same animation as before, over the app's wallpaper. -->
+      <div class="signin-backdrop" aria-hidden="true">
+        <div id="bgSymbols" class="bg-symbols"></div>
       </div>
 
-      <div class="onboarding" style="position: relative; z-index: 10; width: 100%; max-width: 440px;">
-        <!-- Main Interactive Card -->
-        <div class="auth-card glass" style="width: 100%; background: rgba(10, 10, 15, 0.45); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.15); padding: 28px 22px 22px; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.3); backdrop-filter: blur(12px) saturate(1.8); -webkit-backdrop-filter: blur(12px) saturate(1.8); transform: translateZ(0); -webkit-transform: translateZ(0);">
-          <!-- Header (inside the card) -->
-          <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
-            <div style="position: relative; margin-bottom: 14px;">
-              <div class="auth-logo-glow" style="position: absolute; inset: -16px; border-radius: 999px;"></div>
-              <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10;">
-            </div>
-
-            <h1 id="authBotName" style="font-size: 32px; font-weight: 700; color: #fff; letter-spacing: -0.03em; margin: 0; line-height: 1.05;">SwiftBot</h1>
-            <p style="font-size: 14px; color: rgba(255,255,255,0.7); margin: 6px 0 8px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px;">
-              <span class="cv-wave" aria-hidden="true">👋</span>
-              <span>Welcome back</span>
-            </p>
-            <p style="font-size: 13px; color: rgba(255,255,255,0.42); max-width: 300px; line-height: 1.45; margin: 0;">Sign in to access your dashboard, recordings, and automations.</p>
-          </div>
-
-          <div style="width: 100%; margin-top: 8px;">
-            <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: linear-gradient(135deg, #5865f2 0%, #4c57d6 100%); border: 0; border-radius: 14px; height: 56px; color: #fff; font-weight: 600; font-size: 16px; transition: all 0.2s ease; box-shadow: 0 4px 15px rgba(88, 101, 242, 0.25);">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <svg fill="currentColor" viewBox="0 0 24 24" style="width: 22px; height: 22px;"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" /></svg>
-                <span>Continue with Discord</span>
-              </div>
-              <i class="lucide" data-lucide="chevron-right" style="width: 20px; height: 20px; opacity: 0.8;"></i>
-            </a>
-          </div>
-
-          <div id="authFeedback" class="auth-feedback"></div>
-          <div id="authSetupHint" class="auth-feedback warning" style="display: none; margin-top: 12px;">Discord sign-in is not configured yet. Add the Discord OAuth client ID and secret in SwiftBot Settings → Web UI → Authentication.</div>
-
-          <div id="authDivider" class="auth-divider" style="margin-top: 32px; font-size: 10px;">administrative access</div>
-          <form id="localAuthForm" class="auth-form" style="margin-top: 12px;">
-            <input id="localAuthUsername" class="field-input" autocomplete="username" placeholder="Username" style="height: 44px; font-size: 13px; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
-            <input id="localAuthPassword" class="field-input" type="password" autocomplete="current-password" placeholder="Password" style="height: 44px; font-size: 13px; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
-            <button id="localAuthSubmit" class="secondary-action" type="submit" style="width: 100%; height: 44px; background: #fff; color: #000; border: 0; border-radius: 12px; font-weight: 600; font-size: 13px;">Sign in locally</button>
-          </form>
+      <main class="signin-card" aria-labelledby="authBotName">
+        <div class="signin-avatar-wrap">
+          <img id="authBotAvatar" class="signin-logo" src="/assets/SwiftBird3.png" alt="">
+          <span id="authBotInitial" class="signin-avatar signin-avatar-fallback hidden" aria-hidden="true">S</span>
         </div>
+        <h1 id="authBotName" class="signin-title">SwiftBot</h1>
+        <p id="authBotStatus" class="signin-status hidden"><span class="signin-status-dot"></span><span id="authBotStatusText"></span></p>
+        <p id="authGreeting" class="signin-greeting">Sign in to manage SwiftBot.</p>
+        <div id="authNotice" class="signin-notice hidden" role="status"></div>
 
-      </div>
+        <a id="discordAuthButton" class="signin-discord" href="/auth/discord/login">
+          <svg fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" /></svg>
+          <span>Continue with Discord</span>
+        </a>
+
+        <button id="authShowPassword" class="signin-link hidden" type="button" aria-expanded="false" aria-controls="localAuthForm">Sign in with password</button>
+        <form id="localAuthForm" class="signin-form hidden">
+          <label class="signin-field"><span>Username</span><input id="localAuthUsername" class="field-input" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+          <label class="signin-field"><span>Password</span><input id="localAuthPassword" class="field-input" type="password" autocomplete="current-password"></label>
+          <button id="localAuthSubmit" class="signin-submit" type="submit">Sign in</button>
+        </form>
+
+        <div id="authFeedback" class="auth-feedback" role="alert"></div>
+      </main>
+    </section>
+
+    <!-- What a server member (not an admin) sees after signing in. -->
+    <section id="memberHome" class="member-shell hidden">
+      <header class="member-bar">
+        <div class="member-brand">
+          <button id="memberBack" class="member-back hidden" type="button" aria-label="Back to home"><i class="lucide" data-lucide="chevron-left"></i></button>
+          <img src="/assets/SwiftBird3.png" alt=""><span id="memberBotName">SwiftBot</span>
+        </div>
+        <div class="member-user">
+          <img id="memberAvatar" class="member-avatar" alt="">
+          <span id="memberName"></span>
+          <button id="memberLogout" class="secondary-action" type="button" aria-label="Log out"><i class="lucide" data-lucide="log-out"></i><span class="member-logout-label">Log out</span></button>
+        </div>
+      </header>
+      <main id="memberContent" class="member-content"></main>
     </section>
 
     <section id="appShell" class="app-shell">
@@ -6505,64 +6623,32 @@
       activeMediaHls = null;
     }
 
-    function mediaHLSURL(streamURL) {
-      const id = mediaTokenFromURL(streamURL);
-      if (!id) return '';
-      const params = new URLSearchParams({ id });
-      if (mediaAccessToken) params.set('token', mediaAccessToken);
-      return `/api/media/hls?${params.toString()}`;
-    }
-
     function mediaMP4URL(item) {
-      const quality = mediaExportState.playbackQuality === 'low' ? '&quality=low' : '';
-      return `${item.streamURL}${quality}${mediaAccessQuery()}`;
+      return `${item.streamURL}${mediaAccessQuery()}`;
     }
 
-    function attachRecordingPlayer(video, item) {
+    // Starts playback straight away. The server says which file to use,
+    // once, before playing: the lighter prepared copy (8 Mbps) when it's
+    // ready, otherwise the original while that copy is made for next time.
+    // Original-bitrate clips (~30 Mbps) stutter over a slow link.
+    async function attachRecordingPlayer(video, item) {
       if (!video || !item) return;
       destroyActiveMediaHls();
-
-      const fallbackURL = mediaMP4URL(item);
-      const hlsURL = mediaExportState.playbackQuality === 'low' ? '' : mediaHLSURL(item.streamURL);
-      let didFallback = false;
-      const useFallback = () => {
-        if (didFallback) return;
-        didFallback = true;
-        destroyActiveMediaHls();
-        video.src = fallbackURL;
-        video.load();
-      };
-
-      if (!hlsURL) {
-        useFallback();
-        return;
+      let quality = 'original';
+      let preparing = false;
+      try {
+        const id = mediaTokenFromURL(item.streamURL);
+        const response = await fetch(`/api/media/playback?id=${encodeURIComponent(id)}${mediaAccessQuery()}`);
+        if (response.ok) ({ quality, preparing } = await response.json());
+      } catch {}
+      if (!video.isConnected) return;
+      video.src = quality === 'standard' ? `${item.streamURL}&quality=standard${mediaAccessQuery()}` : mediaMP4URL(item);
+      video.load();
+      video.closest('.media-stage, #modalBody')?.querySelector('.media-playback-note')?.remove();
+      if (preparing) {
+        video.insertAdjacentHTML('afterend', '<div class="media-playback-note"><i class="lucide" data-lucide="sparkles"></i> Playing the original. A lighter copy is being made so this clip plays smoothly next time.</div>');
+        refreshIcons();
       }
-
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.addEventListener('error', useFallback, { once: true });
-        video.src = hlsURL;
-        video.load();
-        return;
-      }
-
-      if (window.Hls && window.Hls.isSupported()) {
-        const hls = new window.Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          manifestLoadingMaxRetry: 0,
-          levelLoadingMaxRetry: 0,
-          fragLoadingMaxRetry: 1
-        });
-        activeMediaHls = hls;
-        hls.on(window.Hls.Events.ERROR, (_event, data) => {
-          if (data?.fatal) useFallback();
-        });
-        hls.attachMedia(video);
-        hls.loadSource(hlsURL);
-        return;
-      }
-
-      useFallback();
     }
 
     // Delegated event dispatcher. Replaces inline onclick/onchange/onerror so
@@ -6622,7 +6708,91 @@
     let patchyData = null;
     let wikiBridgeData = null;
     let aiBotsData = null;
+    let operatorsData = null;
+
+    async function loadOperators() {
+      const response = await fetch('/api/operators');
+      if (!response.ok) throw new Error('Operators unavailable');
+      operatorsData = await response.json();
+      return operatorsData;
+    }
+
+    function operatorName(id) {
+      if (!id) return '';
+      const member = (operatorsData?.members || []).find(m => m.id === id);
+      return member ? member.name : `Member ${id.slice(-4)}`;
+    }
+
+    const OPERATOR_ALERT_HELP = {
+      discordDisconnected: 'SwiftBot has been reconnecting to Discord for over 5 minutes.',
+      nodeOffline: 'Another Mac in SwiftMesh stops responding for 3 minutes (DMs that Mac’s operator).',
+      recordingsUnreachable: 'A recordings folder or NAS can’t be reached for 2 minutes.',
+      errorBurst: '8 or more errors in 10 minutes, with the latest few included.',
+      roleChanges: 'A Mac takes over as Primary, hands back, or switches role.'
+    };
+
+    function operatorGroupHTML(group, switchRow) {
+      if (!operatorsData) return group('Operator', '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">Loading…</div></div></div>');
+      const d = operatorsData;
+      const mine = d.nodes.find(n => n.isThisNode);
+      const others = d.nodes.filter(n => !n.isThisNode);
+      const options = (selected) => `<option value="">Nobody</option>` + d.members
+        .slice().sort((a, b) => a.name.localeCompare(b.name))
+        .map(m => `<option value="${escapeHTML(m.id)}" ${m.id === selected ? 'selected' : ''}>${escapeHTML(m.name)}</option>`).join('');
+      return group('Operator', `
+        <div class="ub-row">
+          <div class="ub-row-text">
+            <div class="ub-row-title">Who runs ${escapeHTML(d.thisNode)}</div>
+            <div class="ub-row-desc">They get a Discord DM when something needs a look on this Mac.</div>
+          </div>
+          <select id="opThisNode" class="field-select prefs-control" aria-label="Operator for ${escapeHTML(d.thisNode)}">${options(mine?.operatorID || '')}</select>
+        </div>
+        ${d.alerts.map(a => switchRow(`opAlert-${a.id}`, escapeHTML(a.title), OPERATOR_ALERT_HELP[a.id] || '', a.enabled)).join('')}
+        ${others.length ? `
+        <button class="ub-row ub-row-link" type="button" data-settings-link="swiftmesh">
+          <div class="ub-row-text"><div class="ub-row-title">Other Macs</div><div class="ub-row-desc">${others.map(n => `${escapeHTML(n.name)}: ${n.operatorID ? escapeHTML(operatorName(n.operatorID)) : 'no operator'}`).join(' · ')}</div></div>
+          <span class="ub-row-value">Set in SwiftMesh</span>
+          <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
+        </button>` : ''}
+        <div class="ub-row">
+          <div class="ub-row-text"><div class="ub-row-title">Send a test alert</div><div class="ub-row-desc" id="opTestHint">Check the DM arrives before you need it.</div></div>
+          <button id="opTest" class="secondary-action" type="button" ${mine?.operatorID ? '' : 'disabled'}><i class="lucide" data-lucide="send"></i> Send</button>
+        </div>`);
+    }
+
+    function bindOperatorGroup(panels) {
+      if (!operatorsData) {
+        loadOperators().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
+        return;
+      }
+      const save = async (body) => {
+        try { await postJSON('/api/operators', body); } catch { setMessage('Couldn’t save that operator setting.', 'error'); }
+        await loadOperators().catch(() => {});
+        if (currentView === 'settings') renderSettingsView();
+      };
+      panels.querySelector('#opThisNode')?.addEventListener('change', e => save({ node: operatorsData.thisNode, userID: e.target.value }));
+      operatorsData.alerts.forEach(a => panels.querySelector(`#opAlert-${a.id}`)?.addEventListener('change', e => save({ alert: a.id, enabled: e.target.checked })));
+      panels.querySelector('#opTest')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        const hint = panels.querySelector('#opTestHint');
+        button.disabled = true;
+        try {
+          await postJSON('/api/operators/test', {});
+          hint.textContent = `Sent to ${operatorName(operatorsData.nodes.find(n => n.isThisNode)?.operatorID)}. Check Discord.`;
+        } catch (error) {
+          let code = '';
+          try { code = JSON.parse(error.message).error; } catch {}
+          hint.textContent = ({
+            no_operator: 'Choose an operator first.',
+            not_primary: 'Only the Primary sends alerts. Send the test from the Primary’s Web UI.',
+            dm_failed: 'Discord didn’t accept the DM. They may have DMs from server members turned off.'
+          })[code] || 'The test alert didn’t go out.';
+        }
+        button.disabled = false;
+      });
+    }
     let mediaLibraryData = null;
+    const mediaGameDetails = new Map();
     let sweepData = null;
     let gameTrackerData = null;
     let announcerData = null;
@@ -6636,7 +6806,7 @@
       try { return localStorage.getItem('swiftbot.media.layout') === 'games' ? 'games' : 'recent'; } catch { return 'recent'; }
     })();
     const activeMediaPlayback = { sessionID: '', itemID: '', started: false, completed: false, lastSentSeconds: 0 };
-    let mediaFilterState = { source: '', dateRange: 'all', game: '', page: 1, pageSize: 24 };
+    let mediaFilterState = { source: '', dateRange: 'all', game: '', person: '', page: 1, pageSize: 24 };
     let mediaExportState = {
       secondaryID: '',
       clipStart: '',
@@ -6815,7 +6985,9 @@
     }
 
     function prefsStorageKey() {
-      return currentUser?.id ? `swiftbot.webui.prefs.${currentUser.id}` : null;
+      // Before sign-in, use the last person's look for the sign-in page.
+      const id = currentUser?.id || lastSignedInUser()?.id;
+      return id ? `swiftbot.webui.prefs.${id}` : null;
     }
 
     function lastViewStorageKey() {
@@ -7045,6 +7217,9 @@
     }
 
     function showAuthScreen() {
+      document.getElementById('memberHome')?.classList.add('hidden');
+      loadUserPrefs();
+      applyUserPrefs();
       document.getElementById('appShell').classList.remove('active');
       document.getElementById('authScreen').classList.remove('hidden');
       const bg = document.getElementById('bgStream');
@@ -7082,38 +7257,625 @@
       node.className = `auth-feedback${kind ? ` ${kind}` : ''}`;
     }
 
+    // ---- Member home ----
+    // A launcher of apps (Replay, Clips); each opens its own view. Everything
+    // comes from /api/member/*, which the server scopes to this person.
+    const memberState = { view: 'home', guildID: null, period: null, data: null, clips: null, clipGame: '', clipPage: 1, clipCount: null, clipLayout: 'games' };
+    const MEMBER_APPS = [
+      { id: 'replay', title: 'Replay', icon: 'rotate-ccw', gradient: 'rewind' },
+      { id: 'clips', title: 'Clips', icon: 'clapperboard', gradient: 'recordings' }
+    ];
+
+    try { memberState.clipLayout = localStorage.getItem('swiftbot.member.clipLayout') === 'recent' ? 'recent' : 'games'; } catch {}
+
+    async function showMemberHome() {
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('appShell').classList.remove('active');
+      document.getElementById('memberHome').classList.remove('hidden');
+      const name = currentUser.globalName || currentUser.username || 'there';
+      document.getElementById('memberName').textContent = name;
+      document.getElementById('memberAvatar').src = document.getElementById('sidebarAvatar')?.getAttribute('src') || '';
+      document.getElementById('memberBotName').textContent = getCachedBotName?.() || authOptions.botName || 'SwiftBot';
+      document.title = `${name} · ${getCachedBotName?.() || 'SwiftBot'}`;
+      openMemberView('home');
+    }
+
+    function openMemberView(view) {
+      memberState.view = view;
+      document.getElementById('memberBack')?.classList.toggle('hidden', view === 'home');
+      document.getElementById('memberHome').scrollTop = 0;
+      if (view === 'replay') return loadMemberReplay();
+      if (view === 'clips') return loadMemberClips();
+      renderMemberLauncher();
+    }
+
+    function renderMemberLauncher() {
+      const content = document.getElementById('memberContent');
+      const first = (currentUser.globalName || currentUser.username || '').split(' ')[0];
+      const sub = {
+        replay: memberState.data?.replay ? `${memberState.data.replay.periodTitle}${memberState.data.replay.periodTitle.length === 4 && memberState.data.replay.periodTitle === String(new Date().getFullYear()) ? ' so far' : ''}` : 'Your year on the server',
+        clips: memberState.clipCount == null ? 'Clips you’re in' : memberState.clipCount ? `${memberState.clipCount} ${memberState.clipCount === 1 ? 'clip' : 'clips'} you’re in` : 'No clips yet'
+      };
+      content.innerHTML = `
+        <section class="member-hero">
+          <div>
+            <h1>Hi ${escapeHTML(first || 'there')} 👋</h1>
+            <p>What would you like to look at?</p>
+          </div>
+        </section>
+        <div class="member-apps">
+          ${MEMBER_APPS.map(app => `
+            <button class="member-app" type="button" data-member-app="${app.id}">
+              <span class="member-app-icon" style="${homeGradientStyle(app.gradient)}"><i class="lucide" data-lucide="${app.icon}"></i></span>
+              <span class="member-app-title">${app.title}</span>
+              <span class="member-app-sub">${escapeHTML(sub[app.id])}</span>
+            </button>`).join('')}
+        </div>`;
+      content.querySelectorAll('[data-member-app]').forEach(b => b.addEventListener('click', () => openMemberView(b.dataset.memberApp)));
+      refreshIcons();
+      // Fill in the tiles' subtitles in the background.
+      if (memberState.clipCount == null) {
+        fetch('/api/member/clips?pageSize=1').then(r => r.ok ? r.json() : null).then(d => {
+          if (!d) return;
+          memberState.clipCount = d.totalItems;
+          if (memberState.view === 'home') renderMemberLauncher();
+        }).catch(() => {});
+      }
+      if (!memberState.data) {
+        fetch('/api/member/replay').then(r => r.ok ? r.json() : null).then(d => {
+          if (!d) return;
+          memberState.data = d;
+          memberState.guildID = d.guildID;
+          memberState.period = d.periodKey;
+          if (memberState.view === 'home') renderMemberLauncher();
+        }).catch(() => {});
+      }
+    }
+
+    async function loadMemberReplay() {
+      const content = document.getElementById('memberContent');
+      if (!memberState.data) content.innerHTML = '<div class="placeholder">Loading your Replay…</div>';
+      const params = new URLSearchParams();
+      if (memberState.guildID) params.set('guild', memberState.guildID);
+      if (memberState.period) params.set('period', memberState.period);
+      try {
+        const response = await fetch(`/api/member/replay?${params}`);
+        if (!response.ok) throw new Error();
+        memberState.data = await response.json();
+        memberState.guildID = memberState.data.guildID;
+        memberState.period = memberState.data.periodKey;
+      } catch {
+        content.innerHTML = '<div class="placeholder">Couldn’t load your Replay. Try again in a moment.</div>';
+        return;
+      }
+      if (memberState.view === 'replay') renderMemberReplay();
+    }
+
+    function renderMemberReplay() {
+      const d = memberState.data;
+      const content = document.getElementById('memberContent');
+      const years = d.periods.filter(p => p.length === 4);
+      const periodSelect = d.periods.length ? `
+        <select id="memberPeriod" class="field-select" aria-label="Period">
+          ${years.map(y => `
+            <option value="${y}" ${d.periodKey === y ? 'selected' : ''}>${y} · whole year</option>
+            ${d.periods.filter(m => m.length > 4 && m.startsWith(y)).map(m => `<option value="${m}" ${d.periodKey === m ? 'selected' : ''}>${escapeHTML(rwPeriodLabel(m))}</option>`).join('')}`).join('')}
+        </select>` : '';
+      const guildSelect = d.guilds.length > 1 ? `
+        <select id="memberGuild" class="field-select" aria-label="Server">
+          ${d.guilds.map(g => `<option value="${escapeHTML(g.id)}" ${g.id === d.guildID ? 'selected' : ''}>${escapeHTML(g.name)}</option>`).join('')}
+        </select>` : '';
+
+      let body;
+      if (!d.rewindEnabled) {
+        body = '<div class="ub-empty glass"><div class="ub-empty-title">Replay isn’t switched on yet</div><div class="ub-empty-sub">Once the server’s admins turn on Rewind, your Replay shows up here.</div></div>';
+      } else if (!d.replay) {
+        body = '<div class="ub-empty glass"><div class="ub-empty-title">Nothing to show yet</div><div class="ub-empty-sub">SwiftBot starts counting from when Rewind was switched on. Check back after you’ve chatted or hung out in voice.</div></div>';
+      } else if (!d.replay.messages && !d.replay.voiceSeconds) {
+        body = `<div class="ub-empty glass"><div class="ub-empty-title">Quiet ${d.replay.periodTitle.length === 4 ? 'year' : 'month'}</div><div class="ub-empty-sub">SwiftBot didn’t see you chat or join voice in ${escapeHTML(d.replay.periodTitle)}. Try another period.</div></div>`;
+      } else {
+        body = `<section class="glass member-card">${personalReplayHTML(d.replay)}</section>`;
+      }
+
+      content.innerHTML = `
+        <section class="member-hero">
+          <div>
+            <div class="member-kicker">${escapeHTML(d.guilds.find(g => g.id === d.guildID)?.name || '')}</div>
+            <h1>Your Replay</h1>
+            <p>What you said, where you hung out, and how you stacked up.</p>
+          </div>
+          <div class="member-controls">
+            ${guildSelect}${periodSelect}
+            ${d.replay && (d.replay.messages || d.replay.voiceSeconds) ? '<button id="memberPlay" class="primary-action" type="button"><i class="lucide" data-lucide="play"></i> Play my Replay</button>' : ''}
+          </div>
+        </section>
+        ${body}
+      `;
+      content.querySelector('#memberPeriod')?.addEventListener('change', e => { memberState.period = e.target.value; loadMemberReplay(); });
+      content.querySelector('#memberGuild')?.addEventListener('change', e => { memberState.guildID = e.target.value; memberState.period = null; loadMemberReplay(); });
+      content.querySelector('#memberPlay')?.addEventListener('click', () => openPersonalStory(d.replay));
+      refreshIcons();
+    }
+
+    async function loadMemberClips({ append = false } = {}) {
+      const content = document.getElementById('memberContent');
+      if (!append && !memberState.clips) content.innerHTML = '<div class="placeholder">Finding your clips…</div>';
+      const params = new URLSearchParams({ page: String(memberState.clipPage), pageSize: '24' });
+      if (memberState.clipGame) params.set('game', memberState.clipGame);
+      try {
+        const response = await fetch(`/api/member/clips?${params}`);
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (append && memberState.clips) data.items = [...memberState.clips.items, ...data.items];
+        memberState.clips = data;
+        if (!memberState.clipGame) memberState.clipCount = data.totalItems;
+      } catch {
+        content.innerHTML = '<div class="placeholder">Couldn’t load your clips. Try again in a moment.</div>';
+        return;
+      }
+      if (memberState.view === 'clips') renderMemberClips();
+    }
+
+    // A game's page header, shared by admin Recordings and member Clips: the
+    // game's art blurred into a backdrop, poster, title, stats, the Steam
+    // blurb trimmed to a few lines, and who shows up in its clips most.
+    function gameHeroHTML(name, { clipCount = 0, totalBytes = 0, latestAt = null, items = [], forMember = false, artQuery = '' } = {}) {
+      const details = mediaGameDetails.get(name);
+      const ready = details?.state === 'ready';
+      const doc = ready ? new DOMParser().parseFromString(details.description || '', 'text/html') : null;
+      const description = doc?.body.textContent?.trim() || '';
+      const meta = ready ? [...(details.genres || []).slice(0, 3), ...(details.developers || []).slice(0, 1)] : [];
+      const reviews = ready && Number.isFinite(details.positivePercent) && details.reviewCount > 0;
+      const appID = ready && /^\d+$/.test(details.appID || '') ? details.appID : null;
+      const art = `/api/media/game-art?game=${encodeURIComponent(name)}${artQuery}`;
+      // Who appears most in the clips loaded so far.
+      const counts = new Map();
+      items.forEach(item => (item.people || []).forEach(p => {
+        if (forMember && p.id === currentUser?.id) return;
+        const entry = counts.get(p.id) || { ...p, n: 0 };
+        entry.n += 1;
+        counts.set(p.id, entry);
+      }));
+      const regulars = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 5);
+      const facts = [
+        `${clipCount} ${clipCount === 1 ? 'clip' : 'clips'}${forMember ? ' you’re in' : ''}`,
+        !forMember && totalBytes ? formatFileSize(totalBytes) : '',
+        latestAt ? `last one ${relativeTime(latestAt)}` : '',
+        reviews ? `${details.positivePercent}% positive on Steam` : ''
+      ].filter(Boolean);
+      return `
+        <section class="game-hero" style="--poster-tint:${gameColor(name)};">
+          <div class="game-hero-backdrop" aria-hidden="true"><img src="${art}" alt="" data-fallback="next-sibling"><span></span></div>
+          <div class="game-hero-body">
+            <span class="media-poster is-hero">
+              <span class="media-poster-art" style="--poster-tint:${gameColor(name)};">
+                <img src="${art}" alt="" data-fallback="next-sibling">
+                <span class="media-poster-fallback"><strong>${escapeHTML(gameInitials(name))}</strong><span>${escapeHTML(name)}</span></span>
+              </span>
+            </span>
+            <div class="game-hero-info">
+              ${meta.length ? `<div class="game-hero-meta">${meta.map(escapeHTML).join(' · ')}</div>` : details?.state === 'loading' || !details ? '<div class="game-hero-meta" role="status">Loading game details…</div>' : ''}
+              <h2>${escapeHTML(name)}</h2>
+              <div class="game-hero-facts">
+                <span>${facts.map(escapeHTML).join('<span class="game-hero-dot">·</span>')}</span>
+                ${regulars.length ? `
+                  <span class="game-hero-regulars" title="${escapeHTML(regulars.map(p => `${p.name} (${p.n})`).join(', '))}">
+                    <span class="game-hero-dot">·</span>${forMember ? 'usually with' : 'usually'}
+                    ${clipPeopleHTML(regulars, 5).replace('member-people', 'member-people game-hero-people')}
+                  </span>` : ''}
+              </div>
+              ${description ? `<p class="game-hero-desc">${escapeHTML(description)}</p>` : ''}
+              <div class="game-hero-actions">
+                ${items.length ? '<button class="primary-action" type="button" data-play-latest><i class="lucide" data-lucide="play"></i> Play latest</button>' : ''}
+                ${appID ? `<a class="game-hero-link" href="https://store.steampowered.com/app/${appID}/" target="_blank" rel="noopener noreferrer">View on Steam <i class="lucide" data-lucide="arrow-up-right"></i></a>` : ''}
+              </div>
+            </div>
+          </div>
+        </section>`;
+    }
+
+    // Lets a long description expand in place.
+    function bindGameHero(container, onPlayLatest) {
+      container?.querySelector('[data-play-latest]')?.addEventListener('click', onPlayLatest);
+      const desc = container?.querySelector('.game-hero-desc');
+      if (desc && desc.scrollHeight > desc.clientHeight + 4) {
+        desc.insertAdjacentHTML('afterend', '<button class="game-hero-more" type="button">More</button>');
+        const more = desc.nextElementSibling;
+        more.addEventListener('click', () => {
+          const open = desc.classList.toggle('is-open');
+          more.textContent = open ? 'Less' : 'More';
+        });
+      }
+    }
+
+    // A row of the newest clips above the poster wall.
+    function latestClipsStripHTML(items, { thumbQuery = '', title = 'Latest' } = {}) {
+      const latest = items.slice(0, 10);
+      if (!latest.length) return '';
+      return `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>${title}</h2></div>
+          <div class="media-strip latest-strip">
+            ${latest.map((item, index) => `
+              <button class="media-strip-item" type="button" data-latest-index="${index}" title="${escapeHTML(item.gameName)}">
+                <span class="media-thumb">
+                  <img src="${escapeHTML(item.thumbnailURL)}${thumbQuery}" alt="" loading="lazy" data-fallback="next-sibling">
+                  <span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span>
+                  <span class="media-play"><i class="lucide" data-lucide="play"></i></span>
+                </span>
+                <span class="media-strip-label">${escapeHTML(item.gameName)}</span>
+                <span class="media-subtle">${escapeHTML(relativeTime(item.modifiedAt))}</span>
+              </button>`).join('')}
+          </div>
+        </section>`;
+    }
+
+    // "Today · 15:04" for cards in a single grid.
+    function clipWhenLabel(value) {
+      const date = new Date(value);
+      const today = new Date();
+      const yesterday = new Date(today.getTime() - 86400000);
+      const day = date.toDateString() === today.toDateString() ? 'Today'
+        : date.toDateString() === yesterday.toDateString() ? 'Yesterday'
+        : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) });
+      return `${day} · ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    // Under the video in both players: the game, when, how long, and who was
+    // in it. `forMember` swaps "you" in for the signed-in person.
+    function clipDetailsHTML(item, { forMember = false } = {}) {
+      const when = new Date(item.modifiedAt);
+      const details = mediaGameDetails.get(item.gameName);
+      const genres = details?.state === 'ready' ? (details.genres || []).slice(0, 3).join(' · ') : '';
+      const people = (item.people || []).slice().sort((a, b) =>
+        (b.id === item.recordedByID) - (a.id === item.recordedByID) || a.name.localeCompare(b.name));
+      const chip = (p) => {
+        const isMe = forMember && p.id === currentUser?.id;
+        return `
+          <span class="clip-person${p.id === item.recordedByID ? ' is-recorder' : ''}">
+            <span class="clip-person-avatar">${escapeHTML((p.name || '?').charAt(0).toUpperCase())}</span>
+            <span class="clip-person-name">${isMe ? 'You' : escapeHTML(p.name)}</span>
+            ${p.id === item.recordedByID ? '<span class="clip-person-tag">Recorded</span>' : ''}
+          </span>`;
+      };
+      return `
+        <section class="clip-details">
+          <button class="clip-game" type="button" data-clip-open-game="${escapeHTML(item.gameName)}" title="See all ${escapeHTML(item.gameName)} clips">
+            <span class="clip-game-art" style="--poster-tint:${gameColor(item.gameName)};">
+              <img src="/api/media/game-art?game=${encodeURIComponent(item.gameName)}${forMember ? '' : mediaAccessQuery()}" alt="" loading="lazy" data-fallback="next-sibling">
+              <span class="media-poster-fallback"><strong>${escapeHTML(gameInitials(item.gameName))}</strong></span>
+            </span>
+            <span class="clip-game-text">
+              <span class="clip-kicker">Game</span>
+              <span class="clip-game-name">${escapeHTML(item.gameName || 'Unknown game')}</span>
+              ${genres ? `<span class="media-subtle">${escapeHTML(genres)}</span>` : ''}
+            </span>
+            <i class="lucide clip-game-chevron" data-lucide="chevron-right"></i>
+          </button>
+          <div class="clip-when">
+            <span><i class="lucide" data-lucide="calendar"></i>${escapeHTML(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</span>
+            <span><i class="lucide" data-lucide="clock"></i>${escapeHTML(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
+            <span class="clip-length hidden"><i class="lucide" data-lucide="timer"></i><span data-clip-length></span></span>
+          </div>
+          <div class="clip-people">
+            <div class="clip-kicker">In this clip</div>
+            ${people.length ? `<div class="clip-people-list">${people.map(chip).join('')}</div>` : `
+              <div class="media-subtle">SwiftBot couldn’t tell who was in this one.${forMember ? '' : ' Set who records this folder under <strong>Who records</strong> so it can.'}</div>`}
+          </div>
+        </section>`;
+    }
+
+    // Fills in the length once the video knows it, and loads the game's
+    // genres if they aren't cached yet.
+    function bindClipDetails(container, video, item, onOpenGame) {
+      if (!container) return;
+      video?.addEventListener('loadedmetadata', () => {
+        const seconds = video.duration;
+        if (!Number.isFinite(seconds) || seconds <= 0) return;
+        const m = Math.floor(seconds / 60);
+        const sec = Math.round(seconds % 60);
+        const node = container.querySelector('[data-clip-length]');
+        if (node) {
+          node.textContent = m ? `${m}m ${String(sec).padStart(2, '0')}s` : `${sec}s`;
+          node.closest('.clip-length')?.classList.remove('hidden');
+        }
+      }, { once: true });
+      container.querySelector('[data-clip-open-game]')?.addEventListener('click', () => onOpenGame(item.gameName));
+      loadMediaGameDetails(item.gameName);
+    }
+
+    // "Recorded by" for each folder: whose voice channel decides who's in its
+    // clips. Without one, a clip only gets people when one channel was busy.
+    function openWhoRecords(sources, members) {
+      const options = (selected) => [`<option value="">Not set</option>`].concat(
+        members.map(m => `<option value="${escapeHTML(m.id)}" ${selected === m.id ? 'selected' : ''}>${escapeHTML(m.name)}</option>`)
+      ).join('');
+      showModal('Who records', `
+        <p class="ub-help" style="margin-top:0;">Pick who records into each folder. A clip’s people are whoever was in that person’s voice channel while it was recording. That’s also how members find the clips they’re in.</p>
+        <div class="ub-list">
+          ${sources.map(source => `
+            <div class="ub-item">
+              <span class="ub-item-icon" style="--brand:${getTintHex('orange')};"><i class="lucide" data-lucide="folder-open"></i></span>
+              <span class="ub-item-text">
+                <span class="ub-item-title">${escapeHTML(source.sourceName)}</span>
+                <span class="ub-item-sub">${escapeHTML(source.nodeName)} · ${source.itemCount} ${source.itemCount === 1 ? 'recording' : 'recordings'}</span>
+              </span>
+              <select class="field-select who-records-select" data-source="${escapeHTML(source.id)}" aria-label="Recorded by">${options(source.ownerID || '')}</select>
+            </div>`).join('')}
+        </div>`, '<button class="primary-action" type="button" data-action="hideModal">Done</button>', { wide: true });
+      document.querySelectorAll('.who-records-select').forEach(select => select.addEventListener('change', async () => {
+        select.disabled = true;
+        try {
+          await postJSON('/api/media/source-owner', { sourceID: select.dataset.source, userID: select.value });
+          const source = sources.find(s => s.id === select.dataset.source);
+          if (source) source.ownerID = select.value || null;
+        } catch {
+          setMessage('Couldn’t save who records that folder.', 'error');
+        }
+        select.disabled = false;
+      }));
+      modalDismissHandler = async () => { await loadMediaData(); if (currentView === 'recordings') renderRecordingsView(); };
+      refreshIcons();
+    }
+
+    // Everyone else who was there (you're in all of your own clips).
+    function othersInClip(people) {
+      return (people || []).filter(p => p.id !== currentUser?.id);
+    }
+
+    function memberPeopleHTML(people, limit = 4) {
+      return clipPeopleHTML(othersInClip(people), limit);
+    }
+
+    // Small stacked initials for who was in a clip.
+    function clipPeopleHTML(people, limit = 4) {
+      if (!people?.length) return '';
+      const shown = people.slice(0, limit);
+      return `<span class="member-people" title="${escapeHTML(people.map(p => p.name).join(', '))}">
+        ${shown.map(p => `<span class="member-person">${escapeHTML((p.name || '?').charAt(0).toUpperCase())}</span>`).join('')}
+        ${people.length > limit ? `<span class="member-person is-more">+${people.length - limit}</span>` : ''}
+      </span>`;
+    }
+
+    // Same look as admin Recordings: a poster wall of games (Steam/Twitch
+    // art), a game page with its details, and clips grouped by day.
+    function renderMemberClips() {
+      const d = memberState.clips;
+      const content = document.getElementById('memberContent');
+      const summaries = d.gameSummaries || [];
+      const layout = memberState.clipLayout;
+      const showingWall = layout === 'games' && !memberState.clipGame;
+      const clipsLabel = (n) => `${n} ${n === 1 ? 'clip' : 'clips'}`;
+      const posterArt = (name) => `
+        <span class="media-poster-art" style="--poster-tint:${gameColor(name)};">
+          <img src="/api/media/game-art?game=${encodeURIComponent(name)}" alt="" loading="lazy" data-fallback="next-sibling">
+          <span class="media-poster-fallback"><strong>${escapeHTML(gameInitials(name))}</strong><span>${escapeHTML(name)}</span></span>
+        </span>`;
+      const dayLabel = (value) => {
+        const date = new Date(value);
+        const today = new Date();
+        const yesterday = new Date(today.getTime() - 86400000);
+        if (date.toDateString() === today.toDateString()) return 'Today';
+        if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+        return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) });
+      };
+      const card = (item, index) => {
+        const clock = new Date(item.modifiedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return `
+          <button class="media-card" type="button" data-clip-index="${index}">
+            <span class="media-thumb">
+              <img src="${escapeHTML(item.thumbnailURL)}" alt="" loading="lazy" data-fallback="next-sibling">
+              <span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span>
+              <span class="media-play"><i class="lucide" data-lucide="play"></i></span>
+            </span>
+            <span class="media-card-text">
+              <span class="media-card-title">${escapeHTML(memberState.clipGame ? clipWhenLabel(item.modifiedAt) : item.gameName)}</span>
+              <span class="media-card-meta">
+                <span>${escapeHTML(memberState.clipGame ? relativeTime(item.modifiedAt) : clock)}</span>
+                ${memberPeopleHTML(item.people, 3).replace('member-people', 'member-people media-meta-people')}
+              </span>
+            </span>
+          </button>`;
+      };
+      const groups = [];
+      d.items.forEach((item, index) => {
+        const key = new Date(item.modifiedAt).toDateString();
+        let group = groups.find(g => g.key === key);
+        if (!group) { group = { key, label: dayLabel(item.modifiedAt), entries: [] }; groups.push(group); }
+        group.entries.push([item, index]);
+      });
+
+      if (memberState.clipGame) loadMediaGameDetails(memberState.clipGame);
+      const summary = summaries.find(g => g.name === memberState.clipGame);
+      const hero = memberState.clipGame ? `
+        <div><button id="memberAllGames" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> ${layout === 'games' ? 'All games' : 'All clips'}</button></div>
+        ${gameHeroHTML(memberState.clipGame, { clipCount: d.totalItems || 0, latestAt: summary?.latestAt || d.items[0]?.modifiedAt, items: d.items, forMember: true })}` : '';
+
+      const empty = `
+        <div class="ub-empty glass"><div class="ub-empty-title">No clips yet</div><div class="ub-empty-sub">When someone records while you’re in voice with them, the clip shows up here.</div></div>`;
+      const body = showingWall
+        ? (summaries.length ? `
+          ${latestClipsStripHTML(d.items)}
+          <div class="ub-group-head media-wall-head"><h2>Games</h2></div>
+          <div class="media-poster-grid">
+            ${summaries.map(game => `
+              <button class="media-poster" type="button" data-clip-game="${escapeHTML(game.name)}" title="${escapeHTML(game.name)}">
+                ${posterArt(game.name)}
+                <span class="media-badge is-count">${game.clipCount}</span>
+                <span class="media-card-text">
+                  <span class="media-card-title">${escapeHTML(game.name)}</span>
+                  <span class="media-subtle">${clipsLabel(game.clipCount)}${game.latestAt ? ` · ${escapeHTML(relativeTime(game.latestAt))}` : ''}</span>
+                </span>
+              </button>`).join('')}
+          </div>` : empty)
+        : (d.items.length ? (memberState.clipGame ? `
+          <section class="ub-group">
+            <div class="ub-group-head"><h2>Clips</h2></div>
+            <div class="media-grid">${d.items.map((item, index) => card(item, index)).join('')}</div>
+          </section>` : groups.map(group => `
+          <section class="ub-group">
+            <div class="ub-group-head"><h2>${escapeHTML(group.label)}</h2></div>
+            <div class="media-grid">${group.entries.map(([item, index]) => card(item, index)).join('')}</div>
+          </section>`).join('')) : empty);
+
+      content.innerHTML = `
+        <section class="member-hero">
+          <div>
+            <h1>Your clips</h1>
+            <p>Clips recorded while you were in voice with whoever was recording.</p>
+          </div>
+          <div class="segmented media-layout-toggle" role="tablist" aria-label="Clips view">
+            <button type="button" data-clip-layout="games" class="${layout === 'games' ? 'active' : ''}" aria-selected="${layout === 'games'}"><i class="lucide" data-lucide="library"></i> Games</button>
+            <button type="button" data-clip-layout="recent" class="${layout === 'recent' ? 'active' : ''}" aria-selected="${layout === 'recent'}"><i class="lucide" data-lucide="calendar-days"></i> Recent</button>
+          </div>
+        </section>
+        <div class="media-library">
+          ${hero}
+          ${body}
+          ${!showingWall && d.page < d.totalPages ? '<div class="member-more"><button id="memberMoreClips" class="secondary-action" type="button">Show more</button></div>' : ''}
+          ${showingWall && summaries.length ? '<div class="media-footer"><span class="media-subtle">Artwork from Steam and Twitch</span></div>' : ''}
+        </div>
+      `;
+      const openGame = (name) => {
+        memberState.clipGame = name;
+        memberState.clipPage = 1;
+        memberState.clips = null;
+        document.getElementById('memberHome').scrollTop = 0;
+        loadMemberClips();
+      };
+      content.querySelectorAll('[data-clip-game]').forEach(b => b.addEventListener('click', () => openGame(b.dataset.clipGame)));
+      content.querySelector('#memberAllGames')?.addEventListener('click', () => openGame(''));
+      content.querySelectorAll('[data-clip-layout]').forEach(b => b.addEventListener('click', () => {
+        if (b.dataset.clipLayout === memberState.clipLayout) return;
+        memberState.clipLayout = b.dataset.clipLayout;
+        try { localStorage.setItem('swiftbot.member.clipLayout', memberState.clipLayout); } catch {}
+        if (memberState.clipGame) openGame(''); else renderMemberClips();
+      }));
+      content.querySelectorAll('[data-clip-index]').forEach(b => b.addEventListener('click', () => openMemberClip(d.items[Number(b.dataset.clipIndex)])));
+      content.querySelectorAll('[data-latest-index]').forEach(b => b.addEventListener('click', () => openMemberClip(d.items[Number(b.dataset.latestIndex)])));
+      bindGameHero(content.querySelector('.game-hero'), () => d.items[0] && openMemberClip(d.items[0]));
+      content.querySelector('#memberMoreClips')?.addEventListener('click', () => { memberState.clipPage += 1; loadMemberClips({ append: true }); });
+      refreshIcons();
+    }
+
+    function openMemberClip(item) {
+      showModal(item.gameName, `
+        <video class="member-video" controls playsinline autoplay></video>
+        ${clipDetailsHTML(item, { forMember: true })}`, '', { wide: true });
+      const video = document.querySelector('#modalBody .member-video');
+      attachRecordingPlayer(video, item);
+      bindClipDetails(document.querySelector('#modalBody .clip-details'), video, item, (game) => {
+        hideModal();
+        memberState.clipLayout = 'games';
+        memberState.clipGame = game;
+        memberState.clipPage = 1;
+        memberState.clips = null;
+        loadMemberClips();
+      });
+      modalDismissHandler = () => {
+        releaseVideos(document.getElementById('modalBody'));
+        destroyActiveMediaHls();
+      };
+    }
+
+    document.getElementById('memberBack')?.addEventListener('click', () => openMemberView('home'));
+
+    document.getElementById('memberLogout')?.addEventListener('click', async () => {
+      document.getElementById('memberHome').classList.add('hidden');
+      Object.assign(memberState, { view: 'home', data: null, clips: null, clipCount: null, guildID: null, period: null, clipGame: '', clipPage: 1 });
+      await logout();
+    });
+
+    // Who signed in last on this browser, so the sign-in page can greet
+    // them, use their theme and wallpaper, and say when a session ran out.
+    const LAST_USER_KEY = 'swiftbot.webui.lastUser';
+    function lastSignedInUser() {
+      try { return JSON.parse(localStorage.getItem(LAST_USER_KEY) || 'null'); } catch { return null; }
+    }
+    function rememberSignedInUser(user, change = {}) {
+      try {
+        const previous = lastSignedInUser() || {};
+        localStorage.setItem(LAST_USER_KEY, JSON.stringify({
+          ...previous,
+          ...(user ? { id: user.id, name: user.globalName || user.username || '', expiresAt: user.sessionExpiresAt || null, signedOut: false } : {}),
+          ...change
+        }));
+      } catch {}
+    }
+
     function applyAuthOptions() {
       const discordButton = document.getElementById('discordAuthButton');
       const localForm = document.getElementById('localAuthForm');
-      const divider = document.getElementById('authDivider');
-      const setupHint = document.getElementById('authSetupHint');
+      const showPassword = document.getElementById('authShowPassword');
+      const notice = document.getElementById('authNotice');
 
-      // Local authentication is only allowed on local domains. 
-      // This prevents local fallback login via cloud tunnels.
+      // Password sign-in only works on this network, never through a tunnel.
       const host = window.location.hostname;
       const isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local') || /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
       const localAllowed = authOptions.localEnabled && isLocal;
+      const discord = !!authOptions.discordEnabled;
 
-      if (discordButton) {
-        discordButton.style.display = authOptions.discordEnabled ? '' : 'none';
-      }
-      if (localForm) {
-        localForm.style.display = localAllowed ? '' : 'none';
-      }
-      if (divider) {
-        divider.style.display = authOptions.discordEnabled && localAllowed ? '' : 'none';
-      }
-      if (setupHint) {
-        setupHint.style.display = authOptions.discordEnabled ? 'none' : '';
-      }
+      // Discord is the main way in; with both on, the password form waits
+      // behind a link. With only one, it's simply shown.
+      if (discordButton) discordButton.classList.toggle('hidden', !discord);
+      const formOpen = localAllowed && (!discord || showPassword?.getAttribute('aria-expanded') === 'true');
+      localForm?.classList.toggle('hidden', !formOpen);
+      showPassword?.classList.toggle('hidden', !(discord && localAllowed) || formOpen);
 
-      const botName = (authOptions.botName || 'SwiftBot').trim() || 'SwiftBot';
+      const botName = (authOptions.botName || getCachedBotName?.() || 'SwiftBot').trim() || 'SwiftBot';
       const nameNode = document.getElementById('authBotName');
       if (nameNode) nameNode.textContent = botName;
-      const inlineName = document.getElementById('authBotInlineName');
-      if (inlineName) inlineName.textContent = botName;
       document.title = botName;
+
+      // The SwiftBird head is the sign-in mark; the initial only shows if
+      // the image can't load.
+      const avatar = document.getElementById('authBotAvatar');
+      const initial = document.getElementById('authBotInitial');
+      if (avatar && initial) {
+        initial.textContent = botName.charAt(0).toUpperCase();
+        const showInitial = () => { avatar.classList.add('hidden'); initial.classList.remove('hidden'); };
+        avatar.onerror = showInitial;
+        if (avatar.complete && !avatar.naturalWidth) showInitial();
+      }
+
+      const status = document.getElementById('authBotStatus');
+      if (status && typeof authOptions.botOnline === 'boolean') {
+        status.classList.remove('hidden');
+        status.classList.toggle('is-online', authOptions.botOnline);
+        document.getElementById('authBotStatusText').textContent = authOptions.botOnline ? 'Online' : 'Offline';
+      }
+
+      const last = lastSignedInUser();
+      const greeting = document.getElementById('authGreeting');
+      if (greeting) greeting.textContent = last?.name ? `Welcome back, ${last.name}.` : `Sign in to manage ${botName}.`;
+
+      let message = '';
+      if (!discord && !localAllowed) {
+        message = 'Sign-in isn’t available from here. Open SwiftBot on its Mac to set it up.';
+      } else if (last && !last.signedOut && last.expiresAt && new Date(last.expiresAt) < new Date()) {
+        message = 'Your session ended. Sign in again to pick up where you left off.';
+      }
+      if (notice) {
+        notice.textContent = message;
+        notice.classList.toggle('hidden', !message);
+      }
     }
+
+    document.getElementById('authShowPassword')?.addEventListener('click', (e) => {
+      e.currentTarget.setAttribute('aria-expanded', 'true');
+      applyAuthOptions();
+      document.getElementById('localAuthUsername')?.focus();
+    });
+    document.getElementById('discordAuthButton')?.addEventListener('click', (e) => {
+      const button = e.currentTarget;
+      button.classList.add('is-loading');
+      button.querySelector('span').textContent = 'Opening Discord…';
+      // Coming back with the browser's back button shouldn't leave it stuck.
+      setTimeout(() => {
+        button.classList.remove('is-loading');
+        button.querySelector('span').textContent = 'Continue with Discord';
+      }, 8000);
+    });
 
     function renderOverviewPanels() {
       const panelHost = document.getElementById('overviewPanels');
@@ -8011,7 +8773,7 @@
             <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Messages archived</div><div class="ub-row-desc">${data.earliestDay ? `${escapeHTML(rwDay(data.earliestDay))} → ${escapeHTML(rwDay(data.latestDay))}` : 'Nothing yet'}</div></div><span class="ub-row-value">${Number(data.messageCount || 0).toLocaleString()}</span></div>
             <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">On disk</div><div class="ub-row-desc">Message text kept ${data.retentionDays ? `for ${data.retentionDays} days` : 'forever'}</div></div><span class="ub-row-value">${rewindBytes(data.diskBytes)}</span></div>
           </div>
-          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Turning Rewind on, what it keeps, opt-outs and ignored channels are set in the SwiftBot app on the Mac, on purpose: a message archive shouldn’t be switched on remotely.</p>
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Turning Rewind on, what it keeps and ignored channels are set in the SwiftBot app on the Mac, on purpose: a message archive shouldn’t be switched on remotely.</p>
         </section>`;
 
       if (!data.isEnabled) {
@@ -8228,7 +8990,7 @@
         count = (await r.json()).count || 0;
       } catch {}
       document.getElementById('modalBody').innerHTML = count
-        ? `<p class="ub-help" style="margin-top:0;">SwiftBot will DM <strong>${count} ${count === 1 ? 'member' : 'members'}</strong> of ${escapeHTML(g.name)} their own <strong>${escapeHTML(label)}</strong> Replay. It sends one at a time, so a big server takes a few minutes. Members who opted out of Rewind or of Replay DMs are skipped, and each DM has a button to stop future ones.</p>`
+        ? `<p class="ub-help" style="margin-top:0;">SwiftBot will DM <strong>${count} ${count === 1 ? 'member' : 'members'}</strong> of ${escapeHTML(g.name)} their own <strong>${escapeHTML(label)}</strong> Replay. It sends one at a time, so a big server takes a few minutes. Members who turned off Replay DMs are skipped, and each DM has a button to stop future ones.</p>`
         : `<p class="ub-help" style="margin-top:0;">Nobody was active in ${escapeHTML(label)}, so there’s nothing to send.</p>`;
       const confirm = document.getElementById('rwDMConfirm');
       confirm.disabled = !count;
@@ -8284,39 +9046,51 @@
       });
     }
 
+    // One person's Replay as tiles and facts; used by the admin Rewind page
+    // and by the member home.
+    function personalReplayHTML(p, { note = '' } = {}) {
+      // Same rule as PersonalReplay.topPercent (computed, so not in the JSON).
+      const topPercent = p.rank && p.rankedMembers >= 10 ? Math.max(1, Math.ceil(p.rank / p.rankedMembers * 100)) : null;
+      const tile = (icon, value, label) => `<div class="rw-me-tile"><i class="lucide" data-lucide="${icon}"></i><strong>${value}</strong><span>${label}</span></div>`;
+      const change = (now, before) => before > 0 ? Math.round((now - before) / before * 100) : null;
+      const msgChange = change(p.messages, p.previousMessages);
+      const voiceChange = change(p.voiceSeconds, p.previousVoiceSeconds);
+      const trend = (value, what) => value == null ? '' : `<div><i class="lucide" data-lucide="${value >= 0 ? 'trending-up' : 'trending-down'}"></i> ${Math.abs(value)}% ${value >= 0 ? 'more' : 'less'} ${what} than ${escapeHTML(p.previousPeriodTitle || 'before')}</div>`;
+      return `
+        <div class="rw-me">
+          <div class="rw-me-head">
+            <span class="rw-me-avatar">${escapeHTML((p.name || '?').charAt(0).toUpperCase())}</span>
+            <div><div class="rw-hero-kicker">${escapeHTML(p.guildName)} · ${escapeHTML(p.periodTitle)}</div><div class="rw-me-name">${escapeHTML(p.name)}</div>
+            ${p.rank ? `<div class="rw-me-rank">#${p.rank} of ${p.rankedMembers} most talkative${topPercent && topPercent <= 25 ? ` · top ${topPercent}%` : ''}</div>` : ''}</div>
+          </div>
+          <div class="rw-me-grid">
+            ${tile('message-square', p.messages.toLocaleString(), 'messages')}
+            ${tile('text', p.words.toLocaleString(), 'words')}
+            ${tile('calendar-days', p.activeDays, 'active days')}
+            ${tile('volume-2', anDuration(p.voiceSeconds), `in voice${p.voiceRank ? ` · #${p.voiceRank}` : ''}`)}
+            ${p.voiceSessions ? tile('timer', anDuration(p.longestSessionSeconds), 'longest session') : ''}
+            ${p.commands != null ? tile('terminal', p.commands, 'commands') : ''}
+          </div>
+          <div class="rw-me-facts">
+            ${p.busiestDay ? `<div><i class="lucide" data-lucide="flame"></i> Biggest day: <strong>${escapeHTML(rwDay(p.busiestDay))}</strong> · ${p.busiestDayMessages} messages</div>` : ''}
+            ${p.favouriteVoiceChannel ? `<div><i class="lucide" data-lucide="house"></i> Favourite spot: <strong>${escapeHTML(p.favouriteVoiceChannel)}</strong></div>` : ''}
+            ${p.messages ? `<div><i class="lucide" data-lucide="type"></i> About ${Math.round(p.words / Math.max(1, p.messages))} words a message</div>` : ''}
+            ${trend(msgChange, 'messages')}
+            ${trend(voiceChange, 'time in voice')}
+          </div>
+          ${note ? `<p class="ub-help">${note}</p>` : ''}
+        </div>`;
+    }
+
     async function openPersonalReplay(userID) {
       showModal('Replay', '<div class="placeholder">Loading…</div>', '<button class="secondary-action" type="button" data-action="hideModal">Close</button>', { wide: true });
       try {
         const res = await fetch(`/api/rewind/member?guild=${encodeURIComponent(rewindState.guildID)}&user=${encodeURIComponent(userID)}&period=${encodeURIComponent(rewindState.period)}`);
         const p = await res.json();
-        // Same rule as PersonalReplay.topPercent (computed, so not in the JSON).
-        p.topPercent = p.rank && p.rankedMembers >= 10 ? Math.max(1, Math.ceil(p.rank / p.rankedMembers * 100)) : null;
         document.getElementById('modalTitle') && (document.getElementById('modalTitle').textContent = `${p.name}’s Replay`);
-        const tile = (icon, value, label) => `<div class="rw-me-tile"><i class="lucide" data-lucide="${icon}"></i><strong>${value}</strong><span>${label}</span></div>`;
-        document.getElementById('modalBody').innerHTML = p.optedOut
-          ? '<div class="placeholder">This member has opted out of Rewind.</div>'
-          : `
-            <div class="rw-me">
-              <div class="rw-me-head">
-                <span class="rw-me-avatar">${escapeHTML((p.name || '?').charAt(0).toUpperCase())}</span>
-                <div><div class="rw-hero-kicker">${escapeHTML(p.guildName)} · ${escapeHTML(p.periodTitle)}</div><div class="rw-me-name">${escapeHTML(p.name)}</div>
-                ${p.rank ? `<div class="rw-me-rank">#${p.rank} of ${p.rankedMembers} most talkative${p.topPercent && p.topPercent <= 25 ? ` · top ${p.topPercent}%` : ''}</div>` : ''}</div>
-              </div>
-              <div class="rw-me-grid">
-                ${tile('message-square', p.messages.toLocaleString(), 'messages')}
-                ${tile('text', p.words.toLocaleString(), 'words')}
-                ${tile('calendar-days', p.activeDays, 'active days')}
-                ${tile('volume-2', anDuration(p.voiceSeconds), `in voice${p.voiceRank ? ` · #${p.voiceRank}` : ''}`)}
-                ${p.voiceSessions ? tile('timer', anDuration(p.longestSessionSeconds), 'longest session') : ''}
-                ${p.commands != null ? tile('terminal', p.commands, 'commands') : ''}
-              </div>
-              <div class="rw-me-facts">
-                ${p.busiestDay ? `<div><i class="lucide" data-lucide="flame"></i> Biggest day: <strong>${escapeHTML(rwDay(p.busiestDay))}</strong> · ${p.busiestDayMessages} messages</div>` : ''}
-                ${p.favouriteVoiceChannel ? `<div><i class="lucide" data-lucide="house"></i> Favourite spot: <strong>${escapeHTML(p.favouriteVoiceChannel)}</strong></div>` : ''}
-                ${p.messages ? `<div><i class="lucide" data-lucide="type"></i> About ${Math.round(p.words / Math.max(1, p.messages))} words a message</div>` : ''}
-              </div>
-              <p class="ub-help">This is what ${escapeHTML(p.name)} gets by DM when personal Replays go out. Members can also see theirs any time with <code>/replay</code>, and only they see it.</p>
-            </div>`;
+        document.getElementById('modalBody').innerHTML = personalReplayHTML(p, {
+          note: `This is what ${escapeHTML(p.name)} gets by DM when personal Replays go out. Members can also see theirs any time with <code>/replay</code>, or by signing in here when member sign-in is on.`
+        });
         refreshIcons();
       } catch {
         document.getElementById('modalBody').innerHTML = '<div class="placeholder">Couldn’t load this Replay.</div>';
@@ -8338,11 +9112,32 @@
       if (r.joins) cards.push({ tone: 'blue', html: `<div class="rs-kicker">New faces</div>${big(`+${r.joins}`)}<div class="rs-sub">people joined the server.</div>` });
       cards.push({ tone: 'violet', html: `<div class="rs-kicker">That was</div><div class="rs-title">${escapeHTML(r.periodTitle)}</div><div class="rs-sub">Members can see their own Replay with <strong>/replay</strong>.</div>` });
 
+      playReplayStory(cards, `${r.periodTitle} Replay`);
+    }
+
+    // A member's own Replay as a story.
+    function openPersonalStory(p) {
+      const big = (n) => `<div class="rs-big">${n}</div>`;
+      const first = (p.name || '').split(' ')[0] || 'you';
+      const cards = [{ tone: 'violet', html: `<div class="rs-kicker">${escapeHTML(p.guildName)}</div><div class="rs-title">${escapeHTML(first)}’s<br>${escapeHTML(p.periodTitle)}</div><div class="rs-sub">Here’s how you showed up.</div>` }];
+      if (p.messages) cards.push({ tone: 'blue', html: `<div class="rs-kicker">You sent</div>${big(p.messages.toLocaleString())}<div class="rs-sub">messages, about ${p.words.toLocaleString()} words, across ${p.activeDays} days.</div>` });
+      if (p.rank) cards.push({ tone: 'pink', html: `<div class="rs-kicker">Most talkative</div>${big(`#${p.rank}`)}<div class="rs-sub">out of ${p.rankedMembers} people chatting.</div>` });
+      if (p.busiestDay) cards.push({ tone: 'orange', html: `<div class="rs-kicker">Your biggest day</div><div class="rs-title">${escapeHTML(rwDay(p.busiestDay))}</div><div class="rs-sub">${p.busiestDayMessages.toLocaleString()} messages in one day.</div>` });
+      if (p.voiceSeconds) cards.push({ tone: 'green', html: `<div class="rs-kicker">You spent</div>${big(anDuration(p.voiceSeconds))}<div class="rs-sub">in voice${p.favouriteVoiceChannel ? `, mostly in <strong>${escapeHTML(p.favouriteVoiceChannel)}</strong>` : ''}. Your longest session was ${anDuration(p.longestSessionSeconds)}.</div>` });
+      if (p.previousMessages > 0 && p.previousPeriodTitle) {
+        const pct = Math.round((p.messages - p.previousMessages) / p.previousMessages * 100);
+        cards.push({ tone: 'teal', html: `<div class="rs-kicker">Compared with ${escapeHTML(p.previousPeriodTitle)}</div>${big(`${pct >= 0 ? '+' : '−'}${Math.abs(pct)}%`)}<div class="rs-sub">${pct >= 0 ? 'more' : 'fewer'} messages.</div>` });
+      }
+      cards.push({ tone: 'violet', html: `<div class="rs-kicker">That was your</div><div class="rs-title">${escapeHTML(p.periodTitle)}</div><div class="rs-sub">See you in the next one.</div>` });
+      playReplayStory(cards, `${first}’s ${p.periodTitle} Replay`);
+    }
+
+    function playReplayStory(cards, label) {
       let index = 0, timer = null;
       const overlay = document.createElement('div');
       overlay.className = 'rs-overlay';
       overlay.setAttribute('role', 'dialog');
-      overlay.setAttribute('aria-label', `${r.periodTitle} Replay`);
+      overlay.setAttribute('aria-label', label);
       const render = () => {
         const card = cards[index];
         overlay.innerHTML = `
@@ -8447,6 +9242,7 @@
       const data = await response.json();
       csrfToken = data.csrfToken;
       currentUser = data;
+      rememberSignedInUser(data);
       applyUserAvatar(data);
       loadUserPrefs();
       applyUserPrefs();
@@ -8461,6 +9257,7 @@
       authOptions.localEnabled = !!data.localEnabled;
       authOptions.botName = data.botName || '';
       authOptions.botAvatarURL = data.botAvatarURL || '';
+      authOptions.botOnline = typeof data.botOnline === 'boolean' ? data.botOnline : undefined;
       applyAuthOptions();
     }
 
@@ -8469,13 +9266,13 @@
       const username = document.getElementById('localAuthUsername')?.value?.trim() || '';
       const password = document.getElementById('localAuthPassword')?.value || '';
       if (!username || !password) {
-        setAuthFeedback('Enter the local username and password.', 'error');
+        setAuthFeedback('Enter the username and password.', 'error');
         return;
       }
 
       const submit = document.getElementById('localAuthSubmit');
       if (submit) submit.disabled = true;
-      setAuthFeedback('Signing in locally...');
+      setAuthFeedback('Signing in…');
 
       try {
         const response = await fetch('/auth/local/login', {
@@ -8489,10 +9286,10 @@
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           if (response.status === 401) {
-            throw new Error('Local username or password is incorrect.');
+            throw new Error('That username and password don’t match.');
           }
           if (response.status === 403 && payload.error === 'local_auth_disabled') {
-            throw new Error('Local fallback auth is disabled in SwiftBot settings.');
+            throw new Error('Password sign-in is turned off.');
           }
           throw new Error('Local sign-in failed.');
         }
@@ -9953,6 +10750,7 @@
       if (mediaFilterState.source) params.set('source', mediaFilterState.source);
       if (mediaFilterState.dateRange) params.set('dateRange', mediaFilterState.dateRange);
       if (mediaFilterState.game) params.set('game', mediaFilterState.game);
+      if (mediaFilterState.person) params.set('person', mediaFilterState.person);
       params.set('page', String(mediaFilterState.page || 1));
       params.set('pageSize', String(mediaFilterState.pageSize || 24));
       const response = await fetch(`/api/media?${params.toString()}`);
@@ -9971,6 +10769,28 @@
         selectedMediaItemID = data.items?.[0]?.id || null;
       }
       return data;
+    }
+
+    function loadMediaGameDetails(name) {
+      if (!name || mediaGameDetails.has(name)) return;
+      mediaGameDetails.set(name, { state: 'loading' });
+      fetch(`/api/media/game-details?game=${encodeURIComponent(name)}${mediaAccessQuery()}`)
+        .then(async response => {
+          if (!response.ok) throw new Error('Game details unavailable');
+          mediaGameDetails.set(name, { state: 'ready', ...await response.json() });
+        })
+        .catch(() => mediaGameDetails.set(name, { state: 'unavailable' }))
+        .finally(() => {
+          if (currentView === 'recordings' && mediaViewMode !== 'player' && mediaFilterState.game === name) renderRecordingsView();
+          if (memberState.view === 'clips' && memberState.clipGame === name && memberState.clips) renderMemberClips();
+          // An open player's details card: add the genres now they're here.
+          const details = mediaGameDetails.get(name);
+          const genres = details?.state === 'ready' ? (details.genres || []).slice(0, 3).join(' · ') : '';
+          document.querySelectorAll('.clip-game').forEach(button => {
+            if (button.dataset.clipOpenGame !== name || !genres || button.querySelector('.media-subtle')) return;
+            button.querySelector('.clip-game-text')?.insertAdjacentHTML('beforeend', `<span class="media-subtle">${escapeHTML(genres)}</span>`);
+          });
+        });
     }
 
     async function loadMediaExportStatus() {
@@ -10047,6 +10867,18 @@
       const activePlayer = document.querySelector('#mediaPanels video:not(.hover-preview)');
       if (activePlayer && !activePlayer.paused && !activePlayer.ended) return false;
       return true;
+    }
+
+    // Fully stops videos before their elements are replaced. A <video> that's
+    // just removed from the page keeps downloading (and can keep playing)
+    // until it's garbage-collected, fighting the clip you actually opened.
+    function releaseVideos(container) {
+      container?.querySelectorAll('video').forEach(video => {
+        if (video._hoverTimer) { clearTimeout(video._hoverTimer); video._hoverTimer = null; }
+        try { video.pause(); } catch {}
+        video.removeAttribute('src');
+        try { video.load(); } catch {}
+      });
     }
 
     function stopHoverPreview(video) {
@@ -12942,6 +13774,13 @@
             ${listed && ids.length ? `<div class="access-chips">${names}${ids.length > 6 ? `<span class="access-chip">+${ids.length - 6} more</span>` : ''}</div>` : ''}
           </div>
         </div>
+        <div class="ub-row">
+          <div class="ub-row-text">
+            <div class="ub-row-title">Server members</div>
+            <div class="ub-row-desc">Anyone in a connected server can sign in with Discord to see their own Replay. They can’t see or change anything else.</div>
+          </div>
+          <label class="switch"><input id="setMemberAccess" type="checkbox" ${accessData.memberAccessEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
         ${accessData.localFallbackEnabled ? `
         <div class="ub-row">
           <div class="ub-row-text">
@@ -13148,9 +13987,12 @@
             ${switchRow('setSwiftMinerEnabled', 'SwiftMiner', cfg.swiftMiner.paired ? 'Paired with this Mac.' : 'Pair SwiftMiner in the macOS app first.', cfg.swiftMiner.enabled, cfg.swiftMiner.paired ? '' : 'disabled')}
           `)}
           ${accessGroupHTML(group)}
+          ${operatorGroupHTML(group, switchRow)}
           ${group('About this server', `
             ${infoRow('Version', general.appVersion ? `${general.appVersion}${general.appBuild ? ` (${general.appBuild})` : ''}` : '')}
             ${infoRow('Running on', [general.hostName, general.osVersion ? `macOS ${general.osVersion.replace(/^Version\s*/, '')}` : ''].filter(Boolean).join(' · '))}
+            ${infoRow('Mac', general.macModel || '')}
+            ${infoRow('Operator', operatorsData ? (operatorName(operatorsData.nodes.find(n => n.isThisNode)?.operatorID) || 'Nobody yet') : '')}
             ${infoRow('Uptime', dashboardStatus.uptimeText || '')}
             ${infoRow('Connected to', `${dashboardStatus.connectedServerCount} ${dashboardStatus.connectedServerCount === 1 ? 'server' : 'servers'}${dashboardStatus.botUsername ? ` as ${dashboardStatus.botUsername}` : ''}`)}
           `)}
@@ -13174,7 +14016,21 @@
       });
       panels.querySelector('#setEditTimezones')?.addEventListener('click', () => openTimezoneEditor(timezones, tzMembers));
       panels.querySelector('#setEditAccess')?.addEventListener('click', openAccessEditor);
+      panels.querySelector('#setMemberAccess')?.addEventListener('change', async (e) => {
+        const toggle = e.target;
+        toggle.disabled = true;
+        try {
+          await postJSON('/api/access/members', { enabled: toggle.checked });
+          await loadAccess();
+          setMessage(toggle.checked ? 'Server members can now sign in to see their Replay.' : 'Member sign-in is off. Members who were signed in have been signed out.', 'success');
+        } catch {
+          toggle.checked = !toggle.checked;
+          setMessage('Couldn’t change member sign-in.', 'error');
+        }
+        if (currentView === 'settings') renderSettingsView();
+      });
       bindAISettings(panels);
+      bindOperatorGroup(panels);
       if (!accessData) loadAccess().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
       panels.querySelector('#setCopyInvite')?.addEventListener('click', async (e) => {
         const button = e.currentTarget;
@@ -13383,7 +14239,7 @@
         </div>
         ${switchRow('setAIMentions', 'Reply when mentioned', 'Answer when someone @mentions SwiftBot in a server channel.', ai.useAIInGuildChannels)}
         ${switchRow('setAIDMs', 'Reply to DMs', ai.allowDMs ? 'Chat with people who message SwiftBot directly.' : 'SwiftBot isn’t accepting DMs. Turn on Accept direct messages above first.', ai.localAIDMReplyEnabled, ai.allowDMs || ai.localAIDMReplyEnabled ? '' : 'disabled')}
-        ${switchRow('setAIActivity', 'Answer questions about members', 'Lets SwiftBot answer things like “when is Sam usually on?” from voice history and Rewind. Members who opt out of Rewind are left out.', data ? data.activityAnswersEnabled : true, data ? '' : 'disabled')}
+        ${switchRow('setAIActivity', 'Answer questions about members', 'Lets SwiftBot answer things like “when is Sam usually on?” from voice history and Rewind.', data ? data.activityAnswersEnabled : true, data ? '' : 'disabled')}
         ${linkRow('setAIPersonality', 'Personality', 'How SwiftBot talks when it replies.', (data?.personalities || []).find(p => p.isSelected)?.title || 'Custom')}
         ${linkRow('setAIMemory', 'Memory', 'Recent messages kept so replies follow the conversation.', memory.totalMessages ? `${memory.totalMessages.toLocaleString()} messages · ${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}` : 'Empty')}
       `);
@@ -13755,11 +14611,36 @@
       refreshIcons();
     }
 
+    let mediaLibraryLoading = false;
+
     function renderRecordingsView() {
-      if (!mediaLibraryData) return;
       const header = document.getElementById('mediaHeader');
       const panels = document.getElementById('mediaPanels');
       if (!header || !panels) return;
+      releaseVideos(panels);
+      // Nothing loaded yet (Recordings was off, or the first load failed):
+      // load it now instead of leaving the page blank.
+      if (!mediaLibraryData) {
+        header.innerHTML = '<div class="media-library-head"><div class="section-mini-title">Recordings</div></div>';
+        if (mediaLibraryLoading) return;
+        mediaLibraryLoading = true;
+        panels.innerHTML = '<div class="placeholder">Loading recordings…</div>';
+        loadMediaData()
+          .then(() => { mediaLibraryLoading = false; if (currentView === 'recordings') renderRecordingsView(); })
+          .catch((error) => {
+            mediaLibraryLoading = false;
+            if (currentView !== 'recordings') return;
+            panels.innerHTML = `
+              <div class="ub-empty glass">
+                <div class="ub-empty-title">Recordings didn’t load</div>
+                <div class="ub-empty-sub">${escapeHTML(error?.message || 'The library isn’t available right now.')} Check that a recordings folder is set up in the SwiftBot app on the Mac.</div>
+                <div style="margin-top:14px;"><button id="mediaRetry" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Try again</button></div>
+              </div>`;
+            panels.querySelector('#mediaRetry')?.addEventListener('click', renderRecordingsView);
+            refreshIcons();
+          });
+        return;
+      }
       destroyActiveMediaHls();
 
       const items = mediaLibraryData.items || [];
@@ -13767,6 +14648,8 @@
       const selected = items.find(item => item.id === selectedMediaItemID) || items[0] || null;
       if (selected && selectedMediaItemID !== selected.id) selectedMediaItemID = selected.id;
 
+      // Player: the video, its details, and more recordings to jump to.
+      // Clip editing and exports are archived in Archive/WebUI.
       if (mediaViewMode === 'player') {
         header.innerHTML = `
           <div class="media-player-title">
@@ -13774,54 +14657,18 @@
             <div class="section-mini-title">${escapeHTML(selected ? (selected.gameName || 'Recording') : 'Recordings')}</div>
             ${selected ? `<span class="media-subtle">${escapeHTML(relativeTime(selected.modifiedAt))}</span>` : ''}
           </div>
-          ${selected ? `<div class="section-actions">
-            <button id="mediaQualityToggle" class="secondary-action" type="button" title="Use a lower-bitrate copy if the original buffers. The first switch may take a few seconds while it's generated.">
-              <i class="lucide" data-lucide="${mediaExportState.playbackQuality === 'low' ? 'monitor-play' : 'monitor'}"></i>
-              ${mediaExportState.playbackQuality === 'low' ? 'Lower quality' : 'Auto quality'}
-            </button>
-          </div>` : ''}
         `;
-
-        if (!mediaExportState.secondaryID && items.length > 1) {
-          const fallbackSecondary = items.find(item => item.id !== (selected?.id || ''));
-          if (fallbackSecondary) mediaExportState.secondaryID = fallbackSecondary.id;
-        }
-        const secondaryOptions = items
-          .filter(item => item.id !== (selected?.id || ''))
-          .map(item => `<option value="${item.id}" ${mediaExportState.secondaryID === item.id ? 'selected' : ''}>${item.gameName || 'Unknown'} · ${formatMediaTime(item.modifiedAt)}</option>`)
-          .join('');
-
-        const jobInfo = (status) => ({
-          finished: ['healthy', 'Ready'], failed: ['critical', 'Failed'], running: ['info', 'Exporting…'], queued: ['neutral', 'Queued']
-        })[String(status || '').toLowerCase()] || ['neutral', String(status || '')];
-        const jobsHTML = (mediaExportJobs || []).length
-          ? `<div class="ub-list glass">${mediaExportJobs.slice(0, 6).map(job => {
-              const [state, label] = jobInfo(job.status);
-              const kind = job.kind === 'multiview' ? 'Multiview' : 'Clip';
-              const detail = job.status === 'failed' && job.message ? job.message : [kind, relativeTime(job.finishedAt || job.startedAt || job.createdAt)].filter(Boolean).join(' · ');
-              return `
-              <div class="ub-item media-job">
-                <span class="ops-dot" data-state="${state}"></span>
-                <span class="ub-item-text">
-                  <span class="ub-item-title">${escapeHTML(job.outputFileName || `${kind} export`)}</span>
-                  <span class="ub-item-sub">${escapeHTML(detail)}</span>
-                </span>
-                <span class="ub-item-status">${escapeHTML(label)}</span>
-              </div>`;
-            }).join('')}</div>`
-          : '<div class="placeholder">Clips and multiviews you export appear here.</div>';
-        const others = items.filter(item => item.id !== (selected?.id || '')).slice(0, 8);
+        const others = items.filter(item => item.id !== (selected?.id || '')).slice(0, 10);
         const accessQuery = mediaAccessQuery();
 
         panels.innerHTML = `
           <div class="media-player">
             ${selected ? `
               <div class="media-stage">
-                <video id="mediaPlayer" controls preload="metadata"></video>
+                <video id="mediaPlayer" controls playsinline preload="metadata"></video>
               </div>
+              ${clipDetailsHTML(selected)}
               <div class="media-meta">
-                ${gamePillHTML(selected.gameName)}
-                <span title="${escapeHTML(formatTime(selected.modifiedAt))}">${escapeHTML(formatMediaTime(selected.modifiedAt))}</span>
                 <span>${escapeHTML(formatFileSize(selected.sizeBytes))}</span>
                 <span>${escapeHTML(selected.nodeName)} · ${escapeHTML(selected.sourceName)}</span>
                 <span class="media-path" title="${escapeHTML(selected.relativePath)}">${escapeHTML(selected.relativePath)}</span>
@@ -13839,217 +14686,41 @@
                     </button>`).join('')}
                 </div>
               </section>` : ''}
-            ${mediaExportStatus && !mediaExportStatus.installed ? `
-              <div class="ub-notice glass" style="--notice:#f59e0b;"><i class="lucide" data-lucide="triangle-alert"></i><span><strong>Exports are unavailable on this node.</strong><br>Install ffmpeg on the Mac that stores these recordings to create clips and multiviews.</span></div>` : ''}
-            <div class="media-tools">
-              <section class="settings-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="scissors"></i> Clip</div>
-                <div class="timeline-card">
-                  <div class="field-label">Clip window</div>
-                  <div class="timeline-track" data-track="primary-clip">
-                    <div class="timeline-window" data-window="primary-clip">
-                      <span class="timeline-handle left"></span>
-                      <span class="timeline-handle right"></span>
-                    </div>
-                  </div>
-                  <div id="primaryTimelineMetaClip" class="timeline-meta"></div>
-                  <div class="timeline-actions">
-                    <button id="primaryExtendClip" class="secondary-action" type="button"><i class="lucide" data-lucide="maximize-2"></i> +10s</button>
-                    <button id="primaryTrimClip" class="secondary-action" type="button"><i class="lucide" data-lucide="minimize-2"></i> −10s</button>
-                  </div>
-                </div>
-                <div class="ub-help">Drag the window or its edges. Clips can be up to 15 minutes, and the window is shared with Multiview.</div>
-                <div class="media-field">
-                  <div class="field-label">File name (optional)</div>
-                  <input id="clipName" class="field-input" placeholder="My_clip.mp4" value="${escapeHTML(mediaExportState.clipName || '')}">
-                </div>
-                <div class="media-tool-actions">
-                  <button id="clipExportStart" class="primary-action" type="button"><i class="lucide" data-lucide="clapperboard"></i> Create clip</button>
-                </div>
-              </section>
-              <section class="settings-panel glass">
-                <div class="panel-title"><i class="lucide" data-lucide="layout-grid"></i> Multiview</div>
-                <div class="field-label">Second recording</div>
-                <select id="multiSecondary" class="field-select">${secondaryOptions || '<option value="">No other recordings</option>'}</select>
-                <div class="timeline-card" style="margin-top:12px;">
-                  <div class="field-label">This recording</div>
-                  <div class="timeline-track" data-track="primary-multi">
-                    <div class="timeline-window" data-window="primary-multi">
-                      <span class="timeline-handle left"></span>
-                      <span class="timeline-handle right"></span>
-                    </div>
-                  </div>
-                  <div id="primaryTimelineMetaMulti" class="timeline-meta"></div>
-                </div>
-                <div class="timeline-card" style="margin-top:12px;">
-                  <div class="field-label">Second recording</div>
-                  <div class="timeline-track" data-track="secondary">
-                    <div class="timeline-window" data-window="secondary">
-                      <span class="timeline-handle left"></span>
-                      <span class="timeline-handle right"></span>
-                    </div>
-                  </div>
-                  <div id="secondaryTimelineMeta" class="timeline-meta"></div>
-                  <div class="timeline-actions">
-                    <button id="alignSecondary" class="secondary-action" type="button"><i class="lucide" data-lucide="align-left"></i> Match clip window</button>
-                  </div>
-                </div>
-                <div class="media-field-row">
-                  <div>
-                    <div class="field-label">Layout</div>
-                    <div class="segmented" id="multiLayout">
-                      <button data-value="stacked" class="${mediaExportState.layout === 'stacked' ? 'active' : ''}">Stacked</button>
-                      <button data-value="side-by-side" class="${mediaExportState.layout === 'side-by-side' ? 'active' : ''}">Side by side</button>
-                    </div>
-                  </div>
-                  <div>
-                    <div class="field-label">Audio from</div>
-                    <div class="segmented" id="multiAudio">
-                      <button data-value="primary" class="${mediaExportState.audio === 'primary' ? 'active' : ''}">This one</button>
-                      <button data-value="secondary" class="${mediaExportState.audio === 'secondary' ? 'active' : ''}">Second</button>
-                    </div>
-                  </div>
-                </div>
-                <div class="media-field">
-                  <div class="field-label">File name (optional)</div>
-                  <input id="multiName" class="field-input" placeholder="Multi_view.mp4" value="${escapeHTML(mediaExportState.multiName || '')}">
-                </div>
-                <div class="media-tool-actions">
-                  <button id="multiExportStart" class="primary-action" type="button"><i class="lucide" data-lucide="layout-grid"></i> Create multiview</button>
-                </div>
-              </section>
-            </div>
-            <section class="ub-group">
-              <div class="ub-group-head"><h2>Exports</h2></div>
-              ${jobsHTML}
-            </section>
           </div>
         `;
 
         panels.querySelectorAll('[data-media-switch]').forEach(btn => btn.addEventListener('click', () => {
           flushActiveMediaPlayback(panels.querySelector('#mediaPlayer'), 'progress');
           selectedMediaItemID = btn.dataset.mediaSwitch;
-          mediaExportState.secondaryID = null;
           renderRecordingsView();
           document.querySelector('#appShell .content')?.scrollTo({ top: 0, behavior: 'smooth' });
         }));
-
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
           flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
           mediaViewMode = 'library';
           renderRecordingsView();
         });
 
-        header.querySelector('#mediaQualityToggle')?.addEventListener('click', () => {
-          const video = panels.querySelector('video');
-          const wasPlaying = video && !video.paused && !video.ended;
-          const resumeAt = video ? video.currentTime : 0;
-          mediaExportState.playbackQuality = mediaExportState.playbackQuality === 'low' ? 'auto' : 'low';
-          renderRecordingsView();
-          const refreshed = document.querySelector('section#mediaView video');
-          if (refreshed) {
-            const onLoaded = () => {
-              try { refreshed.currentTime = resumeAt; } catch (_) {}
-              if (wasPlaying) refreshed.play().catch(() => {});
-              refreshed.removeEventListener('loadedmetadata', onLoaded);
-            };
-            refreshed.addEventListener('loadedmetadata', onLoaded);
-          }
-        });
-
-        panels.querySelector('#clipExportStart')?.addEventListener('click', async () => {
-          if (!selected) return;
-          const start = mediaExportState.clipStartSeconds ?? parseTimeInput(mediaExportState.clipStart);
-          const end = mediaExportState.clipEndSeconds ?? parseTimeInput(mediaExportState.clipEnd);
-          if (start == null || end == null) {
-            alert('Enter a valid start and end time.');
-            return;
-          }
-          const token = mediaTokenFromURL(selected.streamURL);
-          const name = panels.querySelector('#clipName')?.value || '';
-          const response = await postJSON('/api/media/export/clip', { token, startSeconds: start, endSeconds: end, name });
-          if (response?.error) {
-            alert(response.error);
-            return;
-          }
-          await loadMediaData();
-          renderRecordingsView();
-        });
-
-        panels.querySelector('#multiExportStart')?.addEventListener('click', async () => {
-          if (!selected) return;
-          const secondaryID = panels.querySelector('#multiSecondary')?.value || '';
-          if (!secondaryID) {
-            alert('Select a second clip.');
-            return;
-          }
-          const secondary = items.find(item => item.id === secondaryID);
-          if (!secondary) {
-            alert('Could not find the selected clip.');
-            return;
-          }
-          const primaryToken = mediaTokenFromURL(selected.streamURL);
-          const secondaryToken = mediaTokenFromURL(secondary.streamURL);
-          const layout = mediaExportState.layout || 'stacked';
-          const audioSource = mediaExportState.audio || 'primary';
-          const start = mediaExportState.multiStartSeconds ?? parseTimeInput(mediaExportState.multiStart);
-          const end = mediaExportState.multiEndSeconds ?? parseTimeInput(mediaExportState.multiEnd);
-          const name = panels.querySelector('#multiName')?.value || '';
-          const payload = { primaryToken, secondaryToken, layout, audioSource, startSeconds: start, endSeconds: end, name };
-          const response = await postJSON('/api/media/export/multiview', payload);
-          if (response?.error) {
-            alert(response.error);
-            return;
-          }
-          await loadMediaData();
-          renderRecordingsView();
-        });
-
-        panels.querySelector('#clipName')?.addEventListener('input', (e) => { mediaExportState.clipName = e.target.value; });
-        panels.querySelector('#multiSecondary')?.addEventListener('change', (e) => {
-          mediaExportState.secondaryID = e.target.value;
-          renderRecordingsView();
-        });
-        panels.querySelector('#multiName')?.addEventListener('input', (e) => { mediaExportState.multiName = e.target.value; });
-
-        panels.querySelectorAll('#multiLayout button').forEach(btn => {
-          btn.addEventListener('click', () => {
-            mediaExportState.layout = btn.dataset.value || 'stacked';
-            panels.querySelectorAll('#multiLayout button').forEach(el => el.classList.toggle('active', el === btn));
-          });
-        });
-        panels.querySelectorAll('#multiAudio button').forEach(btn => {
-          btn.addEventListener('click', () => {
-            mediaExportState.audio = btn.dataset.value || 'primary';
-            panels.querySelectorAll('#multiAudio button').forEach(el => el.classList.toggle('active', el === btn));
-          });
-        });
-
-        panels.querySelector('#alignSecondary')?.addEventListener('click', () => {
-          if (mediaExportState.clipStartSeconds == null || mediaExportState.clipEndSeconds == null) return;
-          const length = mediaExportState.clipEndSeconds - mediaExportState.clipStartSeconds;
-          const start = mediaExportState.clipStartSeconds;
-          const end = start + length;
-          mediaExportState.multiStartSeconds = start;
-          mediaExportState.multiEndSeconds = end;
-          mediaExportState.multiStart = formatSeconds(start);
-          mediaExportState.multiEnd = formatSeconds(end);
-          renderRecordingsView();
-        });
-
         const primaryVideo = panels.querySelector('video');
-        const maxLen = 15 * 60;
-        const primaryToken = selected ? mediaTokenFromURL(selected.streamURL) : '';
-        let primaryState = null;
-        if (primaryVideo) {
+        if (primaryVideo && selected) {
           attachRecordingPlayer(primaryVideo, selected);
+          bindClipDetails(panels.querySelector('.clip-details'), primaryVideo, selected, async (game) => {
+            flushActiveMediaPlayback(primaryVideo, 'progress');
+            mediaViewMode = 'library';
+            mediaLibraryLayout = 'games';
+            mediaFilterState.game = game;
+            mediaFilterState.page = 1;
+            await loadMediaData();
+            renderRecordingsView();
+            document.querySelector('#appShell .content')?.scrollTo({ top: 0 });
+          });
 
+          // Watch progress, for the "watched" stats.
           activeMediaPlayback.sessionID = createPlaybackSession(selected.id);
           activeMediaPlayback.itemID = selected.id;
           activeMediaPlayback.started = false;
           activeMediaPlayback.completed = false;
           activeMediaPlayback.lastSentSeconds = 0;
-
           primaryVideo.addEventListener('play', () => {
             if (activeMediaPlayback.started) return;
             activeMediaPlayback.started = true;
@@ -14060,158 +14731,16 @@
               watchedSeconds: Math.max(0, Math.floor(primaryVideo.currentTime || 0))
             });
           });
-
           primaryVideo.addEventListener('timeupdate', () => {
             const watchedSeconds = Math.max(0, Math.floor(primaryVideo.currentTime || 0));
-            if (watchedSeconds - activeMediaPlayback.lastSentSeconds >= 15) {
-              flushActiveMediaPlayback(primaryVideo, 'progress');
-            }
+            if (watchedSeconds - activeMediaPlayback.lastSentSeconds >= 15) flushActiveMediaPlayback(primaryVideo, 'progress');
           });
-
-          primaryVideo.addEventListener('pause', () => {
-            flushActiveMediaPlayback(primaryVideo, 'progress');
-          });
-
+          primaryVideo.addEventListener('pause', () => flushActiveMediaPlayback(primaryVideo, 'progress'));
           primaryVideo.addEventListener('ended', () => {
             if (activeMediaPlayback.completed) return;
             activeMediaPlayback.completed = true;
             flushActiveMediaPlayback(primaryVideo, 'completed');
           });
-
-          primaryVideo.addEventListener('loadedmetadata', () => {
-            const duration = primaryVideo.duration || 300;
-            const state = initTimelineState(duration, maxLen);
-            primaryState = state;
-            if (mediaExportState.clipStartSeconds != null) {
-              state.start = clamp(mediaExportState.clipStartSeconds, 0, duration - 1);
-            }
-            if (mediaExportState.clipEndSeconds != null) {
-              state.end = clamp(mediaExportState.clipEndSeconds, state.start + 1, duration);
-            }
-
-            const syncPrimaryMeta = (next) => {
-              mediaExportState.clipStartSeconds = next.start;
-              mediaExportState.clipEndSeconds = next.end;
-              mediaExportState.clipStart = formatSeconds(next.start);
-              mediaExportState.clipEnd = formatSeconds(next.end);
-              const summary = `Start ${formatSeconds(next.start)} · End ${formatSeconds(next.end)} · Length ${formatSeconds(next.end - next.start)}`;
-              const metaClip = panels.querySelector('#primaryTimelineMetaClip');
-              const metaMulti = panels.querySelector('#primaryTimelineMetaMulti');
-              if (metaClip) metaClip.innerHTML = summary;
-              if (metaMulti) metaMulti.innerHTML = summary;
-            };
-
-            attachTimeline('primary-clip', state, (next, windowEl, track) => {
-              syncPrimaryMeta(next);
-              const otherTrack = panels.querySelector('[data-track="primary-multi"]');
-              const otherWindow = otherTrack?.querySelector('[data-window="primary-multi"]');
-              if (otherTrack && otherWindow) {
-                updateTimelineWindow(otherTrack, otherWindow, next);
-                scheduleFramePreview(otherWindow, primaryToken, (next.start + next.end) / 2);
-              }
-              scheduleFramePreview(windowEl, primaryToken, (next.start + next.end) / 2);
-            });
-
-            attachTimeline('primary-multi', state, (next, windowEl, track) => {
-              syncPrimaryMeta(next);
-              const otherTrack = panels.querySelector('[data-track="primary-clip"]');
-              const otherWindow = otherTrack?.querySelector('[data-window="primary-clip"]');
-              if (otherTrack && otherWindow) {
-                updateTimelineWindow(otherTrack, otherWindow, next);
-                scheduleFramePreview(otherWindow, primaryToken, (next.start + next.end) / 2);
-              }
-              scheduleFramePreview(windowEl, primaryToken, (next.start + next.end) / 2);
-            });
-
-            syncPrimaryMeta(state);
-            const clipWindow = panels.querySelector('[data-window="primary-clip"]');
-            const multiWindow = panels.querySelector('[data-window="primary-multi"]');
-            scheduleFramePreview(clipWindow, primaryToken, (state.start + state.end) / 2);
-            scheduleFramePreview(multiWindow, primaryToken, (state.start + state.end) / 2);
-          }, { once: true });
-        }
-
-        panels.querySelector('#primaryExtendClip')?.addEventListener('click', () => {
-          if (!primaryState) return;
-          const nextEnd = clamp(primaryState.end + 10, primaryState.start + 1, primaryState.duration);
-          if (nextEnd - primaryState.start > primaryState.maxLen) {
-            primaryState.end = primaryState.start + primaryState.maxLen;
-          } else {
-            primaryState.end = nextEnd;
-          }
-          const track = panels.querySelector('[data-track="primary-clip"]');
-          const windowEl = track?.querySelector('[data-window="primary-clip"]');
-          if (track && windowEl) updateTimelineWindow(track, windowEl, primaryState);
-          const otherTrack = panels.querySelector('[data-track="primary-multi"]');
-          const otherWindow = otherTrack?.querySelector('[data-window="primary-multi"]');
-          if (otherTrack && otherWindow) updateTimelineWindow(otherTrack, otherWindow, primaryState);
-          mediaExportState.clipStartSeconds = primaryState.start;
-          mediaExportState.clipEndSeconds = primaryState.end;
-          mediaExportState.clipStart = formatSeconds(primaryState.start);
-          mediaExportState.clipEnd = formatSeconds(primaryState.end);
-          const summary = `Start ${formatSeconds(primaryState.start)} · End ${formatSeconds(primaryState.end)} · Length ${formatSeconds(primaryState.end - primaryState.start)}`;
-          const metaClip = panels.querySelector('#primaryTimelineMetaClip');
-          const metaMulti = panels.querySelector('#primaryTimelineMetaMulti');
-          if (metaClip) metaClip.innerHTML = summary;
-          if (metaMulti) metaMulti.innerHTML = summary;
-        });
-
-        panels.querySelector('#primaryTrimClip')?.addEventListener('click', () => {
-          if (!primaryState) return;
-          primaryState.end = clamp(primaryState.end - 10, primaryState.start + 1, primaryState.duration);
-          const track = panels.querySelector('[data-track="primary-clip"]');
-          const windowEl = track?.querySelector('[data-window="primary-clip"]');
-          if (track && windowEl) updateTimelineWindow(track, windowEl, primaryState);
-          const otherTrack = panels.querySelector('[data-track="primary-multi"]');
-          const otherWindow = otherTrack?.querySelector('[data-window="primary-multi"]');
-          if (otherTrack && otherWindow) updateTimelineWindow(otherTrack, otherWindow, primaryState);
-          mediaExportState.clipStartSeconds = primaryState.start;
-          mediaExportState.clipEndSeconds = primaryState.end;
-          mediaExportState.clipStart = formatSeconds(primaryState.start);
-          mediaExportState.clipEnd = formatSeconds(primaryState.end);
-          const summary = `Start ${formatSeconds(primaryState.start)} · End ${formatSeconds(primaryState.end)} · Length ${formatSeconds(primaryState.end - primaryState.start)}`;
-          const metaClip = panels.querySelector('#primaryTimelineMetaClip');
-          const metaMulti = panels.querySelector('#primaryTimelineMetaMulti');
-          if (metaClip) metaClip.innerHTML = summary;
-          if (metaMulti) metaMulti.innerHTML = summary;
-        });
-
-        const secondary = items.find(item => item.id === mediaExportState.secondaryID);
-        if (secondary) {
-          const probe = document.createElement('video');
-          probe.src = `${secondary.streamURL}${mediaAccessQuery()}`;
-          probe.preload = 'metadata';
-          probe.addEventListener('loadedmetadata', () => {
-            probe.pause();
-            probe.removeAttribute('src');
-            probe.load();
-            const duration = probe.duration || 300;
-            const state = initTimelineState(duration, maxLen);
-            if (mediaExportState.multiStartSeconds != null) {
-              state.start = clamp(mediaExportState.multiStartSeconds, 0, duration - 1);
-            }
-            if (mediaExportState.multiEndSeconds != null) {
-              state.end = clamp(mediaExportState.multiEndSeconds, state.start + 1, duration);
-            }
-            const secondaryToken = mediaTokenFromURL(secondary.streamURL);
-            attachTimeline('secondary', state, (next, windowEl, track) => {
-              mediaExportState.multiStartSeconds = next.start;
-              mediaExportState.multiEndSeconds = next.end;
-              mediaExportState.multiStart = formatSeconds(next.start);
-              mediaExportState.multiEnd = formatSeconds(next.end);
-              const meta = panels.querySelector('#secondaryTimelineMeta');
-              if (meta) {
-                meta.innerHTML = `Start ${formatSeconds(next.start)} · End ${formatSeconds(next.end)} · Length ${formatSeconds(next.end - next.start)}`;
-              }
-              scheduleFramePreview(windowEl, secondaryToken, (next.start + next.end) / 2);
-            });
-            const meta = panels.querySelector('#secondaryTimelineMeta');
-            if (meta) {
-              meta.innerHTML = `Start ${formatSeconds(state.start)} · End ${formatSeconds(state.end)} · Length ${formatSeconds(state.end - state.start)}`;
-            }
-            const secondaryWindow = panels.querySelector('[data-window="secondary"]');
-            scheduleFramePreview(secondaryWindow, secondaryToken, (state.start + state.end) / 2);
-          }, { once: true });
         }
         refreshIcons();
         return;
@@ -14224,6 +14753,10 @@
       const gameOptions = [`<option value="">All games</option>`].concat(
         games.map(game => `<option value="${game}" ${mediaFilterState.game === game ? 'selected' : ''}>${game}</option>`)
       ).join('');
+      const peopleMembers = (dashboardConfig?.userTimezones?.members || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const personOptions = [`<option value="">Anyone</option>`].concat(
+        peopleMembers.map(m => `<option value="${escapeHTML(m.id)}" ${mediaFilterState.person === m.id ? 'selected' : ''}>${escapeHTML(m.name)}</option>`)
+      ).join('');
       const dateOptions = [
         ['all', 'Any time'],
         ['7d', 'Last 7 days'],
@@ -14232,7 +14765,7 @@
       ].map(([value, label]) => `<option value="${value}" ${mediaFilterState.dateRange === value ? 'selected' : ''}>${label}</option>`).join('');
 
       // In Games view the chosen game is navigation, not a filter to clear.
-      const filtered = Boolean(mediaFilterState.source || (mediaLibraryLayout !== 'games' && mediaFilterState.game) || (mediaFilterState.dateRange && mediaFilterState.dateRange !== 'all'));
+      const filtered = Boolean(mediaFilterState.source || mediaFilterState.person || (mediaLibraryLayout !== 'games' && mediaFilterState.game) || (mediaFilterState.dateRange && mediaFilterState.dateRange !== 'all'));
       const gameSummaries = mediaLibraryData.gameSummaries || [];
       const showingGameWall = mediaLibraryLayout === 'games' && !mediaFilterState.game;
       const countLabel = showingGameWall
@@ -14250,8 +14783,10 @@
           </div>
           ${mediaLibraryLayout === 'games' ? '' : `<label class="media-filter"><i class="lucide" data-lucide="gamepad-2"></i><select id="mediaGameFilter" aria-label="Game">${gameOptions}</select></label>`}
           <label class="media-filter"><i class="lucide" data-lucide="calendar"></i><select id="mediaDateFilter" aria-label="Date">${dateOptions}</select></label>
+          ${peopleMembers.length ? `<label class="media-filter"><i class="lucide" data-lucide="user-round"></i><select id="mediaPersonFilter" aria-label="Who was there">${personOptions}</select></label>` : ''}
           ${sources.length > 1 || mediaFilterState.source ? `<label class="media-filter"><i class="lucide" data-lucide="hard-drive"></i><select id="mediaSourceFilter" aria-label="Source">${sourceOptions}</select></label>` : ''}
           ${filtered ? '<button id="mediaApplyFilters" class="media-filter-clear" type="button"><i class="lucide" data-lucide="x"></i> Clear</button>' : ''}
+          ${sources.length ? '<button id="mediaWhoRecords" class="media-filter-clear" type="button"><i class="lucide" data-lucide="users"></i> Who records</button>' : ''}
         </div>
       `;
 
@@ -14286,11 +14821,11 @@
               <span class="media-play"><i class="lucide" data-lucide="play"></i></span>
             </span>
             <span class="media-card-text">
-              ${mediaFilterState.game ? `
-              <span class="media-card-title">${escapeHTML(clock || 'Recording')}</span>
-              <span class="media-subtle">${escapeHTML(relativeTime(item.modifiedAt))}${sources.length > 1 ? ` · ${escapeHTML(item.nodeName)}` : ''}</span>` : `
-              <span class="media-card-title">${escapeHTML(item.gameName || 'Unknown game')}</span>
-              <span class="media-subtle">${escapeHTML(clock)}${sources.length > 1 ? ` · ${escapeHTML(item.nodeName)}` : ''}</span>`}
+              <span class="media-card-title">${escapeHTML(mediaFilterState.game ? clipWhenLabel(item.modifiedAt) : (item.gameName || 'Unknown game'))}</span>
+              <span class="media-card-meta">
+                <span>${escapeHTML(mediaFilterState.game ? relativeTime(item.modifiedAt) : clock)}${sources.length > 1 ? ` · ${escapeHTML(item.nodeName)}` : ''}</span>
+                ${clipPeopleHTML(item.people, 3).replace('member-people', 'member-people media-meta-people')}
+              </span>
             </span>
           </button>`;
       };
@@ -14311,26 +14846,26 @@
         </span>`;
       const clipsLabel = (n) => `${n} ${n === 1 ? 'clip' : 'clips'}`;
       const selectedSummary = gameSummaries.find(g => g.name === mediaFilterState.game);
-      const gameHero = mediaLibraryLayout === 'games' && mediaFilterState.game ? `
+      if (mediaLibraryLayout === 'games' && mediaFilterState.game) loadMediaGameDetails(mediaFilterState.game);
+      const onGamePage = mediaLibraryLayout === 'games' && mediaFilterState.game;
+      const gameHero = onGamePage ? `
         <div>
           <button id="mediaBackToGames" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> All games</button>
         </div>
-        <div class="media-game-hero">
-          <span class="media-poster is-hero">${posterArt(mediaFilterState.game)}</span>
-          <div class="media-game-hero-text">
-            <h2>${escapeHTML(mediaFilterState.game)}</h2>
-            <span class="media-subtle">${[
-              clipsLabel(mediaLibraryData.totalItems || 0),
-              selectedSummary ? formatFileSize(selectedSummary.totalBytes) : '',
-              selectedSummary?.latestAt ? `last played ${relativeTime(selectedSummary.latestAt)}` : ''
-            ].filter(Boolean).join(' · ')}</span>
-          </div>
-        </div>` : '';
+        ${gameHeroHTML(mediaFilterState.game, {
+          clipCount: mediaLibraryData.totalItems || 0,
+          totalBytes: selectedSummary?.totalBytes || 0,
+          latestAt: selectedSummary?.latestAt,
+          items,
+          artQuery: accessQuery
+        })}` : '';
 
       if (showingGameWall) {
         panels.innerHTML = `
           <div class="media-library">
+            ${filtered ? '' : latestClipsStripHTML(items, { thumbQuery: accessQuery })}
             ${gameSummaries.length ? `
+              ${filtered ? '' : '<div class="ub-group-head media-wall-head"><h2>Games</h2></div>'}
               <div class="media-poster-grid">
                 ${gameSummaries.map(game => `
                   <button class="media-poster" type="button" data-game-open="${escapeHTML(game.name)}" title="${escapeHTML(game.name)}">
@@ -14354,11 +14889,15 @@
       panels.innerHTML = `
         <div class="media-library">
           ${gameHero}
-          ${items.length ? groups.map(group => `
+          ${items.length ? (onGamePage ? `
+            <section class="ub-group">
+              <div class="ub-group-head"><h2>Clips</h2></div>
+              <div class="media-grid">${items.map(itemCard).join('')}</div>
+            </section>` : groups.map(group => `
             <section class="ub-group">
               <div class="ub-group-head"><h2>${escapeHTML(group.label)}</h2></div>
               <div class="media-grid">${group.items.map(itemCard).join('')}</div>
-            </section>`).join('') : `
+            </section>`).join('')) : `
             <div class="ub-empty glass">
               <div class="ub-empty-title">${filtered ? 'No recordings match these filters' : 'No recordings yet'}</div>
               <div class="ub-empty-sub">${filtered ? 'Try a different game or a wider date range.' : 'Recordings from your configured media sources show up here once they finish writing.'}</div>
@@ -14385,6 +14924,15 @@
       };
       panels.querySelectorAll('[data-game-open]').forEach(btn => btn.addEventListener('click', () => openGame(btn.dataset.gameOpen)));
       panels.querySelector('#mediaBackToGames')?.addEventListener('click', () => openGame(''));
+      const playItem = (item) => {
+        if (!item) return;
+        selectedMediaItemID = item.id;
+        mediaViewMode = 'player';
+        renderRecordingsView();
+        document.querySelector('#appShell .content')?.scrollTo({ top: 0 });
+      };
+      bindGameHero(panels.querySelector('.game-hero'), () => playItem(items[0]));
+      panels.querySelectorAll('[data-latest-index]').forEach(btn => btn.addEventListener('click', () => playItem(items[Number(btn.dataset.latestIndex)])));
       header.querySelectorAll('[data-layout]').forEach(btn => btn.addEventListener('click', async () => {
         if (btn.dataset.layout === mediaLibraryLayout) return;
         mediaLibraryLayout = btn.dataset.layout;
@@ -14414,7 +14962,8 @@
             if (!mediaPreviewAllowed()) return;
             video.dataset.active = 'true';
             video.style.display = 'block';
-            video.src = `${item.streamURL}${mediaAccessQuery()}`;
+            // Uses the lighter prepared copy when there is one.
+            video.src = `${item.streamURL}&quality=standard${mediaAccessQuery()}`;
             video.play().catch(() => {
               stopHoverPreview(video);
             });
@@ -14429,11 +14978,13 @@
         const gameSelect = header.querySelector('#mediaGameFilter');
         if (gameSelect) mediaFilterState.game = gameSelect.value;
         mediaFilterState.dateRange = header.querySelector('#mediaDateFilter')?.value || 'all';
+        mediaFilterState.person = header.querySelector('#mediaPersonFilter')?.value || '';
         mediaFilterState.page = 1;
         await loadMediaData();
         renderRecordingsView();
       };
       header.querySelectorAll('.media-filter select').forEach(select => select.addEventListener('change', applyMediaFilters));
+      header.querySelector('#mediaWhoRecords')?.addEventListener('click', () => openWhoRecords(sources, peopleMembers));
       header.querySelector('#mediaApplyFilters')?.addEventListener('click', async () => {
         header.querySelectorAll('.media-filter select').forEach(select => { select.value = select.id === 'mediaDateFilter' ? 'all' : ''; });
         await applyMediaFilters();
@@ -14824,6 +15375,7 @@
           `${f.activeVoiceMembers} in voice`,
           f.lastEventAt ? `last event ${relativeTime(f.lastEventAt)}` : ''
         ].filter(Boolean) : [];
+        const operatorLine = `<span class="ub-item-sub mesh-operator"><i class="lucide" data-lucide="user-cog"></i>${node.operatorID ? `Operator: ${escapeHTML(operatorName(node.operatorID))}` : 'No operator'}</span>`;
         return `
           <div class="ub-item mesh-item${node.status === 'disconnected' ? ' is-off' : ''}">
             <span class="ub-item-icon" style="--brand:${node.status === 'disconnected' ? 'var(--muted)' : meshRoleColor(node.role)};"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
@@ -14831,7 +15383,9 @@
               <span class="ub-item-title">${escapeHTML(node.displayName || node.hostname || 'Node')}${node.isThisNode ? ' <span class="badge">This Mac</span>' : ''} <span class="mesh-role-chip">${escapeHTML(meshNodeRoleLabel(node.role))}</span></span>
               <span class="ub-item-sub mesh-facts">${facts.join('<span class="mesh-sep">·</span>')}</span>
               ${followerFacts.length ? `<span class="ub-item-sub">${escapeHTML(followerFacts.join(' · '))}</span>` : ''}
+              ${operatorLine}
             </span>
+            <button class="icon-btn mesh-operator-btn" type="button" data-mesh-operator="${escapeHTML(node.displayName)}" aria-label="Set operator for ${escapeHTML(node.displayName)}" title="Set operator"><i class="lucide" data-lucide="user-cog"></i></button>
             ${node.status === 'disconnected' && !node.isThisNode
               ? `<button class="secondary-action" type="button" data-mesh-forget="${escapeHTML(node.displayName)}">Forget</button>`
               : `<span class="mesh-latency">${typeof node.latencyMs === 'number' ? `${Math.round(node.latencyMs)} ms` : ''}</span>`}
@@ -14957,6 +15511,8 @@
         });
       });
       panels.querySelector('#meshEdit')?.addEventListener('click', () => openSwiftMeshEditor(configured));
+      panels.querySelectorAll('[data-mesh-operator]').forEach(btn => btn.addEventListener('click', () => openNodeOperator(btn.dataset.meshOperator, nodes.find(n => n.displayName === btn.dataset.meshOperator)?.operatorID)));
+      if (!operatorsData) loadOperators().then(() => { if (currentView === 'swiftmesh') renderSwiftMeshView(); }).catch(() => {});
       panels.querySelectorAll('[data-mesh-setup]').forEach(btn => btn.addEventListener('click', () => openSwiftMeshEditor(btn.dataset.meshSetup)));
 
       const joinFeedback = panels.querySelector('#meshJoinFeedback');
@@ -14998,6 +15554,31 @@
         }
       });
       refreshIcons();
+    }
+
+    // Pick who gets alerts for one SwiftMesh node.
+    function openNodeOperator(nodeName, currentID) {
+      const members = (operatorsData?.members || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      showModal(`Operator for ${nodeName}`, `
+        <p class="ub-help" style="margin-top:0;">They get a Discord DM when something needs a look on ${escapeHTML(nodeName)}: it goes offline, can’t reach Discord, loses its recordings folder, or changes role. Which alerts go out is set in Settings → Operator.</p>
+        <select id="nodeOperatorSelect" class="field-select" aria-label="Operator">
+          <option value="">Nobody</option>
+          ${members.map(m => `<option value="${escapeHTML(m.id)}" ${m.id === currentID ? 'selected' : ''}>${escapeHTML(m.name)}</option>`).join('')}
+        </select>`, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="nodeOperatorSave" class="primary-action" type="button">Save</button>`);
+      document.getElementById('nodeOperatorSave').addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await postJSON('/api/operators', { node: nodeName, userID: document.getElementById('nodeOperatorSelect').value });
+          await Promise.all([loadOperators(), loadSwiftMesh()]);
+          hideModal();
+          renderSwiftMeshView();
+        } catch {
+          e.currentTarget.disabled = false;
+          setMessage('Couldn’t save the operator.', 'error');
+        }
+      });
     }
 
     function openSwiftMeshEditor(initialMode) {
@@ -15606,6 +16187,8 @@
     function selectView(view) {
       // Apple Intelligence moved into Settings.
       if (view === 'aibots') view = 'settings';
+      // Leaving Recordings stops its player and any hover previews.
+      if (currentView === 'recordings' && view !== 'recordings') releaseVideos(document.getElementById('mediaPanels'));
       currentView = view;
       if (view === 'overview') updateHomeGreeting();
       updateSidebarAlerts();
@@ -16301,6 +16884,11 @@
         showAuthScreen();
         return;
       }
+      if (me.role === 'member') {
+        loadAuthOptions().catch(() => {});
+        await showMemberHome();
+        return;
+      }
       
       loadOverviewLayout();
       showDashboard();
@@ -16366,6 +16954,7 @@
 
     async function logout() {
       await fetch('/auth/logout', { method: 'POST' });
+      rememberSignedInUser(null, { signedOut: true });
       csrfToken = null;
       mediaAccessToken = null;
       mediaAccessTokenExpiresAt = 0;

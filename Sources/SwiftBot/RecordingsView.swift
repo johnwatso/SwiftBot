@@ -571,6 +571,7 @@ actor RecordingSteamArtworkService {
     private var cache: [String: String]
     private var failedLookups: Set<String> = []
     private var portraitDataCache: [String: Data] = [:]
+    private var gameDetailsCache: [String: (expires: Date, data: Data)] = [:]
     /// Twitch box-art results for games Steam doesn't have; nil = none found.
     private var twitchResults: [String: URL?] = [:]
     private let twitchBoxArtBaseURL = "https://static-cdn.jtvnw.net/ttv-boxart/"
@@ -588,6 +589,7 @@ actor RecordingSteamArtworkService {
         } else {
             manualOverrides[normalized] = trimmed
         }
+        gameDetailsCache.removeValue(forKey: normalized)
         cache.removeValue(forKey: normalized)
         portraitDataCache.removeValue(forKey: normalized)
         twitchResults.removeValue(forKey: normalized)
@@ -612,6 +614,57 @@ actor RecordingSteamArtworkService {
         cache[normalized] = appID
         UserDefaults.standard.set(cache, forKey: defaultsKey)
         return URL(string: "\(steamCDNBaseURL)\(appID)/library_600x900.jpg")
+    }
+
+    /// Store metadata stays server-side so the WebUI needs no external API access.
+    func gameDetailsData(for gameName: String) async -> Data? {
+        let key = Self.normalized(gameName)
+        if let cached = gameDetailsCache[key], cached.expires > Date() { return cached.data }
+        var appID = manualOverrides[key] ?? Self.knownAppIDs[key]
+        if appID == nil {
+            // Metadata requires an exact title match; artwork's loose search can
+            // otherwise select a sequel or unrelated game with a similar name.
+            let term = gameName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+?#"))) ?? ""
+            if let search = await steamJSON("\(steamSearchURL)?term=\(term)&cc=US&l=en&v=1"),
+               let items = search["items"] as? [[String: Any]],
+               let match = items.first(where: { Self.normalized($0["name"] as? String ?? "") == key }),
+               let id = match["id"] as? Int {
+                appID = String(id)
+            }
+        }
+        guard let appID, !appID.isEmpty, appID.allSatisfy({ $0.isNumber }) else { return nil }
+        let store = await steamJSON("https://store.steampowered.com/api/appdetails?appids=\(appID)&cc=US&l=en")
+        let input = "{\"appid\":\(appID),\"languages\":[\"all\"],\"review_type\":0,\"purchase_type\":1,\"num_per_page\":1}"
+        let encoded = input.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+?#"))) ?? ""
+        let reviews = await steamJSON("https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/?input_json=\(encoded)")
+        guard let entry = store?[appID] as? [String: Any], entry["success"] as? Bool == true,
+              let details = entry["data"] as? [String: Any] else { return nil }
+        var result: [String: Any] = [
+            "appID": appID,
+            "description": details["short_description"] as? String ?? "",
+            "developers": details["developers"] as? [String] ?? [],
+            "genres": (details["genres"] as? [[String: Any]] ?? []).compactMap { $0["description"] as? String }
+        ]
+        if let response = reviews?["response"] as? [String: Any],
+           let summary = response["query_summary"] as? [String: Any],
+           let total = summary["total_reviews"] as? Int, total > 0,
+           let positive = summary["total_positive"] as? Int {
+            result["reviewCount"] = total
+            result["positivePercent"] = Int((Double(positive) / Double(total) * 100).rounded())
+            result["reviewLabel"] = summary["review_score_desc"] as? String ?? "Steam user reviews"
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: result) else { return nil }
+        gameDetailsCache[key] = (Date().addingTimeInterval(3600), data)
+        return data
+    }
+
+    private func steamJSON(_ address: String) async -> [String: Any]? {
+        guard let url = URL(string: address) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
     private func lookupAppID(for gameName: String, normalized: String) async -> String? {

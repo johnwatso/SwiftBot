@@ -62,14 +62,6 @@ final class AIActivityFactsTests: XCTestCase {
         XCTAssertTrue(line.contains("favourite voice channel General"), line)
     }
 
-    func testOptedOutMembersAreNotDescribed() {
-        var record = AIActivityFacts.MemberRecord(member: members[0])
-        record.optedOut = true
-        let line = AIActivityFacts.describe(record, now: Date(), timeZone: utc, isAsker: false)
-        XCTAssertTrue(line.contains("opted out"))
-        XCTAssertFalse(line.contains("voice"))
-    }
-
     func testSettingSurvivesASaveAndLoad() throws {
         var settings = BotSettings()
         XCTAssertTrue(settings.aiActivityAnswersEnabled, "On by default")

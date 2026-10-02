@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import UniformTypeIdentifiers
 import os
+import CryptoKit
 
 /// Repackages a recording into HLS (HTTP Live Streaming) — a fragmented-MP4
 /// (CMAF) initialization segment plus media segments and a VOD `.m3u8`
@@ -46,6 +47,7 @@ public actor HLSPackager {
         guard let dir = cacheDirectory(itemID: itemID, sourceURL: sourceURL) else { return nil }
         let playlist = dir.appendingPathComponent(Self.playlistFileName)
         if FileManager.default.fileExists(atPath: playlist.path) {
+            try? Data().write(to: dir.appendingPathComponent(".access"))
             return playlist
         }
 
@@ -70,6 +72,7 @@ public actor HLSPackager {
         inFlight[key] = task
         let result = await task.value
         inFlight[key] = nil
+        trimCache(protecting: Set(inFlight.keys).union([key]))
         return result
     }
 
@@ -92,6 +95,7 @@ public actor HLSPackager {
               FileManager.default.fileExists(atPath: candidate.path) else {
             return nil
         }
+        try? Data().write(to: dir.appendingPathComponent(".access"))
         return candidate
     }
 
@@ -104,11 +108,30 @@ public actor HLSPackager {
     }
 
     private nonisolated func cacheKey(itemID: String, mtime: Date) -> String {
-        let mtimeStamp = Int(mtime.timeIntervalSince1970)
-        let safeID = itemID.replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "|", with: "_")
-        return "\(safeID)_\(mtimeStamp)"
+        let identity = "\(itemID)|\(mtime.timeIntervalSince1970)"
+        return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Bound old cache entries while retaining recent playback sessions.
+    private func trimCache(protecting keys: Set<String>) {
+        let directories = (try? FileManager.default.contentsOfDirectory(at: cacheRoot,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey])) ?? []
+        var entries: [(URL, Int64, Date)] = []
+        for directory in directories {
+            guard let values = try? directory.resourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey]),
+                  values.isDirectory == true else { continue }
+            let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            let size = files.reduce(Int64(0)) { total, file in
+                total + Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+            let access = try? directory.appendingPathComponent(".access").resourceValues(forKeys: [.contentModificationDateKey])
+            entries.append((directory, size, access?.contentModificationDate ?? values.contentModificationDate ?? .distantPast))
+        }
+        var total = entries.reduce(Int64(0)) { $0 + $1.1 }
+        for (url, size, date) in entries.sorted(by: { $0.2 < $1.2 }) where total > 10 * 1024 * 1024 * 1024 {
+            guard !keys.contains(url.lastPathComponent), date < Date().addingTimeInterval(-3600) else { continue }
+            if (try? FileManager.default.removeItem(at: url)) != nil { total -= size }
+        }
     }
 
     // MARK: - Packaging
@@ -168,7 +191,10 @@ public actor HLSPackager {
         }
 
         guard reader.startReading() else { throw PackagingError.readerFailed(reader.error) }
-        guard writer.startWriting() else { throw PackagingError.writerFailed(writer.error) }
+        guard writer.startWriting() else {
+            reader.cancelReading()
+            throw PackagingError.writerFailed(writer.error)
+        }
         writer.startSession(atSourceTime: .zero)
 
         // Pump video and audio concurrently; each input drains its reader output
@@ -177,13 +203,19 @@ public actor HLSPackager {
         // interleave them on time boundaries.
         await Self.pumpSamples(
             video: (videoOutput, videoInput),
-            audio: (audioOutput != nil && audioInput != nil) ? (audioOutput!, audioInput!) : nil
+            audio: (audioOutput != nil && audioInput != nil) ? (audioOutput!, audioInput!) : nil,
+            reader: reader, writer: writer
         )
 
         if reader.status == .failed {
+            writer.cancelWriting()
             throw PackagingError.readerFailed(reader.error)
         }
 
+        guard writer.status == .writing else {
+            reader.cancelReading()
+            throw PackagingError.writerFailed(writer.error)
+        }
         await writer.finishWriting()
         if writer.status == .failed {
             throw PackagingError.writerFailed(writer.error)
@@ -197,9 +229,10 @@ public actor HLSPackager {
     /// serial queue; a `DispatchGroup` waits for both to reach end-of-stream
     /// before resuming. The AVFoundation objects never cross a task boundary,
     /// so this stays clear of Swift 6 `sending` diagnostics.
-    private static func pumpSamples(
+    static func pumpSamples(
         video: (AVAssetReaderTrackOutput, AVAssetWriterInput),
-        audio: (AVAssetReaderTrackOutput, AVAssetWriterInput)?
+        audio: (AVAssetReaderTrackOutput, AVAssetWriterInput)?,
+        reader: AVAssetReader, writer: AVAssetWriter
     ) async {
         let resumer = ContinuationResumer()
         let group = DispatchGroup()
@@ -216,15 +249,31 @@ public actor HLSPackager {
                 // not mistake the callback handoff for concurrent access.
                 let sendableOutput = QueueConfined(value: output)
                 let sendableInput = QueueConfined(value: input)
+                // A failed reader/writer can stop readiness callbacks entirely.
+                // Observe failure on the same queue so every group entry is balanced.
+                let sessionReader = QueueConfined(value: reader)
+                let sessionWriter = QueueConfined(value: writer)
+                let timer = DispatchSource.makeTimerSource(queue: queue)
+                timer.schedule(deadline: .now() + .milliseconds(250), repeating: .milliseconds(250))
+                timer.setEventHandler {
+                    if sessionReader.value.status == .failed || sessionWriter.value.status == .failed {
+                        if finished.run() {
+                            sendableInput.value.markAsFinished()
+                            group.leave()
+                        }
+                        timer.cancel()
+                    }
+                }
+                timer.resume()
                 input.requestMediaDataWhenReady(on: queue) {
                     while sendableInput.value.isReadyForMoreMediaData {
                         if let sample = sendableOutput.value.copyNextSampleBuffer() {
                             if !sendableInput.value.append(sample) {
-                                if finished.run() { sendableInput.value.markAsFinished(); group.leave() }
+                                if finished.run() { timer.cancel(); sendableInput.value.markAsFinished(); group.leave() }
                                 return
                             }
                         } else {
-                            if finished.run() { sendableInput.value.markAsFinished(); group.leave() }
+                            if finished.run() { timer.cancel(); sendableInput.value.markAsFinished(); group.leave() }
                             return
                         }
                     }

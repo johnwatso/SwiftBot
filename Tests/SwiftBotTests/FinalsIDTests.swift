@@ -460,11 +460,10 @@ final class FinalsIDTests: XCTestCase {
             "finals.id: API Token is required."
         )
 
+        // The rank endpoint falls back to finals.id's documented one, so a
+        // token is the last thing needed.
         connections.setToken("token", for: .finalsID)
-        XCTAssertEqual(
-            tracking.configurationIssue(connections: connections),
-            "finals.id: the rank endpoint contract has not been configured yet."
-        )
+        XCTAssertNil(tracking.configurationIssue(connections: connections))
 
         connections[.finalsID].rankEndpointTemplate = "/v1/players/{playerID}/rank"
         XCTAssertNil(tracking.configurationIssue(connections: connections))

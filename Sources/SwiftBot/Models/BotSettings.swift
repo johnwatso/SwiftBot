@@ -151,6 +151,9 @@ struct AdminWebUISettings: Codable, Hashable {
     var redirectPath: String = "/auth/discord/callback"
     var restrictAccessToSpecificUsers: Bool = false
     var allowedUserIDs: [String] = []
+    /// Lets any member of a connected server sign in to see their own Replay
+    /// and the clips they're in. Off until an admin turns it on.
+    var memberAccessEnabled: Bool = false
 
     var normalizedHostname: String {
         if !subdomain.isEmpty && !selectedZoneName.isEmpty {
@@ -184,6 +187,7 @@ struct AdminWebUISettings: Codable, Hashable {
         case redirectPath
         case restrictAccessToSpecificUsers
         case allowedUserIDs
+        case memberAccessEnabled
         case dismissedDNSConflictHostnames
         case additionalTunnelHostnames
         // Legacy keys for migration
@@ -244,6 +248,7 @@ struct AdminWebUISettings: Codable, Hashable {
         allowedUserIDs = try container.decodeIfPresent([String].self, forKey: .allowedUserIDs) ?? []
         restrictAccessToSpecificUsers = try container.decodeIfPresent(Bool.self, forKey: .restrictAccessToSpecificUsers)
             ?? !allowedUserIDs.isEmpty
+        memberAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .memberAccessEnabled) ?? false
         dismissedDNSConflictHostnames = try container.decodeIfPresent([String].self, forKey: .dismissedDNSConflictHostnames) ?? []
         additionalTunnelHostnames = try container.decodeIfPresent([AdditionalTunnelHostname].self, forKey: .additionalTunnelHostnames) ?? []
     }
@@ -274,6 +279,7 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(redirectPath, forKey: .redirectPath)
         try container.encode(restrictAccessToSpecificUsers, forKey: .restrictAccessToSpecificUsers)
         try container.encode(allowedUserIDs, forKey: .allowedUserIDs)
+        try container.encode(memberAccessEnabled, forKey: .memberAccessEnabled)
         try container.encode(dismissedDNSConflictHostnames, forKey: .dismissedDNSConflictHostnames)
         try container.encode(additionalTunnelHostnames, forKey: .additionalTunnelHostnames)
     }
@@ -368,6 +374,11 @@ struct BotSettings: Codable, Hashable {
     /// Lets AI replies answer questions about members' activity ("when is
     /// sam usually on?") from voice history and the Rewind archive.
     var aiActivityAnswersEnabled: Bool = true
+    /// Who records into each recording folder, keyed "node|sourceUUID", so a
+    /// clip's people are the ones in that person's voice channel.
+    var recordingSourceOwners: [String: String] = [:]
+    /// Who runs each Mac and which problems they're DMed about.
+    var operators = OperatorSettings()
     /// Per-Discord-user IANA timezone identifier (e.g. "America/New_York")
     /// used to interpret natural-language times in `/timestamp`.
     /// Missing entries fall back to the bot host's `TimeZone.current`.
@@ -443,6 +454,8 @@ struct BotSettings: Codable, Hashable {
         case clusterNodeIconOverrides
         case localAIDMReplyEnabled
         case aiActivityAnswersEnabled
+        case recordingSourceOwners
+        case operators
         case aiMemoryNotes
         case localAISystemPrompt
         case behavior
@@ -498,6 +511,8 @@ struct BotSettings: Codable, Hashable {
         clusterNodeIconOverrides = try container.decodeIfPresent([String: String].self, forKey: .clusterNodeIconOverrides) ?? [:]
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         aiActivityAnswersEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiActivityAnswersEnabled) ?? true
+        recordingSourceOwners = try container.decodeIfPresent([String: String].self, forKey: .recordingSourceOwners) ?? [:]
+        operators = try container.decodeIfPresent(OperatorSettings.self, forKey: .operators) ?? OperatorSettings()
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? BotSettings.defaultAISystemPrompt
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
@@ -554,6 +569,8 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterNodeIconOverrides, forKey: .clusterNodeIconOverrides)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
         try container.encode(aiActivityAnswersEnabled, forKey: .aiActivityAnswersEnabled)
+        try container.encode(recordingSourceOwners, forKey: .recordingSourceOwners)
+        try container.encode(operators, forKey: .operators)
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)

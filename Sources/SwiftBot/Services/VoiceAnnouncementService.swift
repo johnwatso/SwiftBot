@@ -276,6 +276,7 @@ actor VoiceAnnouncementService {
         pausedForRecovery = false
         await publishHealth(
             phase: idleOrQueuedPhase,
+            retryStreak: paused ? nil : 0,
             clearFailureState: !paused
         )
         if !paused, !queue.isEmpty, !draining {

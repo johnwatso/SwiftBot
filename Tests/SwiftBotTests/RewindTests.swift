@@ -342,16 +342,14 @@ final class RewindTests: XCTestCase {
 
     // MARK: - Settings gating
 
-    func testSettingsGateBotsChannelsAndOptOuts() {
+    func testSettingsGateBotsAndChannels() {
         var settings = RewindSettings()
         settings.isEnabled = true
         settings.ignoredChannelIDs = ["secret"]
-        settings.optedOutUserIDs = ["shy"]
 
         XCTAssertTrue(settings.collects(channelID: "general"))
         XCTAssertFalse(settings.collects(channelID: "secret"))
         XCTAssertTrue(settings.collects(userID: "john", isBot: false))
-        XCTAssertFalse(settings.collects(userID: "shy", isBot: false))
         XCTAssertFalse(settings.collects(userID: "someBot", isBot: true))
 
         settings.includeBotMessages = true

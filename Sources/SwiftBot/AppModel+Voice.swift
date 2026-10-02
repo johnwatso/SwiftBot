@@ -1721,6 +1721,21 @@ extension AppModel {
               })
         else { return }
 
+        // Presence has already been updated by the gateway dispatcher. Once
+        // the final human leaves, Discord may reset the sole-member DAVE
+        // group; there is no listener for the goodbye and no ratchet to send it.
+        let hasHumanListener = activeVoice.contains {
+            $0.guildId == guildID && $0.channelId == channelID
+                && $0.userId != userID && !botIDs.contains($0.userId)
+        }
+        guard hasHumanListener else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Skipped Announcer departure speech because no human listeners remain in the channel."
+            ))
+            return
+        }
+
         let announcement = "\(displayName) has left."
         addVoiceLogEntry(VoiceEventLogEntry(
             time: Date(),
