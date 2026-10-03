@@ -14108,7 +14108,7 @@
           <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
         </button>`;
       const group = (title, rows, action = '') => `
-        <section class="ub-group">
+        <section class="ub-group" id="settings-${settingsAnchor(title)}">
           <div class="ub-group-head"><h2>${title}</h2>${action}</div>
           <div class="ub-group-card glass">${rows}</div>
         </section>`;
@@ -16367,9 +16367,40 @@
       }
     }
 
-    function selectView(view) {
+    // Hash routes survive sign-in and keep browser history separate from start-page preferences.
+    const webRouteViews = new Set(['overview', 'commands', 'welcome', 'automations', 'moderation',
+      'announcer', 'gametracker', 'patchy', 'sweep', 'wikibridge', 'recordings', 'analytics',
+      'rewind', 'activity', 'swiftmesh', 'settings', 'userprefs']);
+    let webRoutesReady = false;
+    function settingsAnchor(title) {
+      return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+    function readWebRoute() {
+      const match = location.hash.match(/^#\/([a-z]+)(?:\/([a-z0-9-]+))?$/);
+      if (!match || !webRouteViews.has(match[1]) || (match[2] && match[1] !== 'settings')) return null;
+      return { view: match[1], anchor: match[2] || '' };
+    }
+    function scrollToSettingsRoute() {
+      const route = readWebRoute();
+      if (route?.view !== 'settings' || !route.anchor) return;
+      requestAnimationFrame(() => {
+        document.getElementById(`settings-${route.anchor}`)?.scrollIntoView({ block: 'start' });
+      });
+    }
+    window.addEventListener('hashchange', () => {
+      if (!webRoutesReady) return;
+      const route = readWebRoute();
+      selectView(route?.view || 'overview', { fromRoute: true });
+      scrollToSettingsRoute();
+    });
+
+    function selectView(view, { fromRoute = false } = {}) {
       // Apple Intelligence moved into Settings.
       if (view === 'aibots') view = 'settings';
+      if (webRoutesReady && !fromRoute && webRouteViews.has(view)) {
+        const hash = `#/${view}`;
+        if (location.hash !== hash) history.pushState(null, '', hash);
+      }
       // Leaving Recordings stops its player and any hover previews.
       if (currentView === 'recordings' && view !== 'recordings') releaseVideos(document.getElementById('mediaPanels'));
       currentView = view;
@@ -17083,7 +17114,13 @@
           : userPrefs.startPage;
       } catch {}
       const allowed = new Set([...document.querySelectorAll('#sidebar .nav-link[data-view]')].map(link => link.dataset.view));
-      selectView(allowed.has(remembered) ? remembered : 'overview');
+      webRoutesReady = true;
+      const route = readWebRoute();
+      const initialView = route?.view || (allowed.has(remembered) ? remembered : 'overview');
+      // Give the default page a history entry too, so Back returns to that page.
+      if (!route) history.replaceState(null, '', `#/${initialView}`);
+      selectView(initialView, { fromRoute: true });
+      scrollToSettingsRoute();
       
       // Load auth options in background for the "logout" logic/labels
       loadAuthOptions();

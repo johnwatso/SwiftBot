@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct WebUIPreferencesView: View {
+    @Environment(\.consoleFormContent) private var consoleFormContent
     @EnvironmentObject var app: AppModel
 
     var body: some View {
@@ -35,8 +36,10 @@ struct WebUIPreferencesView: View {
                 Text("Control who can sign in to your dashboard with Discord.")
             }
 
-            Section {
-                AdminWebLaunchControls(usesGlassActionStyle: false)
+            if !consoleFormContent {
+                Section {
+                    AdminWebLaunchControls(usesGlassActionStyle: false)
+                }
             }
         }
         .preferencesCardDisabled(when: app.isFailoverManagedNode)
@@ -44,6 +47,7 @@ struct WebUIPreferencesView: View {
 }
 
 struct AdminWebServerConfigurationSection: View {
+    @Environment(\.consoleFormContent) private var consoleFormContent
     @EnvironmentObject var app: AppModel
     @State private var isAdvancedExpanded = false
     @State private var showRequireHTTPSDisableConfirm = false
@@ -64,8 +68,10 @@ struct AdminWebServerConfigurationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
-                .toggleStyle(.switch)
+            if !consoleFormContent {
+                Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
+                    .toggleStyle(.switch)
+            }
 
             Text("SwiftBot automatically detects the correct public URL for OAuth redirects.")
                 .font(.caption)

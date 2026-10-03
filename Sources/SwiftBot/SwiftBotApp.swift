@@ -6,6 +6,8 @@ struct SwiftBotApp: App {
     @NSApplicationDelegateAdaptor(SwiftBotAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @AppStorage("useConsoleLayout") private var useConsoleLayout = false
+    @State private var trafficLightOrigins: [NSWindow.ButtonType: NSPoint] = [:]
     @StateObject private var appModel = AppModel()
     @StateObject private var updater = AppUpdater()
     @StateObject private var statusItemController = SwiftBotStatusItemController()
@@ -27,8 +29,44 @@ struct SwiftBotApp: App {
         NSApp.applicationIconImage = image
     }
 
+    private var consoleIsVisible: Bool {
+        useConsoleLayout && appModel.isOnboardingComplete && !appModel.isRemoteLaunchMode
+            && !(appModel.canOpenRemoteDashboardFromLocalApp && appModel.viewMode == .remote)
+    }
+
     private func applyMainWindowChrome(to window: NSWindow) {
         guard window.identifier != .settingsWindow else { return }
+
+        let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        if trafficLightOrigins.isEmpty {
+            for type in buttons {
+                trafficLightOrigins[type] = window.standardWindowButton(type)?.frame.origin
+            }
+        }
+        if consoleIsVisible {
+            // Let macOS lay out the toolbar and sidebar. The classic dashboard's
+            // hand-positioned traffic lights and clipped frame do not fit a toolbar.
+            window.identifier = .mainWindow
+            window.titleVisibility = .visible
+            window.titlebarAppearsTransparent = true
+            window.toolbarStyle = .unified
+            window.titlebarSeparatorStyle = .automatic
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
+            window.isMovableByWindowBackground = false
+            for view in [window.contentView, window.contentView?.superview, window.contentView?.superview?.superview] {
+                view?.layer?.cornerRadius = 0
+                view?.layer?.masksToBounds = false
+                view?.layer?.borderWidth = 0
+                view?.layer?.backgroundColor = nil
+            }
+            for type in buttons {
+                if let origin = trafficLightOrigins[type] {
+                    window.standardWindowButton(type)?.setFrameOrigin(origin)
+                }
+            }
+            return
+        }
 
         window.identifier = .mainWindow
         window.titleVisibility = .hidden
@@ -141,7 +179,7 @@ struct SwiftBotApp: App {
                 RootView()
                     .environmentObject(appModel)
                     .environmentObject(updater)
-                    .frame(minWidth: 1200, minHeight: 760)
+                    .frame(minWidth: consoleIsVisible ? 980 : 1200, minHeight: consoleIsVisible ? 700 : 760)
                     .onAppear {
                         applyAppIconIfAvailable()
                         applyPresenceMode(appModel.settings.presenceMode)

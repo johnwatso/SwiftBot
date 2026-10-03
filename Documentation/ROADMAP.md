@@ -376,6 +376,18 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 
 ## Session log
 
+### 2026-10-03 — Modern native console polish
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Navigated the live console and identified clipped toolbar titles, duplicate service controls and cramped nested logs. Restored native console window chrome, added clear page headers and compact overview metrics, moved logs into the full detail pane, and removed duplicate web controls only in the console. Debug build passes. Rebuilt-app visual QA awaits relaunch approval to avoid interrupting the live bot; no services or release metadata changed. |
+
+### 2026-10-03 — Opt-in host console and web deep links
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Added an off-by-default host console alongside the classic/remote roots; reused existing preferences and service state with cluster guards. Added web hash routes and Settings anchors, audited web parity and SwiftMesh ownership, and deferred single-use sign-in tokens. XcodeGen and Debug build pass; browser route/history checks pass. Added console sidebar coverage; Xcode tests and native runtime QA deferred to preserve the live Debug bot. Version and release metadata unchanged. |
+
 ### 2026-08-27 — Game Tracker service and finals.id provider preparation
 
 | Commit | Summary |

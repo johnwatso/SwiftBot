@@ -7,6 +7,7 @@ import SwiftUI
 /// regardless of whether the bot is running locally or remotely.
 struct RootView: View {
     @EnvironmentObject var app: AppModel
+    @AppStorage("useConsoleLayout") private var useConsoleLayout = false
     @State private var selection: SidebarItem = .overview
 
     var body: some View {
@@ -26,6 +27,10 @@ struct RootView: View {
         } else if shouldShowRemoteDashboard {
             RemoteModeRootView()
                 .frame(minWidth: 1200, minHeight: 760)
+                .toggleStyle(.switch)
+        } else if useConsoleLayout {
+            ConsoleRootView()
+                .frame(minWidth: 900, minHeight: 650)
                 .toggleStyle(.switch)
         } else if let provider = app.provider {
             UnifiedRootView(selection: $selection)

@@ -206,6 +206,48 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     ]
 }
 
+/// Host console destinations. The same groups drive the sidebar and coverage tests.
+enum ConsoleItem: String, CaseIterable, Identifiable {
+    case thisMac = "This Mac", access = "Access", logs = "Logs", alerts = "Alerts"
+    case adminWeb = "Admin Web UI", gateway = "Discord Gateway", swiftMesh = "SwiftMesh"
+    case voice = "Voice", recordings = "Recordings", intelligence = "Intelligence"
+    case updates = "Software Update"
+
+    var id: String { rawValue }
+    static let sidebarSections: [(title: String, items: [ConsoleItem])] = [
+        ("Server", [.thisMac, .access, .logs, .alerts]),
+        ("Services", [.adminWeb, .gateway, .swiftMesh, .voice, .recordings, .intelligence, .updates])
+    ]
+    var isService: Bool { Self.sidebarSections[1].items.contains(self) }
+    var icon: String {
+        switch self {
+        case .thisMac: "desktopcomputer"
+        case .access: "person.badge.key"
+        case .logs: "doc.text"
+        case .alerts: "bell"
+        case .adminWeb: "globe"
+        case .gateway: "network"
+        case .swiftMesh: "point.3.connected.trianglepath.dotted"
+        case .voice: "mic"
+        case .recordings: "record.circle"
+        case .intelligence: "apple.intelligence"
+        case .updates: "arrow.down.circle"
+        }
+    }
+    var webRoute: String {
+        switch self {
+        case .thisMac, .alerts, .gateway: "/overview"
+        case .access: "/settings/who-can-sign-in"
+        case .logs: "/activity"
+        case .adminWeb, .updates: "/settings"
+        case .swiftMesh: "/swiftmesh"
+        case .voice: "/announcer"
+        case .recordings: "/recordings"
+        case .intelligence: "/settings/apple-intelligence"
+        }
+    }
+}
+
 // MARK: - Automation Models
 
 // MARK: - Context Variables

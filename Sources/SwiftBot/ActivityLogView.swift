@@ -158,7 +158,8 @@ struct ActivityLogView: View {
     private var controlsHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
             searchField
-            filterChipsRow
+            ScrollView(.horizontal) { filterChipsRow.fixedSize(horizontal: true, vertical: false) }
+                .scrollIndicators(.hidden)
         }
     }
 

@@ -827,7 +827,19 @@ struct SettingsInlineAction: View {
 ///         Section { ... }
 ///         Section { ... }
 ///     }
+private struct ConsoleFormContentKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var consoleFormContent: Bool {
+        get { self[ConsoleFormContentKey.self] }
+        set { self[ConsoleFormContentKey.self] = newValue }
+    }
+}
+
 struct SettingsForm<Content: View>: View {
+    @Environment(\.consoleFormContent) private var consoleFormContent
     let readOnlyBannerText: String?
     let content: Content
 
@@ -839,22 +851,30 @@ struct SettingsForm<Content: View>: View {
         self.content = content()
     }
 
+    @ViewBuilder
     var body: some View {
-        VStack(spacing: 0) {
+        if consoleFormContent {
             if let readOnlyBannerText {
-                PreferencesReadOnlyBanner(text: readOnlyBannerText)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                Section { PreferencesReadOnlyBanner(text: readOnlyBannerText) }
             }
-            Form {
-                content
+            content
+        } else {
+            VStack(spacing: 0) {
+                if let readOnlyBannerText {
+                    PreferencesReadOnlyBanner(text: readOnlyBannerText)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                }
+                Form {
+                    content
+                }
+                .formStyle(.grouped)
+                .padding(.horizontal, 24)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
             }
-            .formStyle(.grouped)
-            .padding(.horizontal, 24)
-            .padding(.top, 10)
-            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

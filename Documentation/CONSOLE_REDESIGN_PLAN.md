@@ -1,6 +1,8 @@
 # SwiftBot Console Redesign — Web UI First
 
-Status: proposal (2026-10-03). Nothing in this document is implemented yet.
+Status: first console opt-in and web deep links implemented (2026-10-03).
+Native feature views remain available in the default layout. Web parity gaps
+below are audited only; no missing web features were added.
 
 ## Goal
 
@@ -86,27 +88,39 @@ These come from comparing `SidebarItem`, the native preferences, and native-only
 views against `Resources/admin/index.html`. Each needs a check by hand before
 step 7.
 
-**Probably missing from the web UI:**
+**Verified web parity audit (2026-10-03):**
 
-- **Automation simulation.** `AutomationSimulationResultView` has no web
-  equivalent; `index.html` has no matches for "simulat". Rule testing needs a
-  web version before `AutomationsView` goes.
-- **Bot permissions check.** `BotPermissionsCheckView` has only one weak match
-  for "permission" in the web UI.
-- **Rule editor details.** `AutomationRuleEditor` and
-  `VariableAutocompleteField` need the web editor to offer the same variable
-  autocomplete.
-- **User timezones.** `UserTimezonesView` has "timezone" mentions in the web
-  UI, but it's unclear whether there's a management screen.
-- **Game provider configuration.** `GameProviderConfigurationSheet` may only
-  partly exist on the web side, which has "provider" matches but no confirmed
-  sheet.
-- **SwiftMiner pairing.** `SwiftMinerPairingSheet` has "pair" mentions in the
-  web UI; confirm pairing can be finished there.
-- **Acknowledgements and Help.** `AcknowledgementsView` and `HelpEngine`
-  content: this is fine to keep native-only, but the web UI could link to it.
-- **Media stream debug.** `MediaStreamDebug` is developer-only, so keep it
-  native.
+References use repository-relative `file:line` locations. A missing result refers
+both to the native capability and the closest web surface inspected; absence is
+not inferred from navigation labels alone.
+
+| Capability | Result | Evidence and remaining work |
+| --- | --- | --- |
+| Automation simulation | Missing | `Sources/SwiftBot/AutomationSimulationResultView.swift:10` renders trigger/filter/step traces, fed by `AutomationRuleEditor.swift:1400`. `Sources/SwiftBot/Resources/admin/index.html:9769` and `:9955` provide edit/save, triggers, filters and steps, but no sample event execution or simulation trace. Sweep's Try run (`:12071`) is a separate feature, not automation simulation. |
+| Bot permissions check | Missing | `Sources/SwiftBot/BotPermissionsCheckView.swift:139` inspects guild permissions using the catalog at `:25`. Web Settings (`Sources/SwiftBot/Resources/admin/index.html:14152`) provides an invite link, not effective-permissions inspection or per-guild diagnostics. |
+| Rule editor / variable autocomplete | Partly covered | `Sources/SwiftBot/AutomationRuleEditor.swift:1042` uses `VariableAutocompleteField`; `Sources/SwiftBot/VariableAutocompleteField.swift:53` filters suggestions for the current trigger and partial brace token. The web editor (`Sources/SwiftBot/Resources/admin/index.html:9955`, `:10250`, `:10315`) supports triggers, filters, steps, templates and AI prompts, but its plain textareas and variable help (`:10337`) have no equivalent trigger-aware autocomplete. |
+| User timezones | Covered | `Sources/SwiftBot/UserTimezonesView.swift:195` manages member-to-IANA-zone mappings. Web Settings opens the editor at `Sources/SwiftBot/Resources/admin/index.html:14235`, with member selection, IANA validation, add/remove and config saving. |
+| Game provider configuration | Partly covered | `Sources/SwiftBot/GameProviderConfigurationSheet.swift:37` and `:136` provide credentials plus advanced Base URL and Rank Endpoint fields. Web Game Tracker's provider editor (`Sources/SwiftBot/Resources/admin/index.html:11404`) supports reveal, validation, replacement and removal of Keychain credentials, but no advanced endpoint editing. |
+| SwiftMiner pairing | Partly covered | `Sources/SwiftBot/SwiftMinerPairingSheet.swift:145` opens the companion pairing flow; `:156` accepts pairing tokens and the sheet can disconnect. Web Settings (`Sources/SwiftBot/Resources/admin/index.html:14170`) only toggles an already-paired integration and explicitly directs initial pairing to the Mac app. |
+| Remote mode | Missing, intentionally native | `Sources/SwiftBot/RemoteModeRootView.swift:74` provides the remote dashboard and configuration; web navigation (`Sources/SwiftBot/Resources/admin/index.html:6110`) has no remote host/provider setup. Keep this native: it must work before a local web server exists. |
+
+Acknowledgements/Help and media-stream debugging remain native by design.
+
+**SwiftMesh ownership:**
+
+The console owns this Mac's lifecycle, role, addresses, listen/outbound ports,
+shared secret rotation, join-code acceptance and connection diagnostics. Reuse
+`Sources/SwiftBot/MeshPreferencesView.swift:108` (role/configuration), `:147`
+(join), `:240` (join-code generation/rotation), and `:86` (offload binding).
+The browser is the main cluster administration surface: topology, monitoring,
+Primary work-sharing policy (`Sources/SwiftBot/Resources/admin/index.html:15616`)
+and Primary join-code distribution (`:15621`). These shared controls use existing
+AppModel/API state; neither side owns a separate copy. The browser already edits
+role/configuration (`:15626`), so it is inaccurate to call all mesh controls
+native-only. Retain the native controls for local recovery and initial setup;
+do not introduce a divergent policy or credentials store. Existing Primary-only
+mesh guards remain in the reused preferences, and console voice/AI/gateway
+controls are disabled on Worker and Failover nodes.
 
 **Native-only on purpose (stays in the console, per the note in the web UI
 settings):**
@@ -115,9 +129,8 @@ settings):**
 - App updates: Sparkle, Check Now…, the unattended toggle.
 - Web UI sign-in, domain, certificate, DNS override, repair or reset.
 - Recordings and Fast Start folders, plus Clear Cache.
-- SwiftMesh role, ports, shared secret rotation, and worker offload. The web UI
-  has "Work sharing" and "Add a node" groups, so decide which side owns each
-  control so they don't diverge.
+- SwiftMesh local recovery and secret rotation stay native. Role/configuration,
+  work sharing and join-code distribution are shared with the browser as above.
 - Remote mode setup (`RemoteModeRootView`); the web UI has no matches for it.
 - "Show SwiftBot as" (Dock or menu bar).
 
@@ -139,3 +152,79 @@ settings group.
 - `xcodebuild test` stops the live bot (see project notes), so run the console
   UI tests deliberately.
 - Run `xcodegen` after adding the new console files.
+
+
+## Implemented in the first opt-in pass
+
+- `ConsoleItem.sidebarSections` defines all eleven destinations exactly once.
+  `ConsoleRootView` uses a native split view and grouped forms, reusing existing
+  preferences content through `SettingsForm`'s console environment. Existing
+  feature pages and Preferences remain available. The local `Use console layout`
+  preference is off by default and can be toggled in General settings.
+- This Mac exposes Overview/Settings/Storage; Access reuses token and sign-in
+  controls; Logs embeds the existing live activity/audit feed and diagnostic
+  export; Alerts uses `OverviewHealthReport.attention`, including its sidebar badge.
+- Service switches use existing state: gateway/mesh runtime lifecycle, web-server
+  enablement, voice connection, recording source enablement, DM AI replies and
+  automatic update checks. There is no existing universal recordings or model
+  power switch. Help text identifies the actual scope, and recording monitoring
+  is disabled until a folder exists. The mesh lifecycle switch is unavailable in
+  Standalone mode; role setup stays in the reused mesh preferences.
+- Health shows known runtime status and the existing gateway/mesh start date.
+  No restart dates are fabricated. Voice device selection has no existing host
+  preference; the console reports the configured voice/channel and links to the
+  browser instead. Existing preference form content is embedded with its original
+  labels and logic, rather than rewriting the native features for this pass.
+- All sixteen web destinations have `#/view` routes, and Settings groups have
+  `#/settings/general`, `apple-intelligence`, `features`, `integrations`,
+  `who-can-sign-in`, `operator`, and `about-this-server` anchors. Explicit routes
+  win after sign-in; an empty/invalid hash preserves the configured start page on
+  initial load. Navigation records hash history and Back/Forward restore views.
+- `AppModel.openWebUI(route:)` uses the current resolved address, replacing only
+  its fragment. Disabled web UI produces visible feedback and opens no URL.
+  The old launch controls had only disabled-button behavior, not a shared error
+  presentation, so an explanatory alert was added for this helper.
+- Preview fixtures/server require no edits: URL fragments stay in the browser.
+
+## Follow-ups and validation limits
+
+- Add a short-lived, single-use sign-in handoff token separately, with expiry,
+  replay protection, scope and authentication tests. No token was added here.
+- Close the audited web gaps before removing any native feature views.
+- Native runtime visual QA and service-toggle exercise remain pending: the app
+  was built but not launched, to preserve the live Debug bot. Build validation
+  passed with existing repository warnings. Browser preview verified all sixteen
+  view routes, the Apple Intelligence anchor, and Back/Forward navigation.
+- Added `ConsoleSidebarLayoutTests`. With explicit permission, run it alongside
+  `SidebarLayoutTests`, `AdminWebCopyTests`, and `AdminWebServerAuthTests` using
+  Xcode tooling. No `xcodebuild test` was run because it stops the live Debug bot.
+- `AI_CONTEXT.md` references root `DESIGN.md` and `ROADMAP.md`; their actual
+  paths are under `Documentation/`. Its old Rule sketch (optional trigger /
+  actions) also differs from the current nonoptional trigger / steps model.
+  This pass follows the current code and leaves rule behavior unchanged.
+- The root's onboarding and remote-mode precedence is preserved even when the
+  local console preference is on. Remote nodes keep their existing dashboard;
+  they are never handed local host-service switches.
+
+
+## Modern native console polish (2026-10-03)
+
+Inspected the running app through native navigation without changing services.
+The first pass clipped the toolbar title inside a glass capsule, repeated service
+switches/status/actions, and nested the activity list inside a scrolling Form.
+The revision removes the custom toolbar title, uses native window chrome for the
+console, and keeps the classic dashboard's existing chrome when that layout is
+selected. Page identity now sits above the form, the overview has a compact
+four-column metric strip and a browser handoff row, and service switches use
+specific labels where they control DM replies, folder monitoring or update
+checks. Model health is independent of whether DM replies are enabled.
+
+Logs fills its detail pane and keeps filters on one horizontal line; the original
+activity view, search, filtering and audit behavior are reused. The Admin Web UI
+preferences omit their duplicate enable and launch controls only when embedded
+in the console. This Mac includes existing hardware metadata. Console windows
+can be narrower while classic/remote window sizing remains unchanged.
+
+The revised Debug build passes. Runtime inspection of the rebuilt screens awaits
+a relaunch decision because the currently running Debug app hosts the live bot.
+No Xcode tests, service changes, version changes or release changes were made.

@@ -907,8 +907,38 @@ extension AppModel {
         return URL(string: desiredAdminWebBaseURL(preferHTTPS: settings.adminWebUI.httpsEnabled))
     }
 
+    /// Open a feature route without changing the web UI's configured address.
+    func openWebUI(route: String = "") {
+        guard settings.adminWebUI.enabled else {
+            logs.append("⚠️ Admin Web UI is disabled. Enable it in Settings › Web UI.")
+            let alert = NSAlert()
+            alert.messageText = "Admin Web UI Disabled"
+            alert.informativeText = "Enable Admin Web UI in Settings › Web UI to open it in your browser."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+        guard var components = URLComponents(string: adminWebBaseURL()) else {
+            logs.append("⚠️ Admin Web UI URL is invalid.")
+            return
+        }
+        if !route.isEmpty {
+            let path = route.hasPrefix("#") ? String(route.dropFirst()) : route
+            components.fragment = path.hasPrefix("/") ? path : "/" + path
+        }
+        guard let url = components.url, ["http", "https"].contains(url.scheme), url.host != nil else {
+            logs.append("⚠️ Admin Web UI URL is invalid.")
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
     @discardableResult
     func launchAdminWebUI() -> Bool {
+        guard settings.adminWebUI.enabled else {
+            openWebUI()
+            return false
+        }
         guard let url = adminWebLaunchURL() else {
             logs.append("⚠️ Admin Web UI URL is invalid.")
             return false

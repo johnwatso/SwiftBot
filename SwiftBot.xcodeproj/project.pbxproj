@@ -68,6 +68,7 @@
 		2D9C712974944C9A051CAAAD /* VoicePipelineInterfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = A350ACC2C5D0A4B9A1CDFA30 /* VoicePipelineInterfaces.swift */; };
 		2E180625BBFB3F92066A3A46 /* MediaLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D4EF03CA9AE99CE2824D81 /* MediaLibraryIndexer.swift */; };
 		2EAB93005E0479A55A9BAE8D /* AppModel+AIActivityFacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3557912422251BBB1365AB /* AppModel+AIActivityFacts.swift */; };
+		2EB9E368F53D4CF768D5292B /* ConsoleSidebarLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A1C69475094BA065E0997B /* ConsoleSidebarLayoutTests.swift */; };
 		2FED59E89C7EF46B3D67C5E3 /* SwiftBird.png in Resources */ = {isa = PBXBuildFile; fileRef = 7B9C73206F296924B1FAAF39 /* SwiftBird.png */; };
 		306B8E871FB74E9DCB898A68 /* VoicePlaybackServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF7D44134F71D0F9A7BD163F /* VoicePlaybackServiceTests.swift */; };
 		30F1097458E75E4111FB7A96 /* ClusterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7670908662FF8A3144C3D4 /* ClusterModels.swift */; };
@@ -167,6 +168,7 @@
 		838C7E3468BE6BC5AE73C7B4 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207953E8C7879C279BCB9D58 /* ClusterCoordinator.swift */; };
 		855D91D6C8ED90D29D71508D /* AutomationTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94959B5C927F07D4B652B686 /* AutomationTemplates.swift */; };
 		86DE1B176292F7A9DB2488FA /* TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8C19725A4BF5A95D20716E /* TunnelManager.swift */; };
+		87CD5A040F84046D4B003792 /* ConsoleRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F5C82A99E4F9984E623057F /* ConsoleRootView.swift */; };
 		87D3271B72E415D0EAD0543A /* MeshPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6EA0FA1B56EED3848973E14 /* MeshPreferencesView.swift */; };
 		887D829AE6F9E966609FBD63 /* CommunityStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DCDCB6BCA564E612B91E00 /* CommunityStatsStore.swift */; };
 		888EC3EA7D3DEE3FABD0B12F /* AdminWebAccessUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF186A425D9F4F98AFAE3867 /* AdminWebAccessUpdateTests.swift */; };
@@ -387,6 +389,7 @@
 		0EB9877E4660FA391F910996 /* RewindView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewindView.swift; sourceTree = "<group>"; };
 		1038455863F3FD646EC521CF /* VoiceTransportSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTransportSecurityTests.swift; sourceTree = "<group>"; };
 		1218F2D3CD35139659133AD3 /* EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBus.swift; sourceTree = "<group>"; };
+		12A1C69475094BA065E0997B /* ConsoleSidebarLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSidebarLayoutTests.swift; sourceTree = "<group>"; };
 		13E0F76AF1F933F59A65CB21 /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
 		148146E9D6C2A1CABFEFF833 /* VoiceUntilEmptyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceUntilEmptyTests.swift; sourceTree = "<group>"; };
 		14B156B46AB6BBE21F4C86E1 /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
@@ -501,6 +504,7 @@
 		6F1F145780CE114E0D967E7B /* MeshCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCrypto.swift; sourceTree = "<group>"; };
 		6F3557912422251BBB1365AB /* AppModel+AIActivityFacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AIActivityFacts.swift"; sourceTree = "<group>"; };
 		6F42F605681358AA47D464C2 /* GameProviderRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProviderRegistry.swift; sourceTree = "<group>"; };
+		6F5C82A99E4F9984E623057F /* ConsoleRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleRootView.swift; sourceTree = "<group>"; };
 		6FD8586A9E98310B7A55771F /* Automations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Automations.swift; sourceTree = "<group>"; };
 		70753648882B0C7C34F403FF /* DiscordRateLimiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordRateLimiter.swift; sourceTree = "<group>"; };
 		76ACAC822C262D849FDCBFBD /* SweepWeeklyMVPAnnouncementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweepWeeklyMVPAnnouncementTests.swift; sourceTree = "<group>"; };
@@ -731,6 +735,7 @@
 				AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */,
 				5750E364B270A909AF0BF2DB /* CommunityStatsStoreTests.swift */,
 				1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */,
+				12A1C69475094BA065E0997B /* ConsoleSidebarLayoutTests.swift */,
 				8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */,
 				04E20E80CC95B2F0B2196D98 /* DiscordCacheMemberFilterTests.swift */,
 				9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */,
@@ -922,6 +927,7 @@
 				207953E8C7879C279BCB9D58 /* ClusterCoordinator.swift */,
 				6438D24B872E01D0131CCA76 /* CommandsView.swift */,
 				9E08244F764D8DD025AB8F6A /* CommonUI.swift */,
+				6F5C82A99E4F9984E623057F /* ConsoleRootView.swift */,
 				0106453740296F8C83BCDA66 /* DiscordPreferencesView.swift */,
 				3360744C3501376DD639548C /* DiscordService.swift */,
 				CAF950DC05FEDEC53A0E7225 /* EmptyRuleOnboardingView.swift */,
@@ -1335,6 +1341,7 @@
 				3D7739F509B3B059F10C4D97 /* CommandsView.swift in Sources */,
 				79F782A61C6E1790A4CFF561 /* CommonUI.swift in Sources */,
 				887D829AE6F9E966609FBD63 /* CommunityStatsStore.swift in Sources */,
+				87CD5A040F84046D4B003792 /* ConsoleRootView.swift in Sources */,
 				F1058852BAF6862E05F83CA2 /* DiscordAIService.swift in Sources */,
 				0FAD08111C7F78D8F97ADA45 /* DiscordAuditRESTClient.swift in Sources */,
 				20C0C6DA9747B078FD672144 /* DiscordCache.swift in Sources */,
@@ -1496,6 +1503,7 @@
 				145D84D6516814F33DF25F40 /* CommandProcessorTests.swift in Sources */,
 				89CF23BAD14F86F12ECF3403 /* CommunityStatsStoreTests.swift in Sources */,
 				A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */,
+				2EB9E368F53D4CF768D5292B /* ConsoleSidebarLayoutTests.swift in Sources */,
 				7AEEABF5EE4F1E8741511E4D /* DMTimeoutTests.swift in Sources */,
 				D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */,
 				060C6B90C4538CEDD9108904 /* DiscordCacheMemberFilterTests.swift in Sources */,
