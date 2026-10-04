@@ -3,13 +3,13 @@
     <channel>
         <title>SwiftBot</title>
         <item>
-            <title>1.27.2</title>
-            <pubDate>Sun, 04 Oct 2026 21:45:32 +1300</pubDate>
-            <sparkle:version>2026100421</sparkle:version>
-            <sparkle:shortVersionString>1.27.2</sparkle:shortVersionString>
+            <title>1.27.3</title>
+            <pubDate>Sun, 04 Oct 2026 22:41:10 +1300</pubDate>
+            <sparkle:version>2026100422</sparkle:version>
+            <sparkle:shortVersionString>1.27.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.27.2/SwiftBot-1.27.2.zip" length="37707521" type="application/octet-stream" sparkle:edSignature="HCyJMoNUxOQa/jod4al57dRJ+L+TXDffa7T+pz9cyvo7lLaa/JAiv/5zI086oQwVzxGM8I2FZPoNFnP7zheVBA=="/>
+            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.27.3/SwiftBot-1.27.3.zip" length="37729510" type="application/octet-stream" sparkle:edSignature="eaOq8v8Au35AgMOaI+PG8Ldj5Ehug7Yi9A8KJfdjANXgB+lz745/JMAO+D4etV/k96hGyV63K3FxmCSohfiBAQ=="/>
         </item>
     </channel>
 </rss>
