@@ -16,17 +16,11 @@ struct ConsoleOverviewView: View {
     private let details = HostDetails.current
     @State private var isTestingConnection = false
     @State private var isConfirmingRestart = false
+    @State private var isConfirmingStop = false
 
-    var onOpenSwiftMesh: () -> Void = {}
-    var onShowLogs: () -> Void = {}
+    /// Shows another sidebar page (a service's settings, the log).
+    var onNavigate: (SidebarItem) -> Void = { _ in }
     var onShowClassicDashboard: () -> Void = {}
-
-    /// Tags in `PreferencesView`'s TabView.
-    private enum PreferencesTab: Int {
-        case general = 0
-        case swiftMesh = 1
-        case webUI = 2
-    }
 
     var body: some View {
         let snapshot = app.consoleOverviewSnapshot
@@ -75,6 +69,13 @@ struct ConsoleOverviewView: View {
                  ? "SwiftBot disconnects from Discord for a moment. A Fail Over node may take over while it restarts."
                  : "SwiftBot disconnects from Discord for a moment and then reconnects.")
         }
+        .confirmationDialog("Stop \(app.resolvedBotUsername)?", isPresented: $isConfirmingStop) {
+            Button(stopTitle, role: .destructive) {
+                Task { await app.stopBot() }
+            }
+        } message: {
+            Text(stopMessage)
+        }
     }
 
     // MARK: - Header
@@ -100,13 +101,19 @@ struct ConsoleOverviewView: View {
             }
             .buttonStyle(.glassProminent)
             .disabled(!app.settings.adminWebUI.enabled)
-            .help(app.settings.adminWebUI.enabled ? app.adminWebBaseURL() : "Turn on the Web Interface in Settings › Web UI")
+            .help(app.settings.adminWebUI.enabled ? app.adminWebBaseURL() : "Turn on the Web Interface on its page in the sidebar")
         }
         .controlSize(.large)
     }
 
     private var overflowMenu: some View {
         Menu {
+            if app.status != .stopped {
+                Button("\(stopTitle)…", systemImage: "stop.fill", role: .destructive) {
+                    isConfirmingStop = true
+                }
+                Divider()
+            }
             Button("Show Data Folder in Finder", systemImage: "folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([details.dataLocation])
             }
@@ -143,17 +150,26 @@ struct ConsoleOverviewView: View {
         }
     }
 
+    private var stopTitle: String {
+        app.settings.clusterMode == .standby ? "Stop Failover Watch" : "Stop Bot"
+    }
+
+    private var stopMessage: String {
+        app.settings.clusterMode == .standby
+            ? "This Mac stops watching the Primary and won’t take over if the Primary goes down."
+            : "The bot disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again."
+    }
+
     // MARK: - Quick actions
 
     private var quickActions: [QuickAction] {
-        let webEnabled = app.settings.adminWebUI.enabled
-        return [
+        [
             QuickAction(
                 id: "token",
                 title: "Edit Bot Token",
                 subtitle: "Replace the Discord bot token",
                 symbol: "key",
-                perform: { showPreferences(.general) }
+                perform: showGeneralSettings
             ),
             QuickAction(
                 id: "test",
@@ -165,19 +181,11 @@ struct ConsoleOverviewView: View {
                 perform: testConnection
             ),
             QuickAction(
-                id: "web",
-                title: "Open Web Interface",
-                subtitle: webEnabled ? "Manage bot features in your browser" : "Turned off in Settings › Web UI",
-                symbol: "arrow.up.forward.app",
-                isEnabled: webEnabled,
-                perform: { app.launchAdminWebUI() }
-            ),
-            QuickAction(
                 id: "logs",
                 title: "View Logs",
                 subtitle: "Recent runtime activity",
                 symbol: "doc.text.magnifyingglass",
-                perform: onShowLogs
+                perform: { onNavigate(.activity) }
             )
         ]
     }
@@ -203,19 +211,15 @@ struct ConsoleOverviewView: View {
 
     private func open(_ kind: ConsoleServiceKind) {
         switch kind {
-        case .discord: showPreferences(.general)
-        case .webInterface, .cloudflareTunnel: showPreferences(.webUI)
-        case .swiftMesh:
-            if app.settings.clusterMode == .standalone {
-                showPreferences(.swiftMesh)
-            } else {
-                onOpenSwiftMesh()
-            }
+        case .discord: showGeneralSettings()
+        case .webInterface, .cloudflareTunnel: onNavigate(.webInterface)
+        case .swiftMesh: onNavigate(.swiftMesh)
         }
     }
 
-    private func showPreferences(_ tab: PreferencesTab) {
-        preferencesTab = tab.rawValue
+    /// The bot token lives in Settings › General.
+    private func showGeneralSettings() {
+        preferencesTab = PreferencesView.generalTab
         openSettings()
     }
 

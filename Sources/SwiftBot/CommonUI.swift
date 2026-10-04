@@ -831,6 +831,8 @@ struct SettingsForm<Content: View>: View {
     let readOnlyBannerText: String?
     let content: Content
 
+    @Environment(\.settingsFormPresentation) private var presentation
+
     init(
         readOnlyBannerText: String? = nil,
         @ViewBuilder content: () -> Content
@@ -840,21 +842,37 @@ struct SettingsForm<Content: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let readOnlyBannerText {
-                PreferencesReadOnlyBanner(text: readOnlyBannerText)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
+        switch presentation {
+        case .window:
+            VStack(spacing: 0) {
+                if let readOnlyBannerText {
+                    PreferencesReadOnlyBanner(text: readOnlyBannerText)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                }
+                Form {
+                    content
+                }
+                .formStyle(.grouped)
+                .padding(.horizontal, 24)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
             }
-            Form {
-                content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        case .console:
+            // A main-window page: the page scrolls, so the form just stacks
+            // its section cards (see `ConsoleFormStyle`).
+            VStack(alignment: .leading, spacing: 20) {
+                if let readOnlyBannerText {
+                    PreferencesReadOnlyBanner(text: readOnlyBannerText)
+                }
+                Form {
+                    content
+                }
+                .formStyle(ConsoleFormStyle())
             }
-            .formStyle(.grouped)
-            .padding(.horizontal, 24)
-            .padding(.top, 10)
-            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

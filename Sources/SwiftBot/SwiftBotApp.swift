@@ -314,7 +314,7 @@ struct SwiftBotApp: App {
             ? "SwiftMiner paired successfully. Discord DMs are ready."
             : result.message
 
-        UserDefaults.standard.set(3, forKey: "swiftbot.preferences.selectedTab")
+        appModel.requestedSidebarItem = .integrations
         presentMainWindow()
     }
 }

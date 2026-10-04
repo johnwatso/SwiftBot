@@ -8,6 +8,9 @@ struct SwiftMeshView: View {
     @State private var isCopyingJoinCode = false
     @State private var justCopiedJoinCode = false
 
+    /// Off when the page around it (`SwiftMeshPage`) draws its own header.
+    var showsHeader = true
+
     /// 10s polling interval for the SwiftMesh UI. The old 3s interval caused
     /// excessive standby-to-primary HTTP load (up to 40 req/min) and overlapping
     /// URLSession requests that contributed to CFNetwork loader-queue races.
@@ -15,9 +18,11 @@ struct SwiftMeshView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+            if showsHeader {
+                header
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {

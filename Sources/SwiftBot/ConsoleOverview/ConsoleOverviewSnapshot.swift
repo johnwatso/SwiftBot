@@ -122,10 +122,10 @@ struct ConsoleOverviewSnapshot: Equatable {
         let make = { ConsoleServiceStatus(kind: .webInterface, health: $0, summary: $1, detail: $2) }
 
         guard inputs.webEnabled else {
-            return make(.disabled, "Disabled", "Off in Settings")
+            return make(.disabled, "Disabled", "Turned off")
         }
         guard inputs.webListening else {
-            return make(.error, "Not Listening", "Check Settings › Web UI")
+            return make(.error, "Not Listening", "Check its address and certificate")
         }
         return make(.healthy, "Running", displayAddress(inputs.webAddress))
     }

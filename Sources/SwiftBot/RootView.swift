@@ -11,6 +11,13 @@ struct RootView: View {
 
     var body: some View {
         currentRootView
+            // Other parts of the app (deep links, menus) ask for a page here
+            // rather than reaching into this view's selection.
+            .onChange(of: app.requestedSidebarItem, initial: true) { _, item in
+                guard let item else { return }
+                selection = item
+                app.requestedSidebarItem = nil
+            }
             .sheet(item: $app.pendingSwiftMeshJoin) { pending in
                 SwiftMeshJoinConfirmationSheet(pending: pending)
                     .environmentObject(app)
@@ -76,7 +83,8 @@ struct UnifiedRootView: View {
         // selection highlight, keyboard navigation, and column resizing.
         NavigationSplitView(columnVisibility: $columnVisibility) {
             DashboardSidebar(selection: $selection)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
+                // Fixed width, as in SwiftMiner: the sidebar is chrome, not content.
+                .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 220)
         } detail: {
             detailView
                 .padding(.top, isSidebarCollapsed ? Self.collapsedSidebarTopInset : 0)
@@ -105,46 +113,34 @@ struct UnifiedRootView: View {
             switch overviewLayout {
             case .console:
                 ConsoleOverviewView(
-                    onOpenSwiftMesh: openSwiftMesh,
-                    onShowLogs: { select(.activity) },
+                    onNavigate: select,
                     onShowClassicDashboard: { overviewLayout = .classic }
                 )
             case .classic:
                 OverviewView(
-                    onOpenSwiftMesh: openSwiftMesh,
+                    onOpenSwiftMesh: { select(.swiftMesh) },
                     onShowConsole: { overviewLayout = .console }
                 )
             }
+        case .webInterface: WebInterfacePage()
+        case .integrations: IntegrationsPage()
+        case .swiftMesh: SwiftMeshPage()
+        case .activity: ActivityLogView()
+        // WebUI-only feature pages (`SidebarItem.webOnlyItems`). Not listed in
+        // the sidebar; their native views stay until they're deleted.
         case .patchy: PatchyView()
         case .welcomeFlow: WelcomeFlowView()
         case .automations: AutomationsView()
         case .moderation: ModerationView()
         case .commands: CommandsView()
-        case .activity: ActivityLogView()
         case .wikiBridge: WikiBridgeView()
         case .appleIntelligence: AppleIntelligenceView()
         case .voice: VoiceView()
         case .recordings: RecordingsView()
         case .analytics: AnalyticsView()
         case .rewind: RewindView()
-        case .swiftMesh:
-            if shouldHideSwiftMesh {
-                OverviewView(onOpenSwiftMesh: {})
-            } else {
-                SwiftMeshView()
-            }
         case .sweep: SweepView()
         case .gameTracker: GameTrackerView()
-        }
-    }
-
-    private var shouldHideSwiftMesh: Bool {
-        app.settings.clusterMode == .standalone
-    }
-
-    private func openSwiftMesh() {
-        if !shouldHideSwiftMesh {
-            select(.swiftMesh)
         }
     }
 
@@ -194,323 +190,108 @@ struct DashboardSidebar: View {
     @EnvironmentObject var app: AppModel
     @Binding var selection: SidebarItem
 
-    /// The user's Sidebar icon size setting, which the rows follow — but never
-    /// below Medium: this is SwiftBot's primary navigation, not a dense source list.
-    @Environment(\.sidebarRowSize) private var systemRowSize
-    @FocusState private var isListFocused: Bool
-    @State private var isConfirmingStop = false
+    @Namespace private var selectionNamespace
+    @FocusState private var isFocused: Bool
+    @State private var rowFrames: [SidebarItem: CGRect] = [:]
+
+    private static let dragCoordinateSpace = "sidebarSelectorDrag"
+
+    /// Rows in display order, for keyboard and drag selection.
+    private var visibleItems: [SidebarItem] {
+        SidebarItem.sidebarSections.flatMap(\.items)
+    }
 
     var body: some View {
-        List(selection: $selection) {
-            ForEach(SidebarItem.sidebarSections) { section in
-                if let title = section.title {
-                    Section {
-                        rows(for: section)
-                    } header: {
-                        // Readable group labels, with room above each group so
-                        // spacing rather than dividers separates them.
-                        Text(title)
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 12)
-                            .padding(.bottom, 2)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(SidebarItem.sidebarSections) { section in
+                    let items = section.items
+                    if !items.isEmpty {
+                        if let title = section.title {
+                            // Readable group labels, with room above each group
+                            // so spacing rather than dividers separates them.
+                            Text(title)
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 14)
+                                .padding(.bottom, 4)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        ForEach(items) { item in
+                            row(for: item)
+                        }
                     }
-                } else {
-                    Section { rows(for: section) }
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+            .coordinateSpace(name: Self.dragCoordinateSpace)
+            .onPreferenceChange(SidebarRowFramesKey.self) { rowFrames = $0 }
+            .gesture(selectionDragGesture)
         }
-        .listStyle(.sidebar)
-        .environment(\.sidebarRowSize, systemRowSize == .small ? .medium : systemRowSize)
-        // Taking focus on appear opens on the accent selection highlight
-        // (`defaultFocus` leaves a sidebar list unfocused). Once focus moves
-        // into a page the system dims the highlight, and the selected row's
-        // accent glyph keeps it the anchor.
-        .focused($isListFocused)
-        .task { isListFocused = true }
-        // A bar rather than a plain inset: only a safe-area bar registers with
-        // the scroll edge effect, so rows fade out beneath the header instead
-        // of drawing sharply behind it.
-        .safeAreaBar(edge: .top, spacing: 0) {
-            DashboardSidebarHeader(
-                name: app.resolvedBotUsername,
-                avatarURL: app.botAvatarURL,
-                statusText: presence.text,
-                statusTint: presence.tint,
-                startTitle: isPrimaryServiceRunning ? nil : startButtonTitle,
-                startHelp: startStopHelpText,
-                onStart: { Task { await app.startBot() } },
-                actions: { botActions }
-            )
-        }
+        .background { SidebarMaterialBackground() }
         .scrollEdgeEffectStyle(.soft, for: .all)
-        .confirmationDialog("Stop \(app.resolvedBotUsername)?", isPresented: $isConfirmingStop) {
-            Button(stopButtonTitle, role: .destructive) {
-                Task { await app.stopBot() }
-            }
-        } message: {
-            Text(stopConfirmationMessage)
+        // Hand-drawn rows lose List's arrow-key navigation; restore it.
+        .focusable()
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.upArrow) { moveSelection(by: -1) }
+        .onKeyPress(.downArrow) { moveSelection(by: 1) }
+        .task { isFocused = true }
+    }
+
+    private func row(for item: SidebarItem) -> some View {
+        SidebarNavigationRow(
+            title: item.rawValue,
+            systemImage: item.icon,
+            isSelected: selection == item,
+            selectionNamespace: selectionNamespace,
+            badgeCount: badgeCount(for: item)
+        ) {
+            select(item)
         }
-        .onAppear {
-            if shouldHideSwiftMesh && selection == .swiftMesh {
-                selection = .overview
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: SidebarRowFramesKey.self,
+                    value: [item: geo.frame(in: .named(Self.dragCoordinateSpace))]
+                )
             }
-        }
-        .onChange(of: app.settings.clusterMode) { _, newValue in
-            if newValue == .standalone && selection == .swiftMesh {
-                selection = .overview
-            }
+        )
+    }
+
+    private func select(_ item: SidebarItem) {
+        guard selection != item else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            selection = item
         }
     }
 
-    private func rows(for section: SidebarItemGroup) -> some View {
-        ForEach(section.items.filter(isVisible)) { item in
-            let isSelected = selection == item
-            Label(item.rawValue, systemImage: item.icon)
-                .symbolVariant(isSelected ? .fill : .none)
-                .badge(badgeCount(for: item))
-                // Monochrome glyphs sit behind their titles; the selected
-                // row's glyph takes the accent.
-                .listItemTint(isSelected ? .fixed(.accentColor) : .monochrome)
-                .tag(item)
-        }
+    private func moveSelection(by offset: Int) -> KeyPress.Result {
+        let items = visibleItems
+        guard let index = items.firstIndex(of: selection) else { return .ignored }
+        let target = index + offset
+        guard items.indices.contains(target) else { return .handled }
+        select(items[target])
+        return .handled
     }
 
-    /// Shared by the header's menu and its context menu.
-    @ViewBuilder
-    private var botActions: some View {
-        Section(sidebarModeLabel) {
-            if isPrimaryServiceRunning {
-                Button("\(stopButtonTitle)…", systemImage: "stop.fill", role: .destructive) {
-                    isConfirmingStop = true
+    /// Dragging across the rows moves the selection with the pointer.
+    private var selectionDragGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.dragCoordinateSpace))
+            .onChanged { value in
+                guard let target = visibleItems.first(where: { rowFrames[$0]?.contains(value.location) ?? false }) else {
+                    return
                 }
-            } else {
-                Button(startButtonTitle, systemImage: "play.fill") {
-                    Task { await app.startBot() }
-                }
+                select(target)
             }
-        }
-
-        Section {
-            SettingsLink {
-                Label("Settings…", systemImage: "gear")
-            }
-        }
-    }
-
-    /// SwiftMesh is the one row that hides itself — a standalone bot has no
-    /// cluster to show.
-    private func isVisible(_ item: SidebarItem) -> Bool {
-        item != .swiftMesh || !shouldHideSwiftMesh
     }
 
     /// A zero badge is not drawn.
     private func badgeCount(for item: SidebarItem) -> Int {
         item == .recordings ? app.recentMediaCount24h : 0
-    }
-
-    private var isPrimaryServiceRunning: Bool {
-        app.settings.clusterMode == .worker ? app.isWorkerServiceRunning : app.status != .stopped
-    }
-
-    /// A bot mid-connection reads as connecting rather than flipping straight
-    /// from Offline to Online.
-    private var presence: (text: String, tint: Color) {
-        if app.runtimeClusterMode != .worker {
-            switch app.status {
-            case .connecting: return ("Connecting…", .orange)
-            case .reconnecting: return ("Reconnecting…", .orange)
-            case .running, .stopped: break
-            }
-        }
-        return (app.primaryServiceStatusText, app.primaryServiceIsOnline ? .green : .secondary)
-    }
-
-    /// Node role for the actions menu, surfacing in-flight transitions
-    /// (Promoting…, Demoting…, Isolated, Recovering) instead of the
-    /// steady-state role during the transition window.
-    private var sidebarModeLabel: String {
-        let runtime = app.clusterSnapshot.runtimeState
-        if runtime != .idle {
-            return runtime.displayName
-        }
-        return app.clusterSnapshot.mode.rawValue
-    }
-
-    private var shouldHideSwiftMesh: Bool {
-        app.settings.clusterMode == .standalone
-    }
-
-    private var startButtonTitle: String {
-        switch app.settings.clusterMode {
-        case .worker: return "Start Worker"
-        case .standby: return "Start Failover Watch"
-        default: return "Start Bot"
-        }
-    }
-
-    private var stopButtonTitle: String {
-        switch app.settings.clusterMode {
-        case .worker: return "Stop Worker"
-        case .standby: return "Stop Failover Watch"
-        default: return "Stop Bot"
-        }
-    }
-
-    private var stopConfirmationMessage: String {
-        switch app.settings.clusterMode {
-        case .standby:
-            return "This Mac stops watching the Primary and won’t take over if the Primary goes down."
-        case .worker:
-            return "This Mac leaves the cluster and stops running jobs offloaded by the Primary."
-        default:
-            return "The bot disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again."
-        }
-    }
-
-    private var startStopHelpText: String {
-        switch app.settings.clusterMode {
-        case .standby:
-            return "Connects to Discord in passive mode and watches the Primary. The bot does not send messages until this node is promoted to Primary."
-        case .worker:
-            return "Joins the cluster as a Worker. Runs offloaded jobs dispatched by the Primary."
-        default:
-            return "Starts the SwiftBot Discord gateway connection."
-        }
-    }
-}
-
-/// The bot's identity: avatar, name and presence, with runtime actions behind a
-/// menu and on right-click. Detailed runtime state belongs to the Overview.
-private struct DashboardSidebarHeader<Actions: View>: View {
-    let name: String
-    let avatarURL: URL?
-    let statusText: String
-    let statusTint: Color
-    /// Set while the bot is stopped. Starting is the one thing a stopped bot
-    /// needs, so it sits beside the status as well as in the menu.
-    let startTitle: String?
-    let startHelp: String
-    let onStart: () -> Void
-    @ViewBuilder let actions: () -> Actions
-
-    var body: some View {
-        HStack(spacing: 12) {
-            SidebarAvatarView(avatarURL: avatarURL)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(name)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                HStack(spacing: 8) {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(statusTint)
-                            .frame(width: 7, height: 7)
-                        Text(statusText)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    .accessibilityElement(children: .combine)
-
-                    if let startTitle {
-                        Button("Start", action: onStart)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .help(startHelp)
-                            .accessibilityLabel(startTitle)
-                    }
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            Menu {
-                actions()
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.semibold))
-            }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .controlSize(.small)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Bot Actions")
-            .accessibilityLabel("Bot Actions")
-        }
-        .padding(.leading, 16)
-        .padding(.trailing, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 16)
-        .contentShape(Rectangle())
-        .contextMenu { actions() }
-    }
-}
-
-private struct SidebarAvatarView: View {
-    let avatarURL: URL?
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private let size: CGFloat = 44
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 11, style: .continuous)
-    }
-
-    var body: some View {
-        Group {
-            if let avatarURL {
-                AsyncImage(url: avatarURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .empty:
-                        placeholder(progress: true)
-                    case .failure:
-                        placeholder()
-                    @unknown default:
-                        placeholder()
-                    }
-                }
-            } else {
-                placeholder()
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(shape)
-        .overlay(
-            shape.strokeBorder(.white.opacity(colorScheme == .dark ? 0.12 : 0.30), lineWidth: 1)
-        )
-        .accessibilityHidden(true)
-    }
-
-    private func placeholder(progress: Bool = false) -> some View {
-        ZStack {
-            shape.fill(
-                LinearGradient(
-                    colors: [.blue.opacity(0.85), .indigo.opacity(0.85)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-
-            if progress {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white)
-            } else {
-                Image(systemName: "cpu.fill")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-        }
     }
 }
 

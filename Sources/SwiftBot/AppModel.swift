@@ -164,6 +164,9 @@ final class AppModel: ObservableObject {
     @Published var adminWebResolvedBaseURL: String = ""
     /// Whether the admin web server's listener is up, as of its last configure/restart.
     @Published var adminWebIsListening = false
+    /// A sidebar page another part of the app wants the main window to show
+    /// (e.g. Integrations after a SwiftMiner pairing link). RootView consumes it.
+    @Published var requestedSidebarItem: SidebarItem?
     @Published var adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
     @Published var workerModeMigrated = false
     @Published var swiftMinerPairingStatusMessage: String?

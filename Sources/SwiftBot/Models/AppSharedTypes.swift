@@ -160,6 +160,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case swiftMesh = "SwiftMesh"
     case sweep = "Sweep"
     case gameTracker = "Game Tracker"
+    case webInterface = "Web Interface"
+    case integrations = "Integrations"
 
     var id: String { rawValue }
 
@@ -183,26 +185,37 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .swiftMesh: return "point.3.connected.trianglepath.dotted"
         case .sweep: return "rectangle.stack.badge.minus"
         case .gameTracker: return "gamecontroller"
+        case .webInterface: return "globe"
+        case .integrations: return "puzzlepiece.extension"
         }
     }
+
+    /// Feature pages managed only in the admin WebUI. Their native views are
+    /// kept until they're deleted, but the app no longer lists them; the
+    /// WebUI is where rules, commands and the like are changed.
+    /// `AdminWebCopyTests` proves each one still has a WebUI page.
+    static let webOnlyItems: Set<SidebarItem> = [
+        .commands, .welcomeFlow, .automations, .moderation,
+        .gameTracker, .patchy, .sweep, .wikiBridge, .voice, .recordings,
+        .appleIntelligence, .analytics, .rewind
+    ]
+
+    /// Host settings for this Mac that only the native app shows. The WebUI
+    /// has no page for them by design (see the web secrets policy).
+    static let nativeOnlyItems: Set<SidebarItem> = [.webInterface, .integrations]
 
     /// The order and grouping the dashboard sidebar renders.
     ///
     /// The sidebar is driven by this list rather than hand-written rows so a new
     /// `SidebarItem` cannot be added to the enum, given a detail view, and then
     /// silently never appear in the app. `SidebarLayoutTests` asserts every case
-    /// is listed exactly once. Every destination is a direct row.
+    /// is listed exactly once, apart from `webOnlyItems`. Every destination is
+    /// a direct row.
+    ///
+    /// The native app is the host console: the bot's status, its services'
+    /// settings, and its log. One short, untitled group, as in SwiftMiner.
     static let sidebarSections: [SidebarItemGroup] = [
-        SidebarItemGroup(title: nil, items: [.overview]),
-        SidebarItemGroup(title: "Bot", items: [.commands, .welcomeFlow, .automations, .moderation]),
-        SidebarItemGroup(
-            title: "Features",
-            items: [.gameTracker, .patchy, .sweep, .wikiBridge, .voice, .recordings]
-        ),
-        SidebarItemGroup(
-            title: "System",
-            items: [.appleIntelligence, .analytics, .rewind, .activity, .swiftMesh]
-        )
+        SidebarItemGroup(title: nil, items: [.overview, .webInterface, .swiftMesh, .integrations, .activity])
     ]
 }
 

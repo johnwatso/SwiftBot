@@ -38,7 +38,9 @@ final class AdminWebCopyTests: XCTestCase {
             .gameTracker: "gametracker"
         ]
 
-        for item in SidebarItem.allCases {
+        // Native-only host pages (this Mac's Web Interface and Integrations
+        // settings) have no WebUI page by design.
+        for item in SidebarItem.allCases where !SidebarItem.nativeOnlyItems.contains(item) {
             let webView = try XCTUnwrap(webViewsBySidebarItem[item], "Missing WebUI mapping for \(item.rawValue)")
             XCTAssertTrue(html.contains(#"data-view="\#(webView)""#), "\(item.rawValue) is missing from WebUI navigation")
             XCTAssertTrue(html.contains(#"id="\#(webView)View""#), "\(item.rawValue) is missing a WebUI view section")

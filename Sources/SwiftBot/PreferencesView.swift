@@ -3,6 +3,9 @@ import SwiftUI
 struct PreferencesView: View {
     @EnvironmentObject var app: AppModel
 
+    static let generalTab = 0
+    static let updatesTab = 1
+
     // Persist selected tab to fix toolbar rendering issues
     @AppStorage("swiftbot.preferences.selectedTab")
     private var selectedTab = 0
@@ -27,42 +30,27 @@ struct PreferencesView: View {
                     .autosavesPreferences(for: app)
                 }
             } else {
+                // App-level preferences only. Each service's settings (Web
+                // Interface, SwiftMesh, Integrations) live on its own page in
+                // the main window's sidebar.
                 TabView(selection: $selectedTab) {
                     GeneralPreferencesView()
                         .tabItem {
                             Label("General", systemImage: "gear")
                         }
-                        .tag(0)
-
-                    MeshPreferencesView()
-                        .tabItem {
-                            Label("SwiftMesh", systemImage: "point.3.connected.trianglepath.dotted")
-                        }
-                        .tag(1)
-
-                    WebUIPreferencesView()
-                        .tabItem {
-                            Label("Web UI", systemImage: "globe")
-                        }
-                        .tag(2)
-
-                    IntegrationsSettingsView()
-                        .tabItem {
-                            Label("Integrations", systemImage: "app.connected.to.app.below.fill")
-                        }
-                        .tag(3)
+                        .tag(Self.generalTab)
 
                     UpdatesPreferencesView()
                         .tabItem {
                             Label("Updates", systemImage: "arrow.clockwise")
                         }
-                        .tag(4)
-
-                    AdvancedPreferencesView()
-                        .tabItem {
-                            Label("Developer", systemImage: "wrench")
-                        }
-                        .tag(5)
+                        .tag(Self.updatesTab)
+                }
+                // A tab saved by an older build (SwiftMesh, Web UI, …) no longer exists.
+                .onAppear {
+                    if ![Self.generalTab, Self.updatesTab].contains(selectedTab) {
+                        selectedTab = Self.generalTab
+                    }
                 }
                 .autosavesPreferences(for: app)
             }

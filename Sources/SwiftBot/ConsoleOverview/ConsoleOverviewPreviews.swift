@@ -38,8 +38,6 @@ private enum ConsoleOverviewPreviewData {
         QuickAction(id: "token", title: "Edit Bot Token", subtitle: "Replace the Discord bot token", symbol: "key", perform: {}),
         QuickAction(id: "test", title: "Test Connection", subtitle: "Check that Discord accepts the bot token",
                     symbol: "antenna.radiowaves.left.and.right", perform: {}),
-        QuickAction(id: "web", title: "Open Web Interface", subtitle: "Manage bot features in your browser",
-                    symbol: "arrow.up.forward.app", perform: {}),
         QuickAction(id: "logs", title: "View Logs", subtitle: "Recent runtime activity", symbol: "doc.text.magnifyingglass", perform: {})
     ]
 }
