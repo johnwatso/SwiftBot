@@ -221,7 +221,9 @@ extension AppModel {
                     channelName: member.channelName,
                     serverName: connectedServers[member.guildId] ?? member.guildId,
                     joinedText: "Joined \(member.joinedAt.formatted(date: .omitted, time: .shortened))",
-                    joinedAt: member.joinedAt
+                    joinedAt: member.joinedAt,
+                    avatarURL: (avatarURL(forUserId: member.userId, guildId: member.guildId)
+                        ?? fallbackAvatarURL(forUserId: member.userId))?.absoluteString
                 )
             }
 

@@ -6112,7 +6112,37 @@
     .overview-activity-filters button[aria-pressed="true"] { background:var(--cv-sidebar-active-bg, var(--home-tile-bg)); border-color:var(--accent); }
     #appShell #overviewLiveRow { align-items:stretch; margin-bottom:16px; }
     #appShell #overviewLiveRow .diagnostics-panel { min-width:0; }
-    #activeVoiceList { max-height:280px; overflow:auto; }
+    #activeVoiceList { max-height:360px; overflow:auto; }
+    /* Currently In Voice: one block per channel, a tile per member. */
+    .vc-channel { display: grid; gap: 10px; }
+    .vc-channel + .vc-channel { margin-top: 6px; }
+    .vc-channel-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 600; }
+    .vc-channel-head svg { width: 15px; height: 15px; flex: none; color: #30d158; }
+    .vc-channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vc-channel-server { color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .vc-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+    .vc-member {
+      display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0;
+      padding: 16px 10px 12px; border-radius: 14px; text-align: center;
+      background: var(--ub-fill); border: 1px solid var(--ub-stroke);
+    }
+    .vc-avatar {
+      position: relative; width: 56px; height: 56px; border-radius: 50%; flex: none;
+      box-shadow: 0 0 0 2px #30d158, 0 0 0 5px rgba(48, 209, 88, 0.22);
+      animation: vc-live 2.6s ease-in-out infinite;
+    }
+    .vc-avatar img, .vc-avatar-fallback { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+    .vc-avatar-fallback {
+      display: none; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700; color: #fff; background: hsl(var(--vc-hue, 220) 55% 45%);
+    }
+    .vc-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 600; }
+    .vc-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    @keyframes vc-live {
+      0%, 100% { box-shadow: 0 0 0 2px #30d158, 0 0 0 4px rgba(48, 209, 88, 0.28); }
+      50% { box-shadow: 0 0 0 2px #30d158, 0 0 0 8px rgba(48, 209, 88, 0); }
+    }
+    @media (prefers-reduced-motion: reduce) { .vc-avatar { animation: none; } }
     #opsActivity { min-height:180px; }
     #overviewTopRow .cv-usage-panel { margin-bottom:16px; }
     #overviewView.overview-stale :is(.ops-tile, .ops-overall, .home-vital .ops-dot) { --ops-color:var(--muted); }
@@ -8415,23 +8445,38 @@
         grouped.get(key).push(item);
       }
 
+      // Initial-letter bubble when there's no avatar or it fails to load,
+      // tinted per member so neighbours don't all look the same.
+      const hueFor = (id) => [...String(id || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
       const blocks = [];
       for (const [key, members] of grouped.entries()) {
         const [channelName, serverName] = key.split('||');
-        const rows = members.map(member => `
-          <div class="event-item ok">
-            <div class="event-title">${escapeHTML(member.username)}</div>
-            <div class="event-time">${member.joinedAt ? `<span data-voice-joined="${escapeHTML(member.joinedAt)}">${voiceDuration(member.joinedAt)}</span>` : escapeHTML(member.joinedText)}</div>
-          </div>
-        `).join('');
+        const tiles = members.map(member => {
+          const name = member.username || 'Member';
+          const initial = escapeHTML(name.trim().charAt(0).toUpperCase() || '?');
+          return `
+          <div class="vc-member">
+            <span class="vc-avatar" style="--vc-hue:${hueFor(member.userId)};" aria-hidden="true">
+              ${member.avatarURL ? `<img src="${escapeHTML(member.avatarURL)}" alt="" loading="lazy" data-fallback="next-sibling">` : ''}
+              <span class="vc-avatar-fallback"${member.avatarURL ? '' : ' style="display:flex;"'}>${initial}</span>
+            </span>
+            <span class="vc-name" title="${escapeHTML(name)}">${escapeHTML(name)}</span>
+            <span class="vc-time">${member.joinedAt ? `<span data-voice-joined="${escapeHTML(member.joinedAt)}">${voiceDuration(member.joinedAt)}</span>` : escapeHTML(member.joinedText)}</span>
+          </div>`;
+        }).join('');
         blocks.push(`
-          <div style="display:grid;gap:6px;">
-            <div class="command-desc" style="font-weight:600;">${escapeHTML(channelName)} · ${escapeHTML(serverName)}</div>
-            ${rows}
+          <div class="vc-channel">
+            <div class="vc-channel-head">
+              <i class="lucide" data-lucide="volume-2"></i>
+              <span class="vc-channel-name">${escapeHTML(channelName)}</span>
+              <span class="vc-channel-server">· ${escapeHTML(serverName)}</span>
+            </div>
+            <div class="vc-members">${tiles}</div>
           </div>
         `);
       }
       node.innerHTML = blocks.join('');
+      refreshIcons();
     }
 
     function commandBadge(label, extraClass = '') {

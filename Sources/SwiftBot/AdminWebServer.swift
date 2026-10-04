@@ -269,6 +269,8 @@ struct AdminWebActiveVoicePayload: Codable {
     let serverName: String
     let joinedText: String
     var joinedAt: Date? = nil
+    /// Server avatar when set, else their Discord avatar (cdn.discordapp.com).
+    var avatarURL: String? = nil
 }
 
 struct AdminWebDiscordUser: Codable, Sendable {
