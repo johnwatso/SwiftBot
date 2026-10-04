@@ -1720,7 +1720,6 @@ actor AdminWebServer {
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
-    private var generateSwiftMeshJoinCode: (@Sendable () async -> String?)?
     private var swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)?
     /// (userID, servers a member may see or nil for an admin, guild, period).
     private var memberReplayProvider: (@Sendable (String, [String]?, String?, String?) async -> AdminWebMemberReplayPayload?)?
@@ -1864,7 +1863,6 @@ actor AdminWebServer {
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
-        generateSwiftMeshJoinCode: @escaping @Sendable () async -> String?,
         swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)? = nil,
         memberReplayProvider: (@Sendable (String, [String]?, String?, String?) async -> AdminWebMemberReplayPayload?)? = nil,
         memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)? = nil,
@@ -1970,7 +1968,6 @@ actor AdminWebServer {
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
-        self.generateSwiftMeshJoinCode = generateSwiftMeshJoinCode
         self.swiftMeshProvider = swiftMeshProvider
         self.memberReplayProvider = memberReplayProvider
         self.memberClipsProvider = memberClipsProvider
@@ -4075,24 +4072,6 @@ actor AdminWebServer {
             }
             audit(source: "Web Config", actor: actorLabel(session), action: "SwiftMesh \(action.action)\(action.node.map { " \($0)" } ?? "")")
             return jsonResponse(["ok": true])
-        case ("GET", "/api/swiftmesh/join-code"):
-            // The Join Code embeds the leader's shared secret, so treat it as
-            // a bearer credential: admin-only, generated on demand (never cached),
-            // and audit-logged so a leak can be traced.
-            guard let session = authenticatedSession(for: request) else {
-                return unauthorizedResponse()
-            }
-            guard requireRole(.admin, session: session) else {
-                return forbiddenResponse()
-            }
-            guard let code = await generateSwiftMeshJoinCode?(), !code.isEmpty else {
-                return jsonResponse(
-                    ["error": "unavailable", "message": "Join Code is only available on Primary nodes."],
-                    status: "409 Conflict"
-                )
-            }
-            audit(source: "Web Config", actor: actorLabel(session), action: "Viewed SwiftMesh Join Code")
-            return jsonResponse(["code": code])
 
         // MARK: - OAuth Authentication
         //

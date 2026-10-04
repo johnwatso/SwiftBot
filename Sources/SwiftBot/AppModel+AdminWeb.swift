@@ -2485,13 +2485,6 @@ extension AppModel {
                 _ = await MainActor.run { model.refreshClusterStatus() }
                 return true
             },
-            generateSwiftMeshJoinCode: { [weak self] in
-                guard let model = self else { return nil }
-                // Only Primary nodes have a meaningful Join Code to share.
-                let isLeader = await MainActor.run { model.settings.clusterMode == .leader }
-                guard isLeader else { return nil }
-                return await model.generateSwiftMeshJoinCode()
-            },
             swiftMeshProvider: { [weak self] in
                 guard let model = self else { return nil }
                 return await model.adminWebSwiftMeshSnapshot()

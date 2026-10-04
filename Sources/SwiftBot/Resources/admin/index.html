@@ -16501,18 +16501,14 @@
             <button id="meshRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
           </div>
           ${nodes.length ? `<div class="ub-list glass">${nodeRows}</div>` : `
-            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Copy the join code below and paste it into SwiftMesh on the other Mac.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
+            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Copy the join code from SwiftMesh in the SwiftBot app on this Mac and paste it into SwiftMesh on the other Mac.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
         </section>
         ${isLeader ? group('Work sharing', `
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
           ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
         `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
-        ${isLeader ? group('Add a node', row('Join code', 'Paste it into SwiftMesh on the other Mac, or open it here if this browser is on that Mac. It contains the mesh’s shared secret, so treat it like a password.',
-          `<span class="mesh-join-actions">
-             <button id="meshJoinCopy" class="secondary-action" type="button"><i class="lucide" data-lucide="copy"></i> Copy</button>
-             <button id="meshJoinOpen" class="secondary-action" type="button"><i class="lucide" data-lucide="external-link"></i> Open</button>
-           </span>`) + '<div id="meshJoinFeedback" class="ub-help hidden" style="margin:0 0 12px;"></div>') : ''}
+        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> To add a node, copy the join code from SwiftMesh in the SwiftBot app on this Mac. It contains the mesh’s shared secret, so it never leaves the Mac through the web.</p>' : ''}
         ${group('Configuration', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
             <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
@@ -16588,44 +16584,6 @@
       if (!operatorsData) loadOperators().then(() => { if (currentView === 'swiftmesh') renderSwiftMeshView(); }).catch(() => {});
       panels.querySelectorAll('[data-mesh-setup]').forEach(btn => btn.addEventListener('click', () => openSwiftMeshEditor(btn.dataset.meshSetup)));
 
-      const joinFeedback = panels.querySelector('#meshJoinFeedback');
-      const showJoinFeedback = (message, isError = false) => {
-        if (!joinFeedback) return;
-        joinFeedback.textContent = message;
-        joinFeedback.classList.remove('hidden');
-        joinFeedback.style.color = isError ? 'var(--danger,#d33)' : '';
-        if (!isError) setTimeout(() => joinFeedback.classList.add('hidden'), 2500);
-      };
-      const fetchJoinCode = async () => {
-        const res = await fetch('/api/swiftmesh/join-code', { headers: { 'Accept': 'application/json' } });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.code) throw new Error(data.message || 'Couldn’t get a join code.');
-        return data.code;
-      };
-      panels.querySelector('#meshJoinCopy')?.addEventListener('click', async (e) => {
-        const button = e.currentTarget;
-        button.disabled = true;
-        try {
-          await navigator.clipboard.writeText(await fetchJoinCode());
-          showJoinFeedback('Copied. Paste it into SwiftMesh on the other Mac.');
-        } catch (err) {
-          showJoinFeedback(String(err.message || err), true);
-        } finally {
-          button.disabled = false;
-        }
-      });
-      panels.querySelector('#meshJoinOpen')?.addEventListener('click', async (e) => {
-        const button = e.currentTarget;
-        button.disabled = true;
-        try {
-          // swiftmesh:// is handled by the macOS app, which asks before applying.
-          window.location.href = await fetchJoinCode();
-        } catch (err) {
-          showJoinFeedback(String(err.message || err), true);
-        } finally {
-          button.disabled = false;
-        }
-      });
       refreshIcons();
     }
 
