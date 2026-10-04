@@ -347,7 +347,9 @@ actor GatewayEventDispatcher {
               let interactionID = stringValue(for: "id", in: map),
               let interactionToken = stringValue(for: "token", in: map),
               case let .int(kind)? = map["type"],
-              kind == 2 || kind == 3,
+              // 2 = APPLICATION_COMMAND, 3 = MESSAGE_COMPONENT, 5 = MODAL_SUBMIT.
+              // Modal submits carry `custom_id`/`components` but no `data.name`.
+              kind == 2 || kind == 3 || kind == 5,
               case let .object(data)? = map["data"] else {
             return nil
         }

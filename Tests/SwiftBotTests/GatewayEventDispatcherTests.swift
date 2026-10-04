@@ -159,3 +159,65 @@ extension GatewayEventDispatcherTests {
         XCTAssertTrue(event.playingActivities.isEmpty)
     }
 }
+
+private actor InteractionCreateCapture {
+    private(set) var event: GatewayInteractionCreateEvent?
+    func set(_ value: GatewayInteractionCreateEvent) { event = value }
+}
+
+extension GatewayEventDispatcherTests {
+    func testModalSubmitInteractionIsDispatchedWithoutCommandName() async throws {
+        let capture = InteractionCreateCapture()
+        let dispatcher = GatewayEventDispatcher(
+            onEventReceived: { _ in },
+            onMessageCreate: { _ in },
+            onMessageReactionAdd: { _ in },
+            onInteractionCreate: { event in await capture.set(event) },
+            onVoiceStateUpdate: { _ in },
+            onVoiceServerUpdate: { _ in },
+            onReady: { _, _ in },
+            onGuildCreate: { _ in },
+            onChannelCreate: { _ in },
+            onMemberJoin: { _ in },
+            onMemberLeave: { _ in },
+            onGuildDelete: { _ in },
+            onPresenceUpdate: { _ in }
+        )
+
+        let payload = GatewayPayload(
+            op: 0,
+            d: .object([
+                "id": .string("interaction-1"),
+                "token": .string("token-1"),
+                "type": .int(5),
+                "channel_id": .string("channel-1"),
+                "user": .object(["id": .string("user-1"), "username": .string("alice")]),
+                "data": .object([
+                    "custom_id": .string(SwiftMinerDMEmbedBuilders.editGamesModalCustomID),
+                    "components": .array([
+                        .object([
+                            "type": .int(1),
+                            "components": .array([
+                                .object([
+                                    "type": .int(4),
+                                    "custom_id": .string(SwiftMinerDMEmbedBuilders.editGamesInputID),
+                                    "value": .string("THE FINALS\nRust")
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
+            ]),
+            s: 1,
+            t: "INTERACTION_CREATE"
+        )
+
+        await dispatcher.dispatch(payload, shouldProcessPrimaryGatewayActions: true)
+
+        let captured = await capture.event
+        let event = try XCTUnwrap(captured)
+        XCTAssertEqual(event.interactionType, 5)
+        XCTAssertNil(event.commandName)
+        XCTAssertEqual(event.data["custom_id"], .string(SwiftMinerDMEmbedBuilders.editGamesModalCustomID))
+    }
+}
