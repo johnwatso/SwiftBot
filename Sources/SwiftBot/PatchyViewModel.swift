@@ -261,11 +261,20 @@ enum PatchyRuntime {
     private static func statusLabel(_ result: UpdateChangeResult) -> String {
         switch result {
         case .firstSeen(let id):
-            return "firstSeen (\(id))"
+            return "firstSeen (\(shortIdentifier(id)))"
         case .changed(let old, let new):
-            return "changed (\(old) -> \(new))"
+            return "changed (\(shortIdentifier(old)) -> \(shortIdentifier(new)))"
         case .unchanged(let id):
-            return "unchanged (\(id))"
+            return "unchanged (\(shortIdentifier(id)))"
         }
+    }
+
+    /// "commit:07db1553dd8e…" → "commit:07db155", as git shows it.
+    private static func shortIdentifier(_ id: String) -> String {
+        let prefix = "commit:"
+        guard id.hasPrefix(prefix) else { return id }
+        let sha = id.dropFirst(prefix.count)
+        guard sha.count > 7, sha.allSatisfy(\.isHexDigit) else { return id }
+        return prefix + sha.prefix(7)
     }
 }

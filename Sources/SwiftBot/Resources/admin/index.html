@@ -9329,7 +9329,7 @@
             </div>
             <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
               <div class="ub-row-text"><div class="ub-row-title">Post the server Replay in</div><div class="ub-row-desc">The server-wide recap everyone sees.</div></div>
-              <select id="rwDropChannel" class="field-select rw-picker"><option value="">Don’t post</option>${g.channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === g.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>
+              <select id="rwDropChannel" class="field-select rw-picker" aria-label="Channel for Replay posts"><option value="">Don’t post</option>${g.channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === g.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>
             </div>
             <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
               <div class="ub-row-text">
@@ -12124,7 +12124,7 @@
                 <div class="ub-row-title">Runs at</div>
                 <div class="ub-row-desc">${escapeHTML(data.timeZoneIdentifier || '')}</div>
               </div>
-              <select id="gtHour" class="field-select prefs-control" ${data.dailyCheckEnabled && !readOnly ? '' : 'disabled'}>${hourOptions}</select>
+              <select id="gtHour" class="field-select prefs-control" aria-label="Daily check time" ${data.dailyCheckEnabled && !readOnly ? '' : 'disabled'}>${hourOptions}</select>
             </div>
             <div class="ub-row">
               <div class="ub-row-text">
@@ -16507,7 +16507,7 @@
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
           ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
-        `) : ''}
+        `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
         ${isLeader ? group('Add a node', row('Join code', 'Paste it into SwiftMesh on the other Mac, or open it here if this browser is on that Mac. It contains the mesh’s shared secret, so treat it like a password.',
           `<span class="mesh-join-actions">
              <button id="meshJoinCopy" class="secondary-action" type="button"><i class="lucide" data-lucide="copy"></i> Copy</button>
@@ -17535,8 +17535,11 @@
         userprefs.classList.add('hidden');
         voice.classList.add('hidden');
         section.classList.add('hidden');
+        // With nothing loaded yet, renderSwiftMeshView starts the first load
+        // itself; only refresh here when it drew cached data.
+        const meshCached = !!swiftMeshData;
         renderSwiftMeshView();
-        loadSwiftMesh().then(() => { if (currentView === 'swiftmesh') { renderSwiftMeshView(); startSwiftMeshPolling(); } }).catch(() => {});
+        if (meshCached) loadSwiftMesh().then(() => { if (currentView === 'swiftmesh') { renderSwiftMeshView(); startSwiftMeshPolling(); } }).catch(() => {});
         if (mobileSubtitle) mobileSubtitle.textContent = 'SwiftMesh';
         setMessage('', '');
       } else if (view === 'userprefs') {
@@ -18628,7 +18631,7 @@
     <div class="modal glass">
       <div class="modal-header">
         <div class="modal-title" id="modalTitle">Modal Title</div>
-        <button class="mini-btn" data-action="hideModal"><i class="lucide" data-lucide="x"></i></button>
+        <button class="mini-btn" type="button" data-action="hideModal" aria-label="Close"><i class="lucide" data-lucide="x"></i></button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>
