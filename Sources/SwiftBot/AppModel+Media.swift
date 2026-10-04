@@ -502,20 +502,30 @@ extension AppModel {
 
         if let range = normalized.range(of: "_replay_", options: [.caseInsensitive]) {
             let rawGame = String(normalized[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if rawGame.isEmpty {
-                return "Unknown"
-            }
-            if rawGame.lowercased() == "unknown" {
-                return "Unknown"
-            }
-            return rawGame.replacingOccurrences(of: "_", with: " ")
+            return Self.canonicalMediaGameName(rawGame.replacingOccurrences(of: "_", with: " "))
         }
 
-        if normalized.lowercased().hasPrefix("replay_") {
-            return "Unknown"
-        }
-
+        // "Unknown" (a replay with no game) and "Unlabeled" both mean there's
+        // no game to file it under, so they share one filter entry.
         return "Unlabeled"
+    }
+
+    /// Folds the names recorders write for one game into a single filter
+    /// entry: "cod" shorthand, and Call of Duty HQ's launcher names that list
+    /// every bundled title ("Call of Duty Modern Warfare II Call of Duty
+    /// Modern Warfare III Warzone 2.0") or tack Warzone onto one.
+    static func canonicalMediaGameName(_ raw: String) -> String {
+        let name = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let lower = name.lowercased()
+        if name.isEmpty || lower == "unknown" { return "Unlabeled" }
+        if lower == "cod" { return "Call of Duty" }
+        guard lower.hasPrefix("call of duty ") else { return name }
+        if lower.components(separatedBy: "call of duty").count > 2 { return "Call of Duty" }
+        let warzoneSuffix = " warzone 2.0"
+        if lower.hasSuffix(warzoneSuffix), lower.count > "call of duty".count + warzoneSuffix.count {
+            return String(name.dropLast(warzoneSuffix.count))
+        }
+        return name
     }
 
     private func normalizedGameKey(_ name: String) -> String {
