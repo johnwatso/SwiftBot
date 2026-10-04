@@ -959,7 +959,10 @@ extension AppModel {
                 autoStart: settings.autoStart,
                 webUIEnabled: settings.adminWebUI.enabled,
                 webUIBaseURL: adminWebBaseURL(),
-                inviteURL: resolvedClientID.flatMap {
+                // resolvedClientID is only filled by onboarding or the native
+                // invite button; the bot's user ID is its application ID, so
+                // fall back to it once connected (same as resolveClientID does).
+                inviteURL: (resolvedClientID ?? botUserId).flatMap {
                     service.generateInviteURL(
                         clientId: $0,
                         includeSlashCommands: settings.commandsEnabled && settings.slashCommandsEnabled
