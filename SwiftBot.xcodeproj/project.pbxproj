@@ -220,6 +220,7 @@
 		AC55DF43FED0AFC0CC0E93AD /* VersionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56B92A68CA713508AFAA6AB5 /* VersionStore.swift */; };
 		AE44A1A66631EBD7F6E9B30B /* MusicLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830E8722A4F9F7E669258BD6 /* MusicLookupService.swift */; };
 		AF5002376232E1FACDA7DB1B /* SwiftMinerE2EIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4622FDCA8F04C6BA993CBEFA /* SwiftMinerE2EIntegrationTests.swift */; };
+		AFFA341D85DEAA6D996DA38A /* RecordingReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 502E0075EDE3963ADA6CFD52 /* RecordingReliabilityTests.swift */; };
 		B05A581D1D38DD1E658FB806 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 7551369833EB21380EB8B404 /* SwiftSoup */; };
 		B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */; };
 		B0A3A295C27D6377473DDCB1 /* PatchySwiftMinerCampaignRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCE98B0A1EEFDAEC5B73641 /* PatchySwiftMinerCampaignRouterTests.swift */; };
@@ -472,6 +473,7 @@
 		4E77049930E8BAD515BCDF64 /* BotSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotSettings.swift; sourceTree = "<group>"; };
 		4F8C19725A4BF5A95D20716E /* TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelManager.swift; sourceTree = "<group>"; };
 		4FD7CC99C87BE90F546F28D9 /* VoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceView.swift; sourceTree = "<group>"; };
+		502E0075EDE3963ADA6CFD52 /* RecordingReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingReliabilityTests.swift; sourceTree = "<group>"; };
 		5152D6994A1E1D6C4424C759 /* AppModel+AdminWebSwiftMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AdminWebSwiftMesh.swift"; sourceTree = "<group>"; };
 		522C60906F9932F6C65019FF /* VariableAutocompleteField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VariableAutocompleteField.swift; sourceTree = "<group>"; };
 		52D31CA4ABA315FA4F545911 /* GameAnnouncementRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameAnnouncementRendererTests.swift; sourceTree = "<group>"; };
@@ -782,6 +784,7 @@
 				91ABEBD12412EFE6AC5B36CB /* OperatorAlertTests.swift */,
 				EDCE98B0A1EEFDAEC5B73641 /* PatchySwiftMinerCampaignRouterTests.swift */,
 				ADDBE745C4836C8F28F219B2 /* PatchyValidationTests.swift */,
+				502E0075EDE3963ADA6CFD52 /* RecordingReliabilityTests.swift */,
 				01920F21A201163E878C331E /* ReplayTests.swift */,
 				803EAE97D6A0E7EF802071F0 /* RewindTests.swift */,
 				C7546575978DE7338211F7EB /* SidebarLayoutTests.swift */,
@@ -1560,6 +1563,7 @@
 				2C759142E9C830EC34914430 /* OperatorAlertTests.swift in Sources */,
 				B0A3A295C27D6377473DDCB1 /* PatchySwiftMinerCampaignRouterTests.swift in Sources */,
 				F3448FDDAE9DF8344C392F3D /* PatchyValidationTests.swift in Sources */,
+				AFFA341D85DEAA6D996DA38A /* RecordingReliabilityTests.swift in Sources */,
 				A8D1B2A940DCCAA5F8006C19 /* ReplayTests.swift in Sources */,
 				CC9D6634C1B265CCB11BDDD0 /* RewindTests.swift in Sources */,
 				A4EC1095AD148E360010B10A /* SidebarLayoutTests.swift in Sources */,
@@ -1621,7 +1625,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026100421;
+				CURRENT_PROJECT_VERSION = 2026100422;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1648,7 +1652,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.27.2;
+				MARKETING_VERSION = 1.27.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1859,7 +1863,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026100421;
+				CURRENT_PROJECT_VERSION = 2026100422;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1886,7 +1890,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.27.2;
+				MARKETING_VERSION = 1.27.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
