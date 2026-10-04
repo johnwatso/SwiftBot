@@ -4156,15 +4156,14 @@ extension AppModel {
 
 extension SweepRunReport {
     /// The WebUI previews a run from `groups`; `actions` lists every message
-    /// (with its text) and made /api/sweep over 1 MB, so it's only sent for
-    /// older reports that predate groups.
+    /// (with its text) and made /api/sweep over 1 MB. Reports saved before
+    /// groups existed get them built here, so `actions` is never sent.
     var webTrimmed: SweepRunReport {
-        guard groups != nil else { return self }
-        return SweepRunReport(
+        SweepRunReport(
             id: id, policyID: policyID, policyName: policyName, startedAt: startedAt,
             durationMS: durationMS, scanned: scanned, matched: matched, executed: executed,
             suppressed: suppressed, dryRun: dryRun, actions: [], error: error,
-            summary: summary, groups: groups
+            summary: summary, groups: groups ?? SweepActionGroup.summarise(actions)
         )
     }
 
