@@ -2455,6 +2455,9 @@ actor AdminWebServer {
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
             return serveIndex()
+        case ("HEAD", "/"), ("HEAD", "/index.html"):
+            // Uptime monitors and link checkers probe with HEAD.
+            return headersOnly(serveIndex())
         case ("GET", "/favicon.ico"), ("GET", "/favicon.png"):
             return serveAsset(named: "favicon", ext: "png")
         case ("GET", "/assets/AppIcon.png"):
@@ -5885,6 +5888,13 @@ actor AdminWebServer {
             .replacingOccurrences(of: ">", with: "&gt;")
     }
 
+    /// A HEAD reply: the GET response's status and headers (Content-Length
+    /// included) without its body.
+    private func headersOnly(_ response: Data) -> Data {
+        guard let end = response.range(of: Data("\r\n\r\n".utf8)) else { return response }
+        return response.subdata(in: response.startIndex..<end.upperBound)
+    }
+
     private func redirectResponse(to location: String, headers: [String: String] = [:]) -> Data {
         var finalHeaders = headers
         finalHeaders["Location"] = location
@@ -5926,7 +5936,11 @@ actor AdminWebServer {
         if normalizedHeaders["cross-origin-resource-policy"] == nil {
             response += "Cross-Origin-Resource-Policy: same-origin\r\n"
         }
-        if activeTransportUsesTLS, normalizedHeaders["strict-transport-security"] == nil {
+        // Behind a TLS-terminating tunnel (cloudflared) this server speaks
+        // plain HTTP, but the public address is HTTPS. Browsers ignore HSTS
+        // received over plain HTTP, so LAN access is unaffected.
+        let servedOverHTTPS = activeTransportUsesTLS || activePublicBaseURL.lowercased().hasPrefix("https://")
+        if servedOverHTTPS, normalizedHeaders["strict-transport-security"] == nil {
             response += "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n"
         }
         // For HTML responses without an explicit CSP (e.g. auth status pages), apply
