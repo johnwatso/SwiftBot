@@ -169,6 +169,8 @@ final class AppModel: ObservableObject {
     @Published var gameTrackingLastCheckAt: Date?
     @Published var gameTrackingNextCheckAt: Date?
     @Published var gameTrackingBaselines: [UUID: GameRankBaseline] = [:]
+    /// "Rank hidden" / "Unranked this season" for players with no score to track.
+    @Published var gameTrackingRankUnavailable: [UUID: String] = [:]
     @Published var gameTrackingHistory: [GameTrackingHistoryEntry] = []
     /// Message from the most recent failed call to each game data provider,
     /// cleared as soon as a call to that provider succeeds. Drives the

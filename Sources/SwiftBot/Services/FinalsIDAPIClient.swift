@@ -36,6 +36,16 @@ enum FinalsIDAPIError: LocalizedError, Equatable {
             return "This player has no ranked score this season yet."
         }
     }
+
+    /// Short player-row label for profile states that are expected rather
+    /// than failures; nil for real errors.
+    var rankUnavailableLabel: String? {
+        switch self {
+        case .rankHidden: return "Rank hidden"
+        case .unranked: return "Unranked this season"
+        default: return nil
+        }
+    }
 }
 
 actor FinalsIDAPIClient: GameRankProvider {

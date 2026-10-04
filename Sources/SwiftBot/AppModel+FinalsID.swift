@@ -155,6 +155,7 @@ extension AppModel {
                 )
                 gameProviderConnectionFailures[target.provider] = nil
                 let key = target.id.uuidString
+                runtimeState.rankUnavailableByTargetID[key] = nil
                 let baseline = GameRankBaseline(
                     snapshot: snapshot,
                     displayName: target.resolvedDisplayName,
@@ -188,6 +189,12 @@ extension AppModel {
                 case .changed(let change):
                     changedSnapshots.append((change, baseline))
                 }
+            } catch let error as FinalsIDAPIError where error.rankUnavailableLabel != nil {
+                // The provider answered; this profile just has no score to
+                // track. Show it on the player instead of failing every check.
+                gameProviderConnectionFailures[target.provider] = nil
+                runtimeState.rankUnavailableByTargetID[target.id.uuidString] = error.rankUnavailableLabel
+                successfulFetches += 1
             } catch {
                 gameProviderConnectionFailures[target.provider] = error.localizedDescription
                 failures.append("\(target.resolvedDisplayName): \(error.localizedDescription)")
@@ -429,9 +436,11 @@ extension AppModel {
 
     private func clearGameTrackingBaseline(for playerID: UUID) {
         gameTrackingBaselines[playerID] = nil
+        gameTrackingRankUnavailable[playerID] = nil
         Task {
             var state = await gameTrackingStateStore.load()
             state.baselinesByTargetID[playerID.uuidString] = nil
+            state.rankUnavailableByTargetID[playerID.uuidString] = nil
             try? await gameTrackingStateStore.save(state)
             publishGameTrackingState(state)
         }
@@ -449,6 +458,10 @@ extension AppModel {
         gameTrackingLastCheckAt = state.lastSuccessfulCheckAt
         gameTrackingHistory = state.history
         gameTrackingBaselines = Dictionary(uniqueKeysWithValues: state.baselinesByTargetID.compactMap { key, value in
+            guard let id = UUID(uuidString: key) else { return nil }
+            return (id, value)
+        })
+        gameTrackingRankUnavailable = Dictionary(uniqueKeysWithValues: state.rankUnavailableByTargetID.compactMap { key, value in
             guard let id = UUID(uuidString: key) else { return nil }
             return (id, value)
         })

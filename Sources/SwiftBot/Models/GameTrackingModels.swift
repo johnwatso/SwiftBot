@@ -774,12 +774,16 @@ struct GameTrackingRuntimeState: Codable, Hashable, Sendable {
     var lastAttemptAt: Date?
     var lastSuccessfulCheckAt: Date?
     var history: [GameTrackingHistoryEntry] = []
+    /// Players whose profile answered but has no score to track, keyed like
+    /// baselines, with a short label ("Rank hidden"). Not a check failure.
+    var rankUnavailableByTargetID: [String: String] = [:]
 
     private enum CodingKeys: String, CodingKey {
         case baselinesByTargetID
         case lastAttemptAt
         case lastSuccessfulCheckAt
         case history
+        case rankUnavailableByTargetID
     }
 
     init() {}
@@ -793,6 +797,10 @@ struct GameTrackingRuntimeState: Codable, Hashable, Sendable {
         lastAttemptAt = try container.decodeIfPresent(Date.self, forKey: .lastAttemptAt)
         lastSuccessfulCheckAt = try container.decodeIfPresent(Date.self, forKey: .lastSuccessfulCheckAt)
         history = try container.decodeIfPresent([GameTrackingHistoryEntry].self, forKey: .history) ?? []
+        rankUnavailableByTargetID = try container.decodeIfPresent(
+            [String: String].self,
+            forKey: .rankUnavailableByTargetID
+        ) ?? [:]
     }
 
     mutating func record(_ entry: GameTrackingHistoryEntry) {

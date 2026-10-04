@@ -461,6 +461,8 @@ struct AdminWebGameTrackerPlayerPayload: Codable {
     let rankName: String?
     let score: Int?
     let baselineRecordedAt: Date?
+    /// "Rank hidden" / "Unranked this season" when the profile has no score.
+    var rankUnavailable: String?
     /// Editable fields the WebUI player editor round-trips.
     var discordUserID: String = ""
 }

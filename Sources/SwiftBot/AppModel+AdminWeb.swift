@@ -3748,6 +3748,7 @@ extension AppModel {
                 } ?? baseline?.rankName,
                 score: baseline?.score,
                 baselineRecordedAt: baseline?.recordedAt,
+                rankUnavailable: gameTrackingRankUnavailable[player.id],
                 discordUserID: player.discordUserID
             )
         }

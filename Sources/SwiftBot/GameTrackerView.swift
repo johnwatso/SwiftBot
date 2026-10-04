@@ -323,7 +323,8 @@ struct GameTrackerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(baseline.map { $0.score.formatted() } ?? "—")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text(baseline == nil ? "Awaiting baseline" : "Ranked Score")
+                    Text(app.gameTrackingRankUnavailable[player.id]
+                        ?? (baseline == nil ? "Awaiting baseline" : "Ranked Score"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

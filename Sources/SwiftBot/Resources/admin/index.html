@@ -5443,7 +5443,9 @@
       font-size: 14px; font-weight: 700; color: var(--text); background: var(--ub-fill); border: 1px solid var(--ub-stroke);
     }
     .ub-item.is-off .gt-avatar { opacity: 0.55; }
-    .gt-score strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+    .gt-score strong { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* Long player names truncate instead of running under the score on phones. */
+    #gametrackerPlayers .ub-item-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .gt-score span { font-size: 12px; color: var(--muted); }
     .gt-warn { color: #ff9f0a; }
     .ub-row.is-dimmed { opacity: 0.5; }
@@ -12046,9 +12048,10 @@
         const gameIDs = [...new Set([...catalogGames.map(g => g.id), ...players.map(p => p.game)])]
           .filter(id => players.some(p => p.game === id));
         const playerRow = (player) => {
-          const score = player.score === null || player.score === undefined
-            ? (player.supportsRankedScore ? 'Awaiting first check' : 'Rank not tracked')
-            : `${player.score.toLocaleString()} SR`;
+          const score = player.rankUnavailable
+            || (player.score === null || player.score === undefined
+              ? (player.supportsRankedScore ? 'Awaiting first check' : 'Rank not tracked')
+              : `${player.score.toLocaleString()} SR`);
           const rank = [player.rankName, player.season].filter(Boolean).join(' · ');
           return `
             <div class="ub-item${player.isEnabled ? '' : ' is-off'}" data-player-id="${escapeHTML(player.id)}">
