@@ -138,8 +138,8 @@ extension AppModel {
         let enabledWikiSourceCount = settings.wikiBot.sources.filter(\.enabled).count
         let patchyTargetCount = settings.patchy.sourceTargets.count
         let patchyEnabledTargetCount = settings.patchy.sourceTargets.filter(\.isEnabled).count
-        let actionRuleCount = ruleStore.rules.count
-        let enabledActionRuleCount = ruleStore.rules.filter(\.isEnabled).count
+        let actionRuleCount = totalAutomationRuleCount
+        let enabledActionRuleCount = enabledAutomationRuleCount
         let clusterLeader = clusterNodes.first(where: { $0.role == .leader })?.hostname
             ?? clusterNodes.first?.hostname
             ?? "Unavailable"
@@ -285,6 +285,7 @@ extension AppModel {
             events: events,
             commandLog: commandLog,
             rules: ruleStore.rules,
+            enabledAutomationCount: automationStore.rules.filter(\.enabled).count,
             clusterNodes: clusterNodes,
             clusterSnapshot: clusterSnapshot,
             diagnostics: connectionDiagnostics,

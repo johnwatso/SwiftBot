@@ -593,7 +593,7 @@ extension AppModel {
         let aiProvider = "Apple Intelligence"
         let wikiEnabled = settings.wikiBot.isEnabled ? "on" : "off"
         let patchyEnabled = settings.patchy.monitoringEnabled ? "on" : "off"
-        let activeRules = ruleStore.rules.filter(\.isEnabled).count
+        let activeRules = enabledAutomationRuleCount
         let connectedNodes = clusterNodes.filter { $0.status != .disconnected }
         let connectedNodeSummary = connectedNodes.prefix(3).map { node in
             let latency = node.latencyMs.map { "\(Int($0.rounded()))ms" } ?? "n/a"
@@ -621,7 +621,7 @@ extension AppModel {
             "AI Provider: \(aiProvider)",
             "Lookup: \(wikiEnabled)",
             "Patchy Monitoring: \(patchyEnabled)",
-            "Automations: \(activeRules)/\(ruleStore.rules.count)",
+            "Automations: \(activeRules)/\(totalAutomationRuleCount)",
             "SwiftMesh Connected Nodes: \(connectedNodes.count)/\(clusterNodes.count)",
             "SwiftMesh Registered Workers: \(registeredWorkersDebugCount)",
             "SwiftMesh Worker Heartbeats: \(registeredWorkersDebugSummary)",
@@ -655,7 +655,7 @@ extension AppModel {
         let aiProvider = "Apple Intelligence"
         let wikiEnabled = settings.wikiBot.isEnabled ? "On" : "Off"
         let patchyEnabled = settings.patchy.monitoringEnabled ? "On" : "Off"
-        let activeRules = ruleStore.rules.filter(\.isEnabled).count
+        let activeRules = enabledAutomationRuleCount
         let connectedNodes = clusterNodes.filter { $0.status != .disconnected }
         let connectedNodeSummary = connectedNodes.prefix(3).map { node in
             let latency = node.latencyMs.map { "\(Int($0.rounded()))ms" } ?? "n/a"
@@ -689,7 +689,7 @@ extension AppModel {
             ],
             [
                 "name": "Features",
-                "value": "AI: `\(aiProvider)`\nLookup: `\(wikiEnabled)`\nPatchy: `\(patchyEnabled)`\nAutomations: `\(activeRules)/\(ruleStore.rules.count)`",
+                "value": "AI: `\(aiProvider)`\nLookup: `\(wikiEnabled)`\nPatchy: `\(patchyEnabled)`\nAutomations: `\(activeRules)/\(totalAutomationRuleCount)`",
                 "inline": true
             ],
             [

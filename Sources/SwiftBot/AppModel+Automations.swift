@@ -2,6 +2,16 @@ import Foundation
 
 extension AppModel {
 
+    /// Enabled rules across the legacy rule engine and the Automations store,
+    /// so every surface that reports "active automations" agrees.
+    var enabledAutomationRuleCount: Int {
+        ruleStore.rules.filter(\.isEnabled).count + automationStore.rules.filter(\.enabled).count
+    }
+
+    var totalAutomationRuleCount: Int {
+        ruleStore.rules.count + automationStore.rules.count
+    }
+
     /// Evaluate the live rule set against `event` and execute each match.
     func fireAutomations(for event: SwiftBotEvent) async {
         let snapshot = automationStore.rules

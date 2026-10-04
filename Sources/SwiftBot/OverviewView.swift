@@ -96,6 +96,7 @@ struct OverviewView: View {
             events: provider.events,
             commandLog: commandLog,
             rules: rules,
+            enabledAutomationCount: app.automationStore.rules.filter(\.enabled).count,
             clusterNodes: clusterNodes,
             clusterSnapshot: clusterSnapshot,
             diagnostics: app.connectionDiagnostics,

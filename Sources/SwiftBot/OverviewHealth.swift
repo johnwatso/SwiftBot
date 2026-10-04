@@ -71,6 +71,9 @@ struct OverviewHealthReport {
         var events: [ActivityEvent]
         var commandLog: [CommandLogEntry]
         var rules: [Rule]
+        /// Enabled rules in the newer Automations/Moderation store, which
+        /// `rules` (the legacy rule engine) doesn't include.
+        var enabledAutomationCount: Int
         var clusterNodes: [ClusterNodeStatus]
         var clusterSnapshot: ClusterSnapshot
         var diagnostics: ConnectionDiagnostics
@@ -162,7 +165,7 @@ private struct Derived {
     }
 
     private var enabledActionRuleCount: Int {
-        input.rules.filter(\.isEnabled).count
+        input.rules.filter(\.isEnabled).count + input.enabledAutomationCount
     }
 
     private var failedCommandsToday: Int {

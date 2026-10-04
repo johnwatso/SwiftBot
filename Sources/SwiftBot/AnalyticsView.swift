@@ -1771,7 +1771,7 @@ private enum AnalyticsAggregator {
             failedCommandsToday: app.commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count,
             commandsRunLifetime: app.stats.commandsRun,
             commandSuccessRate: commandSuccessRate,
-            activeAutomationCount: app.ruleStore.rules.filter(\.isEnabled).count,
+            activeAutomationCount: app.enabledAutomationRuleCount,
             automationRunsToday: app.patchyLastCycleAt.map { Calendar.current.isDateInToday($0) ? 1 : 0 } ?? 0,
             failedAutomationCount: automationFailures,
             gatewayEventCount: app.gatewayEventCount,
