@@ -8180,7 +8180,8 @@
       const botName = (authOptions.botName || getCachedBotName?.() || 'SwiftBot').trim() || 'SwiftBot';
       const nameNode = document.getElementById('authBotName');
       if (nameNode) nameNode.textContent = botName;
-      document.title = botName;
+      // Signed in, the page title names the current page (syncViewLocation).
+      if (!document.getElementById('appShell')?.classList.contains('active')) document.title = botName;
 
       // The SwiftBird head is the sign-in mark; the initial only shows if
       // the image can't load.
@@ -17251,12 +17252,45 @@
       }
     }
 
-    function selectView(view) {
+    // Views reachable from the address bar: every sidebar page plus Preferences.
+    function navigableViews() {
+      return new Set([...document.querySelectorAll('#sidebar .nav-link[data-view]')].map(link => link.dataset.view).concat('userprefs'));
+    }
+
+    function viewFromHash() {
+      try { return decodeURIComponent(location.hash.slice(1)); } catch { return ''; }
+    }
+
+    // Each page gets its own #hash and title, so refresh, Back/Forward and
+    // bookmarks land on the same page. `history` is 'push' (a click),
+    // 'replace' (startup) or 'none' (already moved by Back/Forward).
+    function syncViewLocation(view, history = 'push') {
+      const hash = view === 'overview' ? '' : `#${encodeURIComponent(view)}`;
+      if (history !== 'none' && location.hash !== hash) {
+        const url = hash || location.pathname + location.search;
+        if (history === 'replace') window.history.replaceState(null, '', url);
+        else window.history.pushState(null, '', url);
+      }
+      const name = view === 'userprefs'
+        ? 'Preferences'
+        : document.querySelector(`#sidebar .nav-link[data-view="${view}"]`)?.textContent.trim();
+      const botName = getCachedBotName?.() || 'SwiftBot';
+      document.title = view === 'overview' || !name ? botName : `${name} · ${botName}`;
+    }
+
+    window.addEventListener('popstate', () => {
+      if (!currentUser || !document.getElementById('appShell')?.classList.contains('active')) return;
+      const view = viewFromHash() || 'overview';
+      if (view !== currentView && navigableViews().has(view)) selectView(view, { history: 'none' });
+    });
+
+    function selectView(view, { history = 'push' } = {}) {
       // Apple Intelligence moved into Settings.
       if (view === 'aibots') view = 'settings';
       // Leaving Recordings stops its player and any hover previews.
       if (currentView === 'recordings' && view !== 'recordings') releaseVideos(document.getElementById('mediaPanels'));
       currentView = view;
+      syncViewLocation(view, history);
       if (view === 'overview') { updateHomeGreeting(); if (currentUser) refreshOverview(); }
       updateSidebarAlerts();
       document.querySelectorAll('.nav-link').forEach(link => {
@@ -17321,6 +17355,8 @@
       } else if (view === 'analytics') {
         analytics.classList.remove('hidden');
         renderAnalyticsView();
+        // Shows what's loaded now, then refreshes (cheap: the server caches it).
+        loadAnalytics().catch(() => {});
         if (mobileSubtitle) mobileSubtitle.textContent = 'Analytics';
         setMessage('', '');
       } else if (view === 'rewind') {
@@ -18115,15 +18151,21 @@
       
       loadOverviewLayout();
       showDashboard();
-      await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadAIBots(), loadMediaData(), loadAnnouncer()]);
+      // allSettled: one unavailable feature must not keep the whole dashboard
+      // from opening. Analytics takes seconds to build, so it loads behind the
+      // first page instead of in front of it.
+      await Promise.allSettled([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadAIBots(), loadMediaData(), loadAnnouncer()]);
+      loadAnalytics().catch(() => {});
       let remembered = 'overview';
       try {
         remembered = userPrefs.startPage === 'last'
           ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview')
           : userPrefs.startPage;
       } catch {}
-      const allowed = new Set([...document.querySelectorAll('#sidebar .nav-link[data-view]')].map(link => link.dataset.view));
-      selectView(allowed.has(remembered) ? remembered : 'overview');
+      const allowed = navigableViews();
+      const linked = viewFromHash();
+      // A #page in the address bar (refresh, bookmark) wins over the start page.
+      selectView(allowed.has(linked) ? linked : allowed.has(remembered) ? remembered : 'overview', { history: 'replace' });
       
       // Load auth options in background for the "logout" logic/labels
       loadAuthOptions();
