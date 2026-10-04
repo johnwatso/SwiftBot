@@ -114,20 +114,72 @@ extension AppModel {
             return false
         }
 
-        let query = "\(match.title) \(match.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
-        let appleLink = match.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: query)
-        let spotifyLink = match.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: query)
-        let youtubeMusicLink = match.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: query)
-        let youtubeLink = match.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: query)
-        let albumPart = match.album.map { " · \($0)" } ?? ""
-        let reply = """
-        🎧 \(match.title) — \(match.artist)\(albumPart)
-        Apple Music: <\(appleLink)>
-        Spotify: <\(spotifyLink)>
-        YouTube Music: <\(youtubeMusicLink)>
-        YouTube: <\(youtubeLink)>
-        """
-        return await send(channelID, reply)
+        return await sendPayload(
+            channelId: channelID,
+            payload: musicTrackPayload(for: match, sourceURL: sourceURL),
+            action: "sendMessage(music embed)"
+        )
+    }
+
+    func musicTrackPayload(for track: MusicSearchResult, sourceURL: URL? = nil) -> [String: Any] {
+        [
+            "embeds": [musicTrackEmbed(for: track, sourceURL: sourceURL)],
+            "components": musicTrackLinkComponents(for: track, sourceURL: sourceURL),
+            "allowed_mentions": ["parse": []]
+        ]
+    }
+
+    func musicTrackEmbed(for track: MusicSearchResult, sourceURL: URL? = nil) -> [String: Any] {
+        var embed: [String: Any] = [
+            "title": String(track.title.prefix(256)),
+            "description": String(track.artist.prefix(4096)),
+            "color": 5_793_266
+        ]
+        if let url = sourceURL ?? track.appleMusicURL {
+            embed["url"] = url.absoluteString
+        }
+        if let album = track.album, !album.isEmpty {
+            embed["footer"] = ["text": String(album.prefix(2048))]
+        }
+        if let artworkURL = track.artworkURL {
+            embed["thumbnail"] = ["url": artworkURL.absoluteString]
+        }
+        return embed
+    }
+
+    func musicTrackLinkComponents(for track: MusicSearchResult, sourceURL: URL? = nil) -> [[String: Any]] {
+        let query = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+        var appleLink = track.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: query)
+        var spotifyLink = track.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: query)
+        var youtubeMusicLink = track.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: query)
+        var youtubeLink = track.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: query)
+
+        // Keep the exact shared track on its source service instead of sending
+        // someone back to a search (or to a different catalogue match).
+        if let sourceURL, let host = sourceURL.host?.lowercased() {
+            if host == "open.spotify.com" || host.hasSuffix(".spotify.com") {
+                spotifyLink = sourceURL.absoluteString
+            } else if host == "music.apple.com" || host.hasSuffix(".music.apple.com") {
+                appleLink = sourceURL.absoluteString
+            } else if host == "music.youtube.com" {
+                youtubeMusicLink = sourceURL.absoluteString
+            } else if host == "youtube.com" || host == "www.youtube.com" || host == "youtu.be" {
+                youtubeLink = sourceURL.absoluteString
+            }
+        }
+
+        let links = [
+            ("Apple Music", appleLink),
+            ("Spotify", spotifyLink),
+            ("YouTube Music", youtubeMusicLink),
+            ("YouTube", youtubeLink)
+        ]
+        return [[
+            "type": 1,
+            "components": links.map { label, url -> [String: Any] in
+                ["type": 2, "style": 5, "label": label, "url": url]
+            }
+        ]]
     }
 
     /// Persist an edit from the `/music` settings sheet. A Failover forwards

@@ -37,18 +37,16 @@ actor RewindStore {
     private var aggregateCache: [String: [String: RewindDailyAggregate]] = [:]
     private var flushTask: Task<Void, Never>?
 
-    /// Per-member word counts for a range, from the message text. `days`
-    /// counts runs of days, which is exact for live-ingested shards and close
-    /// enough for backfilled ones (imported newest page first) — it only
-    /// gates one-day bursts.
+    /// Imported pages may interleave dates. Count distinct calendar days,
+    /// not transitions between them, when rejecting one-day bursts.
     private struct TermTally {
         var count = 0
-        var days = 0
-        var lastDay = ""
+        var seenDays: Set<String> = []
+        var days: Int { seenDays.count }
 
         mutating func add(day: String) {
             count += 1
-            if day != lastDay { days += 1; lastDay = day }
+            seenDays.insert(day)
         }
     }
     private struct MemberTerms {
@@ -406,9 +404,9 @@ actor RewindStore {
             }
             for (userID, count) in aggregate.messagesByUser { perUser[userID, default: 0] += count }
             for (userID, name) in aggregate.userNames { names[userID] = name }
-            for (word, count) in aggregate.wordCounts { words[word, default: 0] += count }
-            for (bigram, count) in aggregate.bigramCounts { bigrams[bigram, default: 0] += count }
-            for (symbol, count) in aggregate.emojiCounts { emoji[symbol, default: 0] += count }
+            for (word, count) in (aggregate.conversation?.words ?? [:]) { words[word, default: 0] += count }
+            for (bigram, count) in (aggregate.conversation?.bigrams ?? [:]) { bigrams[bigram, default: 0] += count }
+            for (symbol, count) in (aggregate.conversation?.emoji ?? [:]) { emoji[symbol, default: 0] += count }
             for (channelID, count) in aggregate.messagesByChannel { channels[channelID, default: 0] += count }
 
             if let current = busiest {
@@ -504,7 +502,7 @@ actor RewindStore {
         var totals: [String: Int] = [:]
         for year in startYear...endYear {
             for (day, aggregate) in aggregates(guildID: guildID, year: year) where day >= startDay && day <= endDay {
-                for (word, count) in aggregate.wordCounts {
+                for (word, count) in (aggregate.conversation?.words ?? [:]) {
                     if filterStopWords && !RewindTokenizer.isNotable(word: word) { continue }
                     totals[word, default: 0] += count
                 }
@@ -548,8 +546,8 @@ actor RewindStore {
                     }
                     aggregate.messagesByUser.forEach { perUser[$0.key, default: 0] += $0.value }
                     aggregate.userNames.forEach { names[$0.key] = $0.value }
-                    aggregate.wordCounts.forEach { if RewindTokenizer.isNotable(word: $0.key) { words[$0.key, default: 0] += $0.value } }
-                    aggregate.emojiCounts.forEach { emoji[$0.key, default: 0] += $0.value }
+                    (aggregate.conversation?.words ?? [:]).forEach { if RewindTokenizer.isNotable(word: $0.key) { words[$0.key, default: 0] += $0.value } }
+                    (aggregate.conversation?.emoji ?? [:]).forEach { emoji[$0.key, default: 0] += $0.value }
                     aggregate.messagesByChannel.forEach { channels[$0.key, default: 0] += $0.value }
                 }
             }
@@ -616,15 +614,15 @@ actor RewindStore {
             for (index, value) in aggregate.messagesByHour.enumerated() where index < 24 { summary.hourly[index] += value }
             for (userID, value) in aggregate.messagesByUser where !excluded.contains(userID) { perUser[userID, default: 0] += value }
             aggregate.userNames.forEach { names[$0.key] = $0.value }
-            for (word, value) in aggregate.wordCounts {
+            for (word, value) in (aggregate.conversation?.words ?? [:]) {
                 words[word, default: 0] += value
                 wordDays[word, default: 0] += 1
             }
-            for (bigram, value) in aggregate.bigramCounts {
+            for (bigram, value) in (aggregate.conversation?.bigrams ?? [:]) {
                 bigrams[bigram, default: 0] += value
                 bigramDays[bigram, default: 0] += 1
             }
-            aggregate.emojiCounts.forEach { emoji[$0.key, default: 0] += $0.value }
+            (aggregate.conversation?.emoji ?? [:]).forEach { emoji[$0.key, default: 0] += $0.value }
             aggregate.messagesByChannel.forEach { channels[$0.key, default: 0] += $0.value }
         }
         if filterStopWords {
@@ -648,7 +646,9 @@ actor RewindStore {
             summary.topWords = rankDistinctive(words, days: wordDays, baseline: baseline.words, minimumDays: minimumDays, limit: 12)
             summary.topBigrams = rankDistinctive(bigrams, days: bigramDays, baseline: baseline.bigrams, minimumDays: minimumDays, limit: 6)
             summary.termsAreDistinctive = !summary.topWords.isEmpty
-            if summary.topWords.isEmpty { summary.topWords = rankTerms(words, limit: 12) }
+            if summary.topWords.isEmpty {
+                summary.topWords = rankTerms(words.filter { wordDays[$0.key, default: 0] >= minimumDays && $0.value >= 3 }, limit: 12)
+            }
         } else {
             summary.topWords = rankTerms(words, limit: 12)
             summary.topBigrams = rankTerms(bigrams, limit: 6)
@@ -826,6 +826,7 @@ actor RewindStore {
                     aggregate.messageCount = max(0, aggregate.messageCount - removedMessages)
                     aggregate.wordCount = max(0, aggregate.wordCount - removedWords)
                     aggregate.userNames.removeValue(forKey: userID)
+                    aggregate.conversation = nil
                     days[day] = aggregate
                 }
 
@@ -1042,8 +1043,29 @@ actor RewindStore {
     private func loadAggregates(guildID: String, year: Int) -> [String: RewindDailyAggregate] {
         let url = aggregatesURL(guildID: guildID, year: year)
         guard let data = try? Data(contentsOf: url),
-              let days = try? decoder.decode([String: RewindDailyAggregate].self, from: data) else {
+              var days = try? decoder.decode([String: RewindDailyAggregate].self, from: data) else {
             return [:]
+        }
+        // Upgrade legacy highlight counts only when every message for the day
+        // is retained. Never mix a partial human sample with complete totals.
+        let legacyDays = Set(days.filter { $0.value.conversation == nil }.keys)
+        if !legacyDays.isEmpty {
+            var recovered: [String: RewindConversationCounts] = [:]
+            var messageIDs: [String: Set<String>] = [:]
+            let months = Set(legacyDays.map { String($0.prefix(7)) })
+            for month in months {
+                forEachMessage(in: ShardKey(guildID: guildID, month: month)) { message in
+                    let day = RewindCalendar.dayKey(for: message.createdAt)
+                    guard legacyDays.contains(day), messageIDs[day, default: []].insert(message.id).inserted else { return true }
+                    recovered[day, default: RewindConversationCounts()].absorb(message)
+                    return true
+                }
+            }
+            for day in legacyDays where messageIDs[day]?.count == days[day]?.messageCount {
+                days[day]?.conversation = recovered[day]
+                days[day]?.trim()
+                dirtyAggregates.insert(aggregateCacheKey(guildID: guildID, year: year))
+            }
         }
         return days
     }
@@ -1062,11 +1084,12 @@ actor RewindStore {
         var days = 0
         for year in availableYears(guildID: guildID) {
             for (day, aggregate) in aggregates(guildID: guildID, year: year) where !skip.contains(day) && aggregate.messageCount > 0 {
+                guard let conversation = aggregate.conversation, !conversation.words.isEmpty else { continue }
                 days += 1
-                for (word, count) in aggregate.wordCounts where RewindTokenizer.isNotable(word: word) {
+                for (word, count) in conversation.words where RewindTokenizer.isNotable(word: word) {
                     words[word, default: 0] += count
                 }
-                for (bigram, count) in aggregate.bigramCounts where RewindTokenizer.isNotable(bigram: bigram) {
+                for (bigram, count) in conversation.bigrams where RewindTokenizer.isNotable(bigram: bigram) {
                     bigrams[bigram, default: 0] += count
                 }
             }

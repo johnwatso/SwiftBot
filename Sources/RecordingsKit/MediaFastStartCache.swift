@@ -35,6 +35,14 @@ public actor MediaFastStartCache {
         try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
     }
 
+    /// Only complete remuxes are visible to playback.
+    public func cachedOptimizedURL(itemID: String, sourceURL: URL) -> URL? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
+              let mtime = attributes[.modificationDate] as? Date else { return nil }
+        let url = cacheRoot.appendingPathComponent(cacheKey(itemID: itemID, mtime: mtime) + ".mp4")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
     public func optimizedURL(itemID: String, sourceURL: URL) async -> URL? {
         guard needsOptimization(sourceURL: sourceURL),
               let attributes = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
@@ -61,9 +69,12 @@ public actor MediaFastStartCache {
                     return nil
                 }
                 session.shouldOptimizeForNetworkUse = true
-                try? FileManager.default.removeItem(at: cachedURL)
-                try await session.export(to: cachedURL, as: .mp4)
+                let temporaryURL = cachedURL.appendingPathExtension("partial.mp4")
+                defer { try? FileManager.default.removeItem(at: temporaryURL) }
+                try? FileManager.default.removeItem(at: temporaryURL)
+                try await session.export(to: temporaryURL, as: .mp4)
                 try Task.checkCancellation()
+                try FileManager.default.moveItem(at: temporaryURL, to: cachedURL)
                 let elapsed = Date().timeIntervalSince(started)
                 logger.debug("fast-start remuxed \(sourceURL.lastPathComponent, privacy: .public) in \(String(format: "%.1fs", elapsed), privacy: .public)")
                 return cachedURL
@@ -80,7 +91,7 @@ public actor MediaFastStartCache {
     }
 
     private nonisolated func cacheKey(itemID: String, mtime: Date) -> String {
-        let mtimeStamp = Int(mtime.timeIntervalSince1970)
+        let mtimeStamp = mtime.timeIntervalSince1970
         let safeID = itemID.replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
             .replacingOccurrences(of: "|", with: "_")

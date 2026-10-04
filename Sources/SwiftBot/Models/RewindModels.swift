@@ -216,6 +216,22 @@ struct RewindMessage: Codable, Sendable, Hashable {
 /// long tail of once-said words is approximate across a full year. That is fine
 /// for "top words of 2026"; anything needing exactness (a specific phrase) is
 /// answered by scanning the shards instead.
+/// Human-only highlight counts. Optional on legacy days whose retained text
+/// is no longer complete enough to separate people from bots.
+struct RewindConversationCounts: Codable, Sendable {
+    var words: [String: Int] = [:]
+    var bigrams: [String: Int] = [:]
+    var emoji: [String: Int] = [:]
+
+    mutating func absorb(_ message: RewindMessage) {
+        guard !message.isBot else { return }
+        let tokens = RewindTokenizer.words(in: message.content)
+        for word in tokens { words[word, default: 0] += 1 }
+        for phrase in RewindTokenizer.bigrams(from: tokens) { bigrams[phrase, default: 0] += 1 }
+        for symbol in RewindTokenizer.emoji(in: message.content) { emoji[symbol, default: 0] += 1 }
+    }
+}
+
 struct RewindDailyAggregate: Codable, Sendable {
     var day: String
     var messageCount: Int = 0
@@ -228,12 +244,15 @@ struct RewindDailyAggregate: Codable, Sendable {
     var bigramCounts: [String: Int] = [:]
     var emojiCounts: [String: Int] = [:]
     var userNames: [String: String] = [:]
+    var conversation: RewindConversationCounts?
 
     init(day: String) {
         self.day = day
+        self.conversation = RewindConversationCounts()
     }
 
     mutating func absorb(_ message: RewindMessage, calendar: Calendar) {
+        conversation?.absorb(message)
         messageCount += 1
         messagesByUser[message.authorID, default: 0] += 1
         messagesByChannel[message.channelID, default: 0] += 1
@@ -260,6 +279,12 @@ struct RewindDailyAggregate: Codable, Sendable {
 
     /// Bounds the on-disk size of a day. Called before the aggregate is written.
     mutating func trim(to limit: Int = RewindLimits.termsPerDay) {
+        if var counts = conversation {
+            counts.words = Self.trimmed(counts.words, to: limit)
+            counts.bigrams = Self.trimmed(counts.bigrams, to: limit)
+            counts.emoji = Self.trimmed(counts.emoji, to: limit)
+            conversation = counts
+        }
         wordCounts = Self.trimmed(wordCounts, to: limit)
         bigramCounts = Self.trimmed(bigramCounts, to: limit)
         emojiCounts = Self.trimmed(emojiCounts, to: limit)

@@ -456,6 +456,7 @@ struct BotSettings: Codable, Hashable {
         case aiActivityAnswersEnabled
         case recordingSourceOwners
         case operators
+        case userTimezones
         case aiMemoryNotes
         case localAISystemPrompt
         case behavior
@@ -513,6 +514,7 @@ struct BotSettings: Codable, Hashable {
         aiActivityAnswersEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiActivityAnswersEnabled) ?? true
         recordingSourceOwners = try container.decodeIfPresent([String: String].self, forKey: .recordingSourceOwners) ?? [:]
         operators = try container.decodeIfPresent(OperatorSettings.self, forKey: .operators) ?? OperatorSettings()
+        userTimezones = try container.decodeIfPresent([String: String].self, forKey: .userTimezones) ?? [:]
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? BotSettings.defaultAISystemPrompt
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
@@ -571,6 +573,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(aiActivityAnswersEnabled, forKey: .aiActivityAnswersEnabled)
         try container.encode(recordingSourceOwners, forKey: .recordingSourceOwners)
         try container.encode(operators, forKey: .operators)
+        try container.encode(userTimezones, forKey: .userTimezones)
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)

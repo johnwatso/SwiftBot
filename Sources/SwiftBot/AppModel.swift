@@ -807,6 +807,9 @@ final class AppModel: ObservableObject {
                     guard let self else { return MediaLibraryPayload(nodeName: "SwiftBot", configFilePath: "", sources: [], items: [], generatedAt: Date()) }
                     return await self.localMediaLibrarySnapshot()
                 },
+                mediaPlaybackHandler: { [weak self] itemID in
+                    await self?.localMediaPlaybackChoice(itemID: itemID)
+                },
                 mediaStreamHandler: { [weak self] itemID, rangeHeader, quality in
                     guard let self else { return nil }
                     return await self.localMediaStreamResponse(itemID: itemID, rangeHeader: rangeHeader, quality: quality)

@@ -3,6 +3,29 @@ import XCTest
 
 @MainActor
 final class CommandProcessorTests: XCTestCase {
+    func testUserTimezonesSurviveSettingsSaveAndReload() throws {
+        var settings = BotSettings()
+        settings.userTimezones = [
+            "123456789": "Pacific/Auckland",
+            "987654321": "America/New_York"
+        ]
+
+        let data = try JSONEncoder().encode(settings)
+        let loaded = try JSONDecoder().decode(BotSettings.self, from: data)
+        XCTAssertEqual(loaded.userTimezones, settings.userTimezones)
+
+        // A subsequent save must also retain edits and removals.
+        settings.userTimezones["123456789"] = "Europe/London"
+        settings.userTimezones.removeValue(forKey: "987654321")
+        let updated = try JSONDecoder().decode(BotSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(updated.userTimezones, ["123456789": "Europe/London"])
+    }
+
+    func testLegacySettingsWithoutUserTimezonesStillLoad() throws {
+        let loaded = try JSONDecoder().decode(BotSettings.self, from: Data("{}".utf8))
+        XCTAssertTrue(loaded.userTimezones.isEmpty)
+    }
+
     func testPrefixHelpRendersEmbedOverview() async {
         let recorder = CommandRecorder()
         let processor = makeProcessor(recorder: recorder)

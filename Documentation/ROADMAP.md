@@ -9,6 +9,17 @@
 
 ## Recent Engineering Log
 
+### 2026-10-04 — Recording discovery and playback stability
+
+- [x] Fixed open-ended/suffix byte ranges and invalid-range responses; pinned each playback to its chosen original, completed fast-start remux or hardware copy, so newly prepared files cannot change byte offsets midstream. Fast-start remuxes publish atomically. Authenticated mesh playback choice lets remote nodes select their completed copies; old nodes fall back to originals. Stream requests now use a bounded 30-second timeout.
+- [x] Removed per-file AVFoundation/hardware-codec probing from discovery. Incomplete/unavailable folder scans retain prior items while successful scans honour deletions and source changes. Remote libraries share requests, refresh in the background with a 30-second freshness window and five-minute outage retention; independent nodes load concurrently. Background UI refreshes preserve the active video/selection, and superseded library requests cannot replace newer results. Playback errors offer an explicit retry without switching a running stream.
+- [x] Debug app and test-target builds passed; 10 standalone XCTest checks passed against built RecordingsKit plus the production range parser (discovery/outage/recovery/deletion/disable, MP4 remux, HLS/AAC and traversal). An additional isolated check of the production remote-cache methods passed shared cold loads, outage retention, expiry and recovery. Admin JavaScript syntax and active-player/selection/out-of-order refresh checks passed. Existing repository warnings remain; hosted XCTest was not launched. Live gameplay streams and multi-Mac failure/recovery still need verification after installation. Working tree changes, not committed.
+
+### 2026-10-04 — Rewind conversation highlights
+
+- [x] Words, phrases, emoji and historical comparisons now use human-only daily counts even when bot messages are archived. Activity totals keep their original meaning. Legacy days recover from complete retained message shards; incomplete/expired mixed counts are omitted. Personal signature evidence counts distinct days across interleaved imports, and frequency fallback preserves the multi-day spam guard. Debug app/test-target build and isolated production-store checks passed for bot exclusion, persistence, legacy recovery/expiry, interleaved imports and fallback spam. Hosted XCTest was not launched to avoid interrupting the running bot. Working tree changes, not committed.
+
+
 ### 2026-10-04 — ShipHook publishing blocker
 
 - [x] Diagnosed the supplied release log: archive, signing, notarization and stapling succeeded, then ShipHook aborted while copying `docs/release-notes/1.27.1.html` onto itself. Fixed the publisher in the sibling ShipHook checkout using a same-file guard; 14 isolated stable/beta publishing checks pass, including symlinks, hard links, external/replacement notes, missing notes and no notes. Added an upstream-compatible patch and deployment instructions in `Documentation/SHIPHOOK_RELEASE_FIX.md`. Refreshed SwiftBot's timestamp build to `2026100415` and regenerated the project without unrelated drift; marketing version remains 1.27.1. Local and live signed stable feeds remain 1.27.0 (2026100220), deliberately preserved until real publication. Working tree changes, not committed.
@@ -424,6 +435,24 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 ---
 
 ## Session log
+
+### 2026-10-04 — Music link embed presentation
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Replaced watched music-link replies and interactive /music posts with a shared artwork/title/artist/album embed and four platform link buttons, removed duplicate post headings, and retained exact shared source-service URLs. Debug app build and 28 music/command tests passed; payload regression checks cover JSON shape, original links and artwork-free search fallbacks. Live Discord appearance remains to be checked with the updated bot. |
+
+### 2026-10-04 — User time zone persistence
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Added user time zone mappings to BotSettings JSON encoding and decoding so settings survive relaunches; regression coverage checks saved mappings, edits/removals, and older settings without the field. Debug app build and all 23 CommandProcessorTests passed. |
+
+### 2026-10-04 — Rewind conversation highlights
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Separated human highlight counts from archived bot output, conservatively recovered legacy days from retained text, and fixed distinct-day signature evidence and fallback spam filtering. App/test-target build and isolated production-store checks passed. |
 
 ### 2026-08-27 — Game Tracker service and finals.id provider preparation
 

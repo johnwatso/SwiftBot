@@ -832,7 +832,7 @@ extension AppModel {
             }
 
             let track = session.results[selectedIndex]
-            let trackEmbed = interactiveMusicTrackEmbed(for: track)
+            let trackEmbed = musicTrackEmbed(for: track)
             let components = musicPostComponents(
                 sessionID: sessionID,
                 selectedIndex: selectedIndex,
@@ -860,16 +860,13 @@ extension AppModel {
             }
 
             let track = session.results[selectedIndex]
-            let payload: [String: Any] = [
-                "content": "🎧 \(track.title) — \(track.artist)",
-                "embeds": [interactiveMusicTrackEmbed(for: track)]
-            ]
+            let payload = musicTrackPayload(for: track)
             let sent = await sendPayload(channelId: session.channelID, payload: payload, action: "sendMessage")
             let statusPrefix = sent ? "✅ Posted to channel." : "❌ Failed to post to channel."
             await updateMusicComponent(
                 event: event,
                 content: statusPrefix,
-                embed: interactiveMusicTrackEmbed(for: track),
+                embed: musicTrackEmbed(for: track),
                 components: musicPostComponents(sessionID: sessionID, selectedIndex: selectedIndex, results: session.results)
             )
         }
@@ -956,33 +953,7 @@ extension AppModel {
                 "label": "Post To Channel"
             ]]
         ]
-        return [postButtonRow] + picker
-    }
-
-    private func interactiveMusicTrackEmbed(for track: MusicSearchResult) -> [String: Any] {
-        let combinedSearch = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
-        let appleLink = track.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: combinedSearch)
-        let spotifyLink = track.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: combinedSearch)
-        let youtubeMusicLink = track.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: combinedSearch)
-        let youtubeLink = track.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: combinedSearch)
-
-        var embed: [String: Any] = [
-            "title": "\(track.title) — \(track.artist)",
-            "description": """
-            [Apple Music](\(appleLink))
-            [Spotify](\(spotifyLink))
-            [YouTube Music](\(youtubeMusicLink))
-            [YouTube](\(youtubeLink))
-            """,
-            "color": 5_793_266
-        ]
-        if let album = track.album, !album.isEmpty {
-            embed["footer"] = ["text": album]
-        }
-        if let artworkURL = track.artworkURL?.absoluteString, !artworkURL.isEmpty {
-            embed["thumbnail"] = ["url": artworkURL]
-        }
-        return embed
+        return musicTrackLinkComponents(for: results[selectedIndex]) + [postButtonRow] + picker
     }
 
     private func musicSearchSummaryEmbed(query: String, results: [MusicSearchResult]) -> [String: Any] {

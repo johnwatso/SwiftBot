@@ -147,16 +147,17 @@ extension AppModel {
         }
     }
 
-    private func parseByteRange(_ header: String?, fileSize: UInt64) -> (offset: UInt64, length: UInt64)? {
+    nonisolated static func parseByteRange(_ header: String?, fileSize: UInt64) -> (offset: UInt64, length: UInt64)? {
         guard let header = header?.trimmingCharacters(in: .whitespacesAndNewlines),
               header.lowercased().hasPrefix("bytes="),
               fileSize > 0 else { return nil }
 
         let rawRange = String(header.dropFirst("bytes=".count))
-        let parts = rawRange.split(separator: "-", maxSplits: 1).map(String.init)
+        let parts = rawRange.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2 else { return nil }
 
         if parts[0].isEmpty, let suffixLength = UInt64(parts[1]) {
+            guard suffixLength > 0 else { return nil }
             let length = min(suffixLength, fileSize)
             return (offset: fileSize - length, length: length)
         }
@@ -192,15 +193,21 @@ extension AppModel {
         let resolvedSource: String
         // Only a copy that's already prepared is used; playback never waits
         // for an encode (see mediaPlaybackChoice).
-        if normalizedQuality == "low" || normalizedQuality == "standard",
-           let variantURL = await mediaTranscodeCache.cachedVariantURL(itemID: itemID, sourceURL: originalURL, quality: normalizedQuality == "low" ? .low : .standard) {
+        if normalizedQuality == "low" || normalizedQuality == "standard" {
+            guard let variantURL = await mediaTranscodeCache.cachedVariantURL(
+                itemID: item.id, sourceURL: originalURL,
+                quality: normalizedQuality == "low" ? .low : .standard
+            ) else { return nil }
             resolvedURL = variantURL
             resolvedSource = normalizedQuality ?? "standard"
-        } else if await prepareMediaFastStartCacheIfEnabled(),
-                  let optimizedURL = await mediaFastStartCache.optimizedURL(itemID: itemID, sourceURL: originalURL) {
+        } else if normalizedQuality == "faststart" {
+            guard await prepareMediaFastStartCacheIfEnabled(),
+                  let optimizedURL = await mediaFastStartCache.cachedOptimizedURL(itemID: item.id, sourceURL: originalURL)
+            else { return nil }
             resolvedURL = optimizedURL
             resolvedSource = "faststart"
         } else {
+            // Keep byte offsets tied to the original for the whole playback.
             resolvedURL = originalURL
             resolvedSource = "raw"
         }
@@ -212,7 +219,11 @@ extension AppModel {
 
         let fileSize = fileSizeNumber.uint64Value
         let contentType = mediaContentType(for: fileURL.path)
-        let requestedRange = parseByteRange(rangeHeader, fileSize: fileSize)
+        let requestedRange = Self.parseByteRange(rangeHeader, fileSize: fileSize)
+        if rangeHeader != nil && requestedRange == nil {
+            return BinaryHTTPResponse(status: "416 Range Not Satisfiable", contentType: contentType,
+                                      headers: ["Content-Range": "bytes */\(fileSize)", "Accept-Ranges": "bytes"], body: Data())
+        }
         // Serve modest chunks so we don't load hundreds of MB into RAM
         // before the first byte hits the wire. Browsers will issue follow-up
         // range requests as the playback buffer drains, and each request
@@ -545,8 +556,18 @@ extension AppModel {
 
         if settings.clusterMode == .leader {
             let workers = await cluster.registeredNodeInfo()
-            for (_, baseURL) in workers {
-                if let remote = await cluster.fetchRemoteMediaLibrary(from: baseURL) {
+            let remotes = await withTaskGroup(of: (String, MediaLibraryPayload?).self) { group in
+                for (_, baseURL) in workers {
+                    group.addTask { [cluster] in
+                        (baseURL, await cluster.fetchRemoteMediaLibrary(from: baseURL))
+                    }
+                }
+                var results: [(String, MediaLibraryPayload?)] = []
+                for await result in group { results.append(result) }
+                return results
+            }
+            for (baseURL, remote) in remotes {
+                if let remote {
                     payloads.append(
                         MediaLibraryPayload(
                             nodeName: remote.nodeName,
@@ -682,17 +703,28 @@ extension AppModel {
     /// Which file a playback should use, decided once before it starts so it
     /// never switches mid-play: the lighter "standard" copy (8 Mbps, up to
     /// 1080p) when it's ready, otherwise the original, while the copy is
-    /// made in the background for next time. Clips on other nodes play as
-    /// they are.
+    /// made in the background for next time. Remote nodes choose their own
+    /// prepared copy through the authenticated mesh route.
     func mediaPlaybackChoice(token: String) async -> (quality: String, preparing: Bool)? {
         guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        guard descriptor.ownerNodeName == localMediaNodeNameForPlayback,
-              let item = await localMediaItem(for: descriptor.itemID) else { return ("original", false) }
+        if descriptor.ownerNodeName != localMediaNodeNameForPlayback,
+           let baseURL = descriptor.ownerBaseURL, !baseURL.isEmpty {
+            return await cluster.fetchRemoteMediaPlaybackChoice(from: baseURL, itemID: descriptor.itemID) ?? ("original", false)
+        }
+        return await localMediaPlaybackChoice(itemID: descriptor.itemID)
+    }
+
+    func localMediaPlaybackChoice(itemID: String) async -> (quality: String, preparing: Bool)? {
+        guard let item = await localMediaItem(for: itemID) else { return nil }
         let source = URL(fileURLWithPath: item.absolutePath)
         if await mediaTranscodeCache.cachedVariantURL(itemID: item.id, sourceURL: source, quality: .standard) != nil {
             return ("standard", false)
         }
         await mediaTranscodeCache.prepareInBackground(itemID: item.id, sourceURL: source, quality: .standard)
+        if await prepareMediaFastStartCacheIfEnabled(),
+           await mediaFastStartCache.cachedOptimizedURL(itemID: item.id, sourceURL: source) != nil {
+            return ("faststart", true)
+        }
         return ("original", true)
     }
 

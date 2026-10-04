@@ -225,6 +225,90 @@ final class RewindTests: XCTestCase {
         XCTAssertNil(signatures["sam"])
     }
 
+    func testFrequencyFallbackDoesNotRestoreOneDaySpam() async {
+        let store = makeStore()
+        let old = Date(timeIntervalSince1970: 1_735_732_800)
+        let current = Date(timeIntervalSince1970: 1_767_268_800)
+        for index in 0..<40 {
+            await store.record(message(id: "old-\(index)", author: "john", text: "squad squad", at: old.addingTimeInterval(Double(index) * 86_400)), retainContent: false)
+        }
+        for index in 0..<10 {
+            await store.record(message(id: "new-\(index)", author: "max", text: "squad squad", at: current.addingTimeInterval(Double(index) * 86_400)), retainContent: false)
+        }
+        await store.record(message(id: "burst", author: "max", text: Array(repeating: "spam", count: 100).joined(separator: " "), at: current), retainContent: false)
+        await store.flush()
+        let summary = await store.rangeSummary(
+            guildID: "guild-1", start: current.addingTimeInterval(-60), end: current.addingTimeInterval(11 * 86_400),
+            buckets: [], excludingUsers: [], filterStopWords: true
+        )
+        XCTAssertFalse(summary.termsAreDistinctive)
+        XCTAssertEqual(summary.topWords.map(\.term), ["squad"])
+    }
+
+    func testBotAnnouncementsDoNotBecomeConversationHighlights() async {
+        let store = makeStore()
+        let start = Date(timeIntervalSince1970: 1_767_268_800)
+        for index in 0..<40 {
+            await store.record(RewindMessage(
+                id: "bot-\(index)", guildID: "guild-1", channelID: "general",
+                authorID: "shiphook", authorName: "ShipHook", isBot: true,
+                content: "shiphook published swiftbot stable channel 🔥", createdAt: start
+            ), retainContent: false)
+        }
+        await store.record(message(id: "human", author: "max", text: "finals cashout 🎉", at: start), retainContent: false)
+        await store.flush()
+        let summary = await store.rangeSummary(
+            guildID: "guild-1", start: start.addingTimeInterval(-60), end: start.addingTimeInterval(60),
+            buckets: [], excludingUsers: [], filterStopWords: true
+        )
+        XCTAssertEqual(summary.totalMessages, 41, "Activity counters still include archived bots")
+        XCTAssertEqual(Set(summary.topWords.map(\.term)), ["finals", "cashout"])
+        XCTAssertEqual(summary.topBigrams.map(\.term), ["finals cashout"])
+        XCTAssertEqual(summary.topEmoji.map(\.term), ["🎉"])
+    }
+
+    func testLegacyHighlightsRecoverOnlyFromCompleteRetainedDays() async throws {
+        let directory = makeDirectory()
+        let store = RewindStore(rootURL: directory)
+        let start = Date(timeIntervalSince1970: 1_767_268_800)
+        await store.record(message(id: "human", author: "max", text: "finals cashout", at: start), retainContent: true)
+        await store.record(RewindMessage(
+            id: "bot", guildID: "guild-1", channelID: "general", authorID: "shiphook",
+            authorName: "ShipHook", isBot: true, content: "shiphook published", createdAt: start
+        ), retainContent: true)
+        await store.flush()
+        let aggregateURL = directory.appendingPathComponent("guild-1/aggregates-2026.json")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: aggregateURL)) as? [String: [String: Any]])
+        for day in Array(json.keys) { json[day]?.removeValue(forKey: "conversation") }
+        try JSONSerialization.data(withJSONObject: json).write(to: aggregateURL)
+        let reader = RewindStore(rootURL: directory)
+        let recovered = await reader.yearSummary(guildID: "guild-1", year: 2026, filterStopWords: true)
+        XCTAssertEqual(Set(recovered.topWords.map(\.term)), ["finals", "cashout"])
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("guild-1/messages-2026-01.jsonl"))
+        let expiredReader = RewindStore(rootURL: directory)
+        let expired = await expiredReader.yearSummary(guildID: "guild-1", year: 2026, filterStopWords: true)
+        XCTAssertEqual(expired.totalMessages, 2)
+        XCTAssertTrue(expired.topWords.isEmpty, "Mixed legacy counts must not masquerade as human conversation")
+    }
+
+    func testSignatureEvidenceCountsDistinctDaysInInterleavedImports() async {
+        let store = makeStore()
+        let start = Date(timeIntervalSince1970: 1_767_268_800)
+        let filler = Array(repeating: "squad online ranked patch stream", count: 8).joined(separator: " ")
+        for index in 0..<12 {
+            let at = start.addingTimeInterval(Double(index) * 86_400)
+            await store.record(message(id: "max-\(index)", author: "max", text: filler, at: at), retainContent: true)
+            await store.record(message(id: "john-\(index)", author: "john", text: filler, at: at), retainContent: true)
+            // Alternate an old day with today's messages, like backfill pages.
+            await store.record(message(id: "burst-\(index)", author: "max", text: "cashout cashout", at: start), retainContent: true)
+        }
+        await store.flush()
+        let signatures = await store.signatures(
+            guildID: "guild-1", userIDs: ["max"], start: start.addingTimeInterval(-60), end: start.addingTimeInterval(13 * 86_400)
+        )
+        XCTAssertFalse(signatures["max"]?.words.contains { $0.term == "cashout" } ?? false)
+    }
+
     func testSignaturesNeedMessageText() async {
         let store = makeStore()
         let start = Date(timeIntervalSince1970: 1_767_268_800)

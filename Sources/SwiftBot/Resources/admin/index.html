@@ -6732,7 +6732,7 @@
     }
 
     function mediaMP4URL(item) {
-      return `${item.streamURL}${mediaAccessQuery()}`;
+      return `${item.streamURL}&quality=original${mediaAccessQuery()}`;
     }
 
     // Starts playback straight away. The server says which file to use,
@@ -6742,16 +6742,34 @@
     async function attachRecordingPlayer(video, item) {
       if (!video || !item) return;
       destroyActiveMediaHls();
+      await ensureMediaAccessToken();
       let quality = 'original';
       let preparing = false;
       try {
         const id = mediaTokenFromURL(item.streamURL);
-        const response = await fetch(`/api/media/playback?id=${encodeURIComponent(id)}${mediaAccessQuery()}`);
+        const response = await fetch(`/api/media/playback?id=${encodeURIComponent(id)}${mediaAccessQuery()}`, { signal: AbortSignal.timeout(10000) });
         if (response.ok) ({ quality, preparing } = await response.json());
       } catch {}
       if (!video.isConnected) return;
-      video.src = quality === 'standard' ? `${item.streamURL}&quality=standard${mediaAccessQuery()}` : mediaMP4URL(item);
+      video.src = `${item.streamURL}&quality=${encodeURIComponent(quality || 'original')}${mediaAccessQuery()}`;
       video.load();
+      video.addEventListener('error', () => {
+        if (!video.isConnected) return;
+        video.closest('.media-stage, #modalBody')?.querySelector('.media-playback-note')?.remove();
+        const note = document.createElement('div');
+        note.className = 'media-playback-note';
+        note.setAttribute('role', 'status');
+        note.textContent = preparing
+          ? 'This recording couldn’t play. Its lighter copy is being prepared; try again shortly. '
+          : 'This recording couldn’t play. Check that its Mac and recordings folder are available. ';
+        const retry = document.createElement('button');
+        retry.className = 'secondary-action';
+        retry.type = 'button';
+        retry.textContent = 'Try again';
+        retry.addEventListener('click', () => attachRecordingPlayer(video, item), { once: true });
+        note.appendChild(retry);
+        video.after(note);
+      }, { once: true });
       video.closest('.media-stage, #modalBody')?.querySelector('.media-playback-note')?.remove();
       if (preparing) {
         video.insertAdjacentHTML('afterend', '<div class="media-playback-note"><i class="lucide" data-lucide="sparkles"></i> Playing the original. A lighter copy is being made so this clip plays smoothly next time.</div>');
@@ -11331,7 +11349,10 @@
     }
 
 
+    let mediaLibraryRequestID = 0;
+
     async function loadMediaLibrary() {
+      const requestID = ++mediaLibraryRequestID;
       await ensureMediaAccessToken();
       const params = new URLSearchParams();
       if (mediaFilterState.source) params.set('source', mediaFilterState.source);
@@ -11343,6 +11364,7 @@
       const response = await fetch(`/api/media?${params.toString()}`);
       if (!response.ok) throw new Error('Media library unavailable');
       const data = await response.json();
+      if (requestID !== mediaLibraryRequestID) return data;
       mediaLibraryData = data;
       mediaFilterState.source = data.selectedSourceID || '';
       mediaFilterState.dateRange = data.selectedDateRange || 'all';
@@ -11352,7 +11374,7 @@
       if (!selectedMediaItemID && data.items && data.items.length > 0) {
         selectedMediaItemID = data.items[0].id;
       }
-      if (selectedMediaItemID && !(data.items || []).some(item => item.id === selectedMediaItemID)) {
+      if (mediaViewMode !== 'player' && selectedMediaItemID && !(data.items || []).some(item => item.id === selectedMediaItemID)) {
         selectedMediaItemID = data.items?.[0]?.id || null;
       }
       return data;
@@ -15690,6 +15712,10 @@
       const header = document.getElementById('mediaHeader');
       const panels = document.getElementById('mediaPanels');
       if (!header || !panels) return;
+      // Background updates must preserve the element, buffer and selection,
+      // even when pagination or a temporarily missing node omits this item.
+      const existingPlayer = panels.querySelector('#mediaPlayer');
+      if (mediaViewMode === 'player' && existingPlayer?.dataset.itemID === selectedMediaItemID) return;
       releaseVideos(panels);
       // Nothing loaded yet (Recordings was off, or the first load failed):
       // load it now instead of leaving the page blank.
@@ -15776,6 +15802,7 @@
 
         const primaryVideo = panels.querySelector('video');
         if (primaryVideo && selected) {
+          primaryVideo.dataset.itemID = selected.id;
           attachRecordingPlayer(primaryVideo, selected);
           bindClipDetails(panels.querySelector('.clip-details'), primaryVideo, selected, async (game) => {
             flushActiveMediaPlayback(primaryVideo, 'progress');

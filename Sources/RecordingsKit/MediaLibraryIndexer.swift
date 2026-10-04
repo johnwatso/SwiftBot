@@ -1,8 +1,4 @@
-import AppKit
-import AVFoundation
-import CoreMedia
 import Foundation
-import VideoToolbox
 
 public actor MediaLibraryIndexer {
     private struct CacheEntry {
@@ -12,9 +8,11 @@ public actor MediaLibraryIndexer {
     }
 
     private var cachedEntry: CacheEntry?
-    private let cacheTTL: TimeInterval = 30
+    private let cacheTTL: TimeInterval
 
-    public init() {}
+    public init(cacheTTL: TimeInterval = 30) {
+        self.cacheTTL = cacheTTL
+    }
 
     public func cachedItem(for id: String) -> MediaLibraryItem? {
         cachedEntry?.payload.items.first(where: { $0.id == id })
@@ -39,7 +37,8 @@ public actor MediaLibraryIndexer {
             nodeName: ownerNodeName,
             configFilePath: configFilePath,
             sources: sources,
-            items: await scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL),
+            items: scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL,
+                             previousItems: cachedEntry?.signature == signature ? cachedEntry?.payload.items ?? [] : []),
             generatedAt: Date()
         )
         cachedEntry = CacheEntry(signature: signature, payload: payload, createdAt: Date())
@@ -61,8 +60,9 @@ public actor MediaLibraryIndexer {
     private func scanItems(
         sources: [MediaLibrarySource],
         ownerNodeName: String,
-        ownerBaseURL: String?
-    ) async -> [MediaLibraryItem] {
+        ownerBaseURL: String?,
+        previousItems: [MediaLibraryItem]
+    ) -> [MediaLibraryItem] {
         let fileManager = FileManager.default
         var items: [MediaLibraryItem] = []
 
@@ -71,26 +71,30 @@ public actor MediaLibraryIndexer {
             guard !root.isEmpty else { continue }
 
             let rootURL = URL(fileURLWithPath: root, isDirectory: true)
-            guard let enumerator = fileManager.enumerator(
+            var scanFailed = false
+            guard (try? rootURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
+                  let enumerator = fileManager.enumerator(
                 at: rootURL,
                 includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            ) else { continue }
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                errorHandler: { _, _ in scanFailed = true; return true }
+            ) else {
+                items.append(contentsOf: previousItems.filter { $0.sourceID == source.id })
+                continue
+            }
 
             let allowedExtensions = Set(source.normalizedExtensions)
-            let fileURLs = enumerator.allObjects.compactMap { $0 as? URL }
-            for fileURL in fileURLs {
+            var sourceItems: [MediaLibraryItem] = []
+            while let fileURL = enumerator.nextObject() as? URL {
                 let ext = fileURL.pathExtension.lowercased()
                 guard allowedExtensions.isEmpty || allowedExtensions.contains(ext) else { continue }
-                guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
-                      values.isRegularFile == true else { continue }
+                guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+                else { scanFailed = true; continue }
+                guard values.isRegularFile == true else { continue }
 
-                // Exclude AV1 and other unsupported codecs from the WebUI
-                if await isCodecUnsupported(at: fileURL) { continue }
-
-                let relativePath = fileURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
+                let relativePath = String(fileURL.path.dropFirst(rootURL.path.count + 1))
                 let id = "\(source.id.uuidString)|\(relativePath)"
-                items.append(
+                sourceItems.append(
                     MediaLibraryItem(
                         id: id,
                         sourceID: source.id,
@@ -106,6 +110,14 @@ public actor MediaLibraryIndexer {
                     )
                 )
             }
+            // A disconnected volume or incomplete traversal is not a deletion.
+            if scanFailed {
+                let discovered = Set(sourceItems.map(\.id))
+                sourceItems.append(contentsOf: previousItems.filter {
+                    $0.sourceID == source.id && !discovered.contains($0.id)
+                })
+            }
+            items.append(contentsOf: sourceItems)
         }
 
         return items.sorted {
@@ -114,18 +126,4 @@ public actor MediaLibraryIndexer {
         }
     }
 
-    private func isCodecUnsupported(at url: URL) async -> Bool {
-        let asset = AVURLAsset(url: url)
-        guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return false }
-
-        guard let descriptions = try? await track.load(.formatDescriptions) else { return false }
-        for desc in descriptions {
-            let codecType = CMFormatDescriptionGetMediaSubType(desc)
-            // Exclude codecs this Mac cannot hardware decode (e.g. AV1 on M1/M2)
-            if !VTIsHardwareDecodeSupported(codecType) {
-                return true
-            }
-        }
-        return false
-    }
 }
