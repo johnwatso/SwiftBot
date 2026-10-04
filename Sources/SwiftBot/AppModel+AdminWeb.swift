@@ -3579,8 +3579,12 @@ extension AppModel {
                     suppressedTodayCount: s.suppressedTodayCount,
                     summariesThisWeekCount: s.summariesThisWeekCount,
                     policies: s.policies,
-                    recentReports: s.recentReports,
-                    suggestions: s.suggestions,
+                    recentReports: s.recentReports.map(\.webTrimmed),
+                    suggestions: s.suggestions.map { suggestion in
+                        var trimmed = suggestion
+                        trimmed.projection = suggestion.projection?.webTrimmed
+                        return trimmed
+                    },
                     isScanningSuggestions: s.isScanningSuggestions,
                     lastSuggestionScanAt: s.lastSuggestionScanAt,
                     scanProgressDone: s.scanProgress.done,
@@ -4153,5 +4157,20 @@ extension AppModel {
             }
             return AdminWebBotPermissionsPayload(botUsername: nil, error: message, guilds: [], checkedAt: Date())
         }
+    }
+}
+
+extension SweepRunReport {
+    /// The WebUI previews a run from `groups`; `actions` lists every message
+    /// (with its text) and made /api/sweep over 1 MB, so it's only sent for
+    /// older reports that predate groups.
+    var webTrimmed: SweepRunReport {
+        guard groups != nil else { return self }
+        return SweepRunReport(
+            id: id, policyID: policyID, policyName: policyName, startedAt: startedAt,
+            durationMS: durationMS, scanned: scanned, matched: matched, executed: executed,
+            suppressed: suppressed, dryRun: dryRun, actions: [], error: error,
+            summary: summary, groups: groups
+        )
     }
 }
