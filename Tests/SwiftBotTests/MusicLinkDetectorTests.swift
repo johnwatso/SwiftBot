@@ -24,7 +24,7 @@ final class MusicLinkDetectorTests: XCTestCase {
         XCTAssertEqual(embed["url"] as? String, sourceURL.absoluteString)
         XCTAssertEqual(embed["color"] as? Int, 0x1DB954, "Coloured for the service it was shared from")
         XCTAssertEqual((embed["author"] as? [String: String])?["name"], "Shared from Spotify")
-        XCTAssertEqual((embed["thumbnail"] as? [String: String])?["url"], track.artworkURL?.absoluteString)
+        XCTAssertEqual((embed["image"] as? [String: String])?["url"], track.artworkURL?.absoluteString)
 
         let rows = try XCTUnwrap(decoded["components"] as? [[String: Any]])
         XCTAssertEqual(rows.count, 1)
@@ -49,7 +49,7 @@ final class MusicLinkDetectorTests: XCTestCase {
         )
         let payload = app.musicTrackPayload(for: track)
         let embed = try XCTUnwrap((payload["embeds"] as? [[String: Any]])?.first)
-        XCTAssertNil(embed["thumbnail"])
+        XCTAssertNil(embed["image"])
         XCTAssertNil(embed["author"])
         XCTAssertNil(payload["message_reference"])
         let rows = try XCTUnwrap(payload["components"] as? [[String: Any]])

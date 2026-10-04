@@ -177,8 +177,10 @@ extension AppModel {
         if let url = sourceURL ?? track.appleMusicURL {
             embed["url"] = url.absoluteString
         }
+        // Full-width cover art: a thumbnail made the card small and easy to
+        // miss next to Discord's own link previews.
         if let artworkURL = track.artworkURL {
-            embed["thumbnail"] = ["url": artworkURL.absoluteString]
+            embed["image"] = ["url": artworkURL.absoluteString]
         }
         return embed
     }
