@@ -12600,19 +12600,27 @@
       const scanLabel = scanning
         ? `Scanning ${sweepData.scanProgressDone || 0} of ${sweepData.scanProgressTotal || '…'}`
         : (sweepData.lastSuggestionScanAt ? `Last scan ${relativeTime(sweepData.lastSuggestionScanAt)}` : 'Never scanned');
+      // Suggestions aren't rescanned on their own, so after a couple of weeks
+      // their counts describe channels as they were, not as they are.
+      const scanAgeDays = (Date.now() - (Date.parse(sweepData.lastSuggestionScanAt || '') || Date.now())) / 86400000;
+      const suggestionsStale = !scanning && suggestions.length > 0 && scanAgeDays > 14;
       suggestionsNode.innerHTML = `
         <section class="ub-group">
           <div class="ub-group-head">
             <h2>Suggestions · ${escapeHTML(scanLabel)}</h2>
             <button id="sweepScan" class="secondary-action" type="button" ${scanning ? 'disabled' : ''}><i class="lucide" data-lucide="sparkles"></i> Scan channels</button>
           </div>
+          ${suggestionsStale ? `
+          <div class="ub-notice glass" style="--notice:#ff9f0a;"><i class="lucide" data-lucide="history"></i>
+            <span><strong>These suggestions are from ${escapeHTML(relativeTime(sweepData.lastSuggestionScanAt))}.</strong><br>The channels have probably changed since. Scan again before applying one.</span>
+          </div>` : ''}
           ${suggestions.length ? `<div class="sweep-suggestions">${suggestions.slice(0, sweepShowAllSuggestions ? suggestions.length : SWEEP_SUGGESTION_LIMIT).map(s => {
             const kind = SWEEP_KINDS[s.strategyKind] || {};
             const report = s.projection;
             // The dry run already ran during the scan, so show what it found
             // rather than the scanner's rough confidence score.
             const impact = report
-              ? `Would tidy ${report.matched} of ${report.scanned} messages${report.suppressed ? ` · ${report.suppressed} protected` : ''}`
+              ? `${suggestionsStale ? 'At last scan: would tidy' : 'Would tidy'} ${report.matched} of ${report.scanned} messages${report.suppressed ? ` · ${report.suppressed} protected` : ''}`
               : `${s.evidenceCount} matching ${s.evidenceCount === 1 ? 'message' : 'messages'}`;
             return `
             <div class="sweep-suggestion glass" data-suggestion-id="${escapeHTML(s.id)}">
