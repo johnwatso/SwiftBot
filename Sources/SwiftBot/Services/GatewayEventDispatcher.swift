@@ -370,8 +370,9 @@ actor GatewayEventDispatcher {
               let interactionID = stringValue(for: "id", in: map),
               let interactionToken = stringValue(for: "token", in: map),
               case let .int(kind)? = map["type"],
-              // 2 command, 3 component, 4 autocomplete (Lookup suggestions).
-              kind == 2 || kind == 3 || kind == 4,
+              // 2 command, 3 component, 4 autocomplete (Lookup suggestions), 5 modal submit.
+              // Modal submits carry `custom_id`/`components` but no `data.name`.
+              kind == 2 || kind == 3 || kind == 4 || kind == 5,
               case let .object(data)? = map["data"] else {
             return nil
         }
