@@ -20,8 +20,10 @@ final class MusicLinkDetectorTests: XCTestCase {
         XCTAssertNil(decoded["content"], "The post should not duplicate the title or expose raw links")
         let embed = try XCTUnwrap((decoded["embeds"] as? [[String: Any]])?.first)
         XCTAssertEqual(embed["title"] as? String, "Strobe")
-        XCTAssertEqual(embed["description"] as? String, "deadmau5")
+        XCTAssertEqual(embed["description"] as? String, "by **deadmau5**\nFor Lack of a Better Name")
         XCTAssertEqual(embed["url"] as? String, sourceURL.absoluteString)
+        XCTAssertEqual(embed["color"] as? Int, 0x1DB954, "Coloured for the service it was shared from")
+        XCTAssertEqual((embed["author"] as? [String: String])?["name"], "Shared from Spotify")
         XCTAssertEqual((embed["thumbnail"] as? [String: String])?["url"], track.artworkURL?.absoluteString)
 
         let rows = try XCTUnwrap(decoded["components"] as? [[String: Any]])
@@ -48,7 +50,8 @@ final class MusicLinkDetectorTests: XCTestCase {
         let payload = app.musicTrackPayload(for: track)
         let embed = try XCTUnwrap((payload["embeds"] as? [[String: Any]])?.first)
         XCTAssertNil(embed["thumbnail"])
-        XCTAssertNil(embed["footer"])
+        XCTAssertNil(embed["author"])
+        XCTAssertNil(payload["message_reference"])
         let rows = try XCTUnwrap(payload["components"] as? [[String: Any]])
         let buttons = try XCTUnwrap(rows.first?["components"] as? [[String: Any]])
         let youtube = try XCTUnwrap(buttons.first { $0["label"] as? String == "YouTube" }?["url"] as? String)
@@ -65,7 +68,67 @@ final class MusicLinkDetectorTests: XCTestCase {
 
     func testIgnoresPlaylists() {
         XCTAssertNil(MusicLinkDetector.firstTrackURL(in: "https://open.spotify.com/playlist/abc123"))
-        XCTAssertNil(MusicLinkDetector.firstTrackURL(in: "https://www.youtube.com/watch?v=abc&list=playlist"))
+        XCTAssertNil(MusicLinkDetector.firstTrackURL(in: "https://www.youtube.com/playlist?list=PL123"))
+        XCTAssertNil(MusicLinkDetector.firstTrackURL(in: "https://www.youtube.com/watch?dv=abc"))
+    }
+
+    func testFindsYouTubeTrackShapes() {
+        for link in [
+            "https://music.youtube.com/watch?v=kPO_KrQrhu8&si=vmlF-rK19TEh3GoJ",
+            "https://music.youtube.com/watch?v=kPO_KrQrhu8&list=RDAMVMkPO_KrQrhu8",
+            "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ?si=abc"
+        ] {
+            XCTAssertNotNil(MusicLinkDetector.firstTrackURL(in: "listen <\(link)>"), link)
+        }
+    }
+
+    func testTopicChannelKeepsTitleAndTakesArtistFromChannel() {
+        let url = URL(string: "https://music.youtube.com/watch?v=kPO_KrQrhu8")!
+        let metadata = MusicLinkDetector.cleanedMetadata(
+            title: "crystallized (feat. Inéz) - Subtronics Remix", author: "John Summit - Topic",
+            thumbnailURL: nil, sourceURL: url
+        )
+        XCTAssertEqual(metadata.title, "crystallized (feat. Inéz) - Subtronics Remix")
+        XCTAssertEqual(metadata.artist, "John Summit")
+    }
+
+    func testArtistDashTitleUploadsAreSplitAndCleaned() {
+        let url = URL(string: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")!
+        let metadata = MusicLinkDetector.cleanedMetadata(
+            title: "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)", author: "Rick Astley",
+            thumbnailURL: nil, sourceURL: url
+        )
+        XCTAssertEqual(metadata.title, "Never Gonna Give You Up")
+        XCTAssertEqual(metadata.artist, "Rick Astley")
+        XCTAssertEqual(
+            MusicLinkDetector.stripVideoNoise(from: "Disgruntled (feat. J Hus & IRAH) [Official Video]"),
+            "Disgruntled (feat. J Hus & IRAH)"
+        )
+    }
+
+    func testConfidentMatchRejectsSameTitleByAnotherArtist() {
+        let metadata = MusicLinkMetadata(title: "Disgruntled (feat. J Hus & IRAH)", artist: "Chase & Status", thumbnailURL: nil)
+        let wrong = MusicSearchResult(title: "Disgruntled", artist: "Rancid", album: nil, artworkURL: nil,
+                                      appleMusicURL: nil, spotifyURL: nil, youtubeMusicURL: nil, youtubeURL: nil)
+        let right = MusicSearchResult(title: "Disgruntled (feat. J Hus & IRAH)", artist: "Chase & Status", album: nil, artworkURL: nil,
+                                      appleMusicURL: nil, spotifyURL: nil, youtubeMusicURL: nil, youtubeURL: nil)
+        XCTAssertFalse(MusicLinkDetector.isConfidentMatch(wrong, for: metadata))
+        XCTAssertTrue(MusicLinkDetector.isConfidentMatch(right, for: metadata))
+    }
+
+    @MainActor
+    func testWatchedLinkRepliesToTheSharedMessageWithoutPinging() {
+        let app = AppModel()
+        let track = MusicSearchResult(title: "Song", artist: "*NSYNC", album: nil, artworkURL: nil,
+                                      appleMusicURL: nil, spotifyURL: nil, youtubeMusicURL: nil, youtubeURL: nil,
+                                      releaseYear: 2000, durationSeconds: 201)
+        let payload = app.musicTrackPayload(for: track, replyTo: "123")
+        XCTAssertEqual((payload["message_reference"] as? [String: Any])?["message_id"] as? String, "123")
+        XCTAssertEqual((payload["allowed_mentions"] as? [String: Any])?["replied_user"] as? Bool, false)
+        let embed = (payload["embeds"] as? [[String: Any]])?.first
+        XCTAssertEqual(embed?["description"] as? String, "by **\\*NSYNC**\n2000 · 3:21")
     }
 
     func testBuildsAppleMusicSearchQueryFromSongSlug() {

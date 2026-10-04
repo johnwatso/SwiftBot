@@ -107,39 +107,75 @@ extension AppModel {
     /// Respond to a shared track only in explicitly configured music channels.
     /// This is deliberately independent from `/music`: ordinary channels stay
     /// quiet, while a dedicated music channel gets automatic platform links.
-    func handleWatchedMusicLink(content: String, channelID: String) async -> Bool {
+    func handleWatchedMusicLink(content: String, channelID: String, messageID: String? = nil) async -> Bool {
         guard settings.musicLinkWatch.watches(channelID: channelID),
-              let sourceURL = MusicLinkDetector.firstTrackURL(in: content),
-              let match = await musicLookupService.searchTrack(forMusicURL: sourceURL) else {
+              let sourceURL = MusicLinkDetector.firstTrackURL(in: content) else {
+            return false
+        }
+        guard let match = await musicLookupService.searchTrack(forMusicURL: sourceURL) else {
+            logs.append("[WARN] Music link in \(channelID) couldn't be identified: \(sourceURL.absoluteString)")
             return false
         }
 
         return await sendPayload(
             channelId: channelID,
-            payload: musicTrackPayload(for: match, sourceURL: sourceURL),
+            payload: musicTrackPayload(for: match, sourceURL: sourceURL, replyTo: messageID),
             action: "sendMessage(music embed)"
         )
     }
 
-    func musicTrackPayload(for track: MusicSearchResult, sourceURL: URL? = nil) -> [String: Any] {
-        [
+    func musicTrackPayload(for track: MusicSearchResult, sourceURL: URL? = nil, replyTo messageID: String? = nil) -> [String: Any] {
+        var payload: [String: Any] = [
             "embeds": [musicTrackEmbed(for: track, sourceURL: sourceURL)],
             "components": musicTrackLinkComponents(for: track, sourceURL: sourceURL),
-            "allowed_mentions": ["parse": []]
+            "allowed_mentions": ["parse": [], "replied_user": false]
         ]
+        // Reply to the shared link so the card sits with it, without a ping.
+        if let messageID, !messageID.isEmpty {
+            payload["message_reference"] = ["message_id": messageID, "fail_if_not_exists": false]
+        }
+        return payload
+    }
+
+    /// Service a share link came from: its name and brand colour.
+    static func musicSourceService(for url: URL?) -> (name: String, color: Int)? {
+        guard let host = url?.host?.lowercased() else { return nil }
+        if host == "open.spotify.com" || host.hasSuffix(".spotify.com") { return ("Spotify", 0x1DB954) }
+        if host == "music.apple.com" || host.hasSuffix(".music.apple.com") { return ("Apple Music", 0xFA243C) }
+        if host == "music.youtube.com" { return ("YouTube Music", 0xFF0033) }
+        if MusicLinkDetector.youTubeHosts.contains(host) || host == "youtu.be" { return ("YouTube", 0xFF0033) }
+        if host == "soundcloud.com" || host.hasSuffix(".soundcloud.com") { return ("SoundCloud", 0xFF5500) }
+        return nil
+    }
+
+    /// Escapes Discord markdown so names like "*NSYNC" render as written.
+    static func discordEscaped(_ text: String) -> String {
+        text.reduce(into: "") { result, character in
+            if "\\*_~`|>".contains(character) { result.append("\\") }
+            result.append(character)
+        }
     }
 
     func musicTrackEmbed(for track: MusicSearchResult, sourceURL: URL? = nil) -> [String: Any] {
+        let service = Self.musicSourceService(for: sourceURL)
+        // "by Artist", then whatever's known of album · year · length.
+        var details: [String] = []
+        if let album = track.album, !album.isEmpty, album != track.title { details.append(Self.discordEscaped(album)) }
+        if let year = track.releaseYear { details.append(String(year)) }
+        if let seconds = track.durationSeconds, seconds > 0 { details.append(String(format: "%d:%02d", seconds / 60, seconds % 60)) }
+        let description = (["by **\(Self.discordEscaped(track.artist))**"] + (details.isEmpty ? [] : [details.joined(separator: " · ")]))
+            .joined(separator: "\n")
+
         var embed: [String: Any] = [
             "title": String(track.title.prefix(256)),
-            "description": String(track.artist.prefix(4096)),
-            "color": 5_793_266
+            "description": String(description.prefix(4096)),
+            "color": service?.color ?? 5_793_266
         ]
+        if let service {
+            embed["author"] = ["name": "Shared from \(service.name)"]
+        }
         if let url = sourceURL ?? track.appleMusicURL {
             embed["url"] = url.absoluteString
-        }
-        if let album = track.album, !album.isEmpty {
-            embed["footer"] = ["text": String(album.prefix(2048))]
         }
         if let artworkURL = track.artworkURL {
             embed["thumbnail"] = ["url": artworkURL.absoluteString]
@@ -163,7 +199,7 @@ extension AppModel {
                 appleLink = sourceURL.absoluteString
             } else if host == "music.youtube.com" {
                 youtubeMusicLink = sourceURL.absoluteString
-            } else if host == "youtube.com" || host == "www.youtube.com" || host == "youtu.be" {
+            } else if MusicLinkDetector.youTubeHosts.contains(host) || host == "youtu.be" {
                 youtubeLink = sourceURL.absoluteString
             }
         }

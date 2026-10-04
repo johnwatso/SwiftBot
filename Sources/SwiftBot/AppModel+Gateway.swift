@@ -284,7 +284,7 @@ extension AppModel {
         }
 
         if isGuildTextChannel,
-           await handleWatchedMusicLink(content: content, channelID: channelId) {
+           await handleWatchedMusicLink(content: content, channelID: channelId, messageID: messageId) {
             return
         }
 
