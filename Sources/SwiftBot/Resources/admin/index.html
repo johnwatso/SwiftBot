@@ -17961,11 +17961,15 @@
     });
 
     let overviewUsageRequest = null;
+    // Last attempt, successful or not, so a slow or failing analytics build
+    // is retried once a minute rather than on every 15-second tick.
+    let overviewUsageAttemptAt = 0;
     function loadOverviewUsage() {
       if (overviewUsageRequest) return overviewUsageRequest;
+      overviewUsageAttemptAt = Date.now();
       overviewUsageRequest = (async () => {
         try {
-          const response = await fetch('/api/analytics?period=7d', { signal: AbortSignal.timeout(12000) });
+          const response = await fetch('/api/analytics?period=7d', { signal: AbortSignal.timeout(30000) });
           if (!response.ok) throw new Error('Usage unavailable');
           overviewUsage = await response.json();
           overviewUsageUpdatedAt = Date.now();
@@ -17984,7 +17988,7 @@
     setInterval(() => {
       if (currentUser && currentView === 'overview' && document.visibilityState === 'visible') {
         loadOverview().catch(() => {});
-        if (!overviewUsageUpdatedAt || Date.now() - overviewUsageUpdatedAt >= 60000) loadOverviewUsage();
+        if (Date.now() - overviewUsageAttemptAt >= 60000) loadOverviewUsage();
       }
     }, 15000);
     document.addEventListener('visibilitychange', () => {

@@ -753,7 +753,7 @@ struct AdminWebRewindPayload: Codable {
     )
 }
 
-struct AdminWebAnalyticsPayload: Codable {
+struct AdminWebAnalyticsPayload: Codable, Sendable {
     let generatedAt: Date
     let peakActivityLabel: String
     let metrics: [AdminWebAnalyticsMetricPayload]
@@ -1609,6 +1609,16 @@ actor AdminWebServer {
     private var passkeyChallenges: [String: PasskeyChallenge] = [:]
     private var passkeyUsersInFlight: Set<String> = []
     private var passkeyRequestBuckets: [String: [Date]] = [:]
+    /// Analytics takes seconds to build (Rewind and media scans), so recent
+    /// results are reused and concurrent requests share one build instead of
+    /// piling up and starving /api/overview.
+    private struct AnalyticsCacheKey: Hashable {
+        let period: AnalyticsPeriod
+        let includeMessageText: Bool
+    }
+    private static let analyticsCacheLifetime: TimeInterval = 30
+    private var analyticsCache: [AnalyticsCacheKey: (payload: AdminWebAnalyticsPayload, builtAt: Date)] = [:]
+    private var analyticsInFlight: [AnalyticsCacheKey: Task<AdminWebAnalyticsPayload, Never>] = [:]
     private var listener: NWListener?
     private var nioChannel: Channel?
     private var nioGroup: MultiThreadedEventLoopGroup?
@@ -2688,8 +2698,10 @@ actor AdminWebServer {
             }
             // Word and emoji counts are message fragments, so only admins get
             // them, matching /api/rewind.
-            let payload = await analyticsProvider?(AnalyticsPeriod(query: request.query["period"]), session.role == .admin)
-                ?? AdminWebAnalyticsPayload.empty
+            let payload = await cachedAnalytics(
+                period: AnalyticsPeriod(query: request.query["period"]),
+                includeMessageText: session.role == .admin
+            )
             return codableResponse(payload)
         case ("GET", "/api/rewind/replay"), ("GET", "/api/rewind/member"), ("GET", "/api/rewind/phrase"), ("GET", "/api/rewind/recaps"), ("GET", "/api/rewind/recipients"):
             // Admin-only like /api/rewind: replays and phrase counts are built
@@ -5551,6 +5563,23 @@ actor AdminWebServer {
     private func jsonResponse(_ object: [String: Any], status: String = "200 OK", headers: [String: String] = [:]) -> Data {
         let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
         return httpResponse(status: status, body: data, contentType: "application/json; charset=utf-8", headers: headers)
+    }
+
+    private func cachedAnalytics(period: AnalyticsPeriod, includeMessageText: Bool) async -> AdminWebAnalyticsPayload {
+        let key = AnalyticsCacheKey(period: period, includeMessageText: includeMessageText)
+        if let cached = analyticsCache[key], Date().timeIntervalSince(cached.builtAt) < Self.analyticsCacheLifetime {
+            return cached.payload
+        }
+        if let pending = analyticsInFlight[key] {
+            return await pending.value
+        }
+        guard let provider = analyticsProvider else { return .empty }
+        let build = Task { await provider(period, includeMessageText) }
+        analyticsInFlight[key] = build
+        let payload = await build.value
+        analyticsInFlight[key] = nil
+        analyticsCache[key] = (payload, Date())
+        return payload
     }
 
     private func unauthorizedResponse() -> Data {

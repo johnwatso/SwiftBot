@@ -401,7 +401,7 @@ extension AppModel {
         let activeUsernames = Set(activeVoice.map(\.username))
         let commandsToday = commandLog.filter { Calendar.current.isDateInToday($0.time) }.count
         let failedCommandsToday = commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count
-        let enabledRuleCount = ruleStore.rules.filter(\.isEnabled).count
+        let enabledRuleCount = enabledAutomationRuleCount
         let automationFailures = events.filter {
             ($0.kind == .error || $0.kind == .warning)
                 && $0.message.localizedCaseInsensitiveContains("automation")
