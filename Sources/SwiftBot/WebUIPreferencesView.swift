@@ -2,6 +2,13 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Scroll targets on the Web Interface page.
+enum WebUISectionID {
+    static let adminWebUI = "webui.adminWebUI"
+    static let internetAccess = "webui.internetAccess"
+    static let authentication = "webui.authentication"
+}
+
 struct WebUIPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
@@ -14,29 +21,30 @@ struct WebUIPreferencesView: View {
             Section {
                 AdminWebServerConfigurationSection()
             } header: {
-                Label("Admin Web UI", systemImage: "macwindow")
-            } footer: {
-                Text("Enable the local web dashboard to manage SwiftBot from your browser.")
+                ConsoleSectionHeader(title: "Admin Web UI", symbol: "macwindow")
+                    .id(WebUISectionID.adminWebUI)
             }
 
             Section {
                 InternetAccessConfigurationSection()
             } header: {
-                Label("Internet Access", systemImage: "network")
-            } footer: {
-                Text("Expose your dashboard securely over the internet via Cloudflare Tunnel.")
+                ConsoleSectionHeader(
+                    title: "Internet Access",
+                    symbol: "network",
+                    subtitle: "Cloudflare Tunnel and the public address for your Web Interface."
+                )
+                .id(WebUISectionID.internetAccess)
             }
 
             Section {
                 AdminWebAuthenticationSection()
             } header: {
-                Label("Authentication", systemImage: "person.badge.key")
-            } footer: {
-                Text("Control who can sign in to your dashboard with Discord.")
-            }
-
-            Section {
-                AdminWebLaunchControls(usesGlassActionStyle: false)
+                ConsoleSectionHeader(
+                    title: "Authentication",
+                    symbol: "person.badge.key",
+                    subtitle: "Who can sign in to the Web Interface."
+                )
+                .id(WebUISectionID.authentication)
             }
         }
         .preferencesCardDisabled(when: app.isFailoverManagedNode)
@@ -45,6 +53,7 @@ struct WebUIPreferencesView: View {
 
 struct AdminWebServerConfigurationSection: View {
     @EnvironmentObject var app: AppModel
+    @Environment(\.consolePageScroll) private var scroll
     @State private var isAdvancedExpanded = false
     @State private var showRequireHTTPSDisableConfirm = false
 
@@ -62,54 +71,97 @@ struct AdminWebServerConfigurationSection: View {
             || localReady
     }
 
+    /// HTTPS comes from Internet Access (Cloudflare) or an HTTPS listener
+    /// with its own certificate.
+    private var isHTTPSConfigured: Bool {
+        app.settings.adminWebUI.internetAccessEnabled || app.settings.adminWebUI.httpsEnabled
+    }
+
+    // Rows, not a stack: each becomes its own row in the section card.
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
-                .toggleStyle(.switch)
-
-            Text("SwiftBot automatically detects the correct public URL for OAuth redirects.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if app.settings.adminWebUI.enabled && !hasAnyAuthConfigured {
-                AdminWebAuthMissingBanner()
-            }
-
-            requireHTTPSSection
-
-            DisclosureGroup(isExpanded: $isAdvancedExpanded) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Override Public Base URL")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.top, 10)
-
-                    TextField("https://example.com", text: $app.settings.adminWebUI.publicBaseURL)
-                        .textFieldStyle(.roundedBorder)
-
-                    Text("Optional. Only required when running behind a custom proxy or tunnel.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } label: {
-                Text("Advanced Options")
-                    .font(.subheadline.weight(.medium))
-            }
+        ConsoleSettingRow(
+            title: "Enable Admin Web UI",
+            symbol: "power",
+            subtitle: "Serve the browser dashboard from this Mac."
+        ) {
+            ConsoleRowSwitch(isOn: $app.settings.adminWebUI.enabled)
         }
-        .animation(.easeInOut(duration: 0.2), value: isAdvancedExpanded)
+
+        if app.settings.adminWebUI.enabled {
+            authenticationRow
+        }
+
+        requireHTTPSRow
+
+        ConsoleDisclosureRow(
+            title: "Advanced Options",
+            symbol: "gearshape",
+            isExpanded: $isAdvancedExpanded
+        )
         .onAppear {
             isAdvancedExpanded = !app.settings.adminWebUI.publicBaseURL
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+
+        if isAdvancedExpanded {
+            ConsoleSettingRow(
+                title: "Public Base URL",
+                symbol: "link",
+                subtitle: "Only needed behind a custom proxy. SwiftBot detects the address otherwise."
+            ) {
+                TextField("Public Base URL", text: $app.settings.adminWebUI.publicBaseURL, prompt: Text("https://example.com"))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 260)
+            }
+            .transition(.opacity)
+        }
     }
 
-    @ViewBuilder
-    private var requireHTTPSSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-                .padding(.vertical, 2)
+    private var authenticationRow: some View {
+        ConsoleSettingRow(
+            title: "Authentication",
+            symbol: hasAnyAuthConfigured ? "person.badge.key" : "exclamationmark.triangle.fill",
+            symbolTint: hasAnyAuthConfigured ? .secondary : .orange,
+            subtitle: hasAnyAuthConfigured ? nil : "Add a Discord OAuth client before sharing the Web Interface.",
+            status: hasAnyAuthConfigured
+                ? ("Sign-in is set up", .healthy)
+                : ("No sign-in method configured", .warning)
+        ) {
+            Button {
+                scroll(WebUISectionID.authentication)
+            } label: {
+                Label("Configure", systemImage: "chevron.right")
+                    .labelStyle(TrailingIconLabelStyle())
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+        }
+    }
 
-            Toggle(isOn: Binding(
-                get: { app.settings.adminWebUI.requireHTTPS },
+    private var requireHTTPSRow: some View {
+        let requireHTTPS = app.settings.adminWebUI.requireHTTPS
+        // Off and nothing to protect with yet: it can't be turned on.
+        let isUnavailable = !requireHTTPS && !isHTTPSConfigured
+        let subtitle: String
+        var status: (text: String, health: ServiceHealth)?
+        if isUnavailable {
+            subtitle = "Available after Internet Access is configured."
+        } else if requireHTTPS && !isHTTPSConfigured {
+            subtitle = "Set up Internet Access below or turn this off."
+            status = ("HTTPS isn't set up, so the Web UI won't start", .warning)
+        } else {
+            subtitle = "Never serve the Web UI over plain HTTP."
+        }
+
+        return ConsoleSettingRow(
+            title: "Require HTTPS",
+            symbol: "lock",
+            subtitle: subtitle,
+            status: status
+        ) {
+            ConsoleRowSwitch(isOn: Binding(
+                get: { requireHTTPS },
                 set: { newValue in
                     if newValue {
                         // Enabling is always safe — apply immediately.
@@ -120,50 +172,31 @@ struct AdminWebServerConfigurationSection: View {
                         showRequireHTTPSDisableConfirm = true
                     }
                 }
-            )) {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundStyle(.orange)
-                    Text("Require HTTPS")
-                        .font(.subheadline.weight(.medium))
-                }
+            ))
+            .disabled(isUnavailable)
+        }
+        .help("Only this app can change this; the Web UI can't turn off its own protection.")
+        .alert("Disable HTTPS requirement?", isPresented: $showRequireHTTPSDisableConfirm) {
+            Button("Cancel", role: .cancel) {
+                // No-op: the binding never wrote `false`, so the toggle
+                // visually snaps back to ON on its own.
             }
-            .toggleStyle(.switch)
-            .alert("Disable HTTPS requirement?", isPresented: $showRequireHTTPSDisableConfirm) {
-                Button("Cancel", role: .cancel) {
-                    // No-op: the binding never wrote `false`, so the toggle
-                    // visually snaps back to ON on its own.
-                }
-                Button("Disable", role: .destructive) {
-                    app.settings.adminWebUI.requireHTTPS = false
-                }
-            } message: {
-                Text("Turning this off allows the Admin Web UI to serve over plain HTTP if HTTPS isn't configured. Credentials and session cookies would be visible on the network. Only disable this if you've intentionally moved the admin panel behind a VPN, reverse proxy, or another TLS terminator.")
+            Button("Disable", role: .destructive) {
+                app.settings.adminWebUI.requireHTTPS = false
             }
+        } message: {
+            Text("Turning this off allows the Admin Web UI to serve over plain HTTP if HTTPS isn't configured. Credentials and session cookies would be visible on the network. Only disable this if you've intentionally moved the admin panel behind a VPN, reverse proxy, or another TLS terminator.")
+        }
+    }
+}
 
-            Text("When enabled, SwiftBot refuses to start the Admin Web UI unless HTTPS is configured (via the Internet Access setup above). Prevents the admin panel from accidentally serving over plain HTTP.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("This setting can only be changed here in the desktop app — the Web UI cannot disable its own protection.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if app.settings.adminWebUI.requireHTTPS && !app.settings.adminWebUI.internetAccessEnabled {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                        .font(.caption)
-                    Text("HTTPS isn't configured yet — the Admin Web UI will refuse to start. Enable Internet Access (Cloudflare) below or turn this off.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(8)
-                .background(.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
+/// "Configure ›": the title first, the glyph after it.
+struct TrailingIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.title
+            configuration.icon
+                .font(.caption.weight(.semibold))
         }
     }
 }
@@ -347,6 +380,40 @@ struct InternetAccessConfigurationSection: View {
 
         tokenRow
 
+        ConsoleSettingRow(title: "Domain", symbol: "globe") {
+            domainPicker
+        }
+
+        ConsoleSettingRow(title: "Subdomain", symbol: "character.cursor.ibeam") {
+            TextField("Subdomain", text: subdomainBinding, prompt: Text(AdminWebUISettings.defaultSubdomain))
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 220)
+                .disabled(isBusy)
+        }
+
+        ConsoleSettingRow(title: "Public Address", symbol: "link") {
+            addressValue
+        }
+
+        ConsoleSettingRow(
+            title: "Auto-repair tunnel",
+            symbol: "wrench.and.screwdriver",
+            subtitle: "Restarts the tunnel if the address is unreachable for about 30 minutes."
+        ) {
+            ConsoleRowSwitch(isOn: $app.settings.adminWebUI.tunnelHealthCheckEnabled)
+                .disabled(!settings.internetAccessEnabled)
+        }
+
+        if let actionRow = actionRowContent {
+            actionRow
+        }
+    }
+
+    // MARK: Rows
+
+    private var domainPicker: some View {
         Picker("Domain", selection: zoneSelection) {
             if availableZones.isEmpty {
                 if !draftZoneName.isEmpty {
@@ -363,12 +430,12 @@ struct InternetAccessConfigurationSection: View {
                 }
             }
         }
+        .labelsHidden()
+        .fixedSize()
         .disabled(availableZones.isEmpty || isBusy)
+    }
 
-        TextField("Subdomain", text: subdomainBinding, prompt: Text(AdminWebUISettings.defaultSubdomain))
-            .disabled(isBusy)
-
-        LabeledContent("Address") {
+    private var addressValue: some View {
             HStack(spacing: 8) {
                 Text(addressPreview)
                     .foregroundStyle(draftHostname.isEmpty ? .tertiary : .secondary)
@@ -394,43 +461,47 @@ struct InternetAccessConfigurationSection: View {
                     .help("Copy address")
                 }
             }
-        }
+    }
 
-        Toggle(isOn: $app.settings.adminWebUI.tunnelHealthCheckEnabled) {
-            Text("Auto-repair tunnel")
-            Text("Checks the address every 10 minutes and restarts the tunnel if it's been unreachable for about 30 minutes.")
-        }
-        .disabled(!settings.internetAccessEnabled)
-
-        if let actionRow = actionRowContent {
-            actionRow
+    private var enableRow: some View {
+        ConsoleSettingRow(
+            title: "Cloudflare Tunnel",
+            brandAsset: "CloudflareLogo",
+            status: (statusSubtitle.text, statusHealth)
+        ) {
+            ConsoleRowSwitch(isOn: Binding(
+                get: { settings.internetAccessEnabled },
+                set: { newValue in
+                    if newValue {
+                        requestEnable()
+                    } else {
+                        stop()
+                    }
+                }
+            ))
+            .disabled(isBusy || (!settings.internetAccessEnabled && !isConfigurationComplete))
         }
     }
 
-    // MARK: Rows
-
-    private var enableRow: some View {
-        Toggle(isOn: Binding(
-            get: { settings.internetAccessEnabled },
-            set: { newValue in
-                if newValue {
-                    requestEnable()
-                } else {
-                    stop()
-                }
-            }
-        )) {
-            Text("Internet Access")
-            Text(statusSubtitle.text)
-                .foregroundStyle(statusSubtitle.color)
-        }
-        .disabled(isBusy || (!settings.internetAccessEnabled && !isConfigurationComplete))
+    /// The tunnel's state for the row's status line, in the console's colours.
+    private var statusHealth: ServiceHealth {
+        if isEnabling || isDisabling { return .pending }
+        if isInternetAccessActive { return .healthy }
+        if settings.internetAccessEnabled { return .error }
+        return .disabled
     }
 
     @ViewBuilder
     private var tokenRow: some View {
         if showsTokenEntry {
-            LabeledContent {
+            ConsoleSettingRow(
+                title: "Cloudflare API Token",
+                symbol: "key",
+                subtitle: tokenError == nil
+                    ? "Needs Zone › DNS › Edit and Account › Cloudflare Tunnel › Edit. [Create a token…](https://dash.cloudflare.com/profile/api-tokens)"
+                    : nil,
+                status: tokenError.map { ($0, .error) }
+            ) {
                 HStack(spacing: 8) {
                     SecureField("API Token", text: $tokenDraft, prompt: Text("Paste token"))
                         .labelsHidden()
@@ -455,16 +526,14 @@ struct InternetAccessConfigurationSection: View {
                         }
                     }
                 }
-            } label: {
-                Text("Cloudflare API Token")
-                if let tokenError {
-                    Text(tokenError).foregroundStyle(.red)
-                } else {
-                    Text("Needs Zone › DNS › Edit and Account › Cloudflare Tunnel › Edit. [Create a token…](https://dash.cloudflare.com/profile/api-tokens)")
-                }
             }
         } else {
-            LabeledContent {
+            ConsoleSettingRow(
+                title: "Cloudflare API Token",
+                symbol: "key",
+                subtitle: tokenError == nil ? "Stored in your Keychain." : nil,
+                status: tokenError.map { ($0, .error) }
+            ) {
                 HStack(spacing: 8) {
                     if isVerifyingToken {
                         ProgressView().controlSize(.small)
@@ -482,13 +551,6 @@ struct InternetAccessConfigurationSection: View {
                         isReplacingToken = true
                     }
                     .disabled(isVerifyingToken || isBusy)
-                }
-            } label: {
-                Text("Cloudflare API Token")
-                if let tokenError {
-                    Text(tokenError).foregroundStyle(.red)
-                } else {
-                    Text("Stored in your Keychain.")
                 }
             }
         }
@@ -1087,7 +1149,7 @@ struct AdminWebAuthenticationSection: View {
                 }
             }
             .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             #endif // DEBUG (Local Fallback)
 
 
@@ -1231,7 +1293,7 @@ struct OAuthProviderCard: View {
                 }
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .sheet(isPresented: $showingOAuthSetup) {
             oauthSetupSheet
         }
@@ -1346,43 +1408,6 @@ struct OAuthProviderCard: View {
     }
 }
 
-struct AdminWebLaunchControls: View {
-    @EnvironmentObject var app: AppModel
-
-    let usesGlassActionStyle: Bool
-
-    private var canLaunchAdminWebUI: Bool {
-        app.settings.adminWebUI.enabled && app.adminWebLaunchURL() != nil
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if usesGlassActionStyle {
-                Button {
-                    app.launchAdminWebUI()
-                } label: {
-                    Label("Open in Browser", systemImage: "arrow.up.right.square")
-                }
-                .buttonStyle(GlassActionButtonStyle())
-                .disabled(!canLaunchAdminWebUI)
-            } else {
-                Button {
-                    app.launchAdminWebUI()
-                } label: {
-                    Label("Open in Browser", systemImage: "arrow.up.right.square")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!canLaunchAdminWebUI)
-            }
-
-            Text("Opens \(app.adminWebLaunchURL()?.absoluteString ?? "the local dashboard").")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        }
-    }
-}
-
 private extension CertificateManager.ValidationStatus {
     var color: Color {
         switch self {
@@ -1391,37 +1416,5 @@ private extension CertificateManager.ValidationStatus {
         case .warning: return .orange
         case .error: return .red
         }
-    }
-}
-
-/// Warning shown when Admin Web UI is enabled but no authentication provider
-/// (Discord OAuth, Apple/Steam/GitHub OAuth, or the local fallback) is fully
-/// configured. Without one, no one can actually sign in — the dashboard sits
-/// at the login screen with no working buttons.
-struct AdminWebAuthMissingBanner: View {
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .font(.title3)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("No sign-in method configured")
-                    .font(.subheadline.weight(.semibold))
-                Text("The Web UI will start, but no one will be able to sign in. Add a Discord OAuth client (or enable a fallback provider) in the Authentication section below before sharing the URL.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.orange.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
-        )
     }
 }

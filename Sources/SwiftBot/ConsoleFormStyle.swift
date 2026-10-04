@@ -39,12 +39,13 @@ struct ConsoleFormStyle: FormStyle {
     }
 }
 
-/// One section as a card: header, rows separated by soft hairlines, footer.
+/// One section as a card: the header, then its rows in one lighter inner
+/// group with soft dividers between them, then the footer as a caption.
 private struct ConsoleFormSection: View {
     let section: SectionConfiguration
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 14) {
             if !section.header.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     section.header
@@ -52,21 +53,29 @@ private struct ConsoleFormSection: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
                 .textCase(nil)
-                .padding(.bottom, 10)
             }
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(subviews: section.content) { row in
-                    // Only rows with something in them: conditional content
-                    // that's switched off leaves empty subviews behind.
                     row
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
                     if row.id != section.content.last?.id {
-                        Divider().opacity(0.5)
+                        Divider()
+                            .opacity(0.45)
+                            .padding(.leading, 16)
                     }
                 }
             }
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.background.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(.primary.opacity(0.05), lineWidth: 1)
+            )
 
             if !section.footer.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -75,11 +84,10 @@ private struct ConsoleFormSection: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
+                .padding(.horizontal, 4)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .consoleSurface()
     }
@@ -131,5 +139,161 @@ private struct RowLabel<Label: View>: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+// MARK: - Console setting components
+
+/// A section's heading: a small glyph tile, the title, and an optional
+/// one-line description of what the section configures.
+struct ConsoleSectionHeader: View {
+    let title: String
+    let symbol: String
+    var subtitle: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 32, height: 32)
+                .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+                )
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// A native settings row: glyph, title, one short line of description (or a
+/// status line), and the control on the trailing edge.
+struct ConsoleSettingRow<Trailing: View>: View {
+    let title: String
+    var symbol: String?
+    var brandAsset: String?
+    var symbolTint: Color = .secondary
+    var subtitle: String?
+    /// A short status line shown in place of, or above, the description:
+    /// "No sign-in method configured", "Tunnel isn't running".
+    var status: (text: String, health: ServiceHealth)?
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            if symbol != nil || brandAsset != nil {
+                glyph
+                    .frame(width: 30, height: 30)
+                    .background(.primary.opacity(0.05), in: Circle())
+                    .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                if let status {
+                    Label {
+                        Text(status.text)
+                    } icon: {
+                        if status.health.needsAttention {
+                            Image(systemName: status.health.issueSymbol)
+                        } else {
+                            StatusDot(health: status.health, size: 7)
+                        }
+                    }
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(status.health.needsAttention || status.health == .healthy ? status.health.tint : Color.secondary)
+                }
+                if let subtitle {
+                    // Markdown, so a description can carry a link.
+                    Text(LocalizedStringKey(subtitle))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 16)
+
+            trailing
+        }
+        .frame(minHeight: 32)
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        if let brandAsset {
+            Image(brandAsset)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 17, height: 17)
+        } else if let symbol {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(symbolTint)
+        }
+    }
+}
+
+extension ConsoleSettingRow where Trailing == EmptyView {
+    init(
+        title: String,
+        symbol: String? = nil,
+        brandAsset: String? = nil,
+        symbolTint: Color = .secondary,
+        subtitle: String? = nil,
+        status: (text: String, health: ServiceHealth)? = nil
+    ) {
+        self.init(
+            title: title, symbol: symbol, brandAsset: brandAsset, symbolTint: symbolTint,
+            subtitle: subtitle, status: status, trailing: { EmptyView() }
+        )
+    }
+}
+
+/// A switch for the trailing edge of a `ConsoleSettingRow`.
+struct ConsoleRowSwitch: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle("", isOn: $isOn)
+            .toggleStyle(.switch)
+            .labelsHidden()
+    }
+}
+
+/// A row that reveals more rows below it; the chevron turns when open.
+struct ConsoleDisclosureRow: View {
+    let title: String
+    var symbol: String?
+    var subtitle: String?
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+        } label: {
+            ConsoleSettingRow(title: title, symbol: symbol, subtitle: subtitle) {
+                Image(systemName: "chevron.right")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
     }
 }

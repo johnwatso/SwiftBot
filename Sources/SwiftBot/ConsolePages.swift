@@ -48,19 +48,22 @@ struct ConsoleSettingsPage<Accessory: View, Summary: View, Content: View>: View 
     @ViewBuilder var content: Content
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                ConsolePageHeader(title: title, subtitle: subtitle) { accessory }
-                    .padding(.bottom, 4)
-                summary
-                content
-                    .environment(\.settingsFormPresentation, .console)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    ConsolePageHeader(title: title, subtitle: subtitle) { accessory }
+                        .padding(.bottom, 4)
+                    summary
+                    content
+                        .environment(\.settingsFormPresentation, .console)
+                }
+                .padding(.horizontal, 36)
+                .padding(.top, 32)
+                .padding(.bottom, 40)
+                .frame(maxWidth: 1120, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 36)
-            .padding(.top, 32)
-            .padding(.bottom, 40)
-            .frame(maxWidth: 1120, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .environment(\.consolePageScroll, ConsolePageScroll(proxy: proxy))
         }
         .fadingEdges(top: 12, bottom: 20)
         .autosavesPreferences(for: app)
@@ -73,6 +76,29 @@ extension ConsoleSettingsPage where Accessory == EmptyView, Summary == EmptyView
     }
 }
 
+/// Scrolls a console page to a section, for "Show" and "Configure" buttons
+/// that point further down the same page. Give the target an `.id(_:)`.
+struct ConsolePageScroll {
+    fileprivate var proxy: ScrollViewProxy?
+
+    func callAsFunction(_ id: String) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            proxy?.scrollTo(id, anchor: .top)
+        }
+    }
+}
+
+private struct ConsolePageScrollKey: EnvironmentKey {
+    static var defaultValue: ConsolePageScroll { ConsolePageScroll(proxy: nil) }
+}
+
+extension EnvironmentValues {
+    var consolePageScroll: ConsolePageScroll {
+        get { self[ConsolePageScrollKey.self] }
+        set { self[ConsolePageScrollKey.self] = newValue }
+    }
+}
+
 /// A service's state at the top of its page, in the Overview's summary-card
 /// style: icon, name and status pill, a line of context, a row of facts,
 /// and quiet issue lines when something needs attention.
@@ -81,6 +107,10 @@ struct ServiceSummaryCard: View {
     let status: ConsoleServiceStatus
     let facts: [(title: String, value: String)]
     var issues: [ConsoleServiceStatus] = []
+    /// The page section where each issue is fixed; Show scrolls there.
+    var issueSections: [ConsoleServiceKind: String] = [:]
+
+    @Environment(\.consolePageScroll) private var scroll
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -127,20 +157,14 @@ struct ServiceSummaryCard: View {
             .padding(24)
 
             if !issues.isEmpty {
-                Divider().padding(.horizontal, 24)
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(issues) { issue in
-                        Label {
-                            Text("\(Text(issue.kind.title).fontWeight(.medium)) · \(issue.detail)")
-                        } icon: {
-                            Image(systemName: issue.health.issueSymbol)
-                                .foregroundStyle(issue.health.tint)
-                        }
-                        .font(.callout)
+                        ConsoleIssueRow(issue: issue, onShow: issueSections[issue.kind].map { id in { scroll(id) } })
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                .padding(.top, -8)
             }
         }
         .consoleSurface(cornerRadius: 22)
@@ -177,7 +201,11 @@ struct WebInterfacePage: View {
                             ("Public Access", tunnel.health == .disabled ? "Off" : tunnel.summary),
                             ("HTTPS", app.settings.adminWebUI.httpsEnabled ? "On" : "Off")
                         ],
-                        issues: [web, tunnel].filter(\.health.needsAttention)
+                        issues: [web, tunnel].filter(\.health.needsAttention),
+                        issueSections: [
+                            .webInterface: WebUISectionID.adminWebUI,
+                            .cloudflareTunnel: WebUISectionID.internetAccess
+                        ]
                     )
                 }
             },

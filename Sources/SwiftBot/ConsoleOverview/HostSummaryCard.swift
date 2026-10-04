@@ -37,16 +37,14 @@ struct HostSummaryCard: View {
             .padding(28)
 
             if !status.issues.isEmpty {
-                Divider()
-                    .padding(.horizontal, 28)
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(status.issues) { issue in
-                        IssueRow(issue: issue) { onReviewIssue(issue.kind) }
+                        ConsoleIssueRow(issue: issue) { onReviewIssue(issue.kind) }
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 16)
-                .padding(.bottom, 22)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                .padding(.top, -8)
             }
         }
         .consoleSurface(cornerRadius: 22)
@@ -91,38 +89,6 @@ private struct HostFact<Value: View>: View {
                 .font(.title3.weight(.medium))
                 .lineLimit(1)
         }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// ⚠ Cloudflare Tunnel error
-///   Public access is on but the tunnel couldn't start.            Show
-private struct IssueRow: View {
-    let issue: ConsoleServiceStatus
-    var onReview: () -> Void
-
-    /// "error", "not listening": the summary as a sentence fragment.
-    private var state: String {
-        issue.summary.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "…"))
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: issue.health.issueSymbol)
-                .foregroundStyle(issue.health.tint)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(issue.kind.title) \(state)")
-                    .fontWeight(.medium)
-                Text(issue.detail)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 16)
-            Button("Show", action: onReview)
-                .buttonStyle(.link)
-        }
-        .font(.callout)
         .accessibilityElement(children: .combine)
     }
 }

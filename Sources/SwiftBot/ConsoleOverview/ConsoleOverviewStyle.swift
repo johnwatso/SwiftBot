@@ -155,3 +155,43 @@ extension Duration {
         formatted(.units(allowed: [.days, .hours, .minutes], width: .narrow, maximumUnitCount: 3))
     }
 }
+
+/// One service that needs attention, as a compact tinted row at the foot of
+/// a status card: "Cloudflare Tunnel error", what's wrong, and Show.
+/// Shared by the Overview's summary card and each service page's card.
+struct ConsoleIssueRow: View {
+    let issue: ConsoleServiceStatus
+    var onShow: (() -> Void)?
+
+    /// "error", "not listening": the summary as a sentence fragment.
+    private var state: String {
+        issue.summary.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "…"))
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: issue.health == .error ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.title3)
+                .foregroundStyle(issue.health.tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(issue.kind.title) \(state)")
+                    .font(.callout.weight(.semibold))
+                Text(issue.detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 16)
+            if let onShow {
+                Button("Show", action: onShow)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(issue.health.tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
