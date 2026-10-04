@@ -399,7 +399,16 @@ extension AppModel {
                     let newestVersion = driverItem.version.trimmingCharacters(in: .whitespacesAndNewlines)
                     let versionKey = PatchyRuntime.lastPostedDriverVersionKey(for: item.sourceKey)
                     let versionCheck = try await patchyChecker.check(identifier: newestVersion, for: versionKey)
-                    mapped = PatchyRuntime.map(item: item, change: versionCheck)
+                    // A vendor page that falls back to an older release is
+                    // ignored below; show it as unchanged rather than
+                    // "changed (26.10.02 -> 26.9.2)".
+                    var statusCheck = versionCheck
+                    if case .changed(let oldVersion, _) = versionCheck,
+                       let comparison = PatchyRuntime.compareDriverVersions(newestVersion, oldVersion),
+                       comparison <= 0 {
+                        statusCheck = .unchanged(identifier: oldVersion)
+                    }
+                    mapped = PatchyRuntime.map(item: item, change: statusCheck)
                     for target in targets {
                         updatePatchyTargetRuntimeState(id: target.id) { entry in
                             entry.lastCheckedAt = Date()
