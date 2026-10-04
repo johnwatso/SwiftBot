@@ -5507,7 +5507,7 @@
     .music-preview-form button { flex: none; }
     #musicPreview .placeholder { margin: 0; }
     /* Long links in the preview must shrink, not widen the dialog. */
-    .automation-editor-section:has(#musicPreview), #musicPreview { min-width: 0; max-width: 100%; overflow: hidden; }
+    .automation-editor-section:has(#musicPreview), #musicPreview { flex: none; min-width: 0; max-width: 100%; overflow-x: clip; }
     .dc-chat code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 85%; background: #1e1f22; border-radius: 3px; padding: 0 3px; }
     .dc-chat strong { color: #f2f3f5; }
 
