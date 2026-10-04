@@ -259,6 +259,18 @@ extension AppModel {
 
         for member in members {
             guard case let .object(memberMap) = member else { continue }
+            // Avatars first: the nickname branch below `continue`s, which used
+            // to leave nicknamed members (most regulars) without one.
+            if case let .object(user)? = memberMap["user"],
+               case let .string(userId)? = user["id"] {
+                if case let .string(avatarHash)? = user["avatar"], !avatarHash.isEmpty {
+                    cacheUserAvatar(avatarHash, for: userId)
+                }
+                if case let .string(guildID)? = guildMap["id"],
+                   case let .string(guildAvatarHash)? = memberMap["avatar"], !guildAvatarHash.isEmpty {
+                    cacheGuildAvatar(guildAvatarHash, for: "\(guildID)-\(userId)")
+                }
+            }
             if case let .string(nick)? = memberMap["nick"], !nick.isEmpty,
                case let .object(user)? = memberMap["user"],
                case let .string(userId)? = user["id"] {
@@ -283,10 +295,6 @@ extension AppModel {
 
             guard case let .object(user)? = memberMap["user"],
                   case let .string(userId)? = user["id"] else { continue }
-
-            if case let .string(avatarHash)? = user["avatar"], !avatarHash.isEmpty {
-                cacheUserAvatar(avatarHash, for: userId)
-            }
 
             let username: String?
             if case let .string(value)? = user["username"] {
