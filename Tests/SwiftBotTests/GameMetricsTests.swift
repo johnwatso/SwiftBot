@@ -3,15 +3,10 @@ import XCTest
 
 final class GameMetricsTests: XCTestCase {
 
-    private func player(
-        trigger: Set<GameMetricID>,
-        context: Set<GameMetricID> = []
-    ) -> GameTrackedPlayer {
+    private func player() -> GameTrackedPlayer {
         var p = GameTrackedPlayer(displayName: "Tyr")
         p.playerID = "p-1"
         p.destinationChannelID = "channel-1"
-        p.triggerMetrics = trigger
-        p.contextMetrics = context
         return p
     }
 
@@ -75,12 +70,14 @@ final class GameMetricsTests: XCTestCase {
     }
 
     func testSelectingACounterAsATriggerIsFilteredOut() {
-        let p = player(trigger: [.rankedScore, .kills, .timePlayed])
-        XCTAssertEqual(p.effectiveTriggerMetrics, [.rankedScore])
+        var style = GameAnnouncementStyle()
+        style.announceOn = [.rankedScore, .kills, .timePlayed]
+        XCTAssertEqual(style.effectiveAnnounceOn, [.rankedScore])
     }
 
     func testKillDeathChangeTriggersWithoutAnyRankedScoreMovement() {
-        let target = player(trigger: [.killDeathRatio], context: [.kills])
+        let target = player()
+        let announceOn: Set<GameMetricID> = [.killDeathRatio]
         let previous = GameRankBaseline(
             snapshot: snapshot(score: 0, metrics: [.kills: 300, .deaths: 150]),
             displayName: "Tyr",
@@ -89,7 +86,7 @@ final class GameMetricsTests: XCTestCase {
         let current = snapshot(score: 0, metrics: [.kills: 320, .deaths: 170])
 
         guard case let .changed(change) = GameRankEvaluator.evaluate(
-            target: target, current: current, previous: previous
+            target: target, current: current, previous: previous, announceOn: announceOn
         ) else {
             return XCTFail("A K/D move must trigger even with no ranked score")
         }
@@ -98,12 +95,13 @@ final class GameMetricsTests: XCTestCase {
         XCTAssertEqual(change.metricChanges.count, 1)
         XCTAssertEqual(change.metricChanges.first?.metric, .killDeathRatio)
         XCTAssertLessThan(change.metricChanges.first?.delta ?? 0, 0, "K/D fell")
-        XCTAssertEqual(change.contextMetrics[.kills], 320)
+        XCTAssertEqual(change.contextMetrics[.kills], 320, "Every current reading travels with the change")
     }
 
     func testCounterMovementAloneDoesNotTrigger() {
         // Playing a match bumps kills; that must stay silent.
-        let target = player(trigger: [.killDeathRatio])
+        let target = player()
+        let announceOn: Set<GameMetricID> = [.killDeathRatio]
         let previous = GameRankBaseline(
             snapshot: snapshot(score: 0, metrics: [.kills: 300, .deaths: 150]),
             displayName: "Tyr",
@@ -113,14 +111,15 @@ final class GameMetricsTests: XCTestCase {
         let current = snapshot(score: 0, metrics: [.kills: 400, .deaths: 200])
 
         guard case .unchanged = GameRankEvaluator.evaluate(
-            target: target, current: current, previous: previous
+            target: target, current: current, previous: previous, announceOn: announceOn
         ) else {
             return XCTFail("An unchanged ratio must not announce")
         }
     }
 
     func testRatingOnlyProviderBehavesExactlyAsBefore() {
-        let target = player(trigger: [.rankedScore])
+        let target = player()
+        let announceOn: Set<GameMetricID> = [.rankedScore]
         let previous = GameRankBaseline(
             snapshot: snapshot(score: 31_000, metrics: [:]),
             displayName: "Tyr",
@@ -129,7 +128,7 @@ final class GameMetricsTests: XCTestCase {
         let current = snapshot(score: 31_520, metrics: [:])
 
         guard case let .changed(change) = GameRankEvaluator.evaluate(
-            target: target, current: current, previous: previous
+            target: target, current: current, previous: previous, announceOn: announceOn
         ) else {
             return XCTFail("Expected a ranked-score change")
         }
@@ -139,7 +138,8 @@ final class GameMetricsTests: XCTestCase {
     // MARK: - Embed
 
     func testEmbedNamesNonScoreMetricsExplicitly() throws {
-        let target = player(trigger: [.killDeathRatio], context: [.wins])
+        let target = player()
+        let announceOn: Set<GameMetricID> = [.killDeathRatio]
         let previous = GameRankBaseline(
             snapshot: snapshot(score: 0, metrics: [.kills: 300, .deaths: 150, .wins: 40]),
             displayName: "Tyr",
@@ -148,7 +148,7 @@ final class GameMetricsTests: XCTestCase {
         let current = snapshot(score: 0, metrics: [.kills: 340, .deaths: 155, .wins: 46])
 
         guard case let .changed(change) = GameRankEvaluator.evaluate(
-            target: target, current: current, previous: previous
+            target: target, current: current, previous: previous, announceOn: announceOn
         ) else {
             return XCTFail("Expected a change")
         }

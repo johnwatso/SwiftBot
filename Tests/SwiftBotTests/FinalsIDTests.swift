@@ -141,7 +141,8 @@ final class FinalsIDTests: XCTestCase {
             game: .theFinals, provider: .finalsID, fallbackPlayerID: "player#0001", fallbackDisplayName: "Player"
         )
         XCTAssertEqual(snapshot.score, 28_160)
-        XCTAssertEqual(snapshot.rankName, "Gold")
+        XCTAssertEqual(snapshot.rankName, "Gold 1", "rankIndex 12 is the top Gold division")
+        XCTAssertEqual(snapshot.metrics[.leaderboardPosition], 56_866)
         XCTAssertEqual(snapshot.season, "s11")
         XCTAssertEqual(snapshot.displayName, "player#0001")
         XCTAssertNotNil(snapshot.updatedAt, "Fractional-second capturedAt must parse")

@@ -39,6 +39,30 @@ final class VoiceTTSSource: @unchecked Sendable {
         return englishVoices.first ?? AVSpeechSynthesisVoice(language: "en-US")
     }
 
+    /// Voices offered in the reading-voice pickers: English Piper, Premium and
+    /// Enhanced voices, i.e. the ones the user has actually downloaded. The
+    /// built-in compact voices for every locale are left out.
+    static func selectableVoiceOptions() -> [(identifier: String, label: String)] {
+        let englishVoices = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("en") }
+        let piper = sortedForPicker(englishVoices.filter(isPiperVoice))
+        let premium = sortedForPicker(englishVoices.filter { $0.quality == .premium && !isPiperVoice($0) })
+        let enhanced = sortedForPicker(englishVoices.filter { $0.quality == .enhanced && !isPiperVoice($0) })
+
+        return piper.map { ($0.identifier, "\($0.name) (Piper · \($0.language))") }
+            + premium.map { ($0.identifier, "\($0.name) (Premium · \($0.language))") }
+            + enhanced.map { ($0.identifier, "\($0.name) (Enhanced · \($0.language))") }
+    }
+
+    private static func sortedForPicker(_ voices: [AVSpeechSynthesisVoice]) -> [AVSpeechSynthesisVoice] {
+        voices.sorted { lhs, rhs in
+            let lhsIsRyan = isRyanPiperVoice(lhs)
+            let rhsIsRyan = isRyanPiperVoice(rhs)
+            if lhsIsRyan != rhsIsRyan { return lhsIsRyan }
+            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
+        }
+    }
+
     static func isPiperVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
         voice.identifier.localizedCaseInsensitiveContains("piper") ||
             voice.name.localizedCaseInsensitiveContains("piper")

@@ -37,6 +37,9 @@ OUTPUT = os.path.join(REPO_ROOT, "THIRD-PARTY-NOTICES.md")
 
 # identity -> (display name, checkout directory, what SwiftBot uses it for)
 PACKAGES = {
+    "swift-webauthn": ("Swift WebAuthn", "swift-webauthn", "Passkey registration and authentication verification."),
+    "swiftcbor": ("SwiftCBOR", "SwiftCBOR", "CBOR decoding for WebAuthn authenticator data."),
+    "swift-log": ("Swift Log", "swift-log", "Logging beneath Swift WebAuthn."),
     "sparkle": ("Sparkle", "Sparkle", "Signed automatic app updates."),
     "swiftsoup": ("SwiftSoup", "SwiftSoup", "HTML parsing for Patchy and WikiBridge."),
     "swiftbot-opus": ("swiftbot-opus", "swiftbot-opus", "Opus encode/decode for Discord voice."),
@@ -53,7 +56,7 @@ PACKAGES = {
     "libdave-swift": ("libdave-swift", "libdave-swift", "Discord DAVE end-to-end encrypted voice."),
 }
 
-LICENSE_FILENAMES = ("LICENSE.txt", "LICENSE", "LICENSE.md", "COPYING", "COPYING.txt")
+LICENSE_FILENAMES = ("LICENSE.txt", "LICENSE", "LICENSE.md", "COPYING", "COPYING.txt", "UNLICENSE")
 NOTICE_FILENAMES = ("NOTICE.txt", "NOTICE", "NOTICE.md")
 
 APACHE_MARKER = "Apache License"

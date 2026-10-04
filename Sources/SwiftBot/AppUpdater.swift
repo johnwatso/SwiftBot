@@ -37,6 +37,18 @@ final class AppUpdater: NSObject, ObservableObject {
     @Published private(set) var selectedChannel: UpdateChannel = .stable
     @Published private(set) var automaticallyChecksForUpdates = false
     @Published private(set) var automaticallyDownloadsUpdates = false
+    /// What the last check found, so the Web UI can report it without
+    /// Sparkle's own window (which only appears on this Mac).
+    @Published private(set) var isChecking = false
+    @Published private(set) var lastCheckedAt: Date?
+    @Published private(set) var availableVersion: String?
+    @Published private(set) var availableBuild: String?
+    @Published private(set) var availableReleaseNotesURL: URL?
+    @Published private(set) var lastErrorMessage: String?
+    /// Set once an unattended download has finished and Sparkle is waiting
+    /// for the app to quit. Calling it installs and relaunches now.
+    private var pendingInstallHandler: (() -> Void)?
+    @Published private(set) var isReadyToInstall = false
 
 #if canImport(Sparkle)
     private var updaterController: SPUStandardUpdaterController?
@@ -102,9 +114,22 @@ final class AppUpdater: NSObject, ObservableObject {
 
     func checkForUpdatesInBackground() {
 #if canImport(Sparkle)
-        updaterController?.updater.checkForUpdatesInBackground()
+        guard let updater = updaterController?.updater, !updater.sessionInProgress else { return }
+        isChecking = true
+        updater.checkForUpdatesInBackground()
 #endif
     }
+
+    /// Installs a downloaded update and relaunches. False when nothing is
+    /// waiting to install.
+    @discardableResult
+    func installPendingUpdate() -> Bool {
+        guard let handler = pendingInstallHandler else { return false }
+        handler()
+        return true
+    }
+
+    var currentVersion: String { currentShortVersion }
 
     var releaseNotesURL: URL? {
         Self.releaseNotesURL(from: feedURLString, shortVersion: currentShortVersion)
@@ -211,6 +236,37 @@ extension AppUpdater: SPUUpdaterDelegate {
         Self.resolvedFeedURL(stableFeedURL: stableFeedURL, channel: selectedChannel)
     }
 
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        availableVersion = item.displayVersionString
+        availableBuild = item.versionString
+        availableReleaseNotesURL = item.fullReleaseNotesURL ?? item.releaseNotesURL
+            ?? Self.releaseNotesURL(from: feedURLString, shortVersion: item.displayVersionString)
+        lastErrorMessage = nil
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
+        availableVersion = nil
+        availableBuild = nil
+        availableReleaseNotesURL = nil
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        isChecking = false
+        lastCheckedAt = Date()
+    }
+
+    /// Only called for an unattended download. Taking it over keeps the
+    /// install handler so the Web UI (or Settings) can install now instead of
+    /// waiting for a quit that a long-running bot may never do. Sparkle still
+    /// installs on quit if nobody does.
+    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem, immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
+        availableVersion = item.displayVersionString
+        availableBuild = item.versionString
+        pendingInstallHandler = immediateInstallHandler
+        isReadyToInstall = true
+        return true
+    }
+
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         // Do not postpone relaunch; install immediately when Sparkle is ready.
         return false
@@ -227,6 +283,8 @@ extension AppUpdater: SPUUpdaterDelegate {
                 return
             }
         }
+
+        lastErrorMessage = error.localizedDescription
 
         onError?(error)
     }

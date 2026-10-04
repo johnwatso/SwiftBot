@@ -70,7 +70,8 @@ enum GameTrackingDailySchedule {
 }
 
 enum GameTrackingNotificationBuilder {
-    static func embed(changes: [GameRankChange], checkedAt: Date) -> [String: Any] {
+    /// `shared` limits the context stats shown; nil shows all of them.
+    static func embed(changes: [GameRankChange], checkedAt: Date, shared: Set<GameMetricID>? = nil) -> [String: Any] {
         let sortedChanges = changes.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
@@ -88,6 +89,11 @@ enum GameTrackingNotificationBuilder {
                     // other metric is named explicitly so the number is legible.
                     if movement.metric == .rankedScore {
                         lines.append("**\(movement.formattedDelta) \(change.game.scoreUnit)** · \(movement.formattedCurrent) total")
+                    } else if movement.metric == .rankTier {
+                        // "Rank 12 (+1)" means nothing to anyone; name the division.
+                        let now = change.currentTier?.name ?? movement.formattedCurrent
+                        let before = change.previousTier?.name
+                        lines.append("**\(now)**" + (before.map { " (from \($0))" } ?? ""))
                     } else {
                         lines.append("**\(movement.metric.displayName) \(movement.formattedCurrent)** (\(movement.formattedDelta))")
                     }
@@ -96,16 +102,19 @@ enum GameTrackingNotificationBuilder {
 
             // Context metrics that did not themselves trigger the post.
             let moved = Set(change.metricChanges.map(\.metric))
-            let context = change.contextMetrics.presentMetrics.filter { !moved.contains($0) }
+            let context = change.contextMetrics.presentMetrics.filter {
+                !moved.contains($0) && $0 != .rankedScore && $0 != .rankTier && (shared?.contains($0) ?? true)
+            }
             if !context.isEmpty {
                 let parts = context.compactMap { metric -> String? in
                     guard let value = change.contextMetrics[metric] else { return nil }
-                    return "\(metric.displayName) \(metric.formatted(value))"
+                    return "\(metric.displayName) \(change.game.formattedMetric(metric, value, score: change.currentScore, league: change.rankName))"
                 }
                 if !parts.isEmpty { lines.append(parts.joined(separator: " · ")) }
             }
 
-            if let rankName = change.rankName, !rankName.isEmpty {
+            let rankMoved = change.metricChanges.contains { $0.metric == .rankTier }
+            if !rankMoved, let rankName = change.currentTier?.name ?? change.rankName, !rankName.isEmpty {
                 lines.append(rankName)
             }
             if !change.season.isEmpty {

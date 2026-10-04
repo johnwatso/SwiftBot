@@ -92,6 +92,10 @@ actor ConfigStore {
     private let adminWebPublicAccessTunnelTokenAccount = "admin-web-public-access-tunnel-token"
     private let adminWebLocalAuthPasswordAccount = "admin-web-local-auth-password"
     private let openAIAPIKeyAccount = "openai-api-key"
+    private let swiftMinerAPIKeyAccount = "swiftminer-api-key"
+    private let swiftMinerWebhookSecretAccount = "swiftminer-webhook-secret"
+    private var lastSwiftMinerAPIKey: String?
+    private var lastSwiftMinerWebhookSecret: String?
     /// Pre-multi-provider account name, migrated on first load.
     private let legacyFinalsIDAPITokenAccount = "finals-id-api-token"
     private var lastGameProviderTokens: [GameProviderID: String] = [:]
@@ -196,6 +200,19 @@ actor ConfigStore {
             lastGameProviderTokens[providerID] = settings.gameProviders.token(for: providerID)
         }
 
+        // SwiftMiner's pairing used to be written to settings.json in plain
+        // text. A value still on disk is newer than the Keychain's by
+        // definition (this build never writes one), so it wins and moves in;
+        // the file is then rewritten without it rather than waiting for the
+        // next save.
+        let migratedAPIKey = loadKeychainBacked(&settings.swiftMiner.apiKey, account: swiftMinerAPIKeyAccount)
+        let migratedWebhookSecret = loadKeychainBacked(&settings.swiftMiner.webhookSecret, account: swiftMinerWebhookSecretAccount)
+        lastSwiftMinerAPIKey = settings.swiftMiner.apiKey
+        lastSwiftMinerWebhookSecret = settings.swiftMiner.webhookSecret
+        if migratedAPIKey || migratedWebhookSecret {
+            try? writeSettingsFile(settings)
+        }
+
         // OpenAI API keys are no longer used. Purge the legacy keychain entry
         // on first load after the Apple-only consolidation so secrets don't
         // sit in the keychain indefinitely.
@@ -206,9 +223,31 @@ actor ConfigStore {
         return settings
     }
 
-    func save(_ settings: BotSettings) throws {
-        var settingsToSave = settings
+    /// Fills `value` from the Keychain, or moves a plaintext value found on
+    /// disk into it. Returns true when a value was migrated off disk.
+    private func loadKeychainBacked(_ value: inout String, account: String) -> Bool {
+        let onDisk = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !onDisk.isEmpty {
+            guard KeychainHelper.save(onDisk, account: account) else { return false }
+            value = onDisk
+            return true
+        }
+        if let stored = KeychainHelper.load(account: account) { value = stored }
+        return false
+    }
 
+    private func saveKeychainBacked(_ value: String, account: String, last: inout String?) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != last else { return }
+        if trimmed.isEmpty {
+            KeychainHelper.delete(account: account)
+        } else {
+            KeychainHelper.save(trimmed, account: account)
+        }
+        last = trimmed
+    }
+
+    func save(_ settings: BotSettings) throws {
         // If token has changed, update Keychain.
         if settings.token != lastToken {
             if settings.token.isEmpty {
@@ -270,6 +309,17 @@ actor ConfigStore {
             lastGameProviderTokens[providerID] = trimmed
         }
 
+        saveKeychainBacked(settings.swiftMiner.apiKey, account: swiftMinerAPIKeyAccount, last: &lastSwiftMinerAPIKey)
+        saveKeychainBacked(settings.swiftMiner.webhookSecret, account: swiftMinerWebhookSecretAccount, last: &lastSwiftMinerWebhookSecret)
+
+        try writeSettingsFile(settings)
+    }
+
+    /// Writes settings.json with every secret blanked. Callers store the
+    /// secrets in the Keychain first (`save`, or a migration in `load`).
+    private func writeSettingsFile(_ settings: BotSettings) throws {
+        var settingsToSave = settings
+
         // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordOAuth.clientSecret = ""
@@ -277,6 +327,8 @@ actor ConfigStore {
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.adminWebUI.publicAccessTunnelToken = ""
         settingsToSave.gameProviders.clearTokens()
+        settingsToSave.swiftMiner.apiKey = ""
+        settingsToSave.swiftMiner.webhookSecret = ""
         settingsToSave.clusterSharedSecret = ""
         settingsToSave.clusterMode = .standalone
         settingsToSave.clusterNodeName = Host.current().localizedName ?? "SwiftBot Node"

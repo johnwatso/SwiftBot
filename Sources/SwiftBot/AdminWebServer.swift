@@ -1,4 +1,6 @@
 import Foundation
+import WebAuthn
+import Security
 import RecordingsKit
 import Network
 import Darwin
@@ -182,6 +184,73 @@ struct AdminWebSwiftMeshAction: Codable {
     var node: String?
 }
 
+/// One-off things the Web UI asks the host to do right now: run the bot,
+/// send a test, refresh a cache, handle an update. The runner returns nil
+/// when done, or the reason it couldn't be.
+enum AdminWebHostOperation: Sendable {
+    case startBot
+    case stopBot
+    case restartBot
+    case announcerTest
+    case announcerReconnect
+    case welcomeTest
+    case refreshWelcomeInvites
+    case sweepTestMVP(SweepPolicy)
+    case checkForUpdates
+    case installUpdate
+    case setAutomaticUpdateChecks(Bool)
+    case setUnattendedUpdates(Bool)
+}
+
+struct AdminWebBotPermissionsPayload: Codable {
+    struct Flag: Codable {
+        let name: String
+        let detail: String
+    }
+
+    struct Guild: Codable {
+        let id: String
+        let name: String
+        let isOwner: Bool
+        let hasAdministrator: Bool
+        let missingEssential: [Flag]
+        let missingRecommended: [Flag]
+        let missingOptional: [Flag]
+        /// Text and announcement channels the bot can see; nil when Discord
+        /// wouldn't list them.
+        let visibleTextChannels: Int?
+        let reinviteURL: String?
+        let adminReinviteURL: String?
+    }
+
+    let botUsername: String?
+    let error: String?
+    let guilds: [Guild]
+    let checkedAt: Date
+}
+
+struct AdminWebUpdatesPayload: Codable {
+    let configured: Bool
+    let version: String
+    let build: String
+    let channel: String
+    let automaticChecks: Bool
+    let unattended: Bool
+    let isChecking: Bool
+    let lastCheckedAt: Date?
+    let availableVersion: String?
+    let availableBuild: String?
+    let releaseNotesURL: String?
+    /// An unattended download is waiting; installing restarts SwiftBot.
+    let readyToInstall: Bool
+    let lastError: String?
+}
+
+struct AdminWebUpdatesSettingsPatch: Codable {
+    var automaticChecks: Bool?
+    var unattended: Bool?
+}
+
 struct AdminWebRecentVoicePayload: Codable {
     let description: String
     let timeText: String
@@ -199,6 +268,7 @@ struct AdminWebActiveVoicePayload: Codable {
     let channelName: String
     let serverName: String
     let joinedText: String
+    var joinedAt: Date? = nil
 }
 
 struct AdminWebDiscordUser: Codable, Sendable {
@@ -393,8 +463,6 @@ struct AdminWebGameTrackerPlayerPayload: Codable {
     let baselineRecordedAt: Date?
     /// Editable fields the WebUI player editor round-trips.
     var discordUserID: String = ""
-    var triggerMetrics: [String] = []
-    var contextMetrics: [String] = []
 }
 
 /// What the WebUI needs to offer the same choices as the native player
@@ -462,6 +530,16 @@ struct AdminWebGameTrackerPayload: Codable {
     /// Server members for the "Discord member" picker; `name` is the
     /// display name and `username` the @handle when it differs.
     var members: [AdminWebMemberOption] = []
+    /// How announcements look, and sample Discord payloads rendered with it
+    /// by the same code that posts them.
+    var announcementStyle: GameAnnouncementStyle = GameAnnouncementStyle()
+    var stylePreview: AdminWebGameTrackerStylePreview?
+}
+
+/// Discord message JSON (`content`, `embeds`) for the style editor preview.
+struct AdminWebGameTrackerStylePreview: Codable {
+    let rankUpdate: String
+    let session: String
 }
 
 struct AdminWebMemberOption: Codable {
@@ -486,6 +564,9 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
         case deletePlayer
         case setPlayerEnabled
         case updateSettings
+        case updateStyle
+        /// Posts sample announcements to a player's channel.
+        case sendTest
     }
 
     struct PlayerInput: Codable {
@@ -498,8 +579,6 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
         let destinationChannelID: String
         let isEnabled: Bool
         let discordUserID: String
-        let triggerMetrics: [String]
-        let contextMetrics: [String]
     }
 
     let action: Action
@@ -509,6 +588,7 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
     var dailyCheckEnabled: Bool?
     var sessionTrackingEnabled: Bool?
     var checkHour: Int?
+    var style: GameAnnouncementStyle?
 
     func validate() throws {
         switch action {
@@ -532,6 +612,22 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
         case .updateSettings:
             if let checkHour, !(0...23).contains(checkHour) {
                 throw ValidationError.outOfRange("checkHour", min: 0, max: 23)
+            }
+        case .updateStyle:
+            guard let style else { throw ValidationError.invalidValue("Style is required") }
+            if style.accent == .custom, style.customColorValue == nil {
+                throw ValidationError.invalidValue("Custom colour must be a hex value like #D21F3C")
+            }
+            if style.effectiveAnnounceOn.isEmpty {
+                throw ValidationError.invalidValue("Pick at least one change to post on")
+            }
+            let limit = GameAnnouncementStyle.maxTemplateLength
+            if [style.rankTitleTemplate, style.sessionTitleTemplate, style.footerText].contains(where: { $0.count > limit }) {
+                throw ValidationError.invalidValue("Titles and footer must be \(limit) characters or fewer")
+            }
+        case .sendTest:
+            if let playerID, UUID(uuidString: playerID) == nil {
+                throw ValidationError.invalidValue("Unknown player")
             }
         }
     }
@@ -608,6 +704,7 @@ struct AdminWebRewindRecapsPayload: Codable, Sendable {
         let lastYearlyKey: String?
         let channels: [AdminWebSimpleOption]
         var personalDMs: Bool = false
+        var onlyDMActiveMembers: Bool = true
     }
     let guilds: [Guild]
     /// Members who turned Replay DMs off.
@@ -626,6 +723,7 @@ struct AdminWebRewindRecapUpdate: Codable, Sendable {
     let monthly: Bool
     let yearly: Bool
     var personalDMs: Bool?
+    var onlyDMActiveMembers: Bool?
 }
 
 /// Read-only mirror of the native Rewind screen. Collection settings stay
@@ -776,6 +874,8 @@ struct AdminWebAnalyticsPeriodPayload: Codable {
     /// Rewind is on and has archived something.
     let messagesAvailable: Bool
     let rewindEnabled: Bool
+    /// Completed feature work in this period; absent on older servers.
+    var featureUses: [String: Int]? = nil
 }
 
 struct AdminWebConfigPayload: Codable {
@@ -1124,6 +1224,14 @@ struct AdminWebWelcomeFlowPayload: Codable {
     let settings: WelcomeFlowSettings
     let serverContext: AdminWebAutomationServerContext
     let metrics: AdminWebWelcomeFlowMetrics
+    /// The server's invites as last read from Discord, for the invite-role picker.
+    var invites: [AdminWebWelcomeInvite] = []
+}
+
+struct AdminWebWelcomeInvite: Codable {
+    let code: String
+    let channelName: String?
+    let uses: Int
 }
 
 struct AdminWebWelcomeFlowMetrics: Codable {
@@ -1142,7 +1250,6 @@ struct AdminWebWelcomeFlowPatch: Codable, Validatable {
 
 struct AdminWebPatchyPayload: Codable {
     let monitoringEnabled: Bool
-    let showDebug: Bool
     let isCycleRunning: Bool
     let lastCycleAt: Date?
     let sourceKinds: [String]
@@ -1153,12 +1260,10 @@ struct AdminWebPatchyPayload: Codable {
     let steamAppNames: [String: String]
     let isFailoverManagedNode: Bool
     let botStatus: String
-    let debugLogs: [String]
 }
 
 struct AdminWebPatchyStatePatch: Codable {
     let monitoringEnabled: Bool?
-    let showDebug: Bool?
 }
 
 struct AdminWebPatchyTargetPatch: Codable, Validatable {
@@ -1440,6 +1545,9 @@ actor AdminWebServer {
         /// Members: the connected servers they belonged to at sign-in, which
         /// scopes what they can see.
         var guildIDs: [String]? = nil
+        var signInMethod: String? = nil
+        // Secrets remain in the Keychain-backed session store. Never exposed to clients.
+        var discordRefreshToken: String? = nil
     }
 
     private struct PendingState {
@@ -1495,6 +1603,12 @@ actor AdminWebServer {
         allowedUserIDs: [],
         devFeaturesEnabled: false
     )
+    private var oauthURLSession = URLSession.shared
+    private var persistAuthenticationState = true
+    private var passkeyState = PasskeyState()
+    private var passkeyChallenges: [String: PasskeyChallenge] = [:]
+    private var passkeyUsersInFlight: Set<String> = []
+    private var passkeyRequestBuckets: [String: [Date]] = [:]
     private var listener: NWListener?
     private var nioChannel: Channel?
     private var nioGroup: MultiThreadedEventLoopGroup?
@@ -1536,7 +1650,7 @@ actor AdminWebServer {
     private var updatePatchyTarget: (@Sendable (PatchySourceTarget) async -> Bool)?
     private var setPatchyTargetEnabled: (@Sendable (UUID, Bool) async -> Bool)?
     private var deletePatchyTarget: (@Sendable (UUID) async -> Bool)?
-    private var sendPatchyTestTarget: (@Sendable (UUID) async -> Bool)?
+    private var sendPatchyTestTarget: (@Sendable (UUID) async -> PatchyTestOutcome)?
     private var pullPatchyTarget: (@Sendable (UUID) async -> Bool)?
     private var runPatchyCheckNow: (@Sendable () async -> Bool)?
     private var aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)?
@@ -1565,9 +1679,13 @@ actor AdminWebServer {
     private var gameTrackerProvider: (@Sendable () async -> AdminWebGameTrackerPayload)?
     private var gameTrackerCheckRunner: (@Sendable () async -> Bool)?
     private var gameTrackerUpdater: (@Sendable (AdminWebGameTrackerUpdate) async -> Bool)?
+    private var gameTrackerStylePreviewer: (@Sendable (GameAnnouncementStyle) async -> AdminWebGameTrackerStylePreview)?
     /// Saves (token) or removes (nil) a provider credential; returns a
     /// `GameProviderCredentialResult` raw value.
     private var gameProviderCredentialUpdater: (@Sendable (String, String?) async -> String)?
+    private var hostOperationRunner: (@Sendable (AdminWebHostOperation) async -> String?)?
+    private var botPermissionsProvider: (@Sendable () async -> AdminWebBotPermissionsPayload)?
+    private var updatesProvider: (@Sendable () async -> AdminWebUpdatesPayload?)?
     /// Credential changes need a sign-in this recent, since sessions last a day.
     private let credentialReauthWindow: TimeInterval = 15 * 60
     private var mediaGameArtworkProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
@@ -1684,7 +1802,7 @@ actor AdminWebServer {
         updatePatchyTarget: @escaping @Sendable (PatchySourceTarget) async -> Bool,
         setPatchyTargetEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
         deletePatchyTarget: @escaping @Sendable (UUID) async -> Bool,
-        sendPatchyTestTarget: @escaping @Sendable (UUID) async -> Bool,
+        sendPatchyTestTarget: @escaping @Sendable (UUID) async -> PatchyTestOutcome,
         pullPatchyTarget: @escaping @Sendable (UUID) async -> Bool,
         runPatchyCheckNow: @escaping @Sendable () async -> Bool,
         aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)? = nil,
@@ -1712,6 +1830,7 @@ actor AdminWebServer {
         gameTrackerProvider: @escaping @Sendable () async -> AdminWebGameTrackerPayload,
         gameTrackerCheckRunner: @escaping @Sendable () async -> Bool,
         gameTrackerUpdater: @escaping @Sendable (AdminWebGameTrackerUpdate) async -> Bool,
+        gameTrackerStylePreviewer: (@Sendable (GameAnnouncementStyle) async -> AdminWebGameTrackerStylePreview)? = nil,
         mediaGameArtworkProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         accessProvider: @escaping @Sendable () async -> AdminWebAccessPayload,
         activityProvider: @escaping @Sendable (Int) async -> AdminWebActivityPayload,
@@ -1818,6 +1937,7 @@ actor AdminWebServer {
         self.gameTrackerProvider = gameTrackerProvider
         self.gameTrackerCheckRunner = gameTrackerCheckRunner
         self.gameTrackerUpdater = gameTrackerUpdater
+        self.gameTrackerStylePreviewer = gameTrackerStylePreviewer
         self.mediaGameArtworkProvider = mediaGameArtworkProvider
         self.accessProvider = accessProvider
         self.activityProvider = activityProvider
@@ -1859,6 +1979,7 @@ actor AdminWebServer {
         self.logger = log
 
         loadPersistedSessions()
+        loadPasskeys()
         let previous = self.config
         self.config = config
         revokeSessionsOutsideAllowList(previous: previous.allowedUserIDs)
@@ -2318,6 +2439,10 @@ actor AdminWebServer {
             }
         }
 
+        if request.path.hasPrefix("/auth/passkeys/") {
+            return await handlePasskeys(request: request)
+        }
+
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
             return serveIndex()
@@ -2641,7 +2766,7 @@ actor AdminWebServer {
                 "csrfToken": session.csrfToken,
                 "role": session.role.rawValue,
                 // For the Preferences page's account card.
-                "signInMethod": session.userID.hasPrefix("local:") ? "password" : "discord",
+                "signInMethod": session.signInMethod ?? (session.userID.hasPrefix("local:") ? "password" : "discord"),
                 "sessionExpiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
             ])
         case ("GET", "/api/media/access-token"):
@@ -3160,10 +3285,15 @@ actor AdminWebServer {
             guard let patch = try? decoder.decode(AdminWebPatchyTargetIDPatch.self, from: request.body) else {
                 return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
             }
-            guard await sendPatchyTestTarget?(patch.targetID) == true else {
-                return jsonResponse(["error": "test_failed"], status: "400 Bad Request")
+            // Waits for the real send so the WebUI can say "sent" or show
+            // Discord's or the source's actual error.
+            guard let outcome = await sendPatchyTestTarget?(patch.targetID) else {
+                return jsonResponse(["error": "test_failed", "message": "Patchy isn't available."], status: "503 Service Unavailable")
             }
-            return jsonResponse(["ok": true])
+            guard outcome.ok else {
+                return jsonResponse(["error": "test_failed", "message": outcome.message], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true, "message": outcome.message])
         case ("POST", "/api/patchy/target/pull"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -3223,8 +3353,29 @@ actor AdminWebServer {
             } catch {
                 return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
+        case ("POST", "/api/gametracker/preview"):
+            // Renders an unsaved style so the editor preview follows the
+            // draft. Read-only: nothing is stored or posted.
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard var style = try? apiDecoder.decode(GameAnnouncementStyle.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            style.normalize()
+            if let preview = await gameTrackerStylePreviewer?(style) {
+                return codableResponse(preview)
+            }
+            return jsonResponse(["error": "gametracker_unavailable"], status: "503 Service Unavailable")
         case ("POST", "/api/gametracker/credential"):
             return await handleGameProviderCredential(request)
+        case ("GET", "/api/bot/permissions"), ("GET", "/api/updates"):
+            return await handleHostSnapshot(request)
+        case ("POST", let path) where Self.hostOperationPaths.contains(path):
+            return await handleHostOperation(request)
         case ("GET", "/api/sweep"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -4418,8 +4569,8 @@ actor AdminWebServer {
 
         do {
             let token = try await exchangeDiscordCode(code: code, codeVerifier: pendingState.codeVerifier)
-            let user = try await fetchDiscordUser(accessToken: token)
-            let guilds = try await fetchDiscordGuilds(accessToken: token)
+            let user = try await fetchDiscordUser(accessToken: token.accessToken)
+            let guilds = try await fetchDiscordGuilds(accessToken: token.accessToken)
             let isAdmin = await isAuthorized(userID: user.id, guilds: guilds)
             let connectedGuildIDs = await connectedGuildIDsProvider?() ?? []
             let memberGuildIDs = guilds.map(\.id).filter { connectedGuildIDs.contains($0) }
@@ -4467,8 +4618,15 @@ actor AdminWebServer {
                 csrfToken: randomToken(),
                 expiresAt: Date().addingTimeInterval(sessionTTL),
                 userAgentHash: userAgentHash(for: request),
-                role: .admin
+                role: .admin,
+                discordRefreshToken: token.refreshToken
             )
+            if let refreshToken = token.refreshToken,
+               passkeyState.credentials.values.contains(where: { $0.userID == user.id }) {
+                var state = passkeyState
+                state.refreshTokens[user.id] = refreshToken
+                try savePasskeys(state)
+            }
             sessions[session.id] = session
             persistSessions()
             await logger?("Admin Web UI login for \(user.username) (\(user.id))")
@@ -4524,8 +4682,8 @@ actor AdminWebServer {
 
         do {
             let token = try await exchangeDiscordCode(code: code, codeVerifier: codeVerifier)
-            let user = try await fetchDiscordUser(accessToken: token)
-            let guilds = try await fetchDiscordGuilds(accessToken: token)
+            let user = try await fetchDiscordUser(accessToken: token.accessToken)
+            let guilds = try await fetchDiscordGuilds(accessToken: token.accessToken)
             let isGuildMember = await isMemberOfConnectedGuild(guilds: guilds)
 
             let payloadObject: [String: Any] = [
@@ -4636,6 +4794,7 @@ actor AdminWebServer {
         let botAvatarURL = status?.botAvatarURL ?? ""
 
         return jsonResponse([
+            "passkeysEnabled": passkeyOrigin() != nil,
             "discordEnabled": discordConfigured,
             "localEnabled": localEnabled && devFeaturesEnabled,
             "devFeaturesEnabled": devFeaturesEnabled,
@@ -4838,7 +4997,12 @@ actor AdminWebServer {
         return guilds.contains { connectedGuildIDs.contains($0.id) }
     }
 
-    private func exchangeDiscordCode(code: String, codeVerifier: String?) async throws -> String {
+    private struct DiscordToken {
+        let accessToken: String
+        let refreshToken: String?
+    }
+
+    private func exchangeDiscordCode(code: String, codeVerifier: String?) async throws -> DiscordToken {
         guard let url = URL(string: "https://discord.com/api/oauth2/token") else {
             throw OAuthError.invalidURL
         }
@@ -4864,10 +5028,9 @@ actor AdminWebServer {
             .joined(separator: "&")
             .data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await oauthURLSession.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw OAuthError.tokenExchangeFailed((response as? HTTPURLResponse)?.statusCode ?? -1, body)
+            throw OAuthError.tokenExchangeFailed((response as? HTTPURLResponse)?.statusCode ?? -1, "Discord rejected the token exchange.")
         }
 
         guard
@@ -4875,11 +5038,10 @@ actor AdminWebServer {
             let accessToken = object["access_token"] as? String,
             !accessToken.isEmpty
         else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw OAuthError.tokenExchangeFailed(http.statusCode, "Unexpected token payload: \(body)")
+            throw OAuthError.tokenExchangeFailed(http.statusCode, "Discord returned an invalid token response.")
         }
 
-        return accessToken
+        return DiscordToken(accessToken: accessToken, refreshToken: object["refresh_token"] as? String)
     }
 
     private func fetchDiscordUser(accessToken: String) async throws -> DiscordUser {
@@ -4890,7 +5052,7 @@ actor AdminWebServer {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await oauthURLSession.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw OAuthError.userFetchFailed((response as? HTTPURLResponse)?.statusCode ?? -1, body)
@@ -4923,7 +5085,7 @@ actor AdminWebServer {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await oauthURLSession.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw OAuthError.guildFetchFailed((response as? HTTPURLResponse)?.statusCode ?? -1, body)
@@ -4983,6 +5145,91 @@ actor AdminWebServer {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    func setHostOperations(
+        run: @escaping @Sendable (AdminWebHostOperation) async -> String?,
+        permissions: @escaping @Sendable () async -> AdminWebBotPermissionsPayload,
+        updates: @escaping @Sendable () async -> AdminWebUpdatesPayload?
+    ) {
+        hostOperationRunner = run
+        botPermissionsProvider = permissions
+        updatesProvider = updates
+    }
+
+    static let hostOperationPaths: Set<String> = [
+        "/api/bot/start", "/api/bot/stop", "/api/bot/restart",
+        "/api/announcer/test", "/api/announcer/reconnect",
+        "/api/welcome-flow/test", "/api/welcome-flow/invites/refresh",
+        "/api/sweep/draft/test-mvp",
+        "/api/updates/check", "/api/updates/install", "/api/updates/settings"
+    ]
+
+    /// `GET /api/bot/permissions` and `GET /api/updates`.
+    private func handleHostSnapshot(_ request: HTTPRequest) async -> Data {
+        guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+        guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+        if request.path == "/api/bot/permissions" {
+            guard let provider = botPermissionsProvider else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            return codableResponse(await provider())
+        }
+        guard let payload = await updatesProvider?() else {
+            return jsonResponse(["error": "unavailable", "message": "Software updates aren’t available yet. Open SwiftBot on the Mac once."], status: "503 Service Unavailable")
+        }
+        return codableResponse(payload)
+    }
+
+    private func handleHostOperation(_ request: HTTPRequest) async -> Data {
+        guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+        guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+        guard validateCSRF(session: session, request: request) else {
+            return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+        }
+
+        let operation: AdminWebHostOperation
+        let auditAction: String?
+        switch request.path {
+        case "/api/bot/start": (operation, auditAction) = (.startBot, "Started the bot")
+        case "/api/bot/stop": (operation, auditAction) = (.stopBot, "Stopped the bot")
+        case "/api/bot/restart": (operation, auditAction) = (.restartBot, "Restarted the bot")
+        case "/api/announcer/test": (operation, auditAction) = (.announcerTest, nil)
+        case "/api/announcer/reconnect": (operation, auditAction) = (.announcerReconnect, "Reconnected the announcer")
+        case "/api/welcome-flow/test": (operation, auditAction) = (.welcomeTest, "Sent a test welcome")
+        case "/api/welcome-flow/invites/refresh": (operation, auditAction) = (.refreshWelcomeInvites, nil)
+        case "/api/sweep/draft/test-mvp":
+            guard let policy = try? apiDecoder.decode(SweepPolicy.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            (operation, auditAction) = (.sweepTestMVP(policy), "Sent a test weekly MVP")
+        case "/api/updates/check": (operation, auditAction) = (.checkForUpdates, nil)
+        case "/api/updates/install": (operation, auditAction) = (.installUpdate, "Installed a software update")
+        case "/api/updates/settings":
+            guard let patch = try? apiDecoder.decode(AdminWebUpdatesSettingsPatch.self, from: request.body),
+                  patch.automaticChecks != nil || patch.unattended != nil else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            if let automatic = patch.automaticChecks {
+                (operation, auditAction) = (.setAutomaticUpdateChecks(automatic), "\(automatic ? "Turned on" : "Turned off") automatic update checks")
+            } else {
+                let unattended = patch.unattended ?? false
+                (operation, auditAction) = (.setUnattendedUpdates(unattended), "\(unattended ? "Turned on" : "Turned off") unattended updates")
+            }
+        default:
+            return jsonResponse(["error": "not_found"], status: "404 Not Found")
+        }
+
+        guard let runner = hostOperationRunner else {
+            return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+        }
+        if let problem = await runner(operation) {
+            return jsonResponse(["error": "failed", "message": problem], status: "409 Conflict")
+        }
+        if let auditAction {
+            audit(source: "Web Config", actor: actorLabel(session), action: auditAction, level: "ok")
+        }
+        return jsonResponse(["ok": true])
     }
 
     /// Installs (or replaces) the structured audit-log sink. Hooks AppModel's
@@ -5081,11 +5328,11 @@ actor AdminWebServer {
     private func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
         let a = Array(lhs.utf8)
         let b = Array(rhs.utf8)
-        var diff = UInt8(a.count ^ b.count)
+        var diff = UInt(a.count ^ b.count)
         for i in 0..<Swift.max(a.count, b.count) {
             let lb = i < a.count ? a[i] : 0
             let rb = i < b.count ? b[i] : 0
-            diff |= lb ^ rb
+            diff |= UInt(lb ^ rb)
         }
         return diff == 0
     }
@@ -5274,6 +5521,7 @@ actor AdminWebServer {
     }
 
     private func persistSessions() {
+        guard persistAuthenticationState else { return }
         if sessions.isEmpty {
             KeychainHelper.delete(account: sessionsKeychainAccount)
             return
@@ -5922,3 +6170,331 @@ extension AdminWebServer {
     }
 }
 #endif
+
+// MARK: - Optional Discord-linked WebAuthn passkeys
+
+extension AdminWebServer {
+    private struct PasskeyRecord: Codable {
+        let id: String
+        let userID: String
+        let userHandle: [UInt8]
+        let origin: String
+        let publicKey: [UInt8]
+        var signCount: UInt32
+        let name: String
+        let createdAt: Date
+    }
+
+    private struct PasskeyState: Codable {
+        var credentials: [String: PasskeyRecord] = [:]
+        var refreshTokens: [String: String] = [:]
+    }
+
+    private struct PasskeyChallenge {
+        let bytes: [UInt8]
+        let origin: String
+        let expiresAt: Date
+        let sessionID: String?
+        let browserHash: String
+        let name: String
+    }
+
+    private struct PasskeyFinish<T: Decodable>: Decodable {
+        let ceremony: String
+        let credential: T
+    }
+
+    private enum PasskeyError: Error, Equatable { case invalid, storage, authorization }
+    private var passkeyKeychainAccount: String { "swiftbot.admin.web.passkeys" }
+
+    /// Use only the explicitly configured HTTPS origin; never trust Host or
+    /// forwarded headers to choose a relying party. Credentials are node-local.
+    private func passkeyOrigin() -> String? {
+        guard let url = URLComponents(string: config.publicBaseURL),
+            url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),
+            !host.isEmpty, !host.contains(":"), url.user == nil, url.password == nil,
+            host != "localhost", host != "127.0.0.1", !host.hasSuffix(".local"),
+            host.contains(where: { $0.isLetter }),
+            url.query == nil, url.fragment == nil
+        else { return nil }
+        return "https://\(host)" + (url.port.map { $0 == 443 ? "" : ":\($0)" } ?? "")
+    }
+
+    private func passkeyManager(origin: String) -> WebAuthnManager {
+        WebAuthnManager(
+            configuration: .init(
+                relyingPartyID: URL(string: origin)!.host!,
+                relyingPartyName: "SwiftBot",
+                relyingPartyOrigin: origin
+            ))
+    }
+
+    private func loadPasskeys() {
+        guard let stored = KeychainHelper.load(account: passkeyKeychainAccount),
+            let data = stored.data(using: .utf8),
+            let state = try? decoder.decode(PasskeyState.self, from: data)
+        else { return }
+        passkeyState = state
+    }
+
+    /// Persist before reporting success, so a Keychain failure cannot silently
+    /// lose a newly enrolled credential or a rotated Discord refresh token.
+    private func savePasskeys(_ state: PasskeyState) throws {
+        guard persistAuthenticationState else {
+            passkeyState = state
+            return
+        }
+        let data = try encoder.encode(state)
+        // Update in place: delete-then-add would lose every passkey if the
+        // replacement failed while the Keychain was locked or unavailable.
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.swiftbot.app",
+            kSecAttrAccount as String: passkeyKeychainAccount,
+        ]
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = data
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw PasskeyError.storage }
+        } else if status != errSecSuccess {
+            throw PasskeyError.storage
+        }
+        passkeyState = state
+    }
+
+    private func passkeyBrowserHash(_ request: HTTPRequest) -> String {
+        sha256Hex(request.headers["user-agent"] ?? "")
+    }
+
+    private func takePasskeyChallenge(_ id: String, request: HTTPRequest, origin: String, sessionID: String?) throws -> PasskeyChallenge {
+        guard let challenge = passkeyChallenges.removeValue(forKey: id),
+            challenge.expiresAt > Date(), challenge.origin == origin,
+            challenge.sessionID == sessionID,
+            challenge.browserHash == passkeyBrowserHash(request),
+            constantTimeEquals(cookie(named: "swiftbot_passkey_ceremony", request: request) ?? "", id)
+        else {
+            throw PasskeyError.invalid
+        }
+        return challenge
+    }
+
+    private func passkeyOptions<T: Encodable>(_ options: T, bytes: [UInt8], request: HTTPRequest, origin: String, session: Session?, name: String = "Passkey") throws -> Data {
+        let id = randomToken()
+        passkeyChallenges[id] = PasskeyChallenge(
+            bytes: bytes, origin: origin,
+            expiresAt: Date().addingTimeInterval(120), sessionID: session?.id,
+            browserHash: passkeyBrowserHash(request), name: name)
+        let object = try JSONSerialization.jsonObject(with: encoder.encode(options))
+        return jsonResponse(
+            ["ceremony": id, "publicKey": object],
+            headers: [
+                "Set-Cookie": "swiftbot_passkey_ceremony=\(id); Path=/auth/passkeys/; Max-Age=120; HttpOnly; Secure; SameSite=Strict",
+                "Cache-Control": "no-store",
+            ])
+    }
+
+    /// The verifier checks challenge/type/origin. Explicitly reject framed
+    /// ceremonies as the library currently does not validate crossOrigin.
+    private func validatePasskeyClientData(_ bytes: [UInt8]) throws {
+        guard let data = try JSONSerialization.jsonObject(with: Data(bytes)) as? [String: Any],
+            data["crossOrigin"] == nil || (data["crossOrigin"] as? Bool) == false,
+            data["topOrigin"] == nil
+        else { throw PasskeyError.invalid }
+    }
+
+    private func handlePasskeys(request: HTTPRequest) async -> Data {
+        guard let origin = passkeyOrigin() else {
+            return jsonResponse(["error": "passkeys_unavailable", "message": "Open SwiftBot at its configured HTTPS address to use passkeys."], status: "400 Bad Request")
+        }
+        if let status = await statusProvider?(), status.isFailoverManagedNode {
+            return jsonResponse(["error": "passkeys_unavailable", "message": "Use the Primary node to manage and use passkeys."], status: "409 Conflict")
+        }
+        guard request.method == "GET" || (request.headers["origin"] == origin && (activeTransportUsesTLS || Self.isLoopbackPeer(request.peerIP))) else {
+            return forbiddenResponse()
+        }
+        let session = authenticatedSession(for: request)
+        let managing = !request.path.hasPrefix("/auth/passkeys/login/")
+        if managing {
+            guard let session, session.role == .admin, !session.userID.hasPrefix("local:") else { return forbiddenResponse() }
+            if request.method != "GET", !validateCSRF(session: session, request: request) { return forbiddenResponse() }
+        }
+        passkeyChallenges = passkeyChallenges.filter { $0.value.expiresAt > Date() }
+        // Bound anonymous challenge allocation and expensive verification work.
+        passkeyRequestBuckets = passkeyRequestBuckets.mapValues { $0.filter { Date().timeIntervalSince($0) < 60 } }.filter { !$0.value.isEmpty }
+        if request.method != "GET" {
+            let bucket = request.peerIP ?? "unknown"
+            guard (passkeyRequestBuckets[bucket]?.count ?? 0) < 20,
+                passkeyChallenges.count < 500, passkeyRequestBuckets.count < 1000
+            else {
+                return jsonResponse(["error": "rate_limited"], status: "429 Too Many Requests")
+            }
+            passkeyRequestBuckets[bucket, default: []].append(Date())
+        }
+        let manager = passkeyManager(origin: origin)
+        do {
+            switch (request.method, request.path) {
+            case ("GET", "/auth/passkeys/list"):
+                let records = passkeyState.credentials.values.filter { $0.userID == session!.userID && $0.origin == origin }
+                return jsonResponse(
+                    [
+                        "credentials": records.sorted { $0.createdAt < $1.createdAt }.map {
+                            ["id": $0.id, "name": $0.name, "createdAt": ISO8601DateFormatter().string(from: $0.createdAt)]
+                        }
+                    ], headers: ["Cache-Control": "no-store"])
+            case ("POST", "/auth/passkeys/register/options"):
+                let session = session!
+                guard session.signInMethod != "passkey", session.discordRefreshToken != nil,
+                    Date().timeIntervalSince(session.expiresAt.addingTimeInterval(-sessionTTL)) <= 300
+                else {
+                    return jsonResponse(["error": "reauth_required", "message": "Sign in with Discord again before adding a passkey."], status: "401 Unauthorized")
+                }
+                guard passkeyState.credentials.values.filter({ $0.userID == session.userID }).count < 10 else { throw PasskeyError.invalid }
+                let input = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any]
+                let name = String((input?["name"] as? String ?? "Passkey").trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+                let options = manager.beginRegistration(
+                    user: .init(id: Array(session.userID.utf8), name: session.username, displayName: session.globalName ?? session.username),
+                    timeout: .seconds(120), authenticatorSelection: .init(residentKey: .required, userVerification: .required))
+                return try passkeyOptions(options, bytes: options.challenge, request: request, origin: origin, session: session, name: name.isEmpty ? "Passkey" : name)
+            case ("POST", "/auth/passkeys/register/finish"):
+                let session = session!
+                guard session.signInMethod != "passkey", let refreshToken = session.discordRefreshToken,
+                    Date().timeIntervalSince(session.expiresAt.addingTimeInterval(-sessionTTL)) <= 300
+                else { throw PasskeyError.authorization }
+                let input = try decoder.decode(PasskeyFinish<RegistrationCredential>.self, from: request.body)
+                let challenge = try takePasskeyChallenge(input.ceremony, request: request, origin: origin, sessionID: session.id)
+                try validatePasskeyClientData(input.credential.attestationResponse.clientDataJSON)
+                guard input.credential.id.asString() == base64URLEncode(Data(input.credential.rawID)) else { throw PasskeyError.invalid }
+                let credential = try await manager.finishRegistration(
+                    challenge: challenge.bytes, credentialCreationData: input.credential,
+                    requireUserVerification: true, confirmCredentialIDNotRegisteredYet: { _ in true })
+                // Recheck after the verifier's suspension point, including revocation.
+                guard authenticatedSession(for: request)?.id == session.id, passkeyOrigin() == origin,
+                    passkeyState.credentials[input.credential.id.asString()] == nil,
+                    passkeyState.credentials.values.filter({ $0.userID == session.userID }).count < 10
+                else { throw PasskeyError.invalid }
+                var state = passkeyState
+                let id = base64URLEncode(Data(input.credential.rawID))
+                state.credentials[id] = PasskeyRecord(
+                    id: id, userID: session.userID, userHandle: Array(session.userID.utf8), origin: origin,
+                    publicKey: credential.publicKey, signCount: credential.signCount, name: challenge.name, createdAt: Date())
+                state.refreshTokens[session.userID] = state.refreshTokens[session.userID] ?? refreshToken
+                try savePasskeys(state)
+                audit(source: "Web Auth", actor: actorLabel(session), action: "Passkey added", detail: challenge.name, level: "ok")
+                return jsonResponse(["ok": true])
+            case ("POST", "/auth/passkeys/remove"):
+                guard let input = try JSONSerialization.jsonObject(with: request.body) as? [String: String],
+                    let id = input["id"], let record = passkeyState.credentials[id], record.userID == session!.userID
+                else { throw PasskeyError.invalid }
+                var state = passkeyState
+                state.credentials[id] = nil
+                if !state.credentials.values.contains(where: { $0.userID == record.userID }) { state.refreshTokens[record.userID] = nil }
+                try savePasskeys(state)
+                // Revocation also ends existing passkey sessions for this account.
+                sessions = sessions.filter { $0.value.userID != record.userID || $0.value.signInMethod != "passkey" }
+                persistSessions()
+                audit(source: "Web Auth", actor: actorLabel(session!), action: "Passkey removed", detail: record.name, level: "ok")
+                return jsonResponse(["ok": true])
+            case ("POST", "/auth/passkeys/login/options"):
+                let options = manager.beginAuthentication(timeout: .seconds(120), userVerification: .required)
+                return try passkeyOptions(options, bytes: options.challenge, request: request, origin: origin, session: nil)
+            case ("POST", "/auth/passkeys/login/finish"):
+                let input = try decoder.decode(PasskeyFinish<AuthenticationCredential>.self, from: request.body)
+                let challenge = try takePasskeyChallenge(input.ceremony, request: request, origin: origin, sessionID: nil)
+                let id = base64URLEncode(Data(input.credential.rawID))
+                guard input.credential.id.asString() == id, let record = passkeyState.credentials[id], record.origin == origin,
+                    input.credential.response.userHandle == record.userHandle,
+                    let refreshToken = passkeyState.refreshTokens[record.userID],
+                    passkeyUsersInFlight.insert(record.userID).inserted
+                else { throw PasskeyError.invalid }
+                defer { passkeyUsersInFlight.remove(record.userID) }
+                try validatePasskeyClientData(input.credential.response.clientDataJSON)
+                let verified = try manager.finishAuthentication(
+                    credential: input.credential, expectedChallenge: challenge.bytes,
+                    credentialPublicKey: record.publicKey, credentialCurrentSignCount: record.signCount, requireUserVerification: true)
+                let token = try await refreshPasskeyDiscordToken(refreshToken)
+                // Persist rotation even if subsequent authorization fails.
+                guard passkeyState.credentials[id]?.publicKey == record.publicKey else { throw PasskeyError.invalid }
+                var state = passkeyState
+                state.refreshTokens[record.userID] = token.refreshToken ?? refreshToken
+                state.credentials[id]?.signCount = verified.newSignCount
+                try savePasskeys(state)
+                let user = try await fetchDiscordUser(accessToken: token.accessToken)
+                let guilds = try await fetchDiscordGuilds(accessToken: token.accessToken)
+                guard user.id == record.userID, user.mfaEnabled,
+                    await isAuthorized(userID: user.id, guilds: guilds),
+                    passkeyState.credentials[id]?.publicKey == record.publicKey,
+                    passkeyOrigin() == origin
+                else { throw PasskeyError.authorization }
+                let session = Session(
+                    id: randomToken(), userID: user.id, username: user.username, globalName: user.globalName,
+                    discriminator: user.discriminator, avatar: user.avatar, csrfToken: randomToken(),
+                    expiresAt: Date().addingTimeInterval(sessionTTL), userAgentHash: userAgentHash(for: request), role: .admin, signInMethod: "passkey")
+                sessions[session.id] = session
+                persistSessions()
+                audit(source: "Web Auth", actor: actorLabel(session), action: "Logged in", detail: "Passkey", level: "ok")
+                return jsonResponse(["ok": true], headers: ["Set-Cookie": sessionCookie(for: session.id) + (activeTransportUsesTLS ? "" : "; Secure")])
+            default:
+                return httpResponse(status: "404 Not Found", body: Data())
+            }
+        } catch {
+            audit(source: "Web Auth", actor: session.map { actorLabel($0) } ?? "Passkey sign-in", action: "Passkey request rejected", level: "warning")
+            let storage = (error as? PasskeyError) == .storage
+            let message =
+                storage
+                ? "Keychain storage is unavailable. Try again after unlocking your Mac."
+                : "Couldn’t complete the passkey request. Try again or sign in with Discord."
+            return jsonResponse(
+                ["error": storage ? "storage_unavailable" : "passkey_failed", "message": message],
+                status: storage ? "503 Service Unavailable" : "400 Bad Request")
+        }
+    }
+
+    private func refreshPasskeyDiscordToken(_ refreshToken: String) async throws -> DiscordToken {
+        var request = URLRequest(url: URL(string: "https://discord.com/api/oauth2/token")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let form = [
+            "client_id": config.discordOAuth.clientID, "client_secret": config.discordOAuth.clientSecret,
+            "grant_type": "refresh_token", "refresh_token": refreshToken,
+        ]
+        request.httpBody = form.map { "\(percentEncode($0.key))=\(percentEncode($0.value))" }.sorted().joined(separator: "&").data(using: .utf8)
+        let (data, response) = try await oauthURLSession.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+            let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let accessToken = object["access_token"] as? String, !accessToken.isEmpty
+        else { throw PasskeyError.authorization }
+        return DiscordToken(accessToken: accessToken, refreshToken: object["refresh_token"] as? String)
+    }
+}
+
+extension AdminWebServer {
+    /// Isolated HTTP fixtures exercise the real verifier without touching the
+    /// user's Keychain or contacting Discord.
+    func testConfigurePasskeys(origin: String, oauthSession: URLSession) -> (id: String, csrf: String) {
+        config.publicBaseURL = origin
+        config.allowedUserIDs = ["1234567890"]
+        oauthURLSession = oauthSession
+        persistAuthenticationState = false
+        let session = Session(
+            id: randomToken(), userID: "1234567890", username: "passkey-fixture", globalName: nil,
+            discriminator: nil, avatar: nil, csrfToken: randomToken(), expiresAt: Date().addingTimeInterval(sessionTTL),
+            discordRefreshToken: "fixture-refresh-token")
+        sessions[session.id] = session
+        return (session.id, session.csrfToken)
+    }
+
+    func testExpirePasskeyChallenges() {
+        passkeyChallenges = passkeyChallenges.mapValues {
+            PasskeyChallenge(bytes: $0.bytes, origin: $0.origin, expiresAt: .distantPast,
+                             sessionID: $0.sessionID, browserHash: $0.browserHash, name: $0.name)
+        }
+    }
+}
+
+extension AdminWebServer {
+    func testSetPasskeyAllowList(_ ids: [String]) {
+        config.allowedUserIDs = ids
+    }
+}

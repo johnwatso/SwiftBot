@@ -149,7 +149,7 @@ enum GameProviderCatalog {
             auth: .bearer,
             defaultBaseURL: "https://api.finals.id",
             supportedMetrics: [
-                .rankedScore, .rankTier, .kills, .deaths, .assists,
+                .rankedScore, .rankTier, .leaderboardPosition, .kills, .deaths, .assists,
                 .killDeathRatio, .damage, .matchesPlayed, .wins, .winRate
             ],
             symbolName: "scope",
@@ -400,19 +400,8 @@ struct GameTrackedPlayer: Codable, Hashable, Identifiable, Sendable {
     /// Optional: a profile can still be polled on a schedule without it.
     var discordUserID: String = ""
 
-    /// Metrics whose movement causes an announcement. Counters are excluded by
-    /// design — kills only ever climb, so triggering on one would post after
-    /// every match. Defaults to the ranked score, preserving the original
-    /// behaviour for existing profiles.
-    var triggerMetrics: Set<GameMetricID> = [.rankedScore]
-    /// Metrics shown alongside a triggered announcement for context, whether or
-    /// not they moved.
-    var contextMetrics: Set<GameMetricID> = [.killDeathRatio, .wins]
-
-    /// Trigger metrics that are actually usable — a counter can never trigger.
-    var effectiveTriggerMetrics: Set<GameMetricID> {
-        triggerMetrics.filter(\.canTriggerAnnouncement)
-    }
+    // Every stat the provider reports is recorded. What triggers a post and
+    // what a post shares are channel-wide choices in `GameAnnouncementStyle`.
 
     var resolvedDisplayName: String {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -448,6 +437,8 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
     /// Delay after a session ends before querying the provider, giving the game
     /// backend time to publish the final match.
     var sessionSettleDelaySeconds = 120
+    /// How rank updates and session summaries look in Discord.
+    var announcementStyle = GameAnnouncementStyle()
 
     /// The service runs when either behaviour is switched on. There is no
     /// separate master switch: a user turning both off has already expressed
@@ -553,6 +544,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         case sessionAbsenceGraceSeconds
         case sessionMinimumDurationSeconds
         case sessionSettleDelaySeconds
+        case announcementStyle
     }
 
     init() {}
@@ -573,6 +565,8 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         sessionAbsenceGraceSeconds = try container.decodeIfPresent(Int.self, forKey: .sessionAbsenceGraceSeconds) ?? 180
         sessionMinimumDurationSeconds = try container.decodeIfPresent(Int.self, forKey: .sessionMinimumDurationSeconds) ?? 300
         sessionSettleDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .sessionSettleDelaySeconds) ?? 120
+        announcementStyle = (try? container.decodeIfPresent(GameAnnouncementStyle.self, forKey: .announcementStyle))
+            ?? GameAnnouncementStyle()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -586,6 +580,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         try container.encode(sessionAbsenceGraceSeconds, forKey: .sessionAbsenceGraceSeconds)
         try container.encode(sessionMinimumDurationSeconds, forKey: .sessionMinimumDurationSeconds)
         try container.encode(sessionSettleDelaySeconds, forKey: .sessionSettleDelaySeconds)
+        try container.encode(announcementStyle, forKey: .announcementStyle)
     }
 
     mutating func normalize() {
@@ -597,6 +592,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         for index in players.indices {
             players[index].normalize()
         }
+        announcementStyle.normalize()
     }
 }
 
@@ -676,11 +672,42 @@ struct GameRankChange: Hashable, Sendable {
     /// Every metric that moved, including the headline score when it is one of
     /// them. Empty for providers that only report a rating.
     var metricChanges: [GameMetricChange] = []
-    /// Current readings for metrics the profile wants shown as context, whether
-    /// or not they moved.
+    /// Current readings shown alongside the change, whether or not they
+    /// moved. The announcement style filters what is actually shared.
     var contextMetrics: GameMetricSet = GameMetricSet()
+    /// Full readings either side of the change, so an announcement can show
+    /// a promotion or a leaderboard climb that was not itself a trigger.
+    var previousRankName: String?
+    var previousMetrics: GameMetricSet = GameMetricSet()
+    var currentMetrics: GameMetricSet = GameMetricSet()
+    /// Linked Discord member, for an optional mention.
+    var discordUserID: String = ""
 
     var delta: Int { currentScore - previousScore }
+
+    // A zero score means "no rating" (a metrics-only profile), not Bronze 4.
+    var currentTier: GameRankTier? {
+        game.rankTier(
+            index: currentMetrics[.rankTier].map { Int($0) },
+            score: currentScore > 0 ? currentScore : nil,
+            league: rankName
+        )
+    }
+
+    var previousTier: GameRankTier? {
+        game.rankTier(
+            index: previousMetrics[.rankTier].map { Int($0) },
+            score: previousScore > 0 ? previousScore : nil,
+            league: previousRankName
+        )
+    }
+
+    /// +1 promoted, -1 demoted, 0 same division (or unknown).
+    var tierMovement: Int {
+        guard let current = currentTier, let previous = previousTier,
+              current.ladderPosition != previous.ladderPosition else { return 0 }
+        return current.ladderPosition > previous.ladderPosition ? 1 : -1
+    }
 }
 
 struct GameRankBaseline: Codable, Hashable, Sendable {
@@ -784,10 +811,12 @@ enum GameRankEvaluation: Hashable, Sendable {
 }
 
 enum GameRankEvaluator {
+    /// `announceOn` is the style's "post when" set; counters in it are ignored.
     static func evaluate(
         target: GameTrackedPlayer,
         current: GameRankSnapshot,
-        previous: GameRankBaseline?
+        previous: GameRankBaseline?,
+        announceOn: Set<GameMetricID> = GameAnnouncementStyle().announceOn
     ) -> GameRankEvaluation {
         guard let previous else { return .establishBaseline }
         guard previous.game == current.game,
@@ -801,9 +830,9 @@ enum GameRankEvaluator {
         if !previousSeason.isEmpty, !currentSeason.isEmpty, previousSeason != currentSeason {
             return .seasonChanged
         }
-        // Compare every trigger metric the profile asked for, falling back to
-        // the headline score when the provider reported nothing else.
-        let triggers = target.effectiveTriggerMetrics
+        // Compare every metric the style posts on, falling back to the
+        // headline score when the provider reported nothing else.
+        let triggers = announceOn.filter(\.canTriggerAnnouncement)
         var movements: [GameMetricChange] = []
         for metric in triggers.sorted(by: { $0.rawValue < $1.rawValue }) {
             guard let currentValue = current.metrics[metric] else { continue }
@@ -821,11 +850,6 @@ enum GameRankEvaluator {
         // provider behaves exactly as it did before metrics existed.
         if movements.isEmpty, triggers.contains(.rankedScore) == false { return .unchanged }
 
-        var context = GameMetricSet()
-        for metric in target.contextMetrics {
-            if let value = current.metrics[metric] { context[metric] = value }
-        }
-
         return .changed(
             GameRankChange(
                 targetID: target.id,
@@ -839,7 +863,11 @@ enum GameRankEvaluator {
                 previousScore: previous.score,
                 currentScore: current.score,
                 metricChanges: movements,
-                contextMetrics: context
+                contextMetrics: current.metrics,
+                previousRankName: previous.rankName,
+                previousMetrics: previous.metrics,
+                currentMetrics: current.metrics,
+                discordUserID: target.discordUserID
             )
         )
     }

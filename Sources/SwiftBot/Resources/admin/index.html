@@ -676,6 +676,7 @@
       font: inherit; font-size: 13.5px; font-weight: 550; color: var(--home-text-soft); cursor: pointer;
     }
     .signin-link:hover { color: var(--home-text); }
+    .signin-link:disabled { opacity: 0.6; cursor: default; }
     .signin-link.hidden { display: none; }
     .signin-form { display: grid; gap: 10px; margin-top: 16px; text-align: left; }
     .signin-form.hidden { display: none; }
@@ -4965,7 +4966,6 @@
     .ub-status-health > span:last-child { display: grid; gap: 2px; }
     .ub-status-title { font-size: 14px; font-weight: 600; }
     .ub-status-sub { font-size: 12.5px; color: var(--muted); }
-    .ub-status-debug .ub-status-label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
     .ub-status-lock {
       flex-basis: 100%;
       display: flex;
@@ -5050,15 +5050,8 @@
     .ub-item.is-off .ub-item-text { opacity: 0.55; }
     #appShell .badge.patchy-dup { color: #ff453a; border-color: rgba(255, 69, 58, 0.35); background: rgba(255, 69, 58, 0.10); }
 
-    #appShell .patchy-debug { padding: 18px 20px; }
-    .patchy-debug-log {
-      max-height: 280px;
-      overflow: auto;
-      font-family: ui-monospace, "SF Mono", Menlo, monospace;
-      font-size: 11.5px;
-      line-height: 1.6;
-      color: var(--muted);
-    }
+    .modal-hint.is-ok { color: #30d158; }
+    .modal-hint.is-error { color: #ff453a; }
 
     /* Patchy editor dialog */
     .patchy-role-list { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -5266,6 +5259,23 @@
     .prefs-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); padding: 3px 9px; border-radius: 999px; background: var(--glass-bottom); border: 1px solid var(--glass-stroke); }
     .prefs-chip svg { width: 13px; height: 13px; }
     .ub-row.prefs-block { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 0; }
+    #modalOverlay.passkeys-modal .modal { width: min(620px, 95vw); }
+    #modalOverlay.passkeys-modal .prefs-passkey-add { flex-wrap: wrap; gap: 8px; }
+    #modalOverlay.passkeys-modal .prefs-passkey-add .ub-row-text { flex-basis: 100%; }
+    #modalOverlay.passkeys-modal .prefs-passkey-entry { flex: 1 1 100%; }
+    .prefs-passkey-icon { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; background: var(--glass-bottom); color: var(--cv-sidebar-accent); }
+    .prefs-passkey-icon svg { width: 18px; height: 18px; }
+    .prefs-passkey-name { overflow-wrap: anywhere; }
+    .prefs-passkey-entry { display: flex; align-items: center; gap: 8px; flex: 0 1 360px; min-width: 0; }
+    .prefs-passkey-entry .field-input { width: 100%; min-width: 0; }
+    .prefs-passkey-entry button { flex: 0 0 auto; white-space: nowrap; }
+    .prefs-passkey-feedback { margin: 0; padding: 0 0 12px; }
+    .prefs-passkey-feedback:empty { display: none; }
+    @media (max-width: 640px) {
+      .prefs-passkey-add { flex-wrap: wrap; gap: 8px; }
+      .prefs-passkey-add .ub-row-text { flex-basis: 100%; }
+      .prefs-passkey-entry { flex-basis: 100%; }
+    }
     .prefs-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 520px; }
     #appShell .prefs-theme, #appShell .prefs-wallpaper {
       appearance: none; border: 0; background: none; padding: 0; font: inherit; color: var(--text); cursor: pointer;
@@ -5442,6 +5452,47 @@
     .ub-item.gt-history { padding: 11px 0; }
     .ub-item-time-only { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 0 auto; }
     @media (max-width: 640px) { .gt-score span { display: none; } }
+    /* Announcement style: summary row on the page, editor in a dialog */
+    .gt-style-swatch { width: 34px; height: 34px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--gt-swatch, #f1c40f); color: #1b1b1f; }
+    .gt-style-swatch svg { width: 17px; height: 17px; }
+    .gt-style-modal .modal { width: min(1040px, 94vw); }
+    .gt-style-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 18px; align-items: start; }
+    @media (max-width: 860px) { .gt-style-editor { grid-template-columns: minmax(0, 1fr); } }
+    .gt-style-editor .automation-editor-row { align-items: center; }
+    .gt-style-editor .automation-editor-row > label { padding-top: 0; }
+    .gt-style-editor .field-input { height: 38px; border-radius: 10px; padding: 0 12px; font-size: 13px; width: 100%; box-sizing: border-box; }
+    .gt-style-editor .wiki-advanced { margin-top: 14px; }
+    .gt-color { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .gt-color input[type="color"] { width: 30px; height: 26px; padding: 0; border: 1px solid var(--ub-stroke); border-radius: 7px; background: none; cursor: pointer; }
+    .gt-vars { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .gt-vars button { all: unset; cursor: pointer; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 1px 6px; border-radius: 5px; color: var(--muted); background: var(--ub-fill); border: 1px solid var(--ub-stroke); }
+    .gt-vars button:hover { color: var(--text); }
+    .gt-vars:not(.is-open) { display: none; }
+    .gt-preview-wrap { position: sticky; top: 0; display: grid; gap: 10px; }
+    .gt-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .gt-preview-note { font-size: 11.5px; color: var(--muted); }
+    /* Discord's own dark chat colours, so the preview reads like the real thing. */
+    .dc-chat { background: #313338; color: #dbdee1; border-radius: 14px; padding: 16px 16px 18px; font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.375; overflow: hidden; }
+    .dc-msg { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; }
+    .dc-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #5865f2, #eb459e); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+    .dc-avatar svg { width: 20px; height: 20px; }
+    .dc-name { font-weight: 600; color: #f2f3f5; display: flex; align-items: center; gap: 6px; }
+    .dc-app { font-size: 10px; font-weight: 600; background: #5865f2; color: #fff; padding: 1px 5px; border-radius: 4px; text-transform: uppercase; }
+    .dc-time { font-size: 12px; color: #949ba4; font-weight: 400; }
+    .dc-content { white-space: pre-wrap; word-wrap: break-word; margin-top: 2px; }
+    .dc-mention { background: rgba(88, 101, 242, 0.3); color: #c9cdfb; border-radius: 3px; padding: 0 2px; font-weight: 500; }
+    .dc-embed { margin-top: 6px; display: grid; max-width: 432px; background: #2b2d31; border-left: 4px solid var(--dc-accent, #1e1f22); border-radius: 4px; padding: 8px 16px 16px 12px; gap: 8px; }
+    .dc-embed-author { font-size: 13px; font-weight: 600; color: #f2f3f5; margin-top: 8px; }
+    .dc-embed-title { font-size: 16px; font-weight: 600; color: #f2f3f5; }
+    .dc-embed-desc { font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
+    .dc-embed-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .dc-field { font-size: 14px; min-width: 0; }
+    .dc-field.is-wide { grid-column: 1 / -1; }
+    .dc-field-name { font-weight: 600; color: #f2f3f5; margin-bottom: 2px; }
+    .dc-field-value { white-space: pre-wrap; word-wrap: break-word; }
+    .dc-embed-footer { font-size: 12px; color: #b5bac1; }
+    .dc-chat code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 85%; background: #1e1f22; border-radius: 3px; padding: 0 3px; }
+    .dc-chat strong { color: #f2f3f5; }
 
     /* ---- Sweep ---- */
     .sweep-suggestions { display: grid; gap: 10px; }
@@ -5552,6 +5603,17 @@
     @media (max-width: 880px) { .an-grid { grid-template-columns: 1fr; } }
     @media (min-width: 1600px) { .an-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     .settings-host-note { display: flex; gap: 8px; align-items: flex-start; margin: 4px 4px 0; }
+    .sweep-report-headline { margin: 0 0 4px; font-size: 15px; line-height: 1.45; }
+    .sweep-groups { padding: 4px 0; }
+    .sweep-group { padding: 12px 16px; }
+    .sweep-group + .sweep-group { border-top: 1px solid var(--line, rgba(127,127,127,0.15)); }
+    .sweep-group-head { display: flex; gap: 12px; align-items: center; }
+    .sweep-group-text { min-width: 0; flex: 1; }
+    .sweep-group-bar { height: 4px; border-radius: 999px; background: rgba(127,127,127,0.15); margin: 10px 0 0 40px; overflow: hidden; }
+    .sweep-group-bar span { display: block; height: 100%; border-radius: inherit; opacity: 0.8; }
+    .sweep-group-examples { margin: 8px 0 0 40px; font-size: 12.5px; color: var(--muted); }
+    .sweep-group-examples summary { cursor: pointer; width: fit-content; }
+    .sweep-group-examples div { margin-top: 4px; }
     .settings-host-note svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
     /* Rewind & Replay */
     .rw-picker { width: auto; min-width: 0; max-width: 220px; }
@@ -6037,6 +6099,61 @@
       .media-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 10px; }
       .media-filter select { max-width: 140px; }
     }
+
+    .overview-summary-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:-6px 0 14px; }
+    .overview-summary-row .home-vitals { flex:1 1 auto; margin:0; }
+    .overview-freshness-row { display:flex; align-items:center; gap:10px; margin-left:auto; font-size:12px; color:var(--muted); }
+    #overviewLiveRow .ops-head a { font-size:12px; color:var(--accent); text-decoration:none; }
+    .ops-diagnostics { margin-top:12px; font-size:13px; color:var(--muted); }
+    .ops-diagnostics summary { cursor:pointer; width:fit-content; padding:6px 0; }
+    .ops-diagnostics[open] summary { margin-bottom:8px; }
+    .overview-activity-filters { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+    .overview-activity-filters button { font:inherit; font-size:12px; color:var(--text); background:var(--home-tile-bg); border:1px solid var(--home-tile-stroke); border-radius:8px; padding:5px 10px; cursor:pointer; }
+    .overview-activity-filters button[aria-pressed="true"] { background:var(--cv-sidebar-active-bg, var(--home-tile-bg)); border-color:var(--accent); }
+    #appShell #overviewLiveRow { align-items:stretch; margin-bottom:16px; }
+    #appShell #overviewLiveRow .diagnostics-panel { min-width:0; }
+    #activeVoiceList { max-height:280px; overflow:auto; }
+    #opsActivity { min-height:180px; }
+    #overviewTopRow .cv-usage-panel { margin-bottom:16px; }
+    #overviewView.overview-stale :is(.ops-tile, .ops-overall, .home-vital .ops-dot) { --ops-color:var(--muted); }
+    #overviewView.overview-stale .ops-pulse { animation:none; }
+    #overviewView.overview-stale #overviewFreshness { color:var(--warning, #ff9f0a); }
+    @media (max-width:600px) { #appShell #overviewLiveRow { grid-template-columns:1fr; } .overview-freshness-row { justify-content:space-between; } }
+
+    /* Compact weekly context and actionable attention rows. */
+    #appShell #overviewPanelUsage { min-height:0; padding:16px; }
+    #overviewPanelUsage .ops-head .panel-title { padding:0; margin-bottom:4px; font-size:14px; }
+    .weekly-link { border:0; background:transparent; color:var(--accent); font:inherit; font-size:12px; cursor:pointer; white-space:nowrap; padding:4px 0; }
+    .weekly-link:hover { text-decoration:underline; }
+    .weekly-metrics { display:grid; grid-template-columns:repeat(var(--weekly-columns,1),minmax(0,1fr)); }
+    .weekly-metric { display:flex; flex-direction:column; align-items:flex-start; gap:5px; text-align:left; min-width:0; padding:8px 16px; background:transparent; border:0; border-right:1px solid var(--home-tile-stroke); color:var(--text); font:inherit; cursor:pointer; border-radius:0; }
+    .weekly-metric:first-child { padding-left:0; }
+    .weekly-metric:last-child { border-right:0; }
+    .weekly-metric:hover .weekly-label { color:var(--accent); }
+    .weekly-label { font-size:12px; color:var(--muted); }
+    .weekly-value { font-size:22px; font-weight:650; font-variant-numeric:tabular-nums; }
+    .weekly-detail { font-size:12px; color:var(--muted); line-height:1.45; }
+    .weekly-steady { display:flex; flex-direction:column; gap:6px; padding:4px 0; font-size:14px; }
+    .weekly-insights { display:flex; flex-wrap:wrap; gap:8px 24px; margin-top:12px; padding-top:12px; border-top:1px solid var(--home-tile-stroke); font-size:12px; color:var(--muted); }
+    .weekly-insights:empty { display:none; }
+    .weekly-insights strong { font-weight:600; color:var(--text); }
+    #opsAttention .ops-attention { align-items:center; padding:10px 14px; border-radius:12px; }
+    #opsAttention .ops-attention > div { flex:1; min-width:0; }
+    #opsAttention .ops-attention > svg { margin-top:0; }
+    .ops-review { border:0; background:transparent; color:var(--accent); font:inherit; font-size:12px; font-weight:600; white-space:nowrap; cursor:pointer; padding:6px 0 6px 8px; }
+    .ops-review:hover { text-decoration:underline; }
+    @media (max-width:760px) {
+      .weekly-metrics { grid-template-columns:1fr; gap:12px 0; }
+      .weekly-metric { padding:8px 0; border-right:0; }
+      .weekly-metric:nth-child(2) { border-right:0; }
+      .weekly-metric:nth-child(3) { padding-left:0; }
+      #overviewPanelUsage .ops-head { flex-wrap:wrap; }
+      #opsAttention .ops-attention { flex-wrap:wrap; }
+      #opsAttention .ops-review { margin-left:26px; }
+    }
+    #opsTiles .ops-tile-title { white-space:normal; }
+    #opsTiles .ops-tile-value { font-size:18px; white-space:normal; overflow:visible; }
+    #opsTiles .ops-tile-detail { white-space:normal; overflow:visible; min-height:2.8em; line-height:1.4; }
   </style>
 </head>
 <body>
@@ -6063,6 +6180,8 @@
           <svg fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" /></svg>
           <span>Continue with Discord</span>
         </a>
+
+        <button id="passkeyAuthButton" class="signin-link hidden" type="button">Use a passkey</button>
 
         <button id="authShowPassword" class="signin-link hidden" type="button" aria-expanded="false" aria-controls="localAuthForm">Sign in with password</button>
         <form id="localAuthForm" class="signin-form hidden">
@@ -6241,72 +6360,54 @@
             </button>
           </div>
 
-          <div id="homeVitals" class="home-vitals" aria-label="At a glance"></div>
+          <div class="overview-summary-row">
+            <div id="homeVitals" class="home-vitals" aria-label="At a glance"></div>
+            <div class="overview-freshness-row"><span id="overviewFreshness" role="status" aria-live="off">Waiting for an update…</span></div>
+          </div>
 
           <!-- Mirrors the native Overview's Operational Status, Live Activity
                and Attention Required panels (shared OverviewHealthReport). -->
           <article id="opsPanel" class="diagnostics-panel overview-panel glass ops-panel hidden">
             <div class="ops-head">
-              <div class="panel-title"><i class="lucide" data-lucide="gauge"></i> Operational Status</div>
+              <div class="panel-title"><i class="lucide" data-lucide="gauge"></i> Bot status</div>
               <div id="opsOverall" class="ops-overall"><span class="ops-pulse"></span><span id="opsOverallTitle"></span></div>
             </div>
             <div id="opsTiles" class="ops-tiles"></div>
+            <details id="opsDiagnostics" class="ops-diagnostics"><summary>Show details</summary><div id="opsExtraTiles" class="ops-tiles"></div></details>
           </article>
 
-          <section id="opsRow" class="cv-overview-top ops-row hidden">
+          <section id="overviewLiveRow" class="cv-overview-top">
+            <article id="overviewPanelActiveVoice" class="diagnostics-panel overview-panel glass">
+              <div class="ops-head"><div class="panel-title"><i class="lucide" data-lucide="users"></i> Currently In Voice</div><span id="activeVoiceCount" class="ops-sub"></span></div>
+              <div id="activeVoiceList" class="event-list"></div>
+            </article>
             <article class="diagnostics-panel overview-panel glass">
-              <div class="ops-head">
-                <div class="panel-title"><i class="lucide" data-lucide="radio"></i> Live Activity</div>
-                <div class="ops-sub">Runtime stream</div>
+              <div class="ops-head"><div class="panel-title"><i class="lucide" data-lucide="radio"></i> Recent Activity</div><a href="#" data-action="selectView" data-view="activity">View Activity →</a></div>
+              <div id="overviewActivityFilters" class="overview-activity-filters" role="group" aria-label="Filter recent activity">
+                <button type="button" data-activity-filter="all" aria-pressed="true">All</button>
+                <button type="button" data-activity-filter="voice" aria-pressed="false">Voice</button>
+                <button type="button" data-activity-filter="commands" aria-pressed="false">Commands</button>
+                <button type="button" data-activity-filter="errors" aria-pressed="false">Errors</button>
               </div>
               <div id="opsActivity" class="ops-list"></div>
             </article>
-            <article class="diagnostics-panel overview-panel glass">
+          </section>
+          <section id="opsRow" class="ops-row hidden" aria-label="Needs attention">
+            <span id="opsAttentionCount" class="hidden"></span>
+            <div id="opsAttention" class="ops-list"></div>
+          </section>
+          <section id="overviewTopRow">
+            <article id="overviewPanelUsage" class="diagnostics-panel overview-panel glass">
               <div class="ops-head">
-                <div class="panel-title"><i class="lucide" data-lucide="triangle-alert"></i> Attention Required</div>
-                <div id="opsAttentionCount" class="ops-sub"></div>
+                <div><div class="panel-title"><i class="lucide" data-lucide="chart-no-axes-combined"></i> This week</div><div id="weeklyPeriod" class="ops-sub">Last 7 days · across connected servers</div></div>
+                <button class="weekly-link" type="button" data-weekly-series="voice">Explore Analytics →</button>
               </div>
-              <div id="opsAttention" class="ops-list"></div>
+              <div id="weeklyMetrics" class="weekly-metrics"><div class="ops-sub">Loading weekly activity…</div></div>
+              <div id="weeklyInsights" class="weekly-insights"></div>
             </article>
+
           </section>
-
-
-          <!-- Pinned row: Usage Trends + Currently in Voice. Same size,
-               always visible. Not part of the draggable panel layout. -->
-          <section id="overviewTopRow" class="cv-overview-top">
-            <article id="overviewPanelUsage" class="diagnostics-panel overview-panel glass cv-usage-panel">
-              <div class="cv-usage-head">
-                <div>
-                  <div class="cv-usage-title">Usage Trends</div>
-                  <div class="cv-usage-sub">Voice sessions over the last 7 days</div>
-                </div>
-                <a class="cv-usage-link" href="#" data-action="selectView" data-view="analytics">View Analytics →</a>
-              </div>
-              <div class="cv-usage-chart-wrap">
-                <div id="usageChartYAxis" class="cv-usage-yaxis"></div>
-                <svg id="usageChart" class="cv-usage-chart" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
-                <div id="usageChartLabels" class="cv-usage-labels"></div>
-                <div id="usageChartEmpty" class="cv-usage-empty">No voice sessions recorded yet.</div>
-              </div>
-            </article>
-
-            <article id="overviewPanelActiveVoice" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="users"></i> Currently In Voice</div>
-              <div id="activeVoiceList" class="event-list"></div>
-            </article>
-          </section>
-
-          <section id="overviewPanels" class="diagnostics-panels">
-            <article id="overviewPanelVoiceEvents" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="mic"></i> Recent Voice</div>
-              <div id="voiceEvents" class="event-list"></div>
-            </article>
-
-            <article id="overviewPanelRecentCommands" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Recent Commands</div>
-              <div id="recentCommands" class="event-list"></div>
-            </article>
-          </section>
+          <section id="overviewPanels" class="hidden"></section>
 
           <!-- Hidden plumbing kept for code that still reads these
                (renderInfoRows for clusterInfo and swiftMeshButton wiring). -->
@@ -6378,7 +6479,6 @@
           <div class="patchy-shell">
             <section id="patchyTop" class="ub-status glass"></section>
             <section id="patchyTargets" class="ub-list glass"></section>
-            <section id="patchyDebug" class="patchy-debug glass hidden"></section>
           </div>
         </section>
 
@@ -6457,6 +6557,7 @@
             <div id="gametrackerConnections"></div>
             <div id="gametrackerPlayers"></div>
             <div id="gametrackerAutomation"></div>
+            <div id="gametrackerStyle"></div>
             <div id="gametrackerHistory"></div>
           </div>
         </section>
@@ -6737,6 +6838,247 @@
       errorBurst: '8 or more errors in 10 minutes, with the latest few included.',
       roleChanges: 'A Mac takes over as Primary, hands back, or switches role.'
     };
+
+    // Errors from host actions come back as JSON with a readable `message`.
+    function hostErrorMessage(error, fallback) {
+      try { return JSON.parse(error.message).message || fallback; } catch { return fallback; }
+    }
+
+    // ---- Settings › Bot: run the bot and check its permissions ----
+    let botActionPending = false;
+
+    function botGroupHTML(group) {
+      const status = dashboardStatus || {};
+      const state = status.botStatus || 'stopped';
+      const stopped = state === 'stopped';
+      const summary = ({
+        running: `Online · ${status.connectedServerCount} ${status.connectedServerCount === 1 ? 'server' : 'servers'}${status.uptimeText ? ` · up ${status.uptimeText}` : ''}`,
+        connecting: 'Connecting…',
+        reconnecting: 'Reconnecting…'
+      })[state] || 'Stopped';
+      const busy = botActionPending ? 'disabled' : '';
+      return group('Bot', `
+        <div class="ub-row">
+          <div class="ub-row-text">
+            <div class="ub-row-title">${escapeHTML(status.botUsername || 'SwiftBot')}</div>
+            <div class="ub-row-desc">${escapeHTML(summary)}</div>
+          </div>
+          <div class="section-actions">
+            ${stopped
+              ? `<button id="botStart" class="primary-action" type="button" ${busy}><i class="lucide" data-lucide="play"></i> Start</button>`
+              : `<button id="botRestart" class="secondary-action" type="button" ${busy}><i class="lucide" data-lucide="rotate-cw"></i> Restart</button>
+                 <button id="botStop" class="secondary-action is-destructive" type="button" ${busy}><i class="lucide" data-lucide="square"></i> Stop</button>`}
+          </div>
+        </div>
+        <button id="botPermissions" class="ub-row ub-row-link" type="button">
+          <div class="ub-row-text">
+            <div class="ub-row-title">Permissions</div>
+            <div class="ub-row-desc">Check what SwiftBot is allowed to do in each server.</div>
+          </div>
+          <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
+        </button>`);
+    }
+
+    // Start and restart return before Discord finishes connecting, so follow
+    // the status for a little while.
+    async function followBotStatus() {
+      for (let i = 0; i < 12; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        try { await loadStatus(); } catch { /* keep trying */ }
+        if (currentView === 'settings') renderSettingsView();
+        if (['running', 'stopped'].includes(dashboardStatus?.botStatus)) break;
+      }
+    }
+
+    async function runBotAction(action) {
+      if (action !== 'start') {
+        const leader = dashboardStatus?.clusterMode === 'Leader';
+        const message = action === 'stop'
+          ? 'Stop the bot? It disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again from here.'
+          : 'Restart the bot? It disconnects from Discord and connects again, which takes a few seconds.';
+        if (!confirm(message + (leader ? ' SwiftMesh stops too, so a Fail Over node may take over.' : ''))) return;
+      }
+      botActionPending = true;
+      if (currentView === 'settings') renderSettingsView();
+      try {
+        await postJSON(`/api/bot/${action}`, {});
+        setMessage(({ start: 'Starting the bot…', stop: 'Bot stopped.', restart: 'Restarting the bot…' })[action], 'success');
+      } catch (error) {
+        setMessage(hostErrorMessage(error, 'Couldn’t do that. Check Activity for details.'), 'error');
+      }
+      botActionPending = false;
+      await followBotStatus();
+    }
+
+    function bindBotGroup(panels) {
+      panels.querySelector('#botStart')?.addEventListener('click', () => runBotAction('start'));
+      panels.querySelector('#botStop')?.addEventListener('click', () => runBotAction('stop'));
+      panels.querySelector('#botRestart')?.addEventListener('click', () => runBotAction('restart'));
+      panels.querySelector('#botPermissions')?.addEventListener('click', openBotPermissions);
+    }
+
+    async function openBotPermissions() {
+      showModal('Bot permissions', '<div id="permBody"><div class="placeholder">Checking with Discord…</div></div>', `
+        <button class="secondary-action" type="button" data-action="hideModal">Done</button>
+        <button id="permRecheck" class="primary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Check again</button>
+      `, { wide: true });
+      const body = document.getElementById('permBody');
+      const recheck = document.getElementById('permRecheck');
+      const run = async () => {
+        recheck.disabled = true;
+        body.innerHTML = '<div class="placeholder">Checking with Discord…</div>';
+        let data;
+        try {
+          const response = await fetch('/api/bot/permissions');
+          data = await response.json();
+        } catch {
+          data = { error: 'Couldn’t reach SwiftBot.', guilds: [] };
+        }
+        recheck.disabled = false;
+        if (!document.body.contains(body)) return;
+        body.innerHTML = botPermissionsHTML(data);
+        refreshIcons();
+      };
+      recheck.addEventListener('click', run);
+      run();
+    }
+
+    function botPermissionsHTML(data) {
+      if (data.error) return `<div class="ac-note"><i class="lucide" data-lucide="triangle-alert"></i> ${escapeHTML(data.error)}</div>`;
+      if (!data.guilds?.length) return '<div class="placeholder">SwiftBot isn’t in any servers yet. Use Invite under General.</div>';
+      const flagList = (title, flags) => flags.length ? `
+        <div class="ub-help" style="margin:10px 0 4px;"><strong>${title}</strong></div>
+        ${flags.map(f => `<div class="ub-help" style="margin:0 0 4px;">${escapeHTML(f.name)} — ${escapeHTML(f.detail)}</div>`).join('')}` : '';
+      return `
+        <p class="ub-help" style="margin-top:0;">Checked as ${escapeHTML(data.botUsername || 'SwiftBot')} ${timeAgoHTML(data.checkedAt)}. Re-invite opens Discord to grant what’s missing; check again afterwards.</p>
+        ${data.guilds.map(g => {
+          const problems = g.missingEssential.length + g.missingRecommended.length;
+          const tone = g.missingEssential.length ? 'critical' : (g.missingRecommended.length ? 'warning' : 'healthy');
+          const state = g.hasAdministrator ? 'Administrator' : (g.missingEssential.length
+            ? `${g.missingEssential.length} essential missing`
+            : (g.missingRecommended.length ? `${g.missingRecommended.length} recommended missing` : 'All set'));
+          const channels = g.visibleTextChannels == null ? '' : ` · can see ${g.visibleTextChannels} text ${g.visibleTextChannels === 1 ? 'channel' : 'channels'}`;
+          return `
+            <section class="ub-group">
+              <div class="ub-group-head"><h2>${escapeHTML(g.name)}</h2></div>
+              <div class="ub-group-card glass" style="padding:12px 16px;">
+                ${ubStatusCell(escapeHTML(state), `${g.isOwner ? 'Owner' : 'Member'}${channels}`, tone)}
+                ${flagList('Essential', g.missingEssential)}
+                ${flagList('Recommended', g.missingRecommended)}
+                ${flagList('Optional', g.missingOptional)}
+                ${g.hasAdministrator ? '' : `<div class="section-actions" style="margin-top:12px;">
+                  ${problems && g.reinviteURL ? `<a class="primary-action" style="text-decoration:none;" href="${escapeHTML(g.reinviteURL)}" target="_blank" rel="noopener noreferrer"><i class="lucide" data-lucide="external-link"></i> Re-invite</a>` : ''}
+                  ${g.adminReinviteURL ? `<a class="secondary-action" style="text-decoration:none;" href="${escapeHTML(g.adminReinviteURL)}" target="_blank" rel="noopener noreferrer" title="Lets SwiftBot read every channel without adding its role to private ones"><i class="lucide" data-lucide="crown"></i> Re-invite as Admin</a>` : ''}
+                </div>`}
+              </div>
+            </section>`;
+        }).join('')}`;
+    }
+
+    // ---- Settings › Software updates ----
+    let updatesData = null;
+
+    async function loadUpdates() {
+      const response = await fetch('/api/updates');
+      updatesData = response.ok ? await response.json() : { unavailable: true };
+    }
+
+    function updatesGroupHTML(group, switchRow) {
+      if (!updatesData) return group('Software updates', '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">Loading…</div></div></div>');
+      const u = updatesData;
+      if (u.unavailable || !u.configured) {
+        return group('Software updates', '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">Updates aren’t available from the Web UI on this Mac yet. Open SwiftBot on the Mac once.</div></div></div>');
+      }
+      let title, desc, action;
+      if (u.readyToInstall) {
+        title = `Version ${u.availableVersion || ''} is ready to install`;
+        desc = 'SwiftBot restarts to install it. The bot is offline for about a minute.';
+        action = '<button id="updInstall" class="primary-action" type="button"><i class="lucide" data-lucide="download"></i> Install and restart</button>';
+      } else if (u.availableVersion) {
+        title = `Version ${u.availableVersion} is available`;
+        desc = u.unattended ? 'Downloading in the background. Install appears here when it’s ready.' : 'Turn on unattended updates to install it from here, or install it on the Mac.';
+        action = '';
+      } else {
+        title = u.isChecking ? 'Checking for updates…' : 'SwiftBot is up to date';
+        desc = u.lastCheckedAt ? `Checked ${relativeTime(u.lastCheckedAt)}` : 'Not checked since SwiftBot started.';
+        action = `<button id="updCheck" class="secondary-action" type="button" ${u.isChecking ? 'disabled' : ''}><i class="lucide" data-lucide="refresh-cw"></i> Check now</button>`;
+      }
+      const notes = u.releaseNotesURL && u.availableVersion ? ` <a href="${escapeHTML(u.releaseNotesURL)}" target="_blank" rel="noopener noreferrer">What’s new</a>` : '';
+      return group('Software updates', `
+        <div class="ub-row">
+          <div class="ub-row-text">
+            <div class="ub-row-title">${escapeHTML(title)}</div>
+            <div class="ub-row-desc">${escapeHTML(desc)}${notes}${u.lastError ? `<br>Last problem: ${escapeHTML(u.lastError)}` : ''}</div>
+          </div>
+          ${action}
+        </div>
+        ${switchRow('updAuto', 'Check automatically', 'Look for new versions in the background.', u.automaticChecks)}
+        ${switchRow('updUnattended', 'Unattended updates', 'Download new versions in the background so they can be installed from here.', u.unattended, u.automaticChecks ? '' : 'disabled')}
+        <div class="ub-row">
+          <div class="ub-row-text"><div class="ub-row-title">Installed</div></div>
+          <span class="ub-row-value">${escapeHTML(`${u.version}${u.build ? ` (${u.build})` : ''}${u.channel === 'beta' ? ' · Beta' : ''}`)}</span>
+        </div>`);
+    }
+
+    // A check runs in the background on the Mac; follow it until it's done.
+    async function followUpdateCheck() {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        await loadUpdates().catch(() => {});
+        if (currentView === 'settings') renderSettingsView();
+        if (!updatesData?.isChecking) break;
+      }
+    }
+
+    // After an install SwiftBot relaunches; reload once it answers again.
+    async function waitForRelaunch() {
+      await new Promise(resolve => setTimeout(resolve, 8000));
+      for (let i = 0; i < 60; i++) {
+        try {
+          const response = await fetch('/api/server/info', { cache: 'no-store' });
+          if (response.ok) { window.location.reload(); return; }
+        } catch { /* still restarting */ }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      setMessage('SwiftBot hasn’t come back yet. Check the Mac.', 'error');
+    }
+
+    function bindUpdatesGroup(panels) {
+      if (!updatesData) {
+        loadUpdates().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
+        return;
+      }
+      const post = async (path, body, fallback) => {
+        try {
+          await postJSON(path, body);
+          return true;
+        } catch (error) {
+          setMessage(hostErrorMessage(error, fallback), 'error');
+          return false;
+        }
+      };
+      panels.querySelector('#updCheck')?.addEventListener('click', async () => {
+        if (await post('/api/updates/check', {}, 'Couldn’t check for updates.')) {
+          updatesData.isChecking = true;
+          renderSettingsView();
+          followUpdateCheck();
+        }
+      });
+      panels.querySelector('#updInstall')?.addEventListener('click', async () => {
+        if (!confirm(`Install version ${updatesData.availableVersion || ''} now? SwiftBot quits, updates and reopens. The bot is offline for about a minute, and this page reloads when it’s back.`)) return;
+        if (await post('/api/updates/install', {}, 'Couldn’t start the install.')) {
+          setMessage('Installing the update. This page reloads when SwiftBot is back.', 'success');
+          waitForRelaunch();
+        }
+      });
+      const toggle = (id, key) => panels.querySelector(id)?.addEventListener('change', async (e) => {
+        await post('/api/updates/settings', { [key]: e.target.checked }, 'Couldn’t change that setting.');
+        await loadUpdates().catch(() => {});
+        renderSettingsView();
+      });
+      toggle('#updAuto', 'automaticChecks');
+      toggle('#updUnattended', 'unattended');
+    }
 
     function operatorGroupHTML(group, switchRow) {
       if (!operatorsData) return group('Operator', '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc">Loading…</div></div></div>');
@@ -7195,6 +7537,9 @@
       document.getElementById('modalFooter').innerHTML = footer || '';
       const overlay = document.getElementById('modalOverlay');
       overlay.classList.toggle('automation-editor-modal', !!options?.wide);
+      if (overlay.dataset.extraClass) overlay.classList.remove(overlay.dataset.extraClass);
+      overlay.dataset.extraClass = options?.extraClass || '';
+      if (options?.extraClass) overlay.classList.add(options.extraClass);
       overlay.classList.add('active');
     }
 
@@ -7202,6 +7547,8 @@
       const overlay = document.getElementById('modalOverlay');
       overlay.classList.remove('active');
       overlay.classList.remove('automation-editor-modal');
+      if (overlay.dataset.extraClass) overlay.classList.remove(overlay.dataset.extraClass);
+      overlay.dataset.extraClass = '';
       const onDismiss = modalDismissHandler;
       modalDismissHandler = null;
       onDismiss?.();
@@ -7821,6 +8168,7 @@
       const isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local') || /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
       const localAllowed = authOptions.localEnabled && isLocal;
       const discord = !!authOptions.discordEnabled;
+      document.getElementById('passkeyAuthButton')?.classList.toggle('hidden', !(authOptions.passkeysEnabled && window.isSecureContext && window.PublicKeyCredential));
 
       // Discord is the main way in; with both on, the password form waits
       // behind a link. With only one, it's simply shown.
@@ -8019,7 +8367,14 @@
       node.innerHTML = events.map(formatter).join('');
     }
 
+    function voiceDuration(timestamp) {
+      const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 60000));
+      if (!Number.isFinite(minutes)) return 'Duration unavailable';
+      return minutes < 60 ? `${minutes}m in voice` : `${Math.floor(minutes / 60)}h ${minutes % 60}m in voice`;
+    }
+
     function renderActiveVoice(list) {
+      document.getElementById('activeVoiceCount').textContent = `${list?.length || 0} ${list?.length === 1 ? 'person' : 'people'}`;
       const node = document.getElementById('activeVoiceList');
       if (!node) return;
       if (!list || list.length === 0) {
@@ -8046,13 +8401,13 @@
         const [channelName, serverName] = key.split('||');
         const rows = members.map(member => `
           <div class="event-item ok">
-            <div class="event-title">${member.username}</div>
-            <div class="event-time">${member.joinedText} · ${channelName}</div>
+            <div class="event-title">${escapeHTML(member.username)}</div>
+            <div class="event-time">${member.joinedAt ? `<span data-voice-joined="${escapeHTML(member.joinedAt)}">${voiceDuration(member.joinedAt)}</span>` : escapeHTML(member.joinedText)}</div>
           </div>
         `).join('');
         blocks.push(`
           <div style="display:grid;gap:6px;">
-            <div class="command-desc" style="font-weight:600;">${channelName} · ${serverName}</div>
+            <div class="command-desc" style="font-weight:600;">${escapeHTML(channelName)} · ${escapeHTML(serverName)}</div>
             ${rows}
           </div>
         `);
@@ -8679,7 +9034,6 @@
       dashboardAnalytics = await response.json();
       window.dashboardAnalytics = dashboardAnalytics;
       renderAnalyticsView();
-      try { window.__cvUsage?.render(); } catch (_) {}
       return dashboardAnalytics;
     }
 
@@ -8959,7 +9313,7 @@
       const scheduled = g.monthly || g.yearly;
       const progress = recaps.dmProgress && recaps.dmProgress.guildID === g.id ? recaps.dmProgress : null;
       const sending = progress && !progress.finishedAt;
-      const deliveries = [g.channelID ? `posted in #${escapeHTML(g.channels.find(c => c.id === g.channelID)?.name || 'channel')}` : '', g.personalDMs ? 'DMed to each member' : ''].filter(Boolean).join(' and ');
+      const deliveries = [g.channelID ? `posted in #${escapeHTML(g.channels.find(c => c.id === g.channelID)?.name || 'channel')}` : '', g.personalDMs ? (g.onlyDMActiveMembers !== false ? 'DMed to active members' : 'DMed to members who participated') : ''].filter(Boolean).join(' and ');
       return `
         <section class="ub-group" id="rwDrops">
           <div class="ub-group-head"><h2>Recap drops</h2></div>
@@ -8978,10 +9332,17 @@
             </div>
             <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
               <div class="ub-row-text">
-                <div class="ub-row-title">DM each member their own Replay</div>
-                <div class="ub-row-desc">Everyone active in the period gets a personal recap: their messages, voice time, rank and how they compare with the period before. Each DM has a “Stop sending me Replays” button${recaps.dmOptOutCount ? ` · ${recaps.dmOptOutCount} ${recaps.dmOptOutCount === 1 ? 'member has' : 'members have'} turned them off` : ''}.</div>
+                <div class="ub-row-title">DM members their own Replay</div>
+                <div class="ub-row-desc">Eligible members get a personal recap: their messages, voice time, rank and how they compare with the period before. Each DM has a “Stop sending me Replays” button${recaps.dmOptOutCount ? ` · ${recaps.dmOptOutCount} ${recaps.dmOptOutCount === 1 ? 'member has' : 'members have'} turned them off` : ''}.</div>
               </div>
               ${sw('rwDropDMs', g.personalDMs)}
+            </div>
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Only DM active members</div>
+                <div class="ub-row-desc">Require at least 10 messages across 3 days in the last 30 days in this server, plus participation in the recap period. Voice alone doesn’t qualify. Applies to scheduled and manual sends. When off, anyone who posted or spent at least a minute in voice during the recap period can receive a DM.</div>
+              </div>
+              ${sw('rwDropActiveOnly', g.onlyDMActiveMembers !== false)}
             </div>
             ${scheduled && !deliveries ? '<div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc rw-warn">Choose a channel or turn on DMs, or nothing will be sent.</div></div></div>' : ''}
             <div class="ub-row">
@@ -9002,7 +9363,7 @@
     function bindRecapDrops(g) {
       if (!g) return;
       const save = async (patch) => {
-        const body = { guildID: g.id, channelID: g.channelID, monthly: g.monthly, yearly: g.yearly, personalDMs: g.personalDMs, ...patch };
+        const body = { guildID: g.id, channelID: g.channelID, monthly: g.monthly, yearly: g.yearly, personalDMs: g.personalDMs, onlyDMActiveMembers: g.onlyDMActiveMembers !== false, ...patch };
         try {
           await postJSON('/api/rewind/recaps/update', body);
           rewindState.recaps = null;
@@ -9017,6 +9378,7 @@
       document.getElementById('rwDropMonthly')?.addEventListener('change', e => save({ monthly: e.target.checked }));
       document.getElementById('rwDropYearly')?.addEventListener('change', e => save({ yearly: e.target.checked }));
       document.getElementById('rwDropDMs')?.addEventListener('change', e => save({ personalDMs: e.target.checked }));
+      document.getElementById('rwDropActiveOnly')?.addEventListener('change', e => save({ onlyDMActiveMembers: e.target.checked }));
       document.getElementById('rwSendDMs')?.addEventListener('click', () => confirmSendReplayDMs(g));
       // While DMs are going out, refresh progress every few seconds.
       const progress = rewindState.recaps?.dmProgress;
@@ -9044,8 +9406,8 @@
         count = (await r.json()).count || 0;
       } catch {}
       document.getElementById('modalBody').innerHTML = count
-        ? `<p class="ub-help" style="margin-top:0;">SwiftBot will DM <strong>${count} ${count === 1 ? 'member' : 'members'}</strong> of ${escapeHTML(g.name)} their own <strong>${escapeHTML(label)}</strong> Replay. It sends one at a time, so a big server takes a few minutes. Members who turned off Replay DMs are skipped, and each DM has a button to stop future ones.</p>`
-        : `<p class="ub-help" style="margin-top:0;">Nobody was active in ${escapeHTML(label)}, so there’s nothing to send.</p>`;
+        ? `<p class="ub-help" style="margin-top:0;">SwiftBot will DM <strong>${count} ${count === 1 ? 'member' : 'members'}</strong> of ${escapeHTML(g.name)} their own <strong>${escapeHTML(label)}</strong> Replay. It sends one at a time, so a big server takes a few minutes. ${g.onlyDMActiveMembers !== false ? 'Only members with at least 10 messages across 3 days in the last 30 days qualify. ' : ''}Members who left the server or turned off Replay DMs are skipped, and each DM has a button to stop future ones.</p>`
+        : `<p class="ub-help" style="margin-top:0;">No eligible members${g.onlyDMActiveMembers !== false ? ' meet the recent chat activity requirement' : ' participated'} for ${escapeHTML(label)}, so there’s nothing to send.</p>`;
       const confirm = document.getElementById('rwDMConfirm');
       confirm.disabled = !count;
       confirm.addEventListener('click', async () => {
@@ -9250,8 +9612,37 @@
       overlay.querySelector('.rs-next')?.focus();
     }
 
-    async function loadOverview() {
-      const response = await fetch('/api/overview');
+    let overviewRequest = null;
+    let overviewUpdatedAt = 0;
+    let overviewRefreshFailed = false;
+    let overviewActivityFilter = 'all';
+    let overviewUsage = null;
+    let overviewUsageUpdatedAt = 0;
+    let overviewUsageFailed = false;
+
+    function updateOverviewFreshness() {
+      const age = overviewUpdatedAt ? Math.floor((Date.now() - overviewUpdatedAt) / 1000) : null;
+      const stale = overviewRefreshFailed || age === null || age >= 45;
+      document.getElementById('overviewView').classList.toggle('overview-stale', stale);
+      const elapsed = age < 60 ? `${age} second${age === 1 ? '' : 's'}` : `${Math.floor(age / 60)} minute${Math.floor(age / 60) === 1 ? '' : 's'}`;
+      const updated = age === null ? 'No update received' : `Updated ${elapsed} ago`;
+      document.getElementById('overviewFreshness').textContent = stale
+        ? `${navigator.onLine ? 'Reconnecting' : 'Offline'} · ${updated}${age === null ? '' : ' · showing cached values'}` : updated;
+      const overall = document.getElementById('opsOverall');
+      overall.dataset.state = stale ? 'neutral' : dashboardOverview?.health?.state || 'neutral';
+      document.getElementById('opsOverallTitle').textContent = stale ? 'Status unverified' : readableOverviewOverall(dashboardOverview?.health);
+    }
+
+    function loadOverview() {
+      if (overviewRequest) return overviewRequest;
+      overviewRequest = fetchOverview().finally(() => { overviewRequest = null; updateOverviewFreshness(); });
+      updateOverviewFreshness();
+      return overviewRequest;
+    }
+
+    async function fetchOverview() {
+      try {
+      const response = await fetch('/api/overview', { signal: AbortSignal.timeout(12000) });
       if (!response.ok) {
         throw new Error('Overview unavailable');
       }
@@ -9265,38 +9656,20 @@
         { label: 'Leader', value: data.cluster.leader },
         { label: 'Mode', value: data.cluster.mode }
       ]);
-      renderEvents(
-        'voiceEvents',
-        data.recentVoice || [],
-        'No voice events yet',
-        item => {
-          const desc = String(item.description || '');
-          const leave = /\b(left|leave|leaved|disconnected)\b/i.test(desc);
-          return `
-            <div class="event-item ${leave ? 'leave' : 'ok'}">
-              <div class="event-title">${desc}</div>
-              <div class="event-time">${item.timeText}</div>
-            </div>
-          `;
-        }
-      );
-      renderEvents(
-        'recentCommands',
-        data.recentCommands || [],
-        'No commands yet',
-        item => `
-          <div class="event-item ${item.ok ? 'ok' : 'error'}">
-            <div class="event-title">${item.title}</div>
-            <div class="event-time">${item.timeText}</div>
-          </div>
-        `
-      );
       renderActiveVoice(data.activeVoice || []);
+      dashboardOverview = data;
       renderOverviewHealth(data.health);
+      renderOverviewActivity();
       renderOverviewPanels();
       updateSidebarAlerts();
       dashboardOverview = data;
+      overviewUpdatedAt = Date.now();
+      overviewRefreshFailed = false;
       return data;
+      } catch (error) {
+        overviewRefreshFailed = true;
+        throw error;
+      }
     }
 
     async function loadMe() {
@@ -9318,10 +9691,125 @@
       const data = await response.json();
       authOptions.discordEnabled = !!data.discordEnabled;
       authOptions.localEnabled = !!data.localEnabled;
+      authOptions.passkeysEnabled = !!data.passkeysEnabled;
       authOptions.botName = data.botName || '';
       authOptions.botAvatarURL = data.botAvatarURL || '';
       authOptions.botOnline = typeof data.botOnline === 'boolean' ? data.botOnline : undefined;
       applyAuthOptions();
+    }
+
+    function passkeyDecode(value) {
+      const encoded = value.replace(/-/g, '+').replace(/_/g, '/');
+      return Uint8Array.from(atob(encoded + '='.repeat((4 - encoded.length % 4) % 4)), c => c.charCodeAt(0));
+    }
+    function passkeyEncode(value) {
+      return btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+    async function passkeyRequest(path, body) {
+      const response = await fetch('/auth/passkeys/' + path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-CSRF': csrfToken || '' },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Couldn’t complete the passkey request.');
+      return payload;
+    }
+    function serializePasskey(credential) {
+      const response = { clientDataJSON: passkeyEncode(credential.response.clientDataJSON) };
+      for (const field of ['attestationObject', 'authenticatorData', 'signature', 'userHandle']) {
+        if (credential.response[field]) response[field] = passkeyEncode(credential.response[field]);
+      }
+      return { id: credential.id, rawId: passkeyEncode(credential.rawId), type: credential.type, response };
+    }
+    async function runPasskeyCeremony(register, name) {
+      const kind = register ? 'register' : 'login';
+      const options = await passkeyRequest(kind + '/options', register ? { name } : {});
+      options.publicKey.challenge = passkeyDecode(options.publicKey.challenge);
+      if (register) options.publicKey.user.id = passkeyDecode(options.publicKey.user.id);
+      for (const field of ['allowCredentials', 'excludeCredentials']) {
+        if (options.publicKey[field]) options.publicKey[field].forEach(c => c.id = passkeyDecode(c.id));
+      }
+      const credential = await navigator.credentials[register ? 'create' : 'get']({ publicKey: options.publicKey });
+      if (!credential) throw new Error('No passkey was selected.');
+      return passkeyRequest(kind + '/finish', { ceremony: options.ceremony, credential: serializePasskey(credential) });
+    }
+    document.getElementById('passkeyAuthButton')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      setAuthFeedback('Choose your passkey…');
+      try {
+        await runPasskeyCeremony(false);
+        setAuthFeedback('');
+        await bootstrap();
+      } catch (error) {
+        setAuthFeedback(error.name === 'NotAllowedError' ? 'Passkey sign-in was cancelled. You can try again or continue with Discord.' : error.message, 'error');
+      } finally { button.disabled = false; }
+    });
+    function openPasskeyPreferences() {
+      showModal('Passkeys', `
+        <div id="prefsPasskeys"><div class="ub-row"><div class="ub-row-text"><div class="ub-row-desc" role="status">Loading passkeys…</div></div></div></div>
+        <p class="ub-help prefs-note">Passkeys are saved for this SwiftBot Mac and address. <a class="ub-inline-link" href="/auth/discord/login">Sign in with Discord again</a> before adding one, or to recover access.</p>
+      `, '<button class="secondary-action" type="button" data-action="hideModal">Done</button>', { extraClass: 'passkeys-modal' });
+      refreshIcons();
+      loadPasskeyPreferences();
+    }
+
+    async function loadPasskeyPreferences() {
+      const container = document.getElementById('prefsPasskeys');
+      if (!container) return;
+      if (!window.isSecureContext || !window.PublicKeyCredential) {
+        container.innerHTML = `<div class="ub-row"><span class="prefs-passkey-icon" aria-hidden="true"><i class="lucide" data-lucide="key-round"></i></span><div class="ub-row-text"><div class="ub-row-title">Passkeys unavailable</div><div class="ub-row-desc">Open SwiftBot at its HTTPS address in a browser that supports passkeys.</div></div></div>`;
+        refreshIcons();
+        return;
+      }
+      try {
+        const data = await passkeyRequest('list');
+        if (!container.isConnected) return;
+        container.innerHTML = `
+          <div class="ub-row">
+            <span class="prefs-passkey-icon" aria-hidden="true"><i class="lucide" data-lucide="fingerprint"></i></span>
+            <div class="ub-row-text"><div class="ub-row-title">Sign in with a passkey</div><div class="ub-row-desc">Use Touch ID, Face ID, or your device’s screen lock.</div></div>
+            <span class="prefs-chip">${data.credentials.length ? `${data.credentials.length} saved` : 'Not set up'}</span>
+          </div>
+          ${data.credentials.length ? data.credentials.map(c => `<div class="ub-row">
+            <span class="prefs-passkey-icon" aria-hidden="true"><i class="lucide" data-lucide="key-round"></i></span>
+            <div class="ub-row-text"><div class="ub-row-title prefs-passkey-name">${escapeHTML(c.name)}</div><div class="ub-row-desc">Added ${escapeHTML(new Date(c.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }))}</div></div>
+            <button type="button" class="secondary-action is-destructive" data-remove-passkey="${escapeHTML(c.id)}" aria-label="Remove ${escapeHTML(c.name)}">Remove</button>
+          </div>`).join('') : ''}
+          <form id="prefsPasskeyForm" class="ub-row prefs-passkey-add">
+            <div class="ub-row-text"><label class="ub-row-title" for="prefsPasskeyName">Add a passkey</label><div class="ub-row-desc" id="prefsPasskeyNameHint">Give it a name you’ll recognise.</div></div>
+            <div class="prefs-passkey-entry"><input id="prefsPasskeyName" class="field-input" maxlength="80" placeholder="My Mac" aria-describedby="prefsPasskeyNameHint" autocomplete="off"><button id="prefsAddPasskey" class="secondary-action" type="submit"><i class="lucide" data-lucide="plus" aria-hidden="true"></i> Add passkey</button></div>
+          </form>
+          <p id="prefsPasskeyFeedback" class="ub-help prefs-passkey-feedback" role="status" aria-live="polite"></p>`;
+        refreshIcons();
+        const feedback = container.querySelector('#prefsPasskeyFeedback');
+        container.querySelector('#prefsPasskeyForm').addEventListener('submit', async event => {
+          event.preventDefault();
+          const button = container.querySelector('#prefsAddPasskey');
+          if (button.disabled) return;
+          button.disabled = true;
+          feedback.textContent = 'Follow your device’s instructions to save the passkey…';
+          try {
+            await runPasskeyCeremony(true, container.querySelector('#prefsPasskeyName').value.trim() || 'Passkey');
+            await loadPasskeyPreferences();
+          } catch (error) {
+            feedback.textContent = error.name === 'NotAllowedError' ? 'Adding a passkey was cancelled.' : error.message;
+          } finally { if (button.isConnected) button.disabled = false; }
+        });
+        container.querySelectorAll('[data-remove-passkey]').forEach(button => button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await passkeyRequest('remove', { id: button.dataset.removePasskey });
+            if (currentUser.signInMethod === 'passkey') await bootstrap();
+            else await loadPasskeyPreferences();
+          } catch (error) { feedback.textContent = error.message; button.disabled = false; }
+        }));
+      } catch (error) {
+        if (container.isConnected) {
+          container.innerHTML = `<div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Couldn’t load passkeys</div><div class="ub-row-desc" role="status">${escapeHTML(error.message)}</div></div></div>`;
+        }
+      }
     }
 
     async function loginLocal(event) {
@@ -10494,6 +10982,11 @@
           ${ubStatusCell(`${enabledCount} of ${WELCOME_TEMPLATES.length} steps on`, enabledCount ? 'Runs for every new member' : 'Nothing happens when people join', enabledCount ? 'healthy' : 'neutral')}
           ${ubStatusCell(escapeHTML(welcomeContext().guildName || 'Server'), 'Settings apply to this server')}
         </div>
+        ${welcomeSettings().publicWelcomeEnabled && welcomeSettings().publicChannelId ? `
+        <div class="section-actions" style="justify-content:flex-end;margin-top:12px;">
+          <span id="welcomeTestHint" class="ub-help" style="margin:0 8px 0 0;">Posts the saved greeting with SwiftBot as the new member.</span>
+          <button id="welcomeTest" class="secondary-action" type="button"><i class="lucide" data-lucide="send"></i> Send test</button>
+        </div>` : ''}
         <div class="gt-shell" style="margin-top:22px;">
           <section class="ub-group">
             <div class="ub-group-head gt-game-head"><span class="ub-item-icon" style="--brand:#22c55e;"><i class="lucide" data-lucide="log-in"></i></span><h2>When someone joins</h2><span class="gt-game-count">in this order</span></div>
@@ -10504,6 +10997,19 @@
             <div class="ub-list glass">${leave.map(t => item(t, 0)).join('')}</div>
           </section>
         </div>`;
+
+      root.querySelector('#welcomeTest')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        const hint = root.querySelector('#welcomeTestHint');
+        button.disabled = true;
+        try {
+          await postJSON('/api/welcome-flow/test', {});
+          hint.textContent = 'Sent. Check the greeting channel.';
+        } catch (error) {
+          hint.textContent = hostErrorMessage(error, 'Couldn’t send the test.');
+        }
+        button.disabled = false;
+      });
 
       root.querySelectorAll('[data-welcome-rule]').forEach(row => {
         const kind = row.dataset.welcomeRule;
@@ -10708,13 +11214,16 @@
           '<div class="ub-help" style="margin-top:0;">Leave the invite code empty to give the role to everyone who joins.</div>' +
           (rules.length ? `<div class="wf-invite-list">${rules.map((r, i) => `
             <div class="wf-invite-row${r.isEnabled ? '' : ' is-off'}" data-index="${i}">
-              <input class="field-input wf-invite-code" data-index="${i}" value="${escapeHTML(r.inviteCode || '')}" placeholder="Any invite" aria-label="Invite code">
+              <input class="field-input wf-invite-code" data-index="${i}" value="${escapeHTML(r.inviteCode || '')}" placeholder="Any invite" aria-label="Invite code" list="wfInviteCodes" spellcheck="false">
               <i class="lucide wf-invite-arrow" data-lucide="arrow-right"></i>
               ${roleSelect('wf-invite-role', r.roleId, i)}
               <label class="switch" title="${r.isEnabled ? 'On' : 'Off'}"><input class="wf-invite-enabled" data-index="${i}" type="checkbox" ${r.isEnabled ? 'checked' : ''} aria-label="Rule on"><span class="switch-track"><span class="switch-knob"></span></span></label>
               <button class="icon-btn we-remove wf-invite-remove" type="button" aria-label="Remove"><i class="lucide" data-lucide="x"></i></button>
             </div>`).join('')}</div>` : '<div class="placeholder">No rules yet.</div>') +
-          '<div class="wiki-actions"><button class="secondary-action" id="wfInviteAdd" type="button"><i class="lucide" data-lucide="plus"></i> Add rule</button></div>');
+          `<datalist id="wfInviteCodes">${(welcomeData.invites || []).map(inv => `<option value="${escapeHTML(inv.code)}">${escapeHTML([inv.channelName ? `#${inv.channelName}` : '', `${inv.uses} ${inv.uses === 1 ? 'use' : 'uses'}`].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>` +
+          `<div class="wiki-actions"><button class="secondary-action" id="wfInviteAdd" type="button"><i class="lucide" data-lucide="plus"></i> Add rule</button>
+            <button class="secondary-action" id="wfInviteRefresh" type="button" title="Read the server’s current invites from Discord"><i class="lucide" data-lucide="refresh-cw"></i> Refresh invites</button>
+            <span id="wfInviteHint" class="ub-help" style="margin:0;">${(welcomeData.invites || []).length ? `${welcomeData.invites.length} ${welcomeData.invites.length === 1 ? 'invite' : 'invites'} to pick from` : ''}</span></div>`);
       } else if (kind === 'safety') {
         const age = s.minAccountAgeDays || 0;
         html = section('shield', 'Checks',
@@ -10794,6 +11303,20 @@
         if (byID('wfDmFallback')) byID('wfDmFallback').oninput = e => { s.dmFallbackTemplate = e.target.value; };
       } else if (kind === 'inviteRoles') {
         byID('wfInviteAdd').onclick = () => { s.nextStepRules = s.nextStepRules || []; s.nextStepRules.push(newWelcomeInviteRule()); rerender(); };
+        // Only the invite list is taken from the reload: the open editor is
+        // working on welcomeData.settings and must keep its unsaved edits.
+        byID('wfInviteRefresh').onclick = async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            await postJSON('/api/welcome-flow/invites/refresh', {});
+            const response = await fetch('/api/welcome-flow');
+            if (response.ok) welcomeData.invites = (await response.json()).invites || [];
+            rerender();
+          } catch (error) {
+            e.currentTarget.disabled = false;
+            byID('wfInviteHint').textContent = hostErrorMessage(error, 'Couldn’t read the server’s invites.');
+          }
+        };
         root.querySelectorAll('.wf-invite-remove').forEach(btn => btn.onclick = e => { s.nextStepRules.splice(Number(e.currentTarget.closest('[data-index]').dataset.index), 1); rerender(); });
         root.querySelectorAll('.wf-invite-enabled').forEach(el => el.onchange = e => { const r = s.nextStepRules[Number(e.target.dataset.index)]; r.isEnabled = e.target.checked; r.updatedAt = isoDateNoMillis(); e.target.closest('.wf-invite-row').classList.toggle('is-off', !e.target.checked); });
         root.querySelectorAll('.wf-invite-code').forEach(el => el.oninput = e => { const r = s.nextStepRules[Number(e.target.dataset.index)]; r.inviteCode = e.target.value.trim(); r.updatedAt = isoDateNoMillis(); });
@@ -11617,6 +12140,8 @@
       automation.querySelector('#gtSessions')?.addEventListener('change', e => saveSettings({ sessionTrackingEnabled: e.target.checked }));
       automation.querySelector('#gtHour')?.addEventListener('change', e => saveSettings({ checkHour: Number(e.target.value) }));
 
+      renderGameTrackerStyle(data, readOnly);
+
       // Recent activity
       const history = (data.history || []).slice(0, 10);
       historyList.innerHTML = `
@@ -11635,6 +12160,263 @@
         </section>`;
 
       refreshIcons();
+    }
+
+    // ---- Announcement style ----
+    // The preview JSON is rendered by the bot's own Swift builders, so this
+    // only has to draw a Discord message, never re-implement the layout.
+
+    function discordMarkdown(text, members) {
+      let html = escapeHTML(text || '');
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+      html = html.replace(/&lt;@!?(\d+)&gt;/g, (_, id) => {
+        const name = (members || []).find(m => m.id === id)?.name || 'member';
+        return `<span class="dc-mention">@${escapeHTML(name)}</span>`;
+      });
+      return html;
+    }
+
+    function discordMessageHTML(payload, members) {
+      const embeds = (payload.embeds || []).map(embed => {
+        const color = typeof embed.color === 'number' ? '#' + embed.color.toString(16).padStart(6, '0') : '#1e1f22';
+        const fields = (embed.fields || []).map(f => `
+          <div class="dc-field${f.inline ? '' : ' is-wide'}">
+            <div class="dc-field-name">${discordMarkdown(f.name, members)}</div>
+            <div class="dc-field-value">${discordMarkdown(f.value, members)}</div>
+          </div>`).join('');
+        const time = embed.timestamp ? new Date(embed.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+        const footer = [embed.footer?.text, time ? `Today at ${time}` : ''].filter(Boolean).map(escapeHTML).join(' • ');
+        return `
+          <div class="dc-embed" style="--dc-accent:${color};">
+            ${embed.author?.name ? `<div class="dc-embed-author">${escapeHTML(embed.author.name)}</div>` : ''}
+            ${embed.title ? `<div class="dc-embed-title">${discordMarkdown(embed.title, members)}</div>` : ''}
+            ${embed.description ? `<div class="dc-embed-desc">${discordMarkdown(embed.description, members)}</div>` : ''}
+            ${fields ? `<div class="dc-embed-fields">${fields}</div>` : ''}
+            ${footer ? `<div class="dc-embed-footer">${footer}</div>` : ''}
+          </div>`;
+      }).join('');
+      const now = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      return `
+        <div class="dc-chat" aria-label="Discord preview">
+          <div class="dc-msg">
+            <div class="dc-avatar" aria-hidden="true"><i class="lucide" data-lucide="bot"></i></div>
+            <div style="min-width:0;">
+              <div class="dc-name">SwiftBot <span class="dc-app">App</span> <span class="dc-time">Today at ${escapeHTML(now)}</span></div>
+              ${payload.content ? `<div class="dc-content">${discordMarkdown(payload.content, members)}</div>` : ''}
+              ${embeds}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    const GT_LAYOUTS = { card: 'Card', compact: 'Compact', minimal: 'Minimal' };
+    const GT_ACCENTS = { rank: 'League colour', direction: 'Green up, red down', custom: 'Custom colour' };
+
+    function gameTrackerStyleSummary(style) {
+      const parts = [GT_LAYOUTS[style.layout || 'card']];
+      if (style.layout !== 'minimal') parts.push(GT_ACCENTS[style.accent || 'rank']);
+      const shared = (style.sharedStats || []).length;
+      if (style.sharedStats) parts.push(`${shared} stat${shared === 1 ? '' : 's'} shared`);
+      if (style.mentionPlayer) parts.push('mentions on');
+      if (style.rankTitleTemplate || style.sessionTitleTemplate || style.footerText) parts.push('custom text');
+      return parts.join(' · ');
+    }
+
+    // On the page: one row summarising the style. Editing happens in a dialog.
+    function renderGameTrackerStyle(data, readOnly) {
+      const host = document.getElementById('gametrackerStyle');
+      if (!host) return;
+      const style = data.announcementStyle || {};
+      const swatch = style.layout === 'minimal' ? '#8e8e93'
+        : style.accent === 'custom' ? (style.customColor || '#D21F3C')
+        : style.accent === 'direction' ? '#3ba55d' : '#f1c40f';
+      host.innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Announcements</h2></div>
+          <div class="ub-list glass">
+            <div class="ub-item">
+              <button class="ub-item-main" type="button" id="gtStyleOpen">
+                <span class="gt-style-swatch" style="--gt-swatch:${escapeHTML(swatch)};" aria-hidden="true"><i class="lucide" data-lucide="${style.layout === 'minimal' ? 'align-left' : 'panels-top-left'}"></i></span>
+                <span class="ub-item-text">
+                  <span class="ub-item-title">Discord post style</span>
+                  <span class="ub-item-sub">${escapeHTML(gameTrackerStyleSummary(style))}</span>
+                </span>
+                <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </section>`;
+      host.querySelector('#gtStyleOpen').addEventListener('click', () => openGameTrackerStyleEditor());
+      refreshIcons();
+    }
+
+    function openGameTrackerStyleEditor() {
+      const data = gameTrackerData;
+      const readOnly = !!data.isFailoverManagedNode;
+      const off = readOnly ? 'disabled' : '';
+      const draft = { layout: 'card', accent: 'rank', customColor: '#D21F3C', announceOn: ['rankedScore', 'rankTier'], sharedStats: [], showProgress: true, showSeason: true, mentionPlayer: false, rankTitleTemplate: '', sessionTitleTemplate: '', footerText: '', ...(data.announcementStyle || {}) };
+      draft.announceOn = [...(draft.announceOn || [])];
+      draft.sharedStats = [...(draft.sharedStats || [])];
+      // Every stat any connected provider can report, in catalog order.
+      const allStats = [];
+      (data.catalog?.providers || []).forEach(p => (p.metrics || []).forEach(m => { if (!allStats.some(x => x.id === m.id)) allStats.push(m); }));
+      const testable = (data.players || []).filter(p => p.destinationChannelID);
+      let tab = 'rank';
+      let preview = data.stylePreview || {};
+      let previewSeq = 0;
+
+      showModal('Discord post style', '<div id="gtStyleBody" class="gt-style-editor"></div>', `
+        <div class="modal-footer-start">
+          <button id="gtSendTest" class="secondary-action" type="button" ${testable.length && !readOnly ? '' : 'disabled'}
+            title="${testable.length ? 'Posts both samples, in this style, to the player’s channel' : 'Add a player with a channel first'}"><i class="lucide" data-lucide="send"></i> Send test</button>
+        </div>
+        <span id="gtStyleHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">${readOnly ? 'Close' : 'Cancel'}</button>
+        ${readOnly ? '' : '<button id="gtStyleSave" class="primary-action" type="button">Save</button>'}
+      `, { wide: true, extraClass: 'gt-style-modal' });
+
+      const body = document.getElementById('gtStyleBody');
+      const seg = (name, value, options, locked = off) => `
+        <div class="segmented prefs-seg" data-seg="${name}" role="radiogroup">
+          ${Object.entries(options).map(([v, label]) => `<button type="button" role="radio" data-value="${v}" class="${v === value ? 'active' : ''}" aria-checked="${v === value}" ${locked}>${label}</button>`).join('')}
+        </div>`;
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label><div style="flex:1;min-width:0;">${html}</div></div>`;
+      const section = (icon, title, inner) => `<div class="automation-editor-section"><h3><i class="lucide" data-lucide="${icon}"></i> ${title}</h3>${inner}</div>`;
+      const chip = (key, label, show = true) => show ? `<label class="patchy-role-chip"><input type="checkbox" data-flag="${key}" ${draft[key] ? 'checked' : ''} ${off}><span>${label}</span></label>` : '';
+      const statChips = (list, key) => `<div class="patchy-role-list">${list.map(m => `
+        <label class="patchy-role-chip"><input type="checkbox" data-stat-list="${key}" value="${escapeHTML(m.id)}" ${draft[key].includes(m.id) ? 'checked' : ''} ${off}><span>${escapeHTML(m.displayName)}</span></label>`).join('')}</div>`;
+      const textRow = (key, label, placeholder, vars) => row(label, `
+        <input class="field-input" data-text="${key}" maxlength="200" value="${escapeHTML(draft[key] || '')}" placeholder="${escapeHTML(placeholder)}" ${off}>
+        <div class="gt-vars" data-vars-for="${key}">${vars.map(v => `<button type="button" data-insert="{${v}}">{${v}}</button>`).join('')}</div>`);
+
+      const previewHTML = () => {
+        let payload = {};
+        try { payload = JSON.parse((tab === 'session' ? preview.session : preview.rankUpdate) || '{}'); } catch {}
+        return discordMessageHTML(payload, data.members);
+      };
+      const paintPreview = () => {
+        const host = document.getElementById('gtStylePreview');
+        if (host) { host.innerHTML = previewHTML(); refreshIcons(); }
+      };
+      // Ask the bot to render the draft; the newest request wins.
+      const refreshPreview = async () => {
+        const seq = ++previewSeq;
+        try {
+          const next = await postJSON('/api/gametracker/preview', draft);
+          if (seq === previewSeq && next && typeof next === 'object') { preview = next; paintPreview(); }
+        } catch (e) { console.error(e); }
+      };
+
+      // Nothing to post on means nothing is ever posted; say so rather than
+      // silently saving a dead setup.
+      const validateDraft = () => {
+        const save = document.getElementById('gtStyleSave');
+        const message = draft.announceOn.length ? '' : 'Pick at least one change to post on.';
+        if (save) save.disabled = !!message;
+        document.getElementById('gtStyleHint').textContent = message;
+      };
+      const render = () => {
+        const minimal = draft.layout === 'minimal';
+        const card = draft.layout === 'card';
+        body.innerHTML = `
+          <div>
+            ${section('palette', 'Look',
+              row('Layout', seg('layout', draft.layout, GT_LAYOUTS))
+              + (minimal ? '' : row('Accent', `<div class="gt-color">${seg('accent', draft.accent, { rank: 'League', direction: 'Up / Down', custom: 'Custom' })}
+                  ${draft.accent === 'custom' ? `<input type="color" data-color value="${escapeHTML(draft.customColor)}" aria-label="Custom colour" ${off}>` : ''}</div>`)))}
+            ${section('bell-ring', 'Post when these change',
+              statChips(allStats.filter(m => m.canTrigger), 'announceOn')
+              + '<div class="ub-help">Checked daily. Totals like kills only ever go up, so they can’t trigger a post. Play-session posts are separate.</div>')}
+            ${section('share-2', 'Share on posts',
+              statChips(allStats, 'sharedStats')
+              + `<div class="patchy-role-list" style="margin-top:10px;">
+                ${chip('showProgress', 'Progress bar', card)}
+                ${chip('showSeason', 'Season', !minimal)}
+                ${chip('mentionPlayer', 'Mention player')}
+              </div>
+              <div class="ub-help">Everything is recorded either way; this only decides what appears in Discord.</div>`)}
+            ${minimal ? '' : `
+            <details class="wiki-advanced automation-editor-section" ${draft.rankTitleTemplate || draft.sessionTitleTemplate || draft.footerText ? 'open' : ''}>
+              <summary><i class="lucide" data-lucide="type"></i> Custom text</summary>
+              ${card ? textRow('rankTitleTemplate', 'Rank title', 'Automatic, e.g. ▲ Ranked up to Gold 1', ['player', 'rank', 'previousRank', 'delta', 'score', 'unit', 'leaderboard']) : ''}
+              ${card ? textRow('sessionTitleTemplate', 'Session title', '{player} played for {duration}', ['player', 'game', 'duration', 'matches', 'wins', 'kd', 'rank']) : ''}
+              ${textRow('footerText', 'Footer', 'Season 11 · Data provided by finals.id', ['game', 'provider', 'season'])}
+            </details>`}
+          </div>
+          <div class="gt-preview-wrap">
+            <div class="gt-preview-head">
+              ${seg('tab', tab, { rank: 'Rank update', session: 'Session' }, '')}
+              <span class="gt-preview-note">Sample data</span>
+            </div>
+            <div id="gtStylePreview">${previewHTML()}</div>
+            ${testable.length > 1 ? `<select id="gtTestPlayer" class="field-select" aria-label="Send the test to">${testable.map(p => `<option value="${escapeHTML(p.id)}">Test with ${escapeHTML(p.displayName)} → #${escapeHTML(p.destinationChannelName)}</option>`).join('')}</select>` : ''}
+          </div>`;
+
+        body.querySelectorAll('[data-seg] button').forEach(btn => btn.addEventListener('click', () => {
+          const name = btn.closest('[data-seg]').dataset.seg;
+          if (name === 'tab') { tab = btn.dataset.value; render(); return; }
+          if (draft[name] === btn.dataset.value) return;
+          draft[name] = btn.dataset.value;
+          render();
+          refreshPreview();
+        }));
+        body.querySelector('[data-color]')?.addEventListener('input', e => { draft.customColor = e.target.value.toUpperCase(); refreshPreview(); });
+        body.querySelectorAll('[data-flag]').forEach(box => box.addEventListener('change', () => { draft[box.dataset.flag] = box.checked; refreshPreview(); }));
+        body.querySelectorAll('[data-stat-list]').forEach(box => box.addEventListener('change', () => {
+          const key = box.dataset.statList;
+          draft[key] = box.checked ? [...new Set([...draft[key], box.value])] : draft[key].filter(id => id !== box.value);
+          validateDraft();
+          refreshPreview();
+        }));
+        let typing = null;
+        body.querySelectorAll('[data-text]').forEach(input => {
+          const vars = body.querySelector(`[data-vars-for="${input.dataset.text}"]`);
+          input.addEventListener('focus', () => vars?.classList.add('is-open'));
+          input.addEventListener('input', () => {
+            draft[input.dataset.text] = input.value;
+            clearTimeout(typing);
+            typing = setTimeout(refreshPreview, 250);
+          });
+        });
+        // Placeholder chips insert at the cursor of their own field.
+        body.querySelectorAll('[data-insert]').forEach(btn => btn.addEventListener('mousedown', e => {
+          e.preventDefault();
+          const input = btn.closest('.automation-editor-row').querySelector('[data-text]');
+          const at = input.selectionStart ?? input.value.length;
+          input.value = input.value.slice(0, at) + btn.dataset.insert + input.value.slice(input.selectionEnd ?? at);
+          input.setSelectionRange(at + btn.dataset.insert.length, at + btn.dataset.insert.length);
+          input.dispatchEvent(new Event('input'));
+        }));
+        refreshIcons();
+      };
+      render();
+      validateDraft();
+
+      document.getElementById('gtSendTest')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        const playerID = document.getElementById('gtTestPlayer')?.value || testable[0]?.id;
+        button.disabled = true;
+        try {
+          await postJSON('/api/gametracker/update', { action: 'sendTest', playerID, style: draft });
+          document.getElementById('gtStyleHint').textContent = 'Test posts sent.';
+        } catch (error) {
+          document.getElementById('gtStyleHint').textContent = error.message || 'Could not send the test posts.';
+        } finally {
+          button.disabled = false;
+        }
+      });
+      document.getElementById('gtStyleSave')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await postGameTrackerUpdate({ action: 'updateStyle', style: { ...draft, rankTitleTemplate: draft.rankTitleTemplate.trim(), sessionTitleTemplate: draft.sessionTitleTemplate.trim(), footerText: draft.footerText.trim() } });
+          hideModal();
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          document.getElementById('gtStyleHint').textContent = error.message || 'Could not save the style.';
+        }
+      });
     }
 
     // Server members by name; keeps a link to someone the bot no longer
@@ -11658,12 +12440,11 @@
       const draft = existing ? {
         id: existing.id, game: existing.game, provider: existing.provider, playerID: existing.playerID,
         displayName: existing.displayName, destinationChannelID: existing.destinationChannelID, isEnabled: existing.isEnabled,
-        discordUserID: existing.discordUserID || '', triggerMetrics: [...(existing.triggerMetrics || [])], contextMetrics: [...(existing.contextMetrics || [])]
+        discordUserID: existing.discordUserID || ''
       } : {
         id: null, game: firstGame,
         provider: catalog.providers.find(p => p.supportedGames.includes(firstGame))?.id || 'finalsID',
-        playerID: '', displayName: '', destinationChannelID: '', isEnabled: true, discordUserID: '',
-        triggerMetrics: ['rankedScore'], contextMetrics: ['killDeathRatio', 'wins']
+        playerID: '', displayName: '', destinationChannelID: '', isEnabled: true, discordUserID: ''
       };
 
       showModal(existing ? `Edit ${existing.displayName}` : 'Add player', '<div id="gtEditorBody"></div>', `
@@ -11685,10 +12466,6 @@
         if (el('gtDiscord')) draft.discordUserID = el('gtDiscord').value.trim();
         if (el('gtChannel')) draft.destinationChannelID = el('gtChannel').value;
         if (el('gtEnabled')) draft.isEnabled = el('gtEnabled').checked;
-        if (document.querySelector('.gt-metric')) {
-          draft.triggerMetrics = [...document.querySelectorAll('.gt-metric[data-group="trigger"]:checked')].map(b => b.value);
-          draft.contextMetrics = [...document.querySelectorAll('.gt-metric[data-group="context"]:checked')].map(b => b.value);
-        }
       };
       const issue = () => {
         if (!draft.playerID.trim()) return 'Enter the player’s ID for this provider.';
@@ -11707,9 +12484,6 @@
         const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label><div style="flex:1;min-width:0;">${html}</div></div>`;
         const section = (icon, title, body) => `<div class="automation-editor-section"><h3><i class="lucide" data-lucide="${icon}"></i> ${title}</h3>${body}</div>`;
         const provider = catalog.providers.find(p => p.id === draft.provider);
-        const metrics = provider?.metrics || [];
-        const chips = (group, list, selected) => `<div class="patchy-role-list">${list.map(m => `
-          <label class="patchy-role-chip"><input type="checkbox" class="gt-metric" data-group="${group}" value="${escapeHTML(m.id)}" ${selected.includes(m.id) ? 'checked' : ''} ${off}><span>${escapeHTML(m.displayName)}</span></label>`).join('')}</div>`;
         document.getElementById('gtEditorBody').innerHTML = `
           ${section('user', 'Profile',
             row('Game', `<select id="gtGame" class="field-select" ${off}>${catalog.games.map(g => `<option value="${escapeHTML(g.id)}" ${g.id === draft.game ? 'selected' : ''}>${escapeHTML(g.displayName)}</option>`).join('')}</select>`)
@@ -11717,17 +12491,13 @@
               + (provider && !provider.isConfigured ? '<div class="ub-help">Connect this provider in the macOS app under Settings › Integrations before checks can run.</div>' : ''))
             + row('Display name', `<input id="gtName" class="field-input" value="${escapeHTML(draft.displayName)}" placeholder="Shown in announcements" ${off}>`)
             + row('Player ID', `<input id="gtPlayerID" class="field-input" value="${escapeHTML(draft.playerID)}" placeholder="e.g. name#1234" spellcheck="false" ${off}>`))}
-          ${section('chart-line', 'Tracked stats', metrics.length
-            ? `<div class="ac-field-label">Announce when these change</div>${chips('trigger', metrics.filter(m => m.canTrigger), draft.triggerMetrics)}
-               <div class="ub-help">Counters like kills only ever climb, so they can't trigger an announcement. Add them as context instead.</div>
-               <div class="ac-field-label" style="margin-top:12px;">Also show for context</div>${chips('context', metrics, draft.contextMetrics)}`
-            : '<div class="ub-help" style="margin-top:0;">This provider doesn’t publish any trackable stats yet.</div>')}
           ${section('timer', 'Play sessions',
             row('Discord member', gameTrackerMemberSelect(data.members || [], draft.discordUserID, off)
               + '<div class="ub-help">Links this profile to a Discord account so SwiftBot can spot play sessions from rich presence and post a summary when one ends.</div>'))}
           ${section('megaphone', 'Announcements',
             row('Channel', `<select id="gtChannel" class="field-select" ${off}><option value="">Select a channel</option>${(data.channels || []).map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.destinationChannelID ? 'selected' : ''}>${escapeHTML(c.name)}</option>`).join('')}</select>`)
-            + `<label class="ac-toggle"><input id="gtEnabled" type="checkbox" ${draft.isEnabled ? 'checked' : ''} ${off}><span class="ac-toggle-text"><span class="ac-toggle-title">Track this player</span></span></label>`)}
+            + `<label class="ac-toggle"><input id="gtEnabled" type="checkbox" ${draft.isEnabled ? 'checked' : ''} ${off}><span class="ac-toggle-text"><span class="ac-toggle-title">Track this player</span></span></label>`
+            + '<div class="ub-help">Every stat is recorded. What gets posted is set once for everyone under Announcements › Discord post style.</div>')}
         `;
         ['gtGame', 'gtProvider'].forEach(id => document.getElementById(id)?.addEventListener('change', () => { read(); render(); }));
         validate();
@@ -11790,6 +12560,11 @@
       return (policy.strategies || []).map(s => SWEEP_KINDS[s.kind]?.label || s.kind).join(' + ') || 'No task';
     }
 
+    // Biggest clean-ups come first (the server ranks them); the rest wait
+    // behind "Show more" so a busy server doesn't get a wall of cards.
+    const SWEEP_SUGGESTION_LIMIT = 4;
+    let sweepShowAllSuggestions = false;
+
     function renderSweepView() {
       if (!sweepData) return;
       const metrics = document.getElementById('sweepMetrics');
@@ -11829,7 +12604,7 @@
             <h2>Suggestions · ${escapeHTML(scanLabel)}</h2>
             <button id="sweepScan" class="secondary-action" type="button" ${scanning ? 'disabled' : ''}><i class="lucide" data-lucide="sparkles"></i> Scan channels</button>
           </div>
-          ${suggestions.length ? `<div class="sweep-suggestions">${suggestions.map(s => {
+          ${suggestions.length ? `<div class="sweep-suggestions">${suggestions.slice(0, sweepShowAllSuggestions ? suggestions.length : SWEEP_SUGGESTION_LIMIT).map(s => {
             const kind = SWEEP_KINDS[s.strategyKind] || {};
             const report = s.projection;
             // The dry run already ran during the scan, so show what it found
@@ -11857,9 +12632,14 @@
                 <button class="primary-action" type="button" data-suggestion-review>Review</button>
               </div>
             </div>`;
-          }).join('')}</div>`
+          }).join('')}</div>
+          ${suggestions.length > SWEEP_SUGGESTION_LIMIT ? `<div class="wiki-actions"><button id="sweepMoreSuggestions" class="cmd-row-link" type="button">${sweepShowAllSuggestions ? 'Show fewer' : `Show ${suggestions.length - SWEEP_SUGGESTION_LIMIT} more`}</button></div>` : ''}`
           : `<div class="placeholder">${scanning ? 'Looking for channels that could use a tidy…' : 'No suggestions right now. Scan to look for noisy or duplicate-heavy channels.'}</div>`}
         </section>`;
+      suggestionsNode.querySelector('#sweepMoreSuggestions')?.addEventListener('click', () => {
+        sweepShowAllSuggestions = !sweepShowAllSuggestions;
+        renderSweepView();
+      });
       suggestionsNode.querySelector('#sweepScan')?.addEventListener('click', async (e) => {
         e.currentTarget.disabled = true;
         try { await postJSON('/api/sweep/suggestions/scan', {}); } catch (error) { setMessage(error.message || 'Scan failed.', 'error'); }
@@ -12072,12 +12852,27 @@
         if (sweepEditorIssue(draft)) return;
         e.currentTarget.disabled = true;
         try {
-          const report = await postJSON('/api/sweep/draft/preview', finalize());
-          showSweepReport(report, { onBack: () => openSweepPolicyEditor(isNew ? null : draft.id, draft) });
+          const payload = finalize();
+          const report = await postJSON('/api/sweep/draft/preview', payload);
+          showSweepReport(report, { channelName: payload.channelName, onBack: () => openSweepPolicyEditor(isNew ? null : draft.id, draft) });
         } catch (error) {
           e.currentTarget.disabled = false;
           setMessage(error.message || 'Try run failed. The bot may be offline.', 'error');
         }
+      });
+      // Delegated: the MVP section is re-rendered as the draft changes.
+      document.getElementById('sweepEditorBody')?.addEventListener('click', async (e) => {
+        const button = e.target.closest('#seMVPTest');
+        if (!button) return;
+        const hint = document.getElementById('seMVPTestHint');
+        button.disabled = true;
+        try {
+          await postJSON('/api/sweep/draft/test-mvp', finalize());
+          hint.textContent = 'Test MVP sent. It doesn’t count as this week’s announcement.';
+        } catch (error) {
+          hint.textContent = hostErrorMessage(error, 'Couldn’t send a test MVP.');
+        }
+        button.disabled = false;
       });
       document.getElementById('sweepEditorRun')?.addEventListener('click', async () => {
         if (!confirm(`Run "${existing.name}" now? This acts on Discord immediately.`)) return;
@@ -12198,7 +12993,8 @@
             + toggle('seNoticeVoice', notice.showVoiceAverages, 'Show 7-day voice leaderboard', '') : ''}
           ${toggle('seMVP', mvp.isEnabled, 'Announce the 7-day voice MVP', 'Keeps one pinned MVP card up to date each week and mentions the winner.')}
           ${mvp.isEnabled ? row('When', `<div class="sweep-inline"><select id="seMVPDay" class="field-select">${SWEEP_WEEKDAYS.map((d, i) => `<option value="${i + 1}" ${i + 1 === Number(mvp.weekday) ? 'selected' : ''}>${d}</option>`).join('')}</select><select id="seMVPHour" class="field-select">${hourOptions(Number(mvp.hour) || 0)}</select></div>`)
-            + row('Message', `<textarea id="seMVPText" class="field-input" rows="2">${escapeHTML(mvp.template)}</textarea><div class="ub-help">Placeholders: {winner} · {duration}</div>`) : ''}
+            + row('Message', `<textarea id="seMVPText" class="field-input" rows="2">${escapeHTML(mvp.template)}</textarea><div class="ub-help">Placeholders: {winner} · {duration}</div>`)
+            + row('', `<div class="sweep-inline"><button id="seMVPTest" class="secondary-action" type="button"><i class="lucide" data-lucide="send"></i> Send test MVP</button><span id="seMVPTestHint" class="ub-help" style="margin:0;">Posts a real message now; it won’t affect the weekly schedule.</span></div>`) : ''}
         </details>
         <label class="ac-toggle" style="margin-top:12px;"><input id="seEnabled" type="checkbox" ${draft.isEnabled ? 'checked' : ''}><span class="ac-toggle-text"><span class="ac-toggle-title">Rule is on</span></span></label>
       `;
@@ -12270,41 +13066,87 @@
     function showSweepReportById(id, isSuggestion = false) {
       if (isSuggestion) {
         const suggestion = (sweepData.suggestions || []).find(s => s.id === id);
-        if (suggestion?.projection) showSweepReport(suggestion.projection);
+        if (suggestion?.projection) showSweepReport(suggestion.projection, { channelName: suggestion.channelName, title: `Preview — ${suggestion.title}` });
       } else {
         const report = (sweepData.recentReports || []).find(r => r.id === id);
         if (report) showSweepReport(report);
       }
     }
 
+    // Older reports only carry `actions`; group those the way the server does.
+    function sweepReportGroups(report) {
+      if (report.groups) return report.groups;
+      const byKey = new Map();
+      for (const a of report.actions || []) {
+        const key = `${a.kind}|${a.reason}`;
+        if (!byKey.has(key)) byKey.set(key, { kind: a.kind, reason: a.reason, count: 0, botCount: 0, authorCounts: {}, examples: [] });
+        const g = byKey.get(key);
+        g.count += 1;
+        if (a.isBot) g.botCount += 1;
+        if (a.authorName) g.authorCounts[a.authorName] = (g.authorCounts[a.authorName] || 0) + 1;
+        if (a.preview && g.examples.length < 3) g.examples.push(`${a.authorName ? `${a.authorName}: ` : ''}${a.preview.slice(0, 140)}`);
+      }
+      return [...byKey.values()].map(g => ({
+        ...g,
+        authors: Object.entries(g.authorCounts).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([name, count]) => ({ name, count }))
+      })).sort((x, y) => y.count - x.count);
+    }
+
+    const SWEEP_ACTION_VERBS = {
+      delete: ['Delete', 'Deleted'], archive: ['Archive', 'Archived'], summarise: ['Summarise', 'Summarised'],
+      pin: ['Pin', 'Pinned'], quiet: ['Collapse', 'Collapsed'], keep: ['Keep', 'Kept'], skip: ['Protect', 'Protected']
+    };
+
+    // One row per kind + reason ("Delete 120 · Older than 48h"), with who
+    // posted them and a few examples behind a disclosure — never a list of
+    // every message.
     function showSweepReport(report, options = {}) {
       if (!report) return;
       const tidied = report.dryRun ? report.matched : report.executed;
-      const stat = (label, value) => `<div class="ub-editor-stat"><span>${label}</span><strong>${escapeHTML(String(value))}</strong></div>`;
-      const actions = report.actions || [];
-      const body = `
-        <div class="ub-editor-stats sweep-report-stats">
-          ${stat('Scanned', report.scanned)}${stat('Matched', report.matched)}${stat(report.dryRun ? 'Would tidy' : 'Tidied', tidied)}${stat('Protected', report.suppressed)}
-        </div>
-        ${report.error ? `<div class="ac-note patchy-dup-note" style="margin-top:14px;"><i class="lucide" data-lucide="triangle-alert"></i> ${escapeHTML(report.error)}</div>` : ''}
-        ${report.summary ? `<div class="automation-editor-section" style="margin-top:14px;"><h3><i class="lucide" data-lucide="sparkles"></i> Digest</h3><div class="sweep-wrap" style="font-size:13px;line-height:1.5;white-space:pre-wrap;">${escapeHTML(report.summary)}</div></div>` : ''}
-        <div class="ub-group-head" style="margin-top:16px;"><h2>${actions.length ? `Actions · ${actions.length}` : 'Actions'}</h2></div>
-        ${actions.length ? `<div class="ub-list glass">${actions.slice(0, 50).map(a => {
-          const meta = SWEEP_ACTIONS[a.kind] || { icon: 'circle', state: 'neutral' };
-          return `
-            <div class="ub-item">
+      const groups = sweepReportGroups(report);
+      const changes = groups.filter(g => !['skip', 'keep'].includes(g.kind));
+      const protectedGroups = groups.filter(g => g.kind === 'skip');
+      const kept = groups.filter(g => g.kind === 'keep').reduce((n, g) => n + g.count, 0);
+      const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+      const channelName = options.channelName || (sweepData?.policies || []).find(p => p.id === report.policyID)?.channelName;
+      const channel = channelName ? ` in #${escapeHTML(channelName)}` : '';
+      const headline = report.error
+        ? 'The run stopped before taking any action.'
+        : (tidied
+          ? `${report.dryRun ? 'Would tidy' : 'Tidied'} ${plural(tidied, 'message')} of the ${report.scanned.toLocaleString()} checked${channel}.`
+          : `Nothing ${report.dryRun ? 'would be' : 'was'} touched — the ${report.scanned.toLocaleString()} checked messages all stay.`);
+      const groupRow = (g) => {
+        const meta = SWEEP_ACTIONS[g.kind] || { icon: 'circle', state: 'neutral' };
+        const verb = (SWEEP_ACTION_VERBS[g.kind] || [g.kind, g.kind])[report.dryRun ? 0 : 1];
+        const soleAuthor = g.authors?.length === 1 && g.authors[0].count === g.count;
+        const who = g.authors?.length
+          ? `${g.botCount === g.count ? 'All from bots' : (g.botCount ? `${g.botCount} from bots` : 'From people')} · ${soleAuthor
+            ? `all by ${escapeHTML(g.authors[0].name)}`
+            : `mostly ${g.authors.map(a => `${escapeHTML(a.name)} (${a.count})`).join(', ')}`}`
+          : '';
+        const share = report.scanned ? Math.max(2, Math.round(g.count / report.scanned * 100)) : 0;
+        return `
+          <div class="sweep-group">
+            <div class="sweep-group-head">
               <span class="ops-chip" data-state="${meta.state}" style="--ops-color:${({ warning: '#ff9f0a', healthy: 'var(--success)', info: '#0a84ff' })[meta.state] || 'var(--muted)'};"><i class="lucide" data-lucide="${meta.icon}"></i></span>
-              <span class="ub-item-text" style="padding:10px 0;">
-                <span class="ub-item-title" style="font-size:13.5px;">${escapeHTML(a.reason)}</span>
-                <span class="ub-item-sub">${a.authorName ? `${escapeHTML(a.authorName)}: ` : ''}${escapeHTML(a.preview)}</span>
-              </span>
-              ${a.mode === 'virtual' ? '<span class="badge">No change</span>' : ''}
-            </div>`;
-        }).join('')}</div>
-        ${actions.length > 50 ? `<div class="ub-help">…and ${actions.length - 50} more</div>` : ''}`
-        : `<div class="placeholder">${report.error ? 'The run stopped before taking any action.' : 'Nothing would be touched in this run.'}</div>`}
+              <div class="sweep-group-text">
+                <div class="ub-item-title">${escapeHTML(verb)} ${plural(g.count, 'message')}</div>
+                <div class="ub-item-sub">${escapeHTML(g.reason)}${who ? ` · ${who}` : ''}</div>
+              </div>
+            </div>
+            <div class="sweep-group-bar"><span style="width:${share}%;background:${({ warning: '#ff9f0a', healthy: 'var(--success)', info: '#0a84ff' })[meta.state] || 'var(--muted)'};"></span></div>
+            ${g.examples?.length ? `<details class="sweep-group-examples"><summary>Examples</summary>${g.examples.map(e => `<div class="sweep-wrap">${escapeHTML(e)}</div>`).join('')}</details>` : ''}
+          </div>`;
+      };
+      const body = `
+        <p class="sweep-report-headline">${headline}</p>
+        ${report.error ? `<div class="ac-note patchy-dup-note" style="margin-top:4px;"><i class="lucide" data-lucide="triangle-alert"></i> ${escapeHTML(report.error)}</div>` : ''}
+        ${report.summary ? `<div class="automation-editor-section" style="margin-top:14px;"><h3><i class="lucide" data-lucide="sparkles"></i> Digest</h3><div class="sweep-wrap" style="font-size:13px;line-height:1.5;white-space:pre-wrap;">${escapeHTML(report.summary)}</div></div>` : ''}
+        ${changes.length ? `<div class="ub-group-head" style="margin-top:14px;"><h2>${report.dryRun ? 'What would change' : 'What changed'}</h2></div><div class="ub-list glass sweep-groups">${changes.map(groupRow).join('')}</div>` : ''}
+        ${protectedGroups.length ? `<div class="ub-group-head" style="margin-top:14px;"><h2>Protected</h2></div><div class="ub-list glass sweep-groups">${protectedGroups.map(groupRow).join('')}</div>` : ''}
+        ${kept ? `<p class="ub-help" style="margin-top:12px;">${plural(kept, 'other message')} ${report.dryRun ? 'would be' : 'were'} left alone.</p>` : ''}
       `;
-      const title = `${report.dryRun ? 'Try run' : 'Run'} — ${report.policyName}`;
+      const title = options.title || `${report.dryRun ? 'Try run' : 'Run'} — ${report.policyName}`;
       showModal(title, body, `
         <span class="modal-hint" style="color:var(--muted);">${report.startedAt ? escapeHTML(formatTime(report.startedAt)) : ''}</span>
         ${options.onBack ? '<button id="sweepReportBack" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> Back to rule</button>' : ''}
@@ -12460,7 +13302,11 @@
             <div class="ac-state-phase">${escapeHTML(state.phaseLabel)}</div>
           </div>
           <span style="flex:1;"></span>
-          ${state.isConnected ? '<button id="announcerDisconnect" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="phone-off"></i> Disconnect</button>' : ''}
+          <div class="section-actions">
+            ${state.isConnected ? '<button id="announcerTest" class="secondary-action" type="button" title="Reads a short test line aloud in the voice channel"><i class="lucide" data-lucide="volume-2"></i> Test</button>' : ''}
+            <button id="announcerReconnect" class="secondary-action" type="button"><i class="lucide" data-lucide="rotate-cw"></i> ${state.isConnected ? 'Reconnect' : 'Connect'}</button>
+            ${state.isConnected ? '<button id="announcerDisconnect" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="phone-off"></i> Disconnect</button>' : ''}
+          </div>
         </div>
         <div class="ac-state-rows">${rows.join('')}</div>
       `;
@@ -12468,6 +13314,29 @@
       // Mirrors `/announce disconnect`: leaves the channel and arms the same
       // one-hour hold, so auto-join and recovery don't pull the bot straight
       // back in.
+      document.getElementById('announcerTest')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await postJSON('/api/announcer/test', {});
+          setMessage('Test announcement queued.', 'success');
+        } catch (error) {
+          setMessage(hostErrorMessage(error, 'Couldn’t send a test announcement.'), 'error');
+        }
+        e.currentTarget.disabled = false;
+      });
+      // Same as the native Reconnect: clears a manual hold and rejoins the
+      // first enabled voice channel.
+      document.getElementById('announcerReconnect')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await postJSON('/api/announcer/reconnect', {});
+          setMessage('Reconnecting the announcer…', 'success');
+          setTimeout(async () => { await loadAnnouncer().catch(() => {}); if (currentView === 'announcer') renderAnnouncerView(); }, 4000);
+        } catch (error) {
+          e.currentTarget.disabled = false;
+          setMessage(hostErrorMessage(error, 'Couldn’t reconnect the announcer.'), 'error');
+        }
+      });
       document.getElementById('announcerDisconnect')?.addEventListener('click', async () => {
         if (!confirm('Disconnect the announcer? Automatic joins and recovery pause for one hour.')) return;
         try {
@@ -12874,6 +13743,11 @@
 
       // MARK: Voice Channel
 
+      const readingVoiceOptions = (announcerData.installedVoices || []).map(v => ({ value: v.id, label: v.name }));
+      if (config.preferredVoiceIdentifier && !readingVoiceOptions.some(o => o.value === config.preferredVoiceIdentifier)) {
+        readingVoiceOptions.push({ value: config.preferredVoiceIdentifier, label: `${config.preferredVoiceIdentifier} (not installed)` });
+      }
+
       const voiceChannelBody = allVoiceChannels.length === 0
         ? '<div class="ac-note">No voice channels found. Connect the bot to Discord first.</div>'
         : row('Voice Channel', `
@@ -12884,7 +13758,7 @@
           `) +
           row('Reading Voice', select(
             'acPreferredVoice',
-            [{ value: '', label: 'Auto (best English voice)' }].concat((announcerData.installedVoices || []).map(v => ({ value: v.id, label: v.name }))),
+            [{ value: '', label: 'Auto (best English voice)' }].concat(readingVoiceOptions),
             config.preferredVoiceIdentifier
           )) +
           '<div class="ac-note">Falls back to the global announcement voice when set to Auto.</div>';
@@ -13090,7 +13964,6 @@
       if (!patchyData) return;
       const top = document.getElementById('patchyTop');
       const targetsNode = document.getElementById('patchyTargets');
-      const debugNode = document.getElementById('patchyDebug');
       const addButton = document.getElementById('patchyAddTarget');
       const runButton = document.getElementById('patchyRunCheck');
       if (!top || !targetsNode || !addButton || !runButton) return;
@@ -13124,20 +13997,11 @@
             <span class="ub-status-sub">${cycleText}</span>
           </span>
         </div>
-        <div class="ub-status-cell ub-status-debug">
-          <span class="ub-status-label">Debug log</span>
-          <label class="switch"><input id="patchyShowDebug" type="checkbox" ${patchyData.showDebug ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
       `;
 
       top.querySelector('#patchyMonitoring')?.addEventListener('change', async (e) => {
         await postJSON('/api/patchy/state', { monitoringEnabled: e.target.checked });
         await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
-        renderPatchyView();
-      });
-      top.querySelector('#patchyShowDebug')?.addEventListener('change', async (e) => {
-        await postJSON('/api/patchy/state', { showDebug: e.target.checked });
-        await loadPatchy();
         renderPatchyView();
       });
 
@@ -13159,17 +14023,6 @@
             ${items.map(t => patchyRowHTML(t, readOnly)).join('')}
           `).join('')
         : `<div class="placeholder">No Patchy targets yet. Use <strong>Add Target</strong> to watch drivers, games, repositories or Apple releases.</div>`;
-
-      if (debugNode) {
-        debugNode.classList.toggle('hidden', !patchyData.showDebug);
-        const logs = patchyData.debugLogs || [];
-        debugNode.innerHTML = `
-          <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Debug Log</div>
-          ${logs.length
-            ? `<div class="patchy-debug-log">${logs.map(line => `<div>${escapeHTML(line)}</div>`).join('')}</div>`
-            : '<div class="placeholder">No recent activity.</div>'}
-        `;
-      }
 
       targetsNode.querySelectorAll('[data-patchy-id]').forEach(row => {
         const targetID = row.dataset.patchyId;
@@ -13314,9 +14167,29 @@
         await postJSON('/api/patchy/target/pull', { targetID });
         await refreshStatus();
       }));
+      // The server waits for the real send, so say what happened right here:
+      // "sent", or Discord's / the source's own error.
       document.getElementById('patchyEditorTest')?.addEventListener('click', (e) => busy(e.currentTarget, 'Sending…', async () => {
-        await postJSON('/api/patchy/target/test', { targetID });
+        const show = (text, ok) => {
+          const hint = document.getElementById('patchyEditorHint');
+          if (!hint) return;
+          hint.textContent = text;
+          hint.classList.toggle('is-ok', ok);
+          hint.classList.toggle('is-error', !ok);
+        };
+        let result;
+        try {
+          await postJSON('/api/patchy/target/test', { targetID });
+          const channel = document.getElementById('peChannel')?.selectedOptions?.[0]?.textContent?.trim();
+          result = [channel ? `✓ Test post sent to ${channel.startsWith('#') ? channel : `#${channel}`}` : '✓ Test post sent', true];
+        } catch (error) {
+          let message = error.message || 'Test failed.';
+          try { message = JSON.parse(message).message || message; } catch {}
+          result = [`Test failed: ${message}`, false];
+        }
+        // Refreshing re-renders the dialog, so show the result after it.
         await refreshStatus();
+        show(...result);
       }));
       document.getElementById('patchyEditorDelete')?.addEventListener('click', async () => {
         if (!confirm('Delete this Patchy target?')) return;
@@ -13353,7 +14226,10 @@
       readPatchyEditorInto(probe);
       const issue = patchyValidationIssue(probe);
       button.disabled = !!issue;
-      if (hint) hint.textContent = issue;
+      if (hint) {
+        hint.textContent = issue;
+        hint.classList.remove('is-ok', 'is-error');
+      }
     }
 
     function renderPatchyEditor(draft, readOnly, isNew) {
@@ -14130,6 +15006,7 @@
 
       panels.innerHTML = `
         <div class="ub-settings">
+          ${botGroupHTML(group)}
           ${group('General', `
             ${switchRow('setAutoStart', 'Start automatically', 'Connect to Discord when SwiftBot launches.', cfg.general.autoStart)}
             ${switchRow('setCmdEnabled', 'Commands', 'Turn off to remove every command from Discord’s / menu.', cfg.commands.enabled && cfg.commands.slashEnabled)}
@@ -14171,6 +15048,7 @@
           `)}
           ${accessGroupHTML(group)}
           ${operatorGroupHTML(group, switchRow)}
+          ${updatesGroupHTML(group, switchRow)}
           ${group('About this server', `
             ${infoRow('Version', general.appVersion ? `${general.appVersion}${general.appBuild ? ` (${general.appBuild})` : ''}` : '')}
             ${infoRow('Running on', [general.hostName, general.osVersion ? `macOS ${general.osVersion.replace(/^Version\s*/, '')}` : ''].filter(Boolean).join(' · '))}
@@ -14179,7 +15057,7 @@
             ${infoRow('Uptime', dashboardStatus.uptimeText || '')}
             ${infoRow('Connected to', `${dashboardStatus.connectedServerCount} ${dashboardStatus.connectedServerCount === 1 ? 'server' : 'servers'}${dashboardStatus.botUsername ? ` as ${dashboardStatus.botUsername}` : ''}`)}
           `)}
-          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> The bot token, app updates, Web UI sign-in and recording folders are managed in the SwiftBot app on ${escapeHTML(general.hostName || 'the Mac running SwiftBot')}.</p>
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> The bot token, Web UI sign-in and recording folders are managed in the SwiftBot app on ${escapeHTML(general.hostName || 'the Mac running SwiftBot')}.</p>
         </div>
       `;
 
@@ -14214,6 +15092,8 @@
       });
       bindAISettings(panels);
       bindOperatorGroup(panels);
+      bindBotGroup(panels);
+      bindUpdatesGroup(panels);
       if (!accessData) loadAccess().then(() => { if (currentView === 'settings') renderSettingsView(); }).catch(() => {});
       panels.querySelector('#setCopyInvite')?.addEventListener('click', async (e) => {
         const button = e.currentTarget;
@@ -15927,12 +16807,14 @@
               <div class="prefs-profile-name">${escapeHTML(display)}</div>
               <div class="prefs-profile-handle">${escapeHTML(handle)}</div>
               <div class="prefs-profile-chips">
-                <span class="prefs-chip"><i class="lucide" data-lucide="${viaPassword ? 'key-round' : 'shield-check'}"></i>${viaPassword ? 'Signed in with password' : 'Signed in with Discord'}</span>
+                <span class="prefs-chip"><i class="lucide" data-lucide="${viaPassword ? 'key-round' : 'shield-check'}"></i>${viaPassword ? 'Signed in with password' : currentUser.signInMethod === 'passkey' ? 'Signed in with passkey' : 'Signed in with Discord'}</span>
                 ${expires && !isNaN(expires) ? `<span class="prefs-chip"><i class="lucide" data-lucide="clock"></i>Session ends ${escapeHTML(expires.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }))}</span>` : ''}
               </div>
             </div>
             <button id="prefsLogout" class="secondary-action" type="button"><i class="lucide" data-lucide="log-out"></i> Log out</button>
           </section>
+
+          ${!viaPassword ? group('Passkeys', `<div class="ub-row"><span class="prefs-passkey-icon" aria-hidden="true"><i class="lucide" data-lucide="fingerprint"></i></span><div class="ub-row-text"><div class="ub-row-title">Sign in with a passkey</div><div class="ub-row-desc">Manage the passkeys saved for this SwiftBot Mac.</div></div><button id="prefsManagePasskeys" class="secondary-action" type="button">Manage passkeys</button></div>`) : ''}
 
           ${group('Appearance', `
             <div class="ub-row prefs-block">
@@ -15973,6 +16855,8 @@
           `, 'Preferences are saved in this browser for your account, so other admins keep their own. <button id="prefsReset" class="ub-inline-link" type="button">Reset to defaults</button>')}
         </div>
       `;
+
+      panels.querySelector('#prefsManagePasskeys')?.addEventListener('click', openPasskeyPreferences);
 
       const update = (change) => {
         Object.assign(userPrefs, change);
@@ -16373,7 +17257,7 @@
       // Leaving Recordings stops its player and any hover previews.
       if (currentView === 'recordings' && view !== 'recordings') releaseVideos(document.getElementById('mediaPanels'));
       currentView = view;
-      if (view === 'overview') updateHomeGreeting();
+      if (view === 'overview') { updateHomeGreeting(); if (currentUser) refreshOverview(); }
       updateSidebarAlerts();
       document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.toggle('active', link.dataset.view === view);
@@ -16904,20 +17788,97 @@
     };
     const opsSeveritySymbols = { critical: 'octagon-alert', warning: 'triangle-alert', info: 'info' };
 
+    function readableOverviewOverall(health) {
+      if (!health) return '';
+      if (health.state === 'healthy') return 'Working normally';
+      if (health.state === 'warning' || health.state === 'critical') return 'Needs attention';
+      return 'Not running';
+    }
+
+    // Interpret the shared health snapshot without changing its diagnostics.
+    function readableOverviewStatus(tile, data) {
+      const result = { ...tile };
+      const botState = String(data?.botInfo?.state || '').toLowerCase();
+      const connected = botState === 'running' || botState === 'connected';
+      switch (tile.id) {
+        case 'discord': {
+          result.title = 'Discord';
+          result.icon = 'cloud';
+          if (botState === 'reconnecting' || botState === 'connecting') {
+            result.value = botState === 'reconnecting' ? 'Reconnecting' : 'Connecting';
+            result.detail = 'Waiting for the Discord connection.';
+            result.state = 'warning';
+          } else if (botState === 'stopped') {
+            result.value = 'Not connected';
+            result.detail = 'Start the bot to connect to Discord.';
+            result.state = 'neutral';
+          } else if (tile.state === 'critical') {
+            result.value = connected ? 'Limited access' : 'Unavailable';
+            result.detail = connected ? 'Connected, but requests to Discord are failing.' : 'Unable to reach Discord. Review the connection details.';
+          } else if (connected) {
+            result.value = 'Connected';
+            result.detail = 'Receiving activity from Discord.';
+          } else {
+            result.value = 'Not confirmed';
+            result.detail = 'Waiting for connection information.';
+            result.state = 'neutral';
+          }
+          break;
+        }
+        case 'gateway-latency':
+          result.title = 'Connection quality';
+          result.icon = 'wifi';
+          if (['stopped', 'connecting', 'reconnecting'].includes(botState)) {
+            result.value = botState === 'stopped' ? 'Not connected' : 'Waiting';
+            result.detail = 'Measured when the bot connects to Discord.';
+            result.state = 'neutral';
+          } else if (!/^\d+(?:\.\d+)? ms$/.test(tile.value || '')) {
+            result.value = 'Not measured';
+            result.detail = 'Waiting for a connection check.';
+          } else {
+            result.value = tile.state === 'healthy' ? 'Responsive' : tile.state === 'neutral' ? 'Not confirmed' : 'Slow';
+            result.detail = `Discord connection check: ${tile.value}.`;
+          }
+          break;
+        case 'cluster-role': {
+          result.title = 'Mac role';
+          result.icon = 'monitor';
+          const role = String(tile.value || '').toLowerCase().replace(/[ -]/g, '');
+          if (role === 'standalone') { result.value = 'Independent'; result.detail = 'Runs the bot on its own.'; }
+          else if (role === 'primary' || role === 'leader') { result.value = 'Primary'; result.detail = 'Runs the bot and sends Discord replies.'; }
+          else if (role === 'standby' || role === 'failover') { result.value = 'Backup'; result.detail = 'Monitors the primary and can take over.'; }
+          else if (role === 'worker') { result.value = 'Helper'; result.detail = 'Processes work for the primary; sends no replies.'; }
+          else { result.value = 'Not confirmed'; result.detail = 'Waiting for this Mac’s role.'; result.state = 'neutral'; }
+          if (tile.state === 'warning' || tile.state === 'critical') result.detail += ' Check SwiftMesh for connection issues.';
+          break;
+        }
+        case 'throughput': {
+          result.title = 'Bot activity';
+          result.icon = 'activity';
+          const match = String(tile.value || '').match(/^(\d+(?:\.\d+)?)\/min$/);
+          if (!match) { result.value = 'Not measured'; result.detail = 'Waiting for activity information.'; result.state = 'neutral'; }
+          else if (Number(match[1]) === 0) { result.value = 'Quiet'; result.detail = 'No events in the last 5 minutes.'; }
+          else { result.value = `${Number(match[1]).toLocaleString()} per minute`; result.detail = 'Events averaged over the last 5 minutes.'; }
+          break;
+        }
+      }
+      return result;
+    }
+
     function renderOverviewHealth(health) {
       const panel = document.getElementById('opsPanel');
       const row = document.getElementById('opsRow');
       if (!panel || !row) return;
       // Older servers don't send health; keep the panels out of the way.
       panel.classList.toggle('hidden', !health);
-      row.classList.toggle('hidden', !health);
+      row.classList.toggle('hidden', !health?.attention?.length);
       if (!health) return;
 
       const overall = document.getElementById('opsOverall');
       overall.dataset.state = health.state || 'neutral';
-      document.getElementById('opsOverallTitle').textContent = health.title || '';
+      document.getElementById('opsOverallTitle').textContent = readableOverviewOverall(health);
 
-      document.getElementById('opsTiles').innerHTML = (health.tiles || []).map(tile => `
+      const tileHTML = tile => `
         <div class="ops-tile" data-state="${escapeHTML(tile.state)}">
           <div class="ops-tile-head">
             <span class="ops-chip"><i class="lucide" data-lucide="${escapeHTML(tile.icon)}"></i></span>
@@ -16926,36 +17887,111 @@
           </div>
           <div class="ops-tile-value">${escapeHTML(tile.value)}</div>
           <div class="ops-tile-detail" title="${escapeHTML(tile.detail)}">${escapeHTML(tile.detail)}</div>
-        </div>`).join('');
-
-      const activity = health.activity || [];
-      document.getElementById('opsActivity').innerHTML = activity.length
-        ? activity.map(item => `
-          <div class="ops-activity" data-state="${opsActivityTones[item.tone] || 'neutral'}">
-            <span class="ops-chip"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
-            <div class="ops-activity-text">
-              <div class="ops-activity-title">${escapeHTML(item.title)}</div>
-              <div class="ops-activity-detail" title="${escapeHTML(item.detail)}">${escapeHTML(item.detail)}</div>
-            </div>
-            <span class="ops-activity-time" data-ops-time="${escapeHTML(item.timestamp)}">${relativeTime(item.timestamp)}</span>
-          </div>`).join('')
-        : '<div class="ops-empty"><strong>No activity yet</strong>Runtime events will stream in here.</div>';
+        </div>`;
+      const essentialIDs = ['discord', 'gateway-latency', 'cluster-role', 'throughput'];
+      const tiles = health.tiles || [];
+      document.getElementById('opsTiles').innerHTML = essentialIDs.map(id => tiles.find(t => t.id === id)).filter(Boolean).map(tile => readableOverviewStatus(tile, dashboardOverview)).map(tileHTML).join('');
+      const extraTiles = tiles; // Exact measurements remain available in Details.
+      document.getElementById('opsExtraTiles').innerHTML = extraTiles.map(tileHTML).join('');
+      document.getElementById('opsDiagnostics').classList.toggle('hidden', !extraTiles.length);
 
       const attention = health.attention || [];
       document.getElementById('opsAttentionCount').textContent = `${attention.length} item${attention.length === 1 ? '' : 's'}`;
       document.getElementById('opsAttention').innerHTML = attention.length
-        ? attention.slice(0, 6).map(item => `
+        ? attention.map(item => {
+          const destination = overviewAttentionDestination(item.id);
+          return `
           <div class="ops-attention" data-state="${escapeHTML(item.severity)}">
             <i class="lucide" data-lucide="${opsSeveritySymbols[item.severity] || 'info'}"></i>
             <div>
-              <div class="ops-attention-title">${escapeHTML(item.title)} <span class="ops-pill">${escapeHTML(item.label)}</span></div>
+              <div class="ops-attention-title">${escapeHTML(item.title)}</div>
               <div class="ops-attention-detail">${escapeHTML(item.detail)}</div>
             </div>
-          </div>`).join('')
-        : '<div class="ops-empty"><i class="lucide" data-lucide="circle-check"></i><strong>No action needed</strong>SwiftBot is operating inside the expected runtime band.</div>';
+            <button type="button" class="ops-review" data-review-view="${destination.view}" ${destination.filter ? `data-review-filter="${destination.filter}"` : ''}>${destination.label} →</button>
+          </div>`; }).join('') : '';
 
       refreshIcons();
     }
+
+    function overviewAttentionDestination(id) {
+      if (id.startsWith('cluster-')) return { view: 'swiftmesh', label: 'Review nodes' };
+      if (id === 'patchy-targets') return { view: 'patchy', label: 'Set up targets' };
+      if (id === 'rules') return { view: 'automations', label: 'Review workflows' };
+      if (id === 'failed-commands') return { view: 'activity', label: 'Review failures', filter: 'errors' };
+      if (id === 'gateway-status') return { view: 'settings', label: 'Review bot' };
+      if (id === 'gateway-close' || id === 'latency') return { view: 'activity', label: 'Review gateway', filter: 'gateway' };
+      return { view: 'activity', label: 'Review activity' };
+    }
+    document.getElementById('opsAttention').addEventListener('click', event => {
+      const button = event.target.closest('[data-review-view]');
+      if (!button) return;
+      if (button.dataset.reviewView === 'activity') {
+        activityFilters = new Set(button.dataset.reviewFilter ? [button.dataset.reviewFilter] : ACTIVITY_FILTERS.map(f => f.id));
+        activitySearchText = '';
+      }
+      selectView(button.dataset.reviewView);
+    });
+
+    function renderOverviewActivity() {
+      const data = dashboardOverview;
+      if (!data) return;
+      const items = Array.isArray(data.health?.activity) ? data.health.activity : [
+        ...(data.recentVoice || []).map((item, i) => ({ id: `voice-${i}`, title: 'Voice activity', detail: item.description, timeText: item.timeText, icon: 'audio-waveform', tone: 'join' })),
+        ...(data.recentCommands || []).map((item, i) => ({ id: `command-${i}`, title: item.ok ? 'Command Executed' : 'Command Failed', detail: item.title, timeText: item.timeText, icon: 'terminal', tone: item.ok ? 'command' : 'commandFailed' }))
+      ];
+      const matches = items.filter(item => overviewActivityFilter === 'all'
+        || overviewActivityFilter === 'voice' && ['join', 'leave', 'move'].includes(item.tone)
+        || overviewActivityFilter === 'commands' && ['command', 'commandFailed'].includes(item.tone)
+        || overviewActivityFilter === 'errors' && ['commandFailed', 'error', 'warning'].includes(item.tone));
+      matches.sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0));
+      document.getElementById('opsActivity').innerHTML = matches.length ? matches.slice(0, 6).map(item => `
+        <div class="ops-activity" data-state="${opsActivityTones[item.tone] || 'neutral'}">
+          <span class="ops-chip"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
+          <div class="ops-activity-text"><div class="ops-activity-title">${escapeHTML(item.title)}</div><div class="ops-activity-detail">${escapeHTML(item.detail)}</div></div>
+          <span class="ops-activity-time" ${item.timestamp ? `data-ops-time="${escapeHTML(item.timestamp)}"` : ''}>${item.timestamp ? relativeTime(item.timestamp) : escapeHTML(item.timeText || '')}</span>
+        </div>`).join('') : '<div class="ops-empty"><strong>No matching activity</strong>New events will appear here.</div>';
+      refreshIcons();
+    }
+    document.getElementById('overviewActivityFilters').addEventListener('click', event => {
+      const button = event.target.closest('[data-activity-filter]');
+      if (!button) return;
+      overviewActivityFilter = button.dataset.activityFilter;
+      document.querySelectorAll('#overviewActivityFilters [data-activity-filter]').forEach(node => node.setAttribute('aria-pressed', String(node === button)));
+      renderOverviewActivity();
+    });
+
+    let overviewUsageRequest = null;
+    function loadOverviewUsage() {
+      if (overviewUsageRequest) return overviewUsageRequest;
+      overviewUsageRequest = (async () => {
+        try {
+          const response = await fetch('/api/analytics?period=7d', { signal: AbortSignal.timeout(12000) });
+          if (!response.ok) throw new Error('Usage unavailable');
+          overviewUsage = await response.json();
+          overviewUsageUpdatedAt = Date.now();
+          overviewUsageFailed = false;
+        } catch (_) { overviewUsageFailed = true; }
+        finally { renderOverviewWeekly(); }
+      })().finally(() => { overviewUsageRequest = null; });
+      return overviewUsageRequest;
+    }
+    function refreshOverview() { return Promise.allSettled([loadOverview(), loadOverviewUsage()]); }
+    setInterval(() => {
+      updateOverviewFreshness();
+      if (overviewUsageUpdatedAt && Date.now() - overviewUsageUpdatedAt >= 90000) renderOverviewWeekly();
+      document.querySelectorAll('[data-voice-joined]').forEach(node => { node.textContent = voiceDuration(node.dataset.voiceJoined); });
+    }, 1000);
+    setInterval(() => {
+      if (currentUser && currentView === 'overview' && document.visibilityState === 'visible') {
+        loadOverview().catch(() => {});
+        if (!overviewUsageUpdatedAt || Date.now() - overviewUsageUpdatedAt >= 60000) loadOverviewUsage();
+      }
+    }, 15000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && currentUser && currentView === 'overview') refreshOverview();
+    });
+    window.addEventListener('online', () => { if (currentUser && currentView === 'overview') refreshOverview(); });
+    window.addEventListener('offline', () => { overviewRefreshFailed = true; updateOverviewFreshness(); });
 
     // Keep "2m ago" labels honest between overview refreshes.
     setInterval(() => {
@@ -17329,112 +18365,99 @@
       buildAnimatedBackground();
     });
 
-    // ============================================================
-    // CANVAS DESIGN SYSTEM — usage trends chart
-    // Renders the same dailyActivity series used by the Analytics page,
-    // refreshed each time loadAnalytics() runs.
-    // ============================================================
-    (function () {
-      function render() {
-        const svg = document.getElementById('usageChart');
-        const empty = document.getElementById('usageChartEmpty');
-        const labelsWrap = document.getElementById('usageChartLabels');
-        const yAxis = document.getElementById('usageChartYAxis');
-        if (!svg) return;
+    // Weekly overview uses its own rolling seven-day snapshot.
+    function overviewWeeklyHighlights(period) {
+      const totals = period.totals || {};
+      const count = value => Number(value).toLocaleString();
+      const candidates = [];
+      // Compare relative usage within each feature, since a spoken message,
+      // a clip and an hour in voice are different units. No slot is reserved.
+      const usage = (key, amount, reference, item) => {
+        if (!(amount > 0)) return;
+        candidates.push({ ...item, key, score: 200 + Math.min(700, 80 * Math.log2(1 + amount / reference)) });
+      };
+      const change = (key, current, previous, minimumDifference, label, unit, series) => {
+        if (!(current > 0)) return;
+        const difference = current - previous;
+        if (Math.abs(difference) < minimumDifference) return;
+        const percent = previous > 0 ? difference / previous * 100 : null;
+        if (percent !== null && Math.abs(percent) < 10) return;
+        const format = value => unit === 'time' ? anDuration(value) : `${count(value)} ${unit}`;
+        candidates.push({ key, series, score: 350 + Math.min(150, Math.abs(percent ?? 100)), label,
+          value: percent === null ? format(current) : `${Math.round(Math.abs(percent))}% ${difference > 0 ? 'more' : 'less'}`,
+          detail: `${format(current)} this week${previous > 0 ? `, compared with ${format(previous)} in the previous 7 days` : '; new activity'}.` });
+      };
+      if (totals.failedCommands > 0) candidates.push({ key: 'commands', score: 1000, label: 'Command failures',
+        value: `${count(totals.failedCommands)} failed`, detail: `Out of ${count(totals.commands)} commands this week.`, series: 'commands' });
+      change('voice', totals.voiceSessions, totals.previousVoiceSessions, 5, 'Voice sessions', 'sessions', 'voice');
+      change('voice', totals.voiceSeconds, totals.previousVoiceSeconds, 3600, 'Time in voice', 'time', 'voice');
+      if (period.messagesAvailable) change('messages', totals.messages, totals.previousMessages, 50, 'Conversations', 'messages', 'messages');
+      const features = [
+        ['announcer', 'Announcer', 5, 'read aloud', 'Messages spoken in Discord this week.', 'announcer'],
+        ['patchy', 'Patchy', 3, 'sent', 'Update notifications delivered this week.', 'patchy'],
+        ['gametracker', 'Game Tracker', 3, 'sessions', 'Tracked play sessions completed this week.', 'gametracker'],
+        ['sweep', 'Sweep', 20, 'tidied', 'Messages deleted by Sweep this week.', 'sweep']
+      ];
+      features.forEach(([key, label, reference, unit, detail, view]) => {
+        const amount = period.featureUses?.[key] || 0;
+        usage(key, amount, reference, { label, value: `${count(amount)} ${unit}`, detail, view });
+      });
+      const topCommand = (period.topCommands || []).find(item => item.count > 0);
+      usage('commands', totals.commands, 20, { label: 'Commands', value: `${count(totals.commands)} used`,
+        detail: topCommand ? `${topCommand.title} was most used (${count(topCommand.count)} times).` : 'Commands used this week.', series: 'commands' });
+      const clips = (period.clipsByGame || []).reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0);
+      usage('recordings', clips, 3, { label: 'Recordings', value: `${count(clips)} clips`, detail: 'Clips added to this Mac’s library this week.', view: 'recordings' });
+      usage('voice', totals.voiceSeconds, 36000, { label: 'Time in voice', value: anDuration(totals.voiceSeconds),
+        detail: totals.voiceSessions > 0 ? `${count(totals.voiceSessions)} voice sessions this week.` : 'Time spent in voice this week.', series: 'voice' });
+      usage('voice', totals.voiceSessions, 20, { label: 'Voice sessions', value: `${count(totals.voiceSessions)} sessions`, detail: 'Voice sessions this week.', series: 'voice' });
+      if (period.messagesAvailable) usage('messages', totals.messages, 1000, { label: 'Conversations',
+        value: `${count(totals.messages)} messages`, detail: 'Messages recorded by Rewind this week.', series: 'messages' });
+      const selected = [];
+      candidates.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key)).forEach(item => {
+        if (selected.length < 3 && !selected.some(existing => existing.key === item.key)) selected.push(item);
+      });
+      return selected;
+    }
 
-        const data = (window.dashboardAnalytics && Array.isArray(window.dashboardAnalytics.dailyActivity))
-          ? window.dashboardAnalytics.dailyActivity
-          : [];
-
-        if (data.length < 2) {
-          svg.innerHTML = '';
-          if (labelsWrap) labelsWrap.innerHTML = '';
-          if (yAxis) yAxis.innerHTML = '';
-          if (empty) empty.style.display = '';
-          return;
-        }
-        if (empty) empty.style.display = 'none';
-
-        const W = 600, H = 200, PAD_X = 12, PAD_TOP = 16, PAD_BOTTOM = 22;
-        const maxV = Math.max(1, ...data.map(p => p.count || 0));
-        const denom = Math.max(1, data.length - 1);
-        const points = data.map((p, i) => ({
-          x: PAD_X + (W - PAD_X * 2) * (i / denom),
-          y: PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) * (1 - ((p.count || 0) / maxV)),
-          count: p.count || 0,
-          label: p.label || '',
-        }));
-
-        // Smooth path via per-segment cubic beziers.
-        let d = '';
-        points.forEach((p, i) => {
-          if (i === 0) { d += `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`; return; }
-          const prev = points[i - 1];
-          const cx = (prev.x + p.x) / 2;
-          d += ` C ${cx.toFixed(2)} ${prev.y.toFixed(2)}, ${cx.toFixed(2)} ${p.y.toFixed(2)}, ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
-        });
-
-        const baseY = H - PAD_BOTTOM;
-        const area = `${d} L ${points[points.length - 1].x.toFixed(2)} ${baseY} L ${points[0].x.toFixed(2)} ${baseY} Z`;
-
-        const dots = points.map((p) => `
-          <circle class="cv-dot" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${p.count === maxV ? 4 : 3}">
-            <title>${p.label}: ${p.count} session${p.count === 1 ? '' : 's'}</title>
-          </circle>
-        `).join('');
-
-        svg.innerHTML = `
-          <defs>
-            <linearGradient id="cvUsageAreaGradient" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.55" />
-              <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <path class="cv-area" d="${area}"></path>
-          <path class="cv-line" d="${d}"></path>
-          ${dots}
-        `;
-
-        if (labelsWrap) {
-          labelsWrap.innerHTML = data.map(p => `<span>${p.label || ''}</span>`).join('');
-        }
-
-        // Y-axis: 4 evenly spaced tick labels (top → bottom).
-        if (yAxis) {
-          const ticks = 4;
-          const niceMax = niceCeil(maxV);
-          const rows = [];
-          for (let i = 0; i < ticks; i++) {
-            const value = Math.round(niceMax * (1 - i / (ticks - 1)));
-            rows.push(`<span>${value}</span>`);
-          }
-          yAxis.innerHTML = rows.join('');
-        }
+    function renderOverviewWeekly() {
+      const report = overviewUsage;
+      const period = report?.period?.period === '7d' ? report.period : null;
+      const metrics = document.getElementById('weeklyMetrics');
+      const insights = document.getElementById('weeklyInsights');
+      const stale = overviewUsageFailed || overviewUsageUpdatedAt && Date.now() - overviewUsageUpdatedAt >= 90000;
+      const dateText = date => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const buckets = period?.buckets || [];
+      const range = buckets.length && Number.isFinite(Date.parse(buckets[0].start)) && Number.isFinite(Date.parse(buckets.at(-1).start))
+        ? `${dateText(buckets[0].start)} – ${dateText(buckets.at(-1).start)}` : 'Last 7 days';
+      document.getElementById('weeklyPeriod').textContent = `${range} · across connected servers${stale ? ' · cached data' : ''}`;
+      if (!period) {
+        metrics.style.setProperty('--weekly-columns', '1');
+        metrics.innerHTML = `<div class="weekly-detail">${report ? 'Weekly breakdown unavailable on this server.' : 'Weekly activity unavailable. Retrying automatically.'}</div>`;
+        insights.innerHTML = '';
+        return;
       }
+      const highlights = overviewWeeklyHighlights(period);
+      metrics.style.setProperty('--weekly-columns', String(Math.max(1, highlights.length)));
+      metrics.innerHTML = highlights.length ? highlights.map(item => `<button type="button" class="weekly-metric" ${item.view ? `data-weekly-view="${item.view}"` : `data-weekly-series="${item.series}"`}>
+        <span class="weekly-label">${escapeHTML(item.label)} ↗</span><strong class="weekly-value">${escapeHTML(item.value)}</strong><span class="weekly-detail">${escapeHTML(item.detail)}</span></button>`).join('')
+        : `<div class="weekly-steady"><strong>No activity recorded this week</strong><span class="weekly-detail">Highlights appear here as features are used.</span></div>`;
+      insights.innerHTML = '';
 
-      // Round up to a nicer tick max (1, 2, 5, 10, 20, 50, 100…).
-      function niceCeil(v) {
-        if (v <= 1) return 1;
-        const pow = Math.pow(10, Math.floor(Math.log10(v)));
-        const n = v / pow;
-        let mult;
-        if (n <= 1) mult = 1;
-        else if (n <= 2) mult = 2;
-        else if (n <= 5) mult = 5;
-        else mult = 10;
-        return mult * pow;
+    }
+
+    document.getElementById('overviewPanelUsage').addEventListener('click', event => {
+      const button = event.target.closest('[data-weekly-series], [data-weekly-view]');
+      if (!button) return;
+      if (button.dataset.weeklyView) { selectView(button.dataset.weeklyView); return; }
+      analyticsPeriod = '7d';
+      analyticsSeries = button.dataset.weeklySeries;
+      if (overviewUsage?.period?.period === '7d') {
+        dashboardAnalytics = overviewUsage;
+        window.dashboardAnalytics = overviewUsage;
       }
-
-      // Public hook used by loadAnalytics().
-      window.__cvUsage = { render };
-
-      function init() { render(); }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
-      }
-    })();
+      selectView('analytics');
+      if (!overviewUsage?.period) loadAnalytics().catch(() => {});
+    });
 
     // ============================================================
     // CANVAS DESIGN SYSTEM — count-up and stagger replay

@@ -6,12 +6,15 @@ reproduced here to satisfy the attribution terms those licenses require.
 
 This file is generated — edit `scripts/generate_third_party_notices.py` and re-run it
 rather than editing this file by hand. Package versions reflect the pins in
-`SwiftBot.xcodeproj/.../Package.resolved` as of 2026-08-27.
+`SwiftBot.xcodeproj/.../Package.resolved` as of 2026-10-03.
 
 SwiftBot's own license is in [LICENSE](LICENSE).
 
 ## Contents
 
+* [Swift WebAuthn](#swift-webauthn)
+* [SwiftCBOR](#swiftcbor)
+* [Swift Log](#swift-log)
 * [Sparkle](#sparkle)
 * [SwiftSoup](#swiftsoup)
 * [swiftbot-opus](#swiftbot-opus)
@@ -27,6 +30,130 @@ SwiftBot's own license is in [LICENSE](LICENSE).
 * [Swift System](#swift-system)
 * [libdave-swift](#libdave-swift)
 * [Appendix A: Apache License 2.0](#appendix-a-apache-license-20)
+
+## Swift WebAuthn
+
+* Version: `2b6b4d4c`
+* Upstream: https://github.com/brokenhandsio/swift-webauthn
+* Used for: Passkey registration and authentication verification.
+
+Licensed under the Apache License, Version 2.0 — full text in [Appendix A](#appendix-a-apache-license-20).
+
+Notice (`NOTICE.txt`):
+
+```
+Swift WebAuthn project
+
+----------------------------------------------------------------------
+
+This source file is part of the Swift WebAuthn open source project
+
+Copyright (c) 2022 the Swift WebAuthn project authors
+Licensed under Apache License v2.0
+
+See LICENSE.txt for license information
+
+SPDX-License-Identifier: Apache-2.0
+
+----------------------------------------------------------------------
+
+This product contains a derivation of various scripts from SwiftNIO.
+
+  * LICENSE (Apache License 2.0):
+    * https://www.apache.org/licenses/LICENSE-2.0
+  * HOMEPAGE:
+    * https://github.com/apple/swift-nio
+
+---
+```
+
+---
+
+## SwiftCBOR
+
+* Version: `0.6.0`
+* Upstream: https://github.com/unrelentingtech/SwiftCBOR
+* Used for: CBOR decoding for WebAuthn authenticator data.
+
+License text (`UNLICENSE`):
+
+```
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org/>
+```
+
+---
+
+## Swift Log
+
+* Version: `1.15.1`
+* Upstream: https://github.com/apple/swift-log
+* Used for: Logging beneath Swift WebAuthn.
+
+Licensed under the Apache License, Version 2.0 — full text in [Appendix A](#appendix-a-apache-license-20).
+
+Notice (`NOTICE.txt`):
+
+```
+The SwiftLog Project
+                            ========================
+
+Please visit the SwiftLog web site for more information:
+
+  * https://github.com/apple/swift-log
+
+Copyright 2018, 2019 The SwiftLog Project
+
+The SwiftLog Project licenses this file to you under the Apache License,
+version 2.0 (the "License"); you may not use this file except in compliance
+with the License. You may obtain a copy of the License at:
+
+  https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+
+Also, please refer to each LICENSE.<component>.txt file, which is located in
+the 'license' directory of the distribution file, for the license terms of the
+components that this product depends on.
+
+-------------------------------------------------------------------------------
+
+This product contains a derivation of the lock implementation and various
+scripts from SwiftNIO.
+
+  * LICENSE (Apache License 2.0):
+    * https://www.apache.org/licenses/LICENSE-2.0
+  * HOMEPAGE:
+    * https://github.com/apple/swift-nio
+```
+
+---
 
 ## Sparkle
 
@@ -212,7 +339,7 @@ SOFTWARE.
 
 ## swiftbot-opus
 
-* Version: `0.2.0`
+* Version: `0.2.1`
 * Upstream: https://github.com/johnwatso/swiftbot-opus
 * Used for: Opus encode/decode for Discord voice.
 
@@ -932,7 +1059,7 @@ Licensed under the Apache License, Version 2.0 — full text in [Appendix A](#ap
 
 ## libdave-swift
 
-* Version: `3.0.1`
+* Version: `4.0.0`
 * Upstream: https://github.com/johnwatso/libdave-swift
 * Used for: Discord DAVE end-to-end encrypted voice.
 
@@ -982,7 +1109,7 @@ next framework rebuild, per the workflow in that repository's `THIRD_PARTY_NOTIC
 
 ## Appendix A: Apache License 2.0
 
-Applies to: SwiftNIO, SwiftNIO SSL, Swift Crypto, Swift Certificates, Swift ASN.1, Swift Markdown, Swift Atomics, Swift Collections, Swift System.
+Applies to: Swift WebAuthn, Swift Log, SwiftNIO, SwiftNIO SSL, Swift Crypto, Swift Certificates, Swift ASN.1, Swift Markdown, Swift Atomics, Swift Collections, Swift System.
 
 ```
 Apache License

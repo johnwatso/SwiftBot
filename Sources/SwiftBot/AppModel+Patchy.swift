@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AppKit
 
-private let maxPatchyLogEntries = 100
 
 struct PatchyMonitoringSnapshot: Equatable {
     let monitoringEnabled: Bool
@@ -53,6 +52,12 @@ struct PatchyMonitoringTargetSnapshot: Equatable {
     }
 }
 
+/// What a Patchy test send did, for the WebUI to show next to the button.
+struct PatchyTestOutcome: Sendable {
+    let ok: Bool
+    let message: String
+}
+
 extension AppModel {
 
     private struct PatchySummaryInput {
@@ -61,14 +66,11 @@ extension AppModel {
         let fallback: String
     }
 
+    /// Patchy diagnostics go to the main SwiftBot log, so they're there when
+    /// something goes wrong without a separate debug switch to remember.
     func appendPatchyLog(_ message: String) {
         Task { @MainActor in
-            let timestamp = Date().formatted(date: .omitted, time: .standard)
-            let entry = "[\(timestamp)] \(message)"
-            patchyDebugLogs.insert(entry, at: 0)
-            if patchyDebugLogs.count > maxPatchyLogEntries {
-                patchyDebugLogs.removeLast()
-            }
+            logs.append("[Patchy] \(message)")
         }
     }
 
@@ -191,78 +193,76 @@ extension AppModel {
         }
     }
 
+    /// Fire-and-forget for the native view, which reads the result from the
+    /// target's status line.
     func sendPatchyTest(targetID: UUID) {
-        Task {
-            guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
-            guard !target.channelId.isEmpty else {
-                appendPatchyLog("Test send skipped: target channel is empty.")
-                return
+        Task { await runPatchyTest(targetID: targetID) }
+    }
+
+    /// Posts the latest item for a target and reports what happened, so the
+    /// caller can show "sent" or the actual error instead of pointing at a log.
+    @discardableResult
+    func runPatchyTest(targetID: UUID) async -> PatchyTestOutcome {
+        guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else {
+            return PatchyTestOutcome(ok: false, message: "That source no longer exists.")
+        }
+        guard !target.channelId.isEmpty else {
+            appendPatchyLog("Test send skipped: target channel is empty.")
+            return PatchyTestOutcome(ok: false, message: "Choose a channel for this source first.")
+        }
+
+        func finish(_ ok: Bool, status: String, message: String, ran: Bool) -> PatchyTestOutcome {
+            updatePatchyTargetRuntimeState(id: target.id) { entry in
+                entry.lastCheckedAt = Date()
+                if ran { entry.lastRunAt = Date() }
+                entry.lastStatus = status
             }
+            persistSettingsQuietly()
+            return PatchyTestOutcome(ok: ok, message: message)
+        }
 
-            let validation = await validatePatchyTarget(target, forceRefresh: true)
-            guard validation.isValid else {
-                updatePatchyTargetRuntimeState(id: target.id) { entry in
-                    entry.lastCheckedAt = Date()
-                    entry.lastStatus = validation.detail
-                }
-                persistSettingsQuietly()
-                appendPatchyLog("Patchy test skipped: \(validation.detail)")
-                return
-            }
+        let validation = await validatePatchyTarget(target, forceRefresh: true)
+        guard validation.isValid else {
+            appendPatchyLog("Patchy test skipped: \(validation.detail)")
+            return finish(false, status: validation.detail, message: validation.detail, ran: false)
+        }
 
-            do {
-                resolveSteamNameIfNeeded(for: target)
-                if target.source == .swiftMiner {
-                    let announcement = PatchySwiftMinerCampaignRouter.sampleAnnouncement(gameName: target.swiftMinerGameName)
-                    let delivery = await sendPatchyNotificationDetailed(
-                        channelId: target.channelId,
-                        message: PatchySwiftMinerCampaignRouter.fallbackMessage(for: announcement),
-                        embedJSON: PatchySwiftMinerCampaignRouter.embedJSON(for: announcement, target: target),
-                        roleIDs: target.roleIDs
-                    )
-
-                    updatePatchyTargetRuntimeState(id: target.id) { entry in
-                        entry.lastCheckedAt = Date()
-                        entry.lastRunAt = Date()
-                        entry.lastStatus = delivery.detail
-                    }
-                    persistSettingsQuietly()
-                    appendPatchyLog("Test send [SwiftMiner] -> \(delivery.detail)")
-                    return
-                }
+        do {
+            resolveSteamNameIfNeeded(for: target)
+            let delivery: (ok: Bool, detail: String)
+            if target.source == .swiftMiner {
+                let announcement = PatchySwiftMinerCampaignRouter.sampleAnnouncement(gameName: target.swiftMinerGameName)
+                delivery = await sendPatchyNotificationDetailed(
+                    channelId: target.channelId,
+                    message: PatchySwiftMinerCampaignRouter.fallbackMessage(for: announcement),
+                    embedJSON: PatchySwiftMinerCampaignRouter.embedJSON(for: announcement, target: target),
+                    roleIDs: target.roleIDs
+                )
+            } else {
                 let source = try PatchyRuntime.makeSource(from: target)
                 let item = try await source.fetchLatest()
                 logPatchyItemDiagnostics(item, context: "Test send [\(target.source.rawValue)]")
                 let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
-                let fallback = PatchyRuntime.fallbackMessage(for: mapped)
-                let delivery = await sendPatchyNotificationDetailed(
+                delivery = await sendPatchyNotificationDetailed(
                     channelId: target.channelId,
-                    message: fallback,
-                    embedJSON: await patchyEmbedJSON(
-                        mapped.embedJSON,
-                        for: target,
-                        item: item
-                    ),
+                    message: PatchyRuntime.fallbackMessage(for: mapped),
+                    embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: item),
                     roleIDs: target.roleIDs,
                     iconAttachment: await patchySteamIconAttachment(for: target)
                 )
-
-                updatePatchyTargetRuntimeState(id: target.id) { entry in
-                    entry.lastCheckedAt = Date()
-                    entry.lastRunAt = Date()
-                    entry.lastStatus = delivery.detail
-                }
-                persistSettingsQuietly()
-                appendPatchyLog("Test send [\(target.source.rawValue)] -> \(delivery.detail)")
-            } catch {
-                let diagnostic = patchyErrorDiagnostic(from: error)
-                updatePatchyTargetRuntimeState(id: target.id) { entry in
-                    entry.lastCheckedAt = Date()
-                    entry.lastStatus = "Patchy test failed: \(diagnostic)"
-                }
-                persistSettingsQuietly()
-                appendPatchyLog("Patchy test failed: \(diagnostic)")
             }
+            appendPatchyLog("Test send [\(target.source.rawValue)] -> \(delivery.detail)")
+            return finish(
+                delivery.ok,
+                status: delivery.detail,
+                message: delivery.ok ? "Test post sent." : delivery.detail,
+                ran: true
+            )
+        } catch {
+            let diagnostic = patchyErrorDiagnostic(from: error)
+            appendPatchyLog("Patchy test failed: \(diagnostic)")
+            appendPatchyErrorTraceIfPresent(error, context: "Test send [\(target.source.rawValue)]")
+            return finish(false, status: "Patchy test failed: \(diagnostic)", message: diagnostic, ran: false)
         }
     }
 

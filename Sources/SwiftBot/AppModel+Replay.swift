@@ -380,13 +380,18 @@ extension AppModel {
 
     static let replayDMOptOutCustomID = "replay.dm.optout"
 
-    /// Members who get a personal Replay DM for a period: anyone who posted or
-    /// was in voice, minus bots and anyone who turned Replay DMs off.
+    /// By default personal Replay DMs require regular recent chat as well as
+    /// activity in the recap period. A guild can switch off the chat filter.
     func replayDMRecipients(guildID: String, period: ReplayPeriod, now: Date = Date()) async -> [String] {
+        await rewindStore.flush()
         let interval = period.interval(now: now)
         var ids = await rewindStore.activeUserIDs(guildID: guildID, start: interval.start, end: interval.end)
         let voice = await voiceSessionStore.report(window: interval, buckets: [], previous: nil, guildId: guildID, now: now, topLimit: 100_000)
         ids.formUnion(voice.topUsers.filter { $0.seconds >= 60 }.map(\.userId))
+        if settings.rewind.recapDrops[guildID]?.onlyDMActiveMembers ?? true {
+            let activeChatters = await rewindStore.replayDMActiveUserIDs(guildID: guildID, now: now)
+            ids.formIntersection(activeChatters)
+        }
         ids.subtract(settings.rewind.replayDMOptOutUserIDs)
         ids.subtract(knownBotUserIds)
         if let botUserId { ids.remove(botUserId) }
@@ -412,6 +417,8 @@ extension AppModel {
             defer { replayDMProgress?.processed += 1 }
             // Someone may opt out while a long run is in progress.
             guard !settings.rewind.replayDMOptOutUserIDs.contains(userID) else { continue }
+            // Archive history may outlive someone's membership of this server.
+            guard await guildMemberRoleIDs(guildID: guildID, userID: userID) != nil else { continue }
             let replay = await personalReplay(guildID: guildID, userID: userID, period: period)
             guard replay.messages > 0 || replay.voiceSeconds > 0 else { continue }
             do {
@@ -644,7 +651,8 @@ extension AppModel {
                     channels: (availableTextChannelsByServer[guildID] ?? [])
                         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                         .map { AdminWebSimpleOption(id: $0.id, name: $0.name) },
-                    personalDMs: drop.personalDMs
+                    personalDMs: drop.personalDMs,
+                    onlyDMActiveMembers: drop.onlyDMActiveMembers
                 ))
             }
             var payload = AdminWebRewindRecapsPayload(guilds: guilds, months: months.sorted(by: >))
@@ -682,6 +690,7 @@ extension AppModel {
                 if dms && !drop.personalDMs { drop.lastPersonalMonthlyKey = lastMonth; drop.lastPersonalYearlyKey = lastYear }
                 drop.personalDMs = dms
             }
+            if let onlyActive = update.onlyDMActiveMembers { drop.onlyDMActiveMembers = onlyActive }
             drop.channelID = update.channelID
             drop.monthly = update.monthly
             drop.yearly = update.yearly

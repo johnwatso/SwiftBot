@@ -1,5 +1,5 @@
 {
-  "originHash" : "1bd8f80e5787f7ea7308c0efd7d0923fd2f7d6801d72cae8ec3395846279c565",
+  "originHash" : "bc61b77779a165b090da87fcb521b138a3c74c8eea4f3eff7c15da4d630b8706",
   "pins" : [
     {
       "identity" : "libdave-swift",
@@ -74,6 +74,15 @@
       }
     },
     {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "9c6fb14227f55d8f711ce3847dc2f419fb0ecacb",
+        "version" : "1.15.1"
+      }
+    },
+    {
       "identity" : "swift-markdown",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-markdown.git",
@@ -110,12 +119,29 @@
       }
     },
     {
+      "identity" : "swift-webauthn",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/brokenhandsio/swift-webauthn.git",
+      "state" : {
+        "revision" : "2b6b4d4cfe9a3d65955ba94dbc09425637952dae"
+      }
+    },
+    {
       "identity" : "swiftbot-opus",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/johnwatso/swiftbot-opus.git",
       "state" : {
         "revision" : "6f478405c2bfe7d0735e8725839dbb68f401828d",
         "version" : "0.2.1"
+      }
+    },
+    {
+      "identity" : "swiftcbor",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/unrelentingtech/SwiftCBOR.git",
+      "state" : {
+        "revision" : "fd929a6d8f7651ce0f63fc99397fd5762358cc29",
+        "version" : "0.6.0"
       }
     },
     {

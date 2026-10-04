@@ -194,7 +194,52 @@ const overview = {
 const status = {
   botUsername: 'SwiftBot (Preview)',
   botAvatarURL: '',
-  state: 'Connected'
+  state: 'Connected',
+  botStatus: 'running',
+  connectedServerCount: 2,
+  uptimeText: '3h 12m',
+  clusterMode: 'Standalone',
+  isFailoverManagedNode: false
+};
+
+// Shaped like AdminWebUpdatesPayload; POST /api/updates/* mutate it.
+const updates = {
+  configured: true,
+  version: '1.27.0',
+  build: '2026100212',
+  channel: 'stable',
+  automaticChecks: true,
+  unattended: false,
+  isChecking: false,
+  lastCheckedAt: new Date(Date.now() - 42 * 60000).toISOString(),
+  availableVersion: null,
+  availableBuild: null,
+  releaseNotesURL: null,
+  readyToInstall: false,
+  lastError: null
+};
+
+// Shaped like AdminWebBotPermissionsPayload.
+const botPermissions = {
+  botUsername: 'SwiftBot (Preview)',
+  error: null,
+  checkedAt: new Date().toISOString(),
+  guilds: [
+    {
+      id: '1', name: 'The Hewetts', isOwner: false, hasAdministrator: false,
+      missingEssential: [],
+      missingRecommended: [{ name: 'Manage Server', detail: 'Read server invite use counts for Welcome Flow invite-specific rules.' }],
+      missingOptional: [{ name: 'Kick Members', detail: 'Remove members from the server. Used by Moderation kick actions.' }],
+      visibleTextChannels: 14,
+      reinviteURL: 'https://discord.com/oauth2/authorize?client_id=0&guild_id=1',
+      adminReinviteURL: 'https://discord.com/oauth2/authorize?client_id=0&guild_id=1&permissions=8'
+    },
+    {
+      id: '2', name: 'Test Server', isOwner: true, hasAdministrator: true,
+      missingEssential: [], missingRecommended: [], missingOptional: [],
+      visibleTextChannels: 3, reinviteURL: null, adminReinviteURL: null
+    }
+  ]
 };
 
 const analytics = {
@@ -450,7 +495,7 @@ const patchyTarget = (id, source, extra) => ({
   lastStatus: 'Up to date', ...extra
 });
 const patchy = {
-  monitoringEnabled: true, showDebug: false, isCycleRunning: false, lastCycleAt: minutesAgo(12),
+  monitoringEnabled: true, isCycleRunning: false, lastCycleAt: minutesAgo(12),
   sourceKinds: ['NVIDIA', 'AMD', 'Intel Arc', 'Apple', 'Steam', 'GitHub', 'SwiftMiner'],
   targets: [
     patchyTarget('11111111-1111-1111-1111-111111111111', 'Steam', { lastStatus: 'Delivered patch 1.4.2' }),
@@ -459,7 +504,7 @@ const patchy = {
     patchyTarget('44444444-4444-4444-4444-444444444444', 'Apple', { isEnabled: false, lastStatus: 'Never checked', lastCheckedAt: null, lastRunAt: null })
   ],
   servers: serverOptions, textChannelsByServer: textByServer, rolesByServer: { '1001': roleOptions, '1002': [] },
-  steamAppNames: { '2073850': 'THE FINALS' }, isFailoverManagedNode: false, botStatus: 'running', debugLogs: []
+  steamAppNames: { '2073850': 'THE FINALS' }, isFailoverManagedNode: false, botStatus: 'running'
 };
 
 const aiPresets = [
@@ -540,22 +585,58 @@ const sweep = {
     evidenceCount: 42, confidence: 0.86,
     proposedStrategy: { id: 'a7a7a7a7-0000-4000-8000-0000000000b1', kind: 'deduplicate', ageHours: 24, keepCount: 1, fromBotsOnly: false },
     proposedSchedule: { daily: { hour: 3 } }, createdAt: minutesAgo(600),
-    projection: sweepReport('a7a7a7a7-0000-4000-8000-0000000000c1', 'a7a7a7a7-0000-4000-8000-000000000001', 'Suggested: deduplicate', 600, { dryRun: true })
-  }],
+    projection: sweepReport('a7a7a7a7-0000-4000-8000-0000000000c1', 'a7a7a7a7-0000-4000-8000-000000000001', 'Suggested: deduplicate', 600, {
+      dryRun: true, scanned: 300, matched: 142, executed: 0, suppressed: 4,
+      // Shaped like SweepActionGroup, which newer reports carry.
+      groups: [
+        { kind: 'delete', reason: 'Duplicate of newer message', count: 118, botCount: 0, authors: [{ name: 'alex', count: 61 }, { name: 'sam', count: 40 }, { name: 'jonwatso', count: 17 }], examples: ['alex: https://clips.twitch.tv/HungryCleverOtter', 'sam: https://youtu.be/finals-clutch', 'alex: https://clips.twitch.tv/HungryCleverOtter'] },
+        { kind: 'delete', reason: 'Older than 24h', count: 24, botCount: 24, authors: [{ name: 'StreamBot', count: 24 }], examples: ['StreamBot: jonwatso is live playing THE FINALS!'] },
+        { kind: 'skip', reason: 'Has reactions — protected', count: 3, botCount: 0, authors: [{ name: 'sam', count: 3 }], examples: ['sam: that last round 😂'] },
+        { kind: 'skip', reason: 'Pinned — protected', count: 1, botCount: 0, authors: [{ name: 'jonwatso', count: 1 }], examples: ['jonwatso: Post clips here, not in #general'] },
+        { kind: 'keep', reason: 'No matching strategy', count: 154, botCount: 2, authors: [], examples: [] }
+      ]
+    })
+  }, ...['bot-spam', 'patch-notes', 'github', 'game-alerts', 'voice-log'].map((name, i) => ({
+    id: `a7a7a7a7-0000-4000-8000-00000000010${i}`, guildID: '1001', guildName: 'Swift Lounge', channelID: `t2${i}`, channelName: name,
+    strategyKind: 'reduceNoise', title: `Reduce noise in #${name}`,
+    rationale: `${240 - i * 30} of the last 300 messages are from bots — Sweep can dedupe duplicates and compact older bot posts.`,
+    evidenceCount: 240 - i * 30, confidence: 0.8,
+    proposedStrategy: { id: `a7a7a7a7-0000-4000-8000-00000000020${i}`, kind: 'reduceNoise', ageHours: 48, keepCount: 1, fromBotsOnly: true },
+    proposedSchedule: { interval: { minutes: 120 } }, createdAt: minutesAgo(600),
+    projection: sweepReport(`a7a7a7a7-0000-4000-8000-00000000030${i}`, 'x', `Reduce noise in #${name}`, 600, { dryRun: true, scanned: 300, matched: 120 - i * 20, executed: 0, suppressed: 0 })
+  }))],
   isScanningSuggestions: false, lastSuggestionScanAt: minutesAgo(600),
   scanProgressDone: 0, scanProgressTotal: 0, servers: serverOptions, textChannelsByServer: textByServer,
   voiceChannelsByServer: Object.fromEntries(Object.entries(voiceChannelsByServer).map(([id, list]) => [id, list.map(c => ({ id: c.id, name: c.name }))]))
+};
+
+// Rendered by GameAnnouncementRenderer (default style, one per layout) so the
+// style editor preview shows real bot output.
+const gametrackerStylePreviews = {
+  "card": {
+    "rankUpdate": "{\"allowed_mentions\":{\"users\":[],\"parse\":[]},\"embeds\":[{\"author\":{\"name\":\"THE FINALS · Ranked\"},\"footer\":{\"text\":\"Season 11 · Data provided by finals.id\"},\"description\":\"**jonwatso** is 🥇 **Gold 1** · 28,160 SR\\n`██░░░░░░░░` 1,840 SR to Platinum 4\",\"title\":\"▲ +340 SR\",\"fields\":[{\"name\":\"SR change\",\"value\":\"**+340** → 28,160\",\"inline\":true},{\"inline\":true,\"value\":\"**#56,866** (▲ 1,204)\",\"name\":\"Leaderboard\"}],\"timestamp\":\"2026-10-03T22:23:52Z\",\"color\":15844367}]}",
+    "session": "{\"embeds\":[{\"timestamp\":\"2026-10-03T22:23:52Z\",\"color\":15844367,\"footer\":{\"text\":\"Data provided by finals.id\"},\"title\":\"jonwatso played for 1h 24m\",\"author\":{\"name\":\"THE FINALS · Session\"},\"description\":\"**6** matches · **2** wins · **1.81** K\\/D\",\"fields\":[{\"value\":\"1h 24m\",\"name\":\"Duration\",\"inline\":true},{\"value\":\"🥇 **Gold 1** · 28,160 SR\",\"inline\":true,\"name\":\"Rank\"},{\"inline\":true,\"name\":\"Matches\",\"value\":\"6 (4 ranked)\"},{\"inline\":true,\"name\":\"Wins\",\"value\":\"2\"},{\"inline\":true,\"value\":\"38 \\/ 21 deaths\",\"name\":\"Eliminations\"},{\"name\":\"K\\/D\",\"inline\":true,\"value\":\"1.81\"},{\"inline\":true,\"name\":\"Damage\",\"value\":\"21,430\"}]}],\"allowed_mentions\":{\"users\":[],\"parse\":[]}}"
+  },
+  "compact": {
+    "rankUpdate": "{\"embeds\":[{\"description\":\"Tracked stats changed since the previous daily check.\",\"footer\":{\"text\":\"Season 11 · Data provided by finals.id\"},\"timestamp\":\"2026-10-03T22:23:52Z\",\"color\":15844367,\"fields\":[{\"inline\":true,\"value\":\"**+340 SR** · 28,160 total\\nLeaderboard #56,866\\nGold 1\\nS11\",\"name\":\"jonwatso\"}],\"title\":\"THE FINALS · Daily Ranked Update\"}],\"allowed_mentions\":{\"users\":[],\"parse\":[]}}",
+    "session": "{\"allowed_mentions\":{\"parse\":[],\"users\":[]},\"embeds\":[{\"color\":15844367,\"title\":\"THE FINALS · Session Complete\",\"description\":\"jonwatso wrapped up a 1h 24m session.\",\"footer\":{\"text\":\"Data provided by finals.id\"},\"timestamp\":\"2026-10-03T22:23:52Z\",\"fields\":[{\"inline\":true,\"name\":\"Session\",\"value\":\"1h 24m\"},{\"name\":\"Matches\",\"inline\":true,\"value\":\"6 (4 ranked)\"},{\"inline\":true,\"name\":\"Wins\",\"value\":\"2\"},{\"inline\":true,\"name\":\"Eliminations\",\"value\":\"38 \\/ 21 deaths\"},{\"value\":\"1.81\",\"inline\":true,\"name\":\"K\\/D\"},{\"name\":\"Damage\",\"value\":\"21,430\",\"inline\":true}]}]}"
+  },
+  "minimal": {
+    "rankUpdate": "{\"allowed_mentions\":{\"parse\":[]},\"content\":\"▲ **jonwatso** 🥇 Gold 1 · 28,160 SR (+340) · #56,866\"}",
+    "session": "{\"content\":\"🎮 **jonwatso** played THE FINALS for 1h 24m — 6 matches · 2 wins · 1.81 K\\/D\",\"allowed_mentions\":{\"parse\":[]}}"
+  }
 };
 
 const gametracker = {
   enabled: true, dailyCheckEnabled: true, sessionTrackingEnabled: true, statusText: 'Tracking 3 players', statusTone: 'success',
   configurationIssue: null, checkInProgress: false, scheduleDescription: 'Daily at 9:00 am', lastCheckAt: minutesAgo(300), nextCheckAt: minutesAgo(-1140),
   enabledPlayerCount: 3, totalPlayerCount: 3,
+  announcementStyle: { layout: 'card', accent: 'rank', customColor: '#D21F3C', announceOn: ['rankTier', 'rankedScore'], sharedStats: ['damage', 'deaths', 'killDeathRatio', 'kills', 'leaderboardPosition', 'matchesPlayed', 'rankTier', 'rankedScore', 'wins'], showProgress: true, showSeason: true, mentionPlayer: false, rankTitleTemplate: '', sessionTitleTemplate: '', footerText: '' },
   players: [
     // Real finals.id numbers for jonwatso#5331 (captured 2026-10-01).
-    { id: 'p0', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'jonwatso#5331', displayName: 'jonwatso', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S11', rankName: 'Gold', score: 28160, baselineRecordedAt: '2026-09-29T09:03:10Z', discordUserID: '412378964087275541', triggerMetrics: ['rankedScore', 'rankTier'], contextMetrics: ['killDeathRatio', 'wins'] },
-    { id: 'p1', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'sam#1234', displayName: 'sam', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Gold 2', score: 18420, baselineRecordedAt: minutesAgo(2000), discordUserID: '280129381292318720', triggerMetrics: ['rankedScore'], contextMetrics: ['killDeathRatio', 'wins'] },
-    { id: 'p2', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'alex#9876', displayName: 'alex', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Silver 1', score: 11203, baselineRecordedAt: minutesAgo(2000), discordUserID: '', triggerMetrics: ['rankedScore', 'rankTier'], contextMetrics: [] }
+    { id: 'p0', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'jonwatso#5331', displayName: 'jonwatso', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S11', rankName: 'Gold 1', score: 28160, baselineRecordedAt: '2026-09-29T09:03:10Z', discordUserID: '412378964087275541' },
+    { id: 'p1', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'sam#1234', displayName: 'sam', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Gold 2', score: 18420, baselineRecordedAt: minutesAgo(2000), discordUserID: '280129381292318720' },
+    { id: 'p2', game: 'theFinals', gameDisplayName: 'THE FINALS', provider: 'finalsID', providerDisplayName: 'Finals ID', playerID: 'alex#9876', displayName: 'alex', destinationChannelID: 't100', destinationChannelName: 'general', isEnabled: true, supportsRankedScore: true, season: 'S6', rankName: 'Silver 1', score: 11203, baselineRecordedAt: minutesAgo(2000), discordUserID: '' }
   ],
   history: [
     { id: 'h1', timestamp: minutesAgo(300), kind: 'announcement', title: 'Rank update posted', detail: 'sam climbed to Gold 2 (+420)' },
@@ -572,7 +653,7 @@ const gametracker = {
       id: 'finalsID', displayName: 'finals.id', supportedGames: ['theFinals'], isConfigured: true,
       credentialLabel: 'API Token', hasCredential: true, credentialHint: 'a4f2', credentialUpdatedAt: new Date(Date.now() - 3 * 86400000).toISOString(), issue: null,
       metrics: [
-        ['rankedScore', 'Ranked Score', true], ['rankTier', 'Rank', true], ['kills', 'Kills', false], ['deaths', 'Deaths', false],
+        ['rankedScore', 'Ranked Score', true], ['rankTier', 'Rank', true], ['leaderboardPosition', 'Leaderboard', true], ['kills', 'Kills', false], ['deaths', 'Deaths', false],
         ['assists', 'Assists', false], ['killDeathRatio', 'K/D', true], ['damage', 'Damage', false],
         ['matchesPlayed', 'Matches', false], ['wins', 'Wins', false], ['winRate', 'Win Rate', true]
       ].map(([id, displayName, canTrigger]) => ({ id, displayName, canTrigger }))
@@ -634,6 +715,8 @@ const activity = (() => {
 })();
 
 module.exports = {
+  updates,
+  botPermissions,
   activity,
   announcer, me, overview, status, analytics, rewind, authOptions,
   access: {
@@ -647,5 +730,5 @@ module.exports = {
     ],
     localFallbackEnabled: true
   },
-  config, commands, automations, automationRules, welcomeFlow, patchy, aibots, wikibridge, sweep, gametracker, media, mediaExports
+  config, commands, automations, automationRules, welcomeFlow, patchy, aibots, wikibridge, sweep, gametracker, gametrackerStylePreviews, media, mediaExports
 };

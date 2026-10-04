@@ -167,6 +167,7 @@ actor VoiceAnnouncementService {
     private var onQueueChange: (@Sendable ([Announcement]) async -> Void)?
     private var onRecentChange: (@Sendable ([Announcement]) async -> Void)?
     private var onHealthChange: (@Sendable (VoiceAnnouncerHealth) async -> Void)?
+    private let onDidSpeak: (@Sendable (Int) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
 
     init(
@@ -174,8 +175,10 @@ actor VoiceAnnouncementService {
         daveNotReadyRetryDelay: Duration = .seconds(1),
         speechRenderTimeout: Duration = .seconds(30),
         speechPlaybackTimeout: Duration = .seconds(45),
-        renderOverride: RenderOverride? = nil
+        renderOverride: RenderOverride? = nil,
+        onDidSpeak: (@Sendable (Int) async -> Void)? = nil
     ) throws {
+        self.onDidSpeak = onDidSpeak
         self.playback = playback
         self.ttsSource = try VoiceTTSSource()
         self.daveNotReadyRetryDelay = daveNotReadyRetryDelay
@@ -470,6 +473,7 @@ actor VoiceAnnouncementService {
                 await onDebug?("Sending speech audio to Discord.")
                 recoveryGenerationAtPlaybackStart = recoveryGeneration
                 try await speakWithTimeout(current.audio, timeout: playbackDeadline)
+                await onDidSpeak?(current.batch.count)
                 await onDebug?("Finished Discord speech (\(current.speechText.count) chars, \(current.batch.count) message\(current.batch.count == 1 ? "" : "s")).")
                 for item in current.batch {
                     retryCounts[item.id] = nil

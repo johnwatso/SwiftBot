@@ -137,11 +137,6 @@ struct DiscordChannelCoverage: Hashable {
 // MARK: - View
 
 struct BotPermissionsCheckView: View {
-    /// These checks hit the same bot-token buckets as the rest of the app — the
-    /// per-guild channel fan-out especially — so they share the app's limiter
-    /// rather than racing it.
-    private static let transport = DiscordRESTTransport(session: .shared, limiter: .shared)
-
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var app: AppModel
     let token: String
@@ -500,7 +495,7 @@ struct BotPermissionsCheckView: View {
         defer { isForceRejoining = false }
 
         do {
-            try await leaveGuild(token: trimmed, guildID: guild.id)
+            try await BotPermissionsProbe.leaveGuild(token: trimmed, guildID: guild.id)
             // Drop the guild from the local list so the UI reflects reality
             // while the user completes the OAuth flow in the browser.
             guilds.removeAll { $0.id == guild.id }
@@ -511,48 +506,8 @@ struct BotPermissionsCheckView: View {
         }
     }
 
-    private func leaveGuild(token: String, guildID: String) async throws {
-        guard let url = URL(string: "https://discord.com/api/v10/users/@me/guilds/\(guildID)") else {
-            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "Invalid guild ID."
-            ])
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "DELETE"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await Self.transport.perform(req)
-        guard let http = response as? HTTPURLResponse else {
-            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "No response from Discord."
-            ])
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for leave-guild. \(body)"
-            ])
-        }
-    }
-
     private func openReinviteURL(for guild: DiscordGuildPermissions) {
-        guard let botID, !botID.isEmpty else { return }
-        var components = URLComponents(string: "https://discord.com/oauth2/authorize")
-
-        // Plain bot-install URL — single screen, user closes the tab when done.
-        // We deliberately skip response_type=code / redirect_uri: mixing them
-        // with the bot-install flow makes Discord show a second "Add a bot to
-        // a server" picker (sometimes losing the guild_id pre-selection), and
-        // the redirect ties the install to a working WebUI which isn't always
-        // configured. The install itself doesn't need a callback — feedback
-        // comes from the Re-check button in this dialog.
-        components?.queryItems = [
-            URLQueryItem(name: "client_id", value: botID),
-            URLQueryItem(name: "scope", value: "bot applications.commands"),
-            URLQueryItem(name: "permissions", value: String(DiscordPermissionCatalog.desiredBitfield)),
-            URLQueryItem(name: "guild_id", value: guild.id),
-            URLQueryItem(name: "disable_guild_select", value: "true")
-        ]
-        guard let url = components?.url else { return }
+        guard let botID, let url = BotPermissionsProbe.reinviteURL(botID: botID, guildID: guild.id) else { return }
         NSWorkspace.shared.open(url)
     }
 
@@ -576,12 +531,12 @@ struct BotPermissionsCheckView: View {
 
         do {
             // Identity
-            if let (id, username) = try await fetchIdentity(token: trimmed) {
+            if let (id, username) = try await BotPermissionsProbe.identity(token: trimmed) {
                 botID = id
                 botUsername = username
             }
             // Guilds
-            let fetched = try await fetchGuilds(token: trimmed)
+            let fetched = try await BotPermissionsProbe.guilds(token: trimmed)
             self.guilds = fetched.sorted { lhs, rhs in
                 let lhsScore = lhs.missingEssential.count * 100 + lhs.missingRecommended.count
                 let rhsScore = rhs.missingEssential.count * 100 + rhs.missingRecommended.count
@@ -593,7 +548,7 @@ struct BotPermissionsCheckView: View {
             for guild in self.guilds {
                 let gid = guild.id
                 Task { @MainActor in
-                    if let cov = try? await fetchChannelCoverage(token: trimmed, guildID: gid) {
+                    if let cov = try? await BotPermissionsProbe.channelCoverage(token: trimmed, guildID: gid) {
                         channelCoverage[gid] = cov
                     }
                     coverageLoading.remove(gid)
@@ -607,62 +562,6 @@ struct BotPermissionsCheckView: View {
             }
         }
         isLoading = false
-    }
-
-    private func fetchIdentity(token: String) async throws -> (id: String, username: String)? {
-        var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me")!)
-        req.httpMethod = "GET"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await Self.transport.perform(req)
-        guard let http = response as? HTTPURLResponse else { return nil }
-        guard (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for /users/@me."
-            ])
-        }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        let username = json["username"] as? String ?? "Unknown"
-        let id = json["id"] as? String ?? ""
-        return (id, username)
-    }
-
-    private func fetchGuilds(token: String) async throws -> [DiscordGuildPermissions] {
-        var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me/guilds")!)
-        req.httpMethod = "GET"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await Self.transport.perform(req)
-        guard let http = response as? HTTPURLResponse else { return [] }
-        guard (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for /users/@me/guilds."
-            ])
-        }
-        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
-        return arr.compactMap { dict -> DiscordGuildPermissions? in
-            guard let id = dict["id"] as? String,
-                  let name = dict["name"] as? String else { return nil }
-            let permString = dict["permissions"] as? String ?? "0"
-            let perms = UInt64(permString) ?? 0
-            let isOwner = dict["owner"] as? Bool ?? false
-            return DiscordGuildPermissions(id: id, name: name, permissionsRaw: perms, isOwner: isOwner)
-        }
-    }
-
-    private func fetchChannelCoverage(token: String, guildID: String) async throws -> DiscordChannelCoverage {
-        guard let url = URL(string: "https://discord.com/api/v10/guilds/\(guildID)/channels") else {
-            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await Self.transport.perform(req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])
-        }
-        // Types 0 (text) and 5 (announcement) are message-bearing channels
-        let count = arr.filter { ($0["type"] as? Int).map { $0 == 0 || $0 == 5 } ?? false }.count
-        return DiscordChannelCoverage(visibleTextChannels: count)
     }
 
     // MARK: Channel Access Row
@@ -724,16 +623,117 @@ struct BotPermissionsCheckView: View {
     }
 
     private func openAdminReinviteURL(for guild: DiscordGuildPermissions) {
-        guard let botID, !botID.isEmpty else { return }
+        guard let botID, let url = BotPermissionsProbe.reinviteURL(botID: botID, guildID: guild.id, permissions: DiscordPermissionCatalog.administrator) else { return }
+        NSWorkspace.shared.open(url)
+    }
+}
+
+// MARK: - Discord reads
+
+/// The Discord REST calls behind the permissions check, shared by the native
+/// sheet and the Web UI.
+enum BotPermissionsProbe {
+    /// These checks hit the same bot-token buckets as the rest of the app — the
+    /// per-guild channel fan-out especially — so they share the app's limiter
+    /// rather than racing it.
+    private static let transport = DiscordRESTTransport(session: .shared, limiter: .shared)
+
+    static func identity(token: String) async throws -> (id: String, username: String)? {
+        var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me")!)
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse else { return nil }
+        guard (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for /users/@me."
+            ])
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let username = json["username"] as? String ?? "Unknown"
+        let id = json["id"] as? String ?? ""
+        return (id, username)
+    }
+
+    static func guilds(token: String) async throws -> [DiscordGuildPermissions] {
+        var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me/guilds")!)
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse else { return [] }
+        guard (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for /users/@me/guilds."
+            ])
+        }
+        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return arr.compactMap { dict -> DiscordGuildPermissions? in
+            guard let id = dict["id"] as? String,
+                  let name = dict["name"] as? String else { return nil }
+            let permString = dict["permissions"] as? String ?? "0"
+            let perms = UInt64(permString) ?? 0
+            let isOwner = dict["owner"] as? Bool ?? false
+            return DiscordGuildPermissions(id: id, name: name, permissionsRaw: perms, isOwner: isOwner)
+        }
+    }
+
+    static func channelCoverage(token: String, guildID: String) async throws -> DiscordChannelCoverage {
+        guard let url = URL(string: "https://discord.com/api/v10/guilds/\(guildID)/channels") else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])
+        }
+        // Types 0 (text) and 5 (announcement) are message-bearing channels
+        let count = arr.filter { ($0["type"] as? Int).map { $0 == 0 || $0 == 5 } ?? false }.count
+        return DiscordChannelCoverage(visibleTextChannels: count)
+    }
+
+    static func leaveGuild(token: String, guildID: String) async throws {
+        guard let url = URL(string: "https://discord.com/api/v10/users/@me/guilds/\(guildID)") else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Invalid guild ID."
+            ])
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "No response from Discord."
+            ])
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for leave-guild. \(body)"
+            ])
+        }
+    }
+
+    /// Plain bot-install URL — single screen, user closes the tab when done.
+    /// We deliberately skip response_type=code / redirect_uri: mixing them
+    /// with the bot-install flow makes Discord show a second "Add a bot to
+    /// a server" picker (sometimes losing the guild_id pre-selection), and
+    /// the redirect ties the install to a working WebUI which isn't always
+    /// configured. The install itself doesn't need a callback — feedback
+    /// comes from re-running the check.
+    static func reinviteURL(botID: String, guildID: String, permissions: UInt64 = DiscordPermissionCatalog.desiredBitfield) -> URL? {
+        guard !botID.isEmpty else { return nil }
         var components = URLComponents(string: "https://discord.com/oauth2/authorize")
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: botID),
             URLQueryItem(name: "scope", value: "bot applications.commands"),
-            URLQueryItem(name: "permissions", value: "8"),
-            URLQueryItem(name: "guild_id", value: guild.id),
+            URLQueryItem(name: "permissions", value: String(permissions)),
+            URLQueryItem(name: "guild_id", value: guildID),
             URLQueryItem(name: "disable_guild_select", value: "true")
         ]
-        guard let url = components?.url else { return }
-        NSWorkspace.shared.open(url)
+        return components?.url
     }
 }

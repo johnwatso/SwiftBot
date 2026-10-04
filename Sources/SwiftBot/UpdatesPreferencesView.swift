@@ -42,6 +42,15 @@ struct UpdatesPreferencesView: View {
                     .disabled(!updater.canCheckForUpdates)
                 }
 
+                if updater.isReadyToInstall {
+                    LabeledContent("Version \(updater.availableVersion ?? "") is downloaded") {
+                        Button("Install and Relaunch") {
+                            updater.installPendingUpdate()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("If automatic updates fail, you can download the latest version manually from:")
                         .font(.caption)

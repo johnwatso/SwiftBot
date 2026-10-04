@@ -51,6 +51,28 @@ final class CommunityStatsStoreTests: XCTestCase {
         XCTAssertEqual(summary.leavesPerBucket[buckets.count - 2], 1)
     }
 
+    func testFeatureUsageFiltersDatesAndSurvivesReload() async {
+        let store = CommunityStatsStore(url: url)
+        let now = Date()
+        let older = Calendar.current.date(byAdding: .day, value: -10, to: now)!
+        await store.recordFeatureUse("announcer", count: 4, at: now)
+        await store.recordFeatureUse("announcer", count: 2, at: now)
+        await store.recordFeatureUse("patchy", count: 1, at: older)
+        await store.recordFeatureUse("sweep", count: 0, at: now)
+        await store.recordFeatureUse("sweep", count: -1, at: now)
+        await store.flush()
+        let reloaded = CommunityStatsStore(url: url)
+        let summary = await reloaded.summary(buckets: AnalyticsPeriod.week.buckets(now: now), in: AnalyticsPeriod.week.window(now: now))
+        XCTAssertEqual(summary.featureUses, ["announcer": 6])
+    }
+
+    func testLegacyDayWithoutFeatureUsageStillDecodes() throws {
+        let data = Data(#"{"commands":{"/rank":2},"users":{},"channels":{},"commandCount":2,"failedCommands":0,"joins":1,"leaves":0}"#.utf8)
+        let day = try JSONDecoder().decode(CommunityDayStats.self, from: data)
+        XCTAssertEqual(day.commandCount, 2)
+        XCTAssertNil(day.featureUses)
+    }
+
     func testBackfillOnlyHappensOnce() async {
         let store = CommunityStatsStore(url: url)
         let log = [command("/rank"), command("/roll")]

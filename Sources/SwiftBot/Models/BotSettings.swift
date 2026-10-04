@@ -644,8 +644,13 @@ struct SwiftMinerDMNotificationPreferences: Codable, Hashable, Sendable {
 struct SwiftMinerSettings: Codable, Hashable {
     var enabled: Bool = false
     var baseURL: String = "http://127.0.0.1:8080"
+    /// Kept in the macOS Keychain by `ConfigStore`; blank in settings.json.
     var apiKey: String = ""
+    /// Kept in the macOS Keychain by `ConfigStore`; blank in settings.json.
     var webhookSecret: String = ""
+    /// When the pairing credentials last changed. Not secret, so it travels in
+    /// settings.json and tells a SwiftMesh Standby to pull them again.
+    var credentialsUpdatedAt: Date?
     var webhookHint: String = ""
     var artworkURL: String = ""
     var cachedArtworkFileName: String = ""
@@ -682,6 +687,7 @@ struct SwiftMinerSettings: Codable, Hashable {
         }
         apiKey = pairingBundle.apiKey
         webhookSecret = pairingBundle.hmacSecret
+        credentialsUpdatedAt = Date()
         webhookHint = pairingBundle.webhookHint
         artworkURL = pairingBundle.artworkURL
     }

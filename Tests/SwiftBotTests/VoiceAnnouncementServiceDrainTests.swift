@@ -104,13 +104,20 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         }
     }
 
+    private actor SpokenCounter {
+        var total = 0
+        func record(_ count: Int) { total += count }
+    }
+
     private func makeAnnouncer(
-        playback: FakeAnnouncementPlayback
+        playback: FakeAnnouncementPlayback,
+        onDidSpeak: (@Sendable (Int) async -> Void)? = nil
     ) throws -> VoiceAnnouncementService {
         try VoiceAnnouncementService(
             playback: playback,
             daveNotReadyRetryDelay: .milliseconds(5),
-            renderOverride: { _, _ in makeRenderedBuffer() }
+            renderOverride: { _, _ in makeRenderedBuffer() },
+            onDidSpeak: onDidSpeak
         )
     }
 
@@ -140,7 +147,8 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
 
     func testShortMessagesCoalesceIntoOneUtterance() async throws {
         let playback = FakeAnnouncementPlayback()
-        let announcer = try makeAnnouncer(playback: playback)
+        let counter = SpokenCounter()
+        let announcer = try makeAnnouncer(playback: playback, onDidSpeak: { await counter.record($0) })
 
         // Queue everything before the drain starts. An idle queue now drains
         // immediately (that is what removes ~450 ms from the first read), so
@@ -154,6 +162,8 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
 
         await waitUntil { await announcer.recentHistory.count == 3 }
 
+        let spoken = await counter.total
+        XCTAssertEqual(spoken, 3, "Usage counts messages, including coalesced speech")
         let speaks = await playback.speakCount
         XCTAssertEqual(speaks, 1, "short messages queued together must batch into one utterance")
     }
@@ -190,7 +200,8 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
     func testProlongedDaveNotReadyPausesAndKeepsQueue() async throws {
         let playback = FakeAnnouncementPlayback()
         await playback.setError(VoicePipelineError.daveNotReady)
-        let announcer = try makeAnnouncer(playback: playback)
+        let counter = SpokenCounter()
+        let announcer = try makeAnnouncer(playback: playback, onDidSpeak: { await counter.record($0) })
 
         await announcer.enqueue("read me later")
 
@@ -204,6 +215,8 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         XCTAssertEqual(pending.map(\.text), ["read me later"])
         let recent = await announcer.recentHistory
         XCTAssertTrue(recent.isEmpty)
+        let beforeRecovery = await counter.total
+        XCTAssertEqual(beforeRecovery, 0, "Failed playback must not count as usage")
 
         // Media becomes ready again: the resume hook must speak the kept batch.
         await playback.setError(nil)
@@ -211,6 +224,8 @@ final class VoiceAnnouncementServiceDrainTests: XCTestCase {
         await waitUntil { await announcer.recentHistory.count == 1 }
         let pendingAfter = await announcer.pending
         XCTAssertTrue(pendingAfter.isEmpty)
+        let afterRecovery = await counter.total
+        XCTAssertEqual(afterRecovery, 1, "Only successful playback counts")
     }
 
     func testOwnerResumeClearsRecoveryRetryStreakBeforeNextRead() async throws {

@@ -667,6 +667,24 @@ actor RewindStore {
         return ids
     }
 
+    /// Regular chat participation for unsolicited Replay DMs. Daily aggregates
+    /// work even when message text is disabled or has expired. Count today and
+    /// the preceding 29 calendar days, independently of the recap's period.
+    func replayDMActiveUserIDs(guildID: String, now: Date = Date()) -> Set<String> {
+        flush()
+        let today = calendar.startOfDay(for: now)
+        guard let start = calendar.date(byAdding: .day, value: -29, to: today) else { return [] }
+        var messages: [String: Int] = [:]
+        var activeDays: [String: Int] = [:]
+        for aggregate in aggregates(guildID: guildID, from: start, to: now).values {
+            for (userID, count) in aggregate.messagesByUser where count > 0 {
+                messages[userID, default: 0] += count
+                activeDays[userID, default: 0] += 1
+            }
+        }
+        return Set(messages.keys.filter { messages[$0, default: 0] >= 10 && activeDays[$0, default: 0] >= 3 })
+    }
+
     /// One member's messages over a range, with where they rank.
     func userRangeSummary(guildID: String, userID: String, start: Date, end: Date, excludingUsers excluded: Set<String>) -> RewindUserRangeSummary {
         let days = aggregates(guildID: guildID, from: start, to: end)

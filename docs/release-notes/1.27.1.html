@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.27.1 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.27.1</h1>
+    <p class="meta">Version 1.27.1 · Build 2026100414</p>
+    <p>A clearer web overview, easier passkey management, and improvements to Game Tracker, Sweep, and Rewind.</p>
+    <h2>Web admin</h2>
+    <ul>
+      <li>The Overview refreshes automatically and uses plain-language bot status, grouped voice sessions, and one filterable activity feed.</li>
+      <li>This week highlights active features, meaningful changes, and issues. Zero-value stats stay hidden, and busier features can take their place.</li>
+      <li>Manage passkeys in a compact Preferences dialog. A quieter Use a passkey link keeps Discord as the main sign-in action.</li>
+      <li>Added web controls for bot start, stop, restart, permissions checks, software updates, and Announcer testing and reconnection.</li>
+      <li>Welcome Flow and Sweep gain test controls. Patchy test sends report their result directly.</li>
+    </ul>
+    <h2>Game Tracker and Sweep</h2>
+    <ul>
+      <li>Customise Game Tracker announcement style, shared stats, and text, with a preview of the Discord post.</li>
+      <li>Game Tracker supports leaderboard position and records finished play sessions for analytics.</li>
+      <li>Sweep suggestions focus on substantial cleanup, show one recommendation per channel, and remember dismissed suggestions for 30 days.</li>
+      <li>Sweep previews group actions by reason, with counts and examples.</li>
+    </ul>
+    <h2>Rewind, security, and reliability</h2>
+    <ul>
+      <li>Rewind recap DMs can target active members. The new default requires recent conversation activity as well as participation in the recap period.</li>
+      <li>Optional admin passkeys are linked to Discord access and stored securely for this Mac and web address.</li>
+      <li>SwiftMiner pairing credentials move to the macOS Keychain; protected SwiftMesh credential sharing helps a backup Mac take over.</li>
+      <li>Patchy diagnostics appear in the main Activity log.</li>
+      <li>Automatic updates can finish installation and relaunch through the web controls.</li>
+    </ul>
+    <p>New weekly feature counters begin collecting after this update.</p>
+  </main>
+</body>
+</html>

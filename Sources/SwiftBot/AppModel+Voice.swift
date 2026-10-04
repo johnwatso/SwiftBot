@@ -38,7 +38,10 @@ extension AppModel {
             return existing
         }
         do {
-            let announcer = try VoiceAnnouncementService(playback: voicePlaybackService)
+            let stats = communityStatsStore
+            let announcer = try VoiceAnnouncementService(playback: voicePlaybackService, onDidSpeak: { count in
+                await stats.recordFeatureUse("announcer", count: count)
+            })
             voiceAnnouncementServiceStorage = announcer
             applyPreferredVoiceFromSettings(to: announcer)
             Task { [weak self] in

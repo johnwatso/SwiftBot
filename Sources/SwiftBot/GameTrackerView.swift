@@ -679,27 +679,10 @@ private struct GameTrackedPlayerEditor: View {
                     TextField("Provider Player ID", text: $player.playerID)
                 }
 
-                Section("Tracked Stats") {
-                    if availableMetrics.isEmpty {
-                        Text("This provider does not publish any trackable statistics yet.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        MetricChipGrid(
-                            title: "Announce when these change",
-                            metrics: availableMetrics.filter(\.canTriggerAnnouncement),
-                            selection: $player.triggerMetrics
-                        )
-                        Text("Counters such as kills only ever climb, so they cannot trigger an announcement \u{2014} they would post after every match. Pick them as context instead.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        MetricChipGrid(
-                            title: "Also show for context",
-                            metrics: availableMetrics,
-                            selection: $player.contextMetrics
-                        )
-                    }
+                Section("Stats") {
+                    Text("Every stat the provider reports is recorded. Choose what gets posted to Discord under Game Tracker \u{203A} Discord post style in the WebUI.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Play Sessions") {
@@ -761,58 +744,9 @@ private struct GameTrackedPlayerEditor: View {
         GameProviderID.allCases.filter { $0.supportedGames.contains(player.game) }
     }
 
-    /// Only what the selected provider can actually report.
-    private var availableMetrics: [GameMetricID] {
-        let supported = GameProviderCatalog.descriptor(for: player.provider)?.supportedMetrics ?? []
-        return GameMetricID.allCases.filter { supported.contains($0) }
-    }
-
     private var isValid: Bool {
         !player.playerID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !player.destinationChannelID.isEmpty
             && player.provider.supportedGames.contains(player.game)
-    }
-}
-
-/// Multi-select chips for picking metrics. Kept generic so it serves both the
-/// trigger and context pickers without duplicating layout.
-private struct MetricChipGrid: View {
-    let title: String
-    let metrics: [GameMetricID]
-    @Binding var selection: Set<GameMetricID>
-
-    private let columns = [GridItem(.adaptive(minimum: 110), spacing: 6)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
-                ForEach(metrics) { metric in
-                    let isOn = selection.contains(metric)
-                    Button {
-                        if isOn { selection.remove(metric) } else { selection.insert(metric) }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                                .font(.caption2)
-                            Text(metric.displayName)
-                                .font(.caption)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            Capsule().fill(isOn ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
-                        )
-                        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
     }
 }

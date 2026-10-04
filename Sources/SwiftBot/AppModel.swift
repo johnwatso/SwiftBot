@@ -102,6 +102,9 @@ final class AppModel: ObservableObject {
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
     @Published var connectedServers: [String: String] = [:]
+    /// Owned by SwiftBotApp; held here so the Web UI can report and drive
+    /// software updates.
+    weak var appUpdater: AppUpdater?
     @Published var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
     @Published var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
     @Published var availableRolesByServer: [String: [GuildRole]] = [:]
@@ -153,7 +156,6 @@ final class AppModel: ObservableObject {
     /// "Private Cloud Compute" or "On-device · <variant>"; nil when offline.
     @Published var appleIntelligenceModelName: String?
     @Published var recentMediaCount24h = 0
-    @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
     var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
@@ -173,9 +175,9 @@ final class AppModel: ObservableObject {
     /// "Connection Failed" state in Settings › Integrations, so an unconfigured
     /// provider is never mistaken for a broken one.
     @Published var gameProviderConnectionFailures: [GameProviderID: String] = [:]
-    /// Standby: the `credentialUpdatedAt` values last pulled from the Primary,
-    /// so credentials are fetched once per change rather than on every sync.
-    var pulledGameProviderCredentialRevisions: [GameProviderID: Date]?
+    /// Standby: the credential change dates last pulled from the Primary, so
+    /// credentials are fetched once per change rather than on every sync.
+    var pulledCredentialRevisions: [String: Date]?
     // MARK: - P0.4 Diagnostics state
 
     @Published var connectionDiagnostics = ConnectionDiagnostics()
@@ -640,6 +642,8 @@ final class AppModel: ObservableObject {
             // Emit a moderation audit only when a non-dry-run deleted something —
             // dry-runs and idle scans are noise.
             if !report.dryRun && report.executed > 0 && report.error == nil {
+                let stats = self.communityStatsStore
+                Task { await stats.recordFeatureUse("sweep", count: report.executed) }
                 self.recordAudit(
                     source: .moderation,
                     actor: "Sweep · \(report.policyName)",
@@ -872,14 +876,18 @@ final class AppModel: ObservableObject {
                     await self?.saveMeshCursors(cursors)
                 }
             }
-            // Primary-side: serve Game Tracker credentials the same way, since
-            // settings.json reaches the Standby with them stripped.
-            await cluster.setGameProviderCredentialsProvider { [weak self] in
-                guard let self else { return [:] }
+            // Primary-side: serve Keychain-held credentials the same way,
+            // since settings.json reaches the Standby with them blanked.
+            await cluster.setCredentialsProvider { [weak self] in
+                guard let self else { return MeshCredentialsResponse() }
                 return await MainActor.run {
-                    Dictionary(uniqueKeysWithValues: GameProviderID.allCases.map {
-                        ($0.rawValue, self.settings.gameProviders.token(for: $0))
-                    })
+                    MeshCredentialsResponse(
+                        gameProviderTokens: Dictionary(uniqueKeysWithValues: GameProviderID.allCases.map {
+                            ($0.rawValue, self.settings.gameProviders.token(for: $0))
+                        }),
+                        swiftMinerAPIKey: self.settings.swiftMiner.apiKey,
+                        swiftMinerWebhookSecret: self.settings.swiftMiner.webhookSecret
+                    )
                 }
             }
             // Primary-side: serve the Discord token to mesh-authenticated

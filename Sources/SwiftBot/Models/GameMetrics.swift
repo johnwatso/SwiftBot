@@ -6,6 +6,8 @@ import Foundation
 enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendable {
     case rankedScore
     case rankTier
+    /// Position on the provider's global leaderboard. Lower is better.
+    case leaderboardPosition
     case kills
     case deaths
     case assists
@@ -27,6 +29,7 @@ enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendab
         switch self {
         case .rankedScore: return "Ranked Score"
         case .rankTier: return "Rank"
+        case .leaderboardPosition: return "Leaderboard"
         case .kills: return "Kills"
         case .deaths: return "Deaths"
         case .assists: return "Assists"
@@ -58,7 +61,7 @@ enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendab
 
     var kind: Kind {
         switch self {
-        case .rankedScore, .rankTier: return .rating
+        case .rankedScore, .rankTier, .leaderboardPosition: return .rating
         case .killDeathRatio, .killsPerMinute, .winRate, .accuracy, .headshotRate: return .ratio
         case .kills, .deaths, .assists, .wins, .losses, .matchesPlayed, .timePlayed, .damage, .score:
             return .counter
@@ -70,6 +73,8 @@ enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendab
         case decimal(places: Int)
         case percent
         case duration
+        /// A leaderboard place, e.g. "#56,866".
+        case position
     }
 
     var format: Format {
@@ -77,6 +82,7 @@ enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendab
         case .killDeathRatio, .killsPerMinute: return .decimal(places: 2)
         case .winRate, .accuracy, .headshotRate: return .percent
         case .timePlayed: return .duration
+        case .leaderboardPosition: return .position
         case .rankTier: return .integer
         default: return .integer
         }
@@ -103,7 +109,15 @@ enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendab
             let hours = totalMinutes / 60
             let minutes = totalMinutes % 60
             return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+        case .position:
+            return "#\(Int(value.rounded()).formatted())"
         }
+    }
+
+    /// True when a falling number is the good direction — climbing the
+    /// leaderboard means a smaller position.
+    var lowerIsBetter: Bool {
+        self == .leaderboardPosition || self == .deaths || self == .losses
     }
 
     /// Signed delta text, e.g. "+320" or "-0.04".
@@ -120,6 +134,10 @@ enum GameMetricID: String, Codable, CaseIterable, Hashable, Identifiable, Sendab
             return sign + String(format: "%.1f pts", percent)
         case .duration:
             return sign + formatted(magnitude)
+        case .position:
+            // Climbing is a smaller number; say "up 1,204" not "-1,204".
+            guard delta != 0 else { return "±0" }
+            return (delta < 0 ? "▲ " : "▼ ") + Int(magnitude.rounded()).formatted()
         }
     }
 }

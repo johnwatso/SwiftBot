@@ -150,6 +150,7 @@ extension AppModel {
                     game: target.game.displayName,
                     score: snapshot.score,
                     rankName: snapshot.rankName,
+                    metrics: snapshot.metrics,
                     at: checkedAt
                 )
                 gameProviderConnectionFailures[target.provider] = nil
@@ -162,7 +163,8 @@ extension AppModel {
                 let evaluation = GameRankEvaluator.evaluate(
                     target: target,
                     current: snapshot,
-                    previous: runtimeState.baselinesByTargetID[key]
+                    previous: runtimeState.baselinesByTargetID[key],
+                    announceOn: settings.gameTracking.announcementStyle.effectiveAnnounceOn
                 )
                 switch evaluation {
                 case .establishBaseline:
@@ -200,24 +202,37 @@ extension AppModel {
                 provider: entry.change.provider
             )
         }
+        let style = settings.gameTracking.announcementStyle
         for (key, entries) in groups {
-            let embed = GameTrackingNotificationBuilder.embed(
+            // Card layout can need several messages (10 embeds each); only the
+            // players in a delivered message advance their baseline.
+            let messages = GameAnnouncementRenderer.rankUpdateMessages(
                 changes: entries.map(\.change),
-                checkedAt: checkedAt
+                checkedAt: checkedAt,
+                style: style
             )
-            let sent = await sendPayload(
-                channelId: key.channelID,
-                payload: ["embeds": [embed]],
-                action: "gameTrackerRankUpdate"
-            )
-            if sent {
+            var delivered: Set<UUID> = []
+            for message in messages {
+                let ok = await sendPayload(
+                    channelId: key.channelID,
+                    payload: message.payload,
+                    action: "gameTrackerRankUpdate"
+                )
+                if ok { delivered.formUnion(message.targetIDs) }
+            }
+            let sentEntries = entries.filter { delivered.contains($0.change.targetID) }
+            if !sentEntries.isEmpty {
                 sentAnnouncements += 1
-                for entry in entries {
+                for entry in sentEntries {
                     runtimeState.baselinesByTargetID[entry.change.targetID.uuidString] = entry.baseline
                 }
-                let summary = entries.map {
-                    let sign = $0.change.delta > 0 ? "+" : ""
-                    return "\($0.change.displayName) \(sign)\($0.change.delta)"
+                let summary = sentEntries.map { entry -> String in
+                    let change = entry.change
+                    if change.tierMovement != 0, let tier = change.currentTier {
+                        return "\(change.displayName) → \(tier.name)"
+                    }
+                    let sign = change.delta > 0 ? "+" : ""
+                    return "\(change.displayName) \(sign)\(change.delta)"
                 }.joined(separator: ", ")
                 runtimeState.record(GameTrackingHistoryEntry(
                     timestamp: checkedAt,
@@ -226,7 +241,8 @@ extension AppModel {
                     detail: "\(key.game.displayName) · \(summary)"
                 ))
                 logs.append("[OK] Game Tracker ranked update sent: \(summary).")
-            } else {
+            }
+            if sentEntries.count < entries.count {
                 failures.append(
                     "Discord delivery failed for \(key.game.displayName); previous baselines were retained for retry."
                 )

@@ -102,6 +102,8 @@ struct RewindRecapDrop: Codable, Hashable, Sendable {
     var lastYearlyKey: String?
     /// Also DM each active member their own Replay on the same schedule.
     var personalDMs: Bool = false
+    /// Limit unsolicited DMs to members who regularly chat in this server.
+    var onlyDMActiveMembers: Bool = true
     var lastPersonalMonthlyKey: String?
     var lastPersonalYearlyKey: String?
 
@@ -115,13 +117,14 @@ struct RewindRecapDrop: Codable, Hashable, Sendable {
         lastMonthlyKey = try c.decodeIfPresent(String.self, forKey: .lastMonthlyKey)
         lastYearlyKey = try c.decodeIfPresent(String.self, forKey: .lastYearlyKey)
         personalDMs = try c.decodeIfPresent(Bool.self, forKey: .personalDMs) ?? false
+        onlyDMActiveMembers = try c.decodeIfPresent(Bool.self, forKey: .onlyDMActiveMembers) ?? true
         lastPersonalMonthlyKey = try c.decodeIfPresent(String.self, forKey: .lastPersonalMonthlyKey)
         lastPersonalYearlyKey = try c.decodeIfPresent(String.self, forKey: .lastPersonalYearlyKey)
     }
 
     private enum CodingKeys: String, CodingKey {
         case channelID, monthly, yearly, lastMonthlyKey, lastYearlyKey
-        case personalDMs, lastPersonalMonthlyKey, lastPersonalYearlyKey
+        case personalDMs, onlyDMActiveMembers, lastPersonalMonthlyKey, lastPersonalYearlyKey
     }
 
     /// Something is scheduled: a channel post or member DMs, monthly or yearly.

@@ -80,17 +80,39 @@ extension AppModel {
         let totals = await sessionTotals(for: session, player: player)
         let providerName = totals == nil ? nil : player.provider.displayName
 
-        let embed = GameSessionSummaryBuilder.embed(
-            session: session,
-            displayName: player.resolvedDisplayName,
-            game: player.game,
-            providerName: providerName,
-            totals: totals
+        // Kept whatever the post style shares.
+        let recorded = totals ?? GameSessionSummaryBuilder.Totals()
+        await communityStatsStore.recordSession(playerID: player.id.uuidString, CommunitySessionRecord(
+            startedAt: session.startedAt,
+            endedAt: session.endedAt ?? Date(),
+            game: player.game.displayName,
+            matches: recorded.matches,
+            rankedMatches: recorded.rankedMatches,
+            wins: recorded.wins,
+            kills: recorded.kills,
+            deaths: recorded.deaths,
+            damage: recorded.damage
+        ))
+
+        let baseline = gameTrackingBaselines[player.id]
+        let payload = GameAnnouncementRenderer.sessionMessage(
+            .init(
+                session: session,
+                displayName: player.resolvedDisplayName,
+                game: player.game,
+                providerName: providerName,
+                totals: totals,
+                rankName: baseline?.rankName,
+                score: baseline?.score,
+                rankIndex: baseline?.metrics[.rankTier].map { Int($0) },
+                discordUserID: player.discordUserID
+            ),
+            style: settings.gameTracking.announcementStyle
         )
 
         let sent = await sendPayload(
             channelId: player.destinationChannelID,
-            payload: ["embeds": [embed]],
+            payload: payload,
             action: "gameTrackerSessionSummary"
         )
         if sent {

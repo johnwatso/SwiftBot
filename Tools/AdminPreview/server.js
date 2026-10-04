@@ -16,6 +16,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const fixtures = require('./fixtures');
+const { execFile, execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '../../Sources/SwiftBot/Resources/admin');
 const PORT = Number(process.env.PORT || 4179);
@@ -30,6 +31,58 @@ const MIME = {
   '.json': 'application/json',
   '.woff2': 'font/woff2'
 };
+
+// ---- Live Game Tracker post preview ----------------------------------
+// Compiles the app's real GameAnnouncementRenderer (plus a tiny CLI in
+// GamePostRenderer/) with swiftc, so the style editor previews exactly what
+// the bot would post. Rebuilt when any of the Swift sources change; until it
+// is ready, or without swiftc, the pre-rendered fixtures stand in.
+const RENDERER_DIR = path.join(__dirname, 'GamePostRenderer');
+const RENDERER_BIN = path.join(__dirname, '.build', 'game-post-renderer');
+const APP_SOURCES = path.resolve(__dirname, '../../Sources/SwiftBot');
+const RENDERER_SOURCES = [
+  ...fs.readdirSync(RENDERER_DIR).filter((f) => f.endsWith('.swift')).map((f) => path.join(RENDERER_DIR, f)),
+  ...['Models/GameTrackingModels.swift', 'Models/GameMetrics.swift', 'Models/GameRankTiers.swift',
+    'Models/GameAnnouncementStyle.swift', 'Services/GameAnnouncementRenderer.swift',
+    'Services/GameSessionSummaryBuilder.swift', 'Models/FinalsIDModels.swift', 'Services/FinalsIDRuntime.swift']
+    .map((f) => path.join(APP_SOURCES, f))
+];
+let rendererReady = false;
+
+function buildGamePostRenderer() {
+  try {
+    const built = fs.statSync(RENDERER_BIN).mtimeMs;
+    if (RENDERER_SOURCES.every((f) => fs.statSync(f).mtimeMs < built)) { rendererReady = true; return; }
+  } catch {}
+  fs.mkdirSync(path.dirname(RENDERER_BIN), { recursive: true });
+  console.log('[gametracker] compiling the post renderer for live previews…');
+  execFile('swiftc', ['-O', '-o', RENDERER_BIN, ...RENDERER_SOURCES], (error, _out, stderr) => {
+    if (error) {
+      console.log('[gametracker] renderer build failed; previews use fixtures.\n' + String(stderr).split('\n').filter((l) => l.includes('error')).slice(0, 5).join('\n'));
+      return;
+    }
+    rendererReady = true;
+    console.log('[gametracker] live post previews ready');
+  });
+}
+buildGamePostRenderer();
+// Pick up edits to the renderer while the server runs.
+RENDERER_SOURCES.forEach((f) => fs.watchFile(f, { interval: 1500 }, () => { rendererReady = false; buildGamePostRenderer(); }));
+
+function renderGamePostPreview(style) {
+  if (rendererReady) {
+    const player = (gametracker.players || []).find((p) => p.isEnabled && p.score) || gametracker.players?.[0];
+    try {
+      return JSON.parse(execFileSync(RENDERER_BIN, [], {
+        input: JSON.stringify({ style, player: player && { displayName: player.displayName, score: player.score, rankName: player.rankName, season: player.season, discordUserID: player.discordUserID } }),
+        timeout: 3000
+      }).toString());
+    } catch (error) {
+      console.log('[gametracker] renderer failed:', error.message);
+    }
+  }
+  return fixtures.gametrackerStylePreviews[style?.layout] || fixtures.gametrackerStylePreviews.card;
+}
 
 // Mutable session copy so the editor's save/toggle/delete round-trip.
 let announcer = JSON.parse(JSON.stringify(fixtures.announcer));
@@ -125,6 +178,7 @@ function analyticsPeriodFixture(period) {
       { name: 'sam', game: 'THE FINALS', points: rankPoints(17600, [0, 300, 120, 400]) }
     ],
     clipsByGame: [['THE FINALS', 3], ['Helldivers 2', 2], ['Apex Legends', 2], ['Minecraft', 3]].map(([title, c]) => ({ title, count: c * scale })),
+    featureUses: { announcer: 72 * scale, patchy: 8 * scale, gametracker: 12 * scale, sweep: 140 * scale },
     messagesAvailable: true, rewindEnabled: true
   };
 }
@@ -267,6 +321,8 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/auth/options': return sendJSON(res, { ...fixtures.authOptions, botOnline: true });
       case '/api/overview': return sendJSON(res, fixtures.overview);
       case '/api/status': return sendJSON(res, fixtures.status);
+      case '/api/updates': return sendJSON(res, fixtures.updates);
+      case '/api/bot/permissions': return sendJSON(res, { ...fixtures.botPermissions, checkedAt: new Date().toISOString() });
       case '/api/analytics': return sendJSON(res, { ...fixtures.analytics, period: analyticsPeriodFixture(query.get('period')) });
       case '/api/rewind': return sendJSON(res, fixtures.rewind);
       case '/api/rewind/recaps': {
@@ -330,7 +386,9 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/operators': return sendJSON(res, operatorsFixture());
       case '/api/wikibridge': return sendJSON(res, wikibridge);
       case '/api/sweep': return sendJSON(res, sweep);
-      case '/api/gametracker': return sendJSON(res, gametracker);
+      case '/api/gametracker': {
+        return sendJSON(res, { ...gametracker, stylePreview: renderGamePostPreview(gametracker.announcementStyle || {}) });
+      }
       case '/api/media': {
         const game = query.get ? query.get('game') : query.game;
         const range = (query.get ? query.get('dateRange') : query.dateRange) || 'all';
@@ -357,6 +415,48 @@ async function handleAPI(req, res, pathname, query) {
 
   if (req.method === 'POST') {
     const body = await readBody(req);
+
+    // Host actions: bot lifecycle, tests, updates. Mutate the fixtures so the
+    // page's follow-up reads see the change.
+    if (pathname === '/api/bot/start' || pathname === '/api/bot/restart') {
+      fixtures.status.botStatus = 'connecting';
+      setTimeout(() => { fixtures.status.botStatus = 'running'; }, 3000);
+      console.log(`[bot] ${pathname}`);
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/bot/stop') {
+      fixtures.status.botStatus = 'stopped';
+      console.log('[bot] stopped');
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/updates/check') {
+      fixtures.updates.isChecking = true;
+      setTimeout(() => {
+        Object.assign(fixtures.updates, { isChecking: false, lastCheckedAt: new Date().toISOString(), availableVersion: '1.28.0', availableBuild: '2026100309', releaseNotesURL: 'https://example.com/release-notes/1.28.0.html', readyToInstall: fixtures.updates.unattended });
+      }, 2500);
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/updates/settings') {
+      if (body.automaticChecks !== undefined) fixtures.updates.automaticChecks = !!body.automaticChecks;
+      if (body.unattended !== undefined) {
+        if (body.unattended && !fixtures.updates.automaticChecks) return sendJSON(res, { error: 'failed', message: 'Turn on automatic checks first.' }, 409);
+        fixtures.updates.unattended = !!body.unattended;
+      }
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/updates/install') {
+      if (!fixtures.updates.readyToInstall) return sendJSON(res, { error: 'failed', message: 'No update is downloaded yet.' }, 409);
+      console.log('[updates] install requested');
+      return sendJSON(res, { ok: true });
+    }
+    if (['/api/announcer/test', '/api/announcer/reconnect', '/api/welcome-flow/test', '/api/welcome-flow/invites/refresh', '/api/sweep/draft/test-mvp'].includes(pathname)) {
+      console.log(`[host action] ${pathname}`);
+      if (pathname === '/api/welcome-flow/invites/refresh') {
+        welcomeFlow.invites = [{ code: 'hewetts', channelName: 'general', uses: 12 }, { code: 'aB3xYz', channelName: 'welcome', uses: 3 }];
+      }
+      if (pathname === '/api/sweep/draft/test-mvp') return sendJSON(res, { error: 'failed', message: 'No voice activity was found for this server in the rolling seven-day window.' }, 409);
+      return sendJSON(res, { ok: true });
+    }
 
     if (pathname === '/api/announcer/config/upsert') {
       const config = body.config;
@@ -426,14 +526,24 @@ async function handleAPI(req, res, pathname, query) {
         case '/api/patchy/target/delete':
           patchy.targets = patchy.targets.filter((t) => t.id !== body.targetID);
           break;
+        case '/api/patchy/target/test': {
+          // Mirrors the app: the reply says whether the post went out.
+          const target = find(body.targetID);
+          if (!target || !target.channelId) {
+            return sendJSON(res, { error: 'test_failed', message: 'Choose a channel for this source first.' }, 400);
+          }
+          target.lastCheckedAt = target.lastRunAt = new Date().toISOString();
+          target.lastStatus = 'Delivered test notification';
+          console.log(`[${pathname}]`, JSON.stringify(body));
+          return sendJSON(res, { ok: true, message: 'Test post sent.' });
+        }
         case '/api/patchy/target/pull':
-        case '/api/patchy/target/test':
         case '/api/patchy/check': {
           const now = new Date().toISOString();
           (body.targetID ? [find(body.targetID)] : patchy.targets).filter(Boolean).forEach((t) => {
             t.lastCheckedAt = now;
             if (pathname !== '/api/patchy/check') t.lastRunAt = now;
-            t.lastStatus = pathname.endsWith('/test') ? 'Delivered test notification' : 'Up to date';
+            t.lastStatus = 'Up to date';
           });
           patchy.lastCycleAt = now;
           break;
@@ -509,6 +619,9 @@ async function handleAPI(req, res, pathname, query) {
       Object.assign(provider, { hasCredential: true, credentialHint: token.length >= 12 ? token.slice(-4) : null, isConfigured: true, credentialUpdatedAt: new Date().toISOString() });
       return sendJSON(res, { ok: true });
     }
+    if (pathname === '/api/gametracker/preview') {
+      return sendJSON(res, renderGamePostPreview(body));
+    }
     if (pathname === '/api/gametracker/update') {
       // Same actions as AdminWebGameTrackerUpdate.
       const players = gametracker.players;
@@ -530,6 +643,10 @@ async function handleAPI(req, res, pathname, query) {
       } else if (body.action === 'setPlayerEnabled') {
         const player = players.find((p) => p.id === body.playerID);
         if (player) player.isEnabled = !!body.enabled;
+      } else if (body.action === 'updateStyle') {
+        gametracker.announcementStyle = { ...body.style };
+      } else if (body.action === 'sendTest') {
+        console.log('[gametracker] would post test announcements for', body.playerID);
       } else if (body.action === 'updateSettings') {
         ['dailyCheckEnabled', 'sessionTrackingEnabled', 'checkHour'].forEach((key) => { if (key in body) gametracker[key] = body[key]; });
         gametracker.enabled = gametracker.dailyCheckEnabled || gametracker.sessionTrackingEnabled;

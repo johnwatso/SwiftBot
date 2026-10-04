@@ -10,8 +10,7 @@ final class AdminWebGameTrackerUpdateTests: XCTestCase {
     ) -> AdminWebGameTrackerUpdate.PlayerInput {
         .init(
             id: nil, game: game, provider: provider, playerID: playerID, displayName: "",
-            destinationChannelID: channel, isEnabled: true, discordUserID: "",
-            triggerMetrics: ["rankedScore"], contextMetrics: []
+            destinationChannelID: channel, isEnabled: true, discordUserID: ""
         )
     }
 

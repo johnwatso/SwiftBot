@@ -253,13 +253,22 @@ enum FinalsIDRankResponseDecoder {
             playerID: string(from: profile["id"]) ?? fallbackPlayerID,
             displayName: string(from: profile["username"]) ?? fallbackDisplayName,
             season: string(from: profile["season"]) ?? string(from: ranked["boardId"]) ?? "",
-            rankName: string(from: ranked["leagueName"]),
+            // `leagueName` is just "Gold"; resolve the division so everything
+            // downstream reads "Gold 1".
+            rankName: game.rankTier(
+                index: integer(from: ranked["rankIndex"]),
+                score: score,
+                league: string(from: ranked["leagueName"])
+            )?.name ?? string(from: ranked["leagueName"]),
             score: score,
             updatedAt: string(from: ranked["capturedAt"]).flatMap(parseDate),
             metrics: {
                 var metrics = GameMetricSet()
                 metrics[.rankedScore] = Double(score)
                 if let index = integer(from: ranked["rankIndex"]) { metrics[.rankTier] = Double(index) }
+                if let position = integer(from: ranked["globalRank"]), position > 0 {
+                    metrics[.leaderboardPosition] = Double(position)
+                }
                 return metrics
             }()
         )

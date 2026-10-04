@@ -289,7 +289,6 @@ enum PatchyEmbedAccent {
 
 struct PatchySettings: Codable, Hashable {
     var monitoringEnabled: Bool = false
-    var showDebug: Bool = false
     var sourceTargets: [PatchySourceTarget] = []
     var steamAppNames: [String: String] = [:]
     // appID -> Steam clienticon URL (.ico, up to 256x256). Cached when a Steam
@@ -644,13 +643,16 @@ struct MeshDiscordTokenResponse: Codable, Sendable {
     let available: Bool
 }
 
-/// Response body for `GET /v1/mesh/game-provider-credentials`. settings.json
-/// reaches a Standby with every credential stripped (they live in the
-/// Primary's Keychain), so without this a Failover that takes over would have
-/// no Game Tracker API keys. Same mesh HMAC gate as the Discord token route.
-struct MeshGameProviderCredentialsResponse: Codable, Sendable {
+/// Response body for `GET /v1/mesh/credentials`: the Keychain-held secrets a
+/// Standby needs to take over. settings.json reaches it with them blanked (they
+/// live in the Primary's Keychain), so without this a failover would lose its
+/// Game Tracker keys and SwiftMiner pairing. Same mesh HMAC gate as the Discord
+/// token route, and the response is sealed with the mesh key.
+struct MeshCredentialsResponse: Codable, Sendable {
     /// Provider ID → credential, "" when the Primary has none for it.
-    let tokens: [String: String]
+    var gameProviderTokens: [String: String] = [:]
+    var swiftMinerAPIKey: String = ""
+    var swiftMinerWebhookSecret: String = ""
 }
 
 /// Coordinated handover test payload. Sent by the current Primary to its

@@ -95,3 +95,6 @@ buildServer.json
 .ai-context
 .codex-derived-data
 .claude/launch.json
+
+# AdminPreview: compiled Game Tracker post renderer
+Tools/AdminPreview/.build/

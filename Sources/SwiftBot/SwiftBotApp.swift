@@ -146,6 +146,7 @@ struct SwiftBotApp: App {
                         applyAppIconIfAvailable()
                         applyPresenceMode(appModel.settings.presenceMode)
                         updateStatusItem()
+                        appModel.appUpdater = updater
                         updater.checkForUpdatesInBackground()
                     }
                     .onOpenURL { url in

@@ -1012,30 +1012,8 @@ struct VoiceView: View {
             .filter { $0.language.hasPrefix("en") }
         autoVoiceDisplayName = VoiceTTSSource.preferredEnglishVoice(from: englishVoices)?.name ?? "Auto"
 
-        var options = [PickerOption(id: "", label: "Recommended: \(autoVoiceDisplayName) (auto)")]
-        let piper = sortedVoices(englishVoices.filter(VoiceTTSSource.isPiperVoice))
-        let premium = sortedVoices(englishVoices.filter { $0.quality == .premium && !VoiceTTSSource.isPiperVoice($0) })
-        let enhanced = sortedVoices(englishVoices.filter { $0.quality == .enhanced && !VoiceTTSSource.isPiperVoice($0) })
-
-        for v in piper {
-            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Piper · \(v.language))"))
-        }
-        for v in premium {
-            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Premium · \(v.language))"))
-        }
-        for v in enhanced {
-            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Enhanced · \(v.language))"))
-        }
-        cachedVoiceOptions = options
-    }
-
-    private func sortedVoices(_ voices: [AVSpeechSynthesisVoice]) -> [AVSpeechSynthesisVoice] {
-        voices.sorted { lhs, rhs in
-            let lhsIsRyan = VoiceTTSSource.isRyanPiperVoice(lhs)
-            let rhsIsRyan = VoiceTTSSource.isRyanPiperVoice(rhs)
-            if lhsIsRyan != rhsIsRyan { return lhsIsRyan }
-            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
-        }
+        cachedVoiceOptions = [PickerOption(id: "", label: "Recommended: \(autoVoiceDisplayName) (auto)")]
+            + VoiceTTSSource.selectableVoiceOptions().map { PickerOption(id: $0.identifier, label: $0.label) }
     }
 
     private func displayName(from option: PickerOption) -> String {

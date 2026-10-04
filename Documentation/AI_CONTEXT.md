@@ -125,7 +125,7 @@ struct PipelineContext {
 
 ### Keychain Accounts
 
-`"discord-token"` · `"openai-api-key"` · `"cluster-shared-secret"` · `"admin-discord-client-secret"` · `"admin-web-cloudflare-token"`
+`"discord-token"` · `"openai-api-key"` · `"cluster-shared-secret"` · `"admin-discord-client-secret"` · `"admin-web-cloudflare-token"` · `"swiftbot.admin.web.passkeys"` (WebAuthn credentials and Discord refresh grants)
 
 ---
 

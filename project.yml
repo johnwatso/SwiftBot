@@ -10,6 +10,10 @@ options:
   findCarthageFrameworks: false
 
 packages:
+  swift-webauthn:
+    url: https://github.com/brokenhandsio/swift-webauthn.git
+    # Pin the verifier, including discoverable credential selection support.
+    revision: 2b6b4d4cfe9a3d65955ba94dbc09425637952dae
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     majorVersion: 2.8.0
@@ -109,6 +113,8 @@ targets:
         product: Opus
       - package: libdave-swift
         product: libdave-swift
+      - package: swift-webauthn
+        product: WebAuthn
     settings:
       base:
         PRODUCT_NAME: SwiftBot
@@ -131,8 +137,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: SwiftBot
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: NO
         COMBINE_HIDPI_IMAGES: YES
-        CURRENT_PROJECT_VERSION: "2026100220"
-        MARKETING_VERSION: "1.27.0"
+        CURRENT_PROJECT_VERSION: "2026100414"
+        MARKETING_VERSION: "1.27.1"
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Manual
         PROVISIONING_PROFILE_SPECIFIER: ""

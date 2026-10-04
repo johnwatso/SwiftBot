@@ -220,7 +220,8 @@ extension AppModel {
                     username: member.username,
                     channelName: member.channelName,
                     serverName: connectedServers[member.guildId] ?? member.guildId,
-                    joinedText: "Joined \(member.joinedAt.formatted(date: .omitted, time: .shortened))"
+                    joinedText: "Joined \(member.joinedAt.formatted(date: .omitted, time: .shortened))",
+                    joinedAt: member.joinedAt
                 )
             }
 
@@ -1121,7 +1122,8 @@ extension AppModel {
                 .map { .init(name: $0.displayName, game: $0.game, points: $0.points.map { .init(date: $0.date, score: $0.score, rankName: $0.rankName) }) },
             clipsByGame: ranked(clips),
             messagesAvailable: rewindOn && (messages?.hasArchive ?? false),
-            rewindEnabled: rewindOn
+            rewindEnabled: rewindOn,
+            featureUses: stats.featureUses
         )
     }
 
@@ -1324,7 +1326,6 @@ extension AppModel {
 
         return AdminWebPatchyPayload(
             monitoringEnabled: settings.patchy.monitoringEnabled,
-            showDebug: settings.patchy.showDebug,
             isCycleRunning: patchyIsCycleRunning,
             lastCycleAt: patchyLastCycleAt,
             sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
@@ -1334,8 +1335,7 @@ extension AppModel {
             rolesByServer: rolesByServer,
             steamAppNames: settings.patchy.steamAppNames,
             isFailoverManagedNode: isFailoverManagedNode,
-            botStatus: status.rawValue,
-            debugLogs: Array(patchyDebugLogs.prefix(80))
+            botStatus: status.rawValue
         )
     }
 
@@ -1543,9 +1543,6 @@ extension AppModel {
         if let value = patch.monitoringEnabled {
             settings.patchy.monitoringEnabled = value
         }
-        if let showDebug = patch.showDebug {
-            settings.patchy.showDebug = showDebug
-        }
         saveSettings()
         return true
     }
@@ -1597,9 +1594,8 @@ extension AppModel {
         return true
     }
 
-    func sendAdminWebPatchyTest(_ targetID: UUID) -> Bool {
-        sendPatchyTest(targetID: targetID)
-        return true
+    func sendAdminWebPatchyTest(_ targetID: UUID) async -> PatchyTestOutcome {
+        await runPatchyTest(targetID: targetID)
     }
 
     func pullAdminWebPatchyTarget(_ targetID: UUID) -> Bool {
@@ -1694,7 +1690,10 @@ extension AppModel {
                 activeRules: activeRules,
                 inviteRules: flow.nextStepRules.count,
                 safetyEnabled: safetyEnabled
-            )
+            ),
+            invites: (ctx.guildId.flatMap { welcomeFlowInvitesByServer[$0] } ?? []).map {
+                AdminWebWelcomeInvite(code: $0.code, channelName: $0.channelName, uses: $0.uses)
+            }
         )
     }
 
@@ -2060,23 +2059,8 @@ extension AppModel {
                         return (serverID, channels)
                     })
 
-                    let installedVoices = AVSpeechSynthesisVoice.speechVoices()
-                        .sorted {
-                            if $0.language != $1.language { return $0.language < $1.language }
-                            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                        }
-                        .map { voice -> AdminWebSimpleOption in
-                            let quality: String
-                            switch voice.quality {
-                            case .premium: quality = "Premium"
-                            case .enhanced: quality = "Enhanced"
-                            default: quality = "Default"
-                            }
-                            return AdminWebSimpleOption(
-                                id: voice.identifier,
-                                name: "\(voice.name) — \(voice.language) (\(quality))"
-                            )
-                        }
+                    let installedVoices = VoiceTTSSource.selectableVoiceOptions()
+                        .map { AdminWebSimpleOption(id: $0.identifier, name: $0.label) }
 
                     return AdminWebAnnouncerPayload(
                         configs: model.settings.voice.announcerConfigs,
@@ -2174,7 +2158,6 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebPatchyPayload(
                         monitoringEnabled: false,
-                        showDebug: false,
                         isCycleRunning: false,
                         lastCycleAt: nil,
                         sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
@@ -2184,8 +2167,7 @@ extension AppModel {
                         rolesByServer: [:],
                         steamAppNames: [:],
                         isFailoverManagedNode: false,
-                        botStatus: "stopped",
-                        debugLogs: []
+                        botStatus: "stopped"
                     )
                 }
                 return await MainActor.run { model.adminWebPatchySnapshot() }
@@ -2211,8 +2193,8 @@ extension AppModel {
                 return await MainActor.run { model.deleteAdminWebPatchyTarget(targetID) }
             },
             sendPatchyTestTarget: { [weak self] targetID in
-                guard let model = self else { return false }
-                return await MainActor.run { model.sendAdminWebPatchyTest(targetID) }
+                guard let model = self else { return PatchyTestOutcome(ok: false, message: "SwiftBot is shutting down.") }
+                return await model.sendAdminWebPatchyTest(targetID)
             },
             pullPatchyTarget: { [weak self] targetID in
                 guard let model = self else { return false }
@@ -2360,6 +2342,12 @@ extension AppModel {
             gameTrackerUpdater: { [weak self] update in
                 guard let model = self else { return false }
                 return await MainActor.run { model.applyAdminWebGameTrackerUpdate(update) }
+            },
+            gameTrackerStylePreviewer: { [weak self] style in
+                guard let model = self else {
+                    return AdminWebGameTrackerStylePreview(rankUpdate: "{}", session: "{}")
+                }
+                return await MainActor.run { model.gameTrackerStylePreview(style: style) }
             },
             mediaGameArtworkProvider: { gameName in
                 await RecordingGameArtworkResponder.response(for: gameName)
@@ -2587,6 +2575,22 @@ extension AppModel {
             log: { [weak self] message in
                 guard let model = self else { return }
                 await MainActor.run { model.logs.append(message) }
+            }
+        )
+        await adminWebServer.setHostOperations(
+            run: { [weak self] operation in
+                guard let model = self else { return "SwiftBot is shutting down." }
+                return await model.runAdminWebHostOperation(operation)
+            },
+            permissions: { [weak self] in
+                guard let model = self else {
+                    return AdminWebBotPermissionsPayload(botUsername: nil, error: "SwiftBot is shutting down.", guilds: [], checkedAt: Date())
+                }
+                return await model.adminWebBotPermissions()
+            },
+            updates: { [weak self] in
+                guard let model = self else { return nil }
+                return await model.adminWebUpdatesSnapshot()
             }
         )
         await adminWebServer.setGameProviderCredentialUpdater { [weak self] providerRaw, token in
@@ -3730,12 +3734,13 @@ extension AppModel {
                 isEnabled: player.isEnabled,
                 supportsRankedScore: descriptor?.capabilities.contains(.rankedScore) ?? false,
                 season: baseline?.season,
-                rankName: baseline?.rankName,
+                // Baselines from before tier names were resolved say "Gold".
+                rankName: baseline.flatMap { b in
+                    player.game.rankTier(index: b.metrics[.rankTier].map { Int($0) }, score: b.score, league: b.rankName)?.name
+                } ?? baseline?.rankName,
                 score: baseline?.score,
                 baselineRecordedAt: baseline?.recordedAt,
-                discordUserID: player.discordUserID,
-                triggerMetrics: player.triggerMetrics.map(\.rawValue).sorted(),
-                contextMetrics: player.contextMetrics.map(\.rawValue).sorted()
+                discordUserID: player.discordUserID
             )
         }
 
@@ -3802,8 +3807,142 @@ extension AppModel {
             isFailoverManagedNode: isFailoverManagedNode,
             catalog: catalog,
             channels: channels,
-            members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) }
+            members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) },
+            announcementStyle: tracking.announcementStyle,
+            stylePreview: gameTrackerStylePreview(style: tracking.announcementStyle)
         )
+    }
+
+    /// The player the style preview and test posts are built around: one
+    /// with a recorded rank if possible, so the sample shows their real tier.
+    private func gameTrackerSamplePlayer(id: UUID? = nil) -> GameTrackedPlayer? {
+        let players = settings.gameTracking.players
+        if let id { return players.first { $0.id == id } }
+        return players.first { $0.isEnabled && gameTrackingBaselines[$0.id] != nil }
+            ?? players.first(where: \.isEnabled)
+            ?? players.first
+    }
+
+    /// A believable rank-up and session for `player`, from their last
+    /// baseline when there is one. Only used for previews and test posts.
+    private func gameTrackerSamples(
+        for player: GameTrackedPlayer?
+    ) -> (change: GameRankChange, session: GameAnnouncementRenderer.SessionContext) {
+        let game = player?.game ?? .theFinals
+        let provider = player?.provider ?? .finalsID
+        let baseline = player.flatMap { gameTrackingBaselines[$0.id] }
+        let name = player?.resolvedDisplayName ?? "Player"
+
+        let score = (baseline?.score).flatMap { $0 > 0 ? $0 : nil } ?? 28_160
+        let previousScore = max(0, score - 340)
+        let currentTier = game.rankTier(index: nil, score: score, league: nil)
+        let previousTier = game.rankTier(index: nil, score: previousScore, league: nil)
+        let position = baseline?.metrics[.leaderboardPosition] ?? 56_866
+
+        var current = GameMetricSet([.rankedScore: Double(score), .leaderboardPosition: position])
+        var previous = GameMetricSet([.rankedScore: Double(previousScore), .leaderboardPosition: position + 1_204])
+        if let currentTier, let previousTier {
+            current[.rankTier] = Double(currentTier.ladderPosition)
+            previous[.rankTier] = Double(previousTier.ladderPosition)
+        }
+        var movements = [GameMetricChange(metric: .rankedScore, previous: Double(previousScore), current: Double(score))]
+        if let currentTier, let previousTier, currentTier.ladderPosition != previousTier.ladderPosition {
+            movements.append(GameMetricChange(
+                metric: .rankTier,
+                previous: Double(previousTier.ladderPosition),
+                current: Double(currentTier.ladderPosition)
+            ))
+        }
+        // Only what the provider really reports on a rank check, so the
+        // preview never promises a stat the post won't have.
+        var context = baseline?.metrics ?? GameMetricSet()
+        context[.leaderboardPosition] = position
+
+        let change = GameRankChange(
+            targetID: player?.id ?? UUID(),
+            game: game,
+            provider: provider,
+            destinationChannelID: player?.destinationChannelID ?? "",
+            playerID: player?.playerID ?? "player#0001",
+            displayName: name,
+            season: baseline?.season ?? "s11",
+            rankName: currentTier?.name,
+            previousScore: previousScore,
+            currentScore: score,
+            metricChanges: movements,
+            contextMetrics: context,
+            previousRankName: previousTier?.name,
+            previousMetrics: previous,
+            currentMetrics: current,
+            discordUserID: player?.discordUserID ?? ""
+        )
+
+        let end = Date()
+        var totals = GameSessionSummaryBuilder.Totals()
+        totals.matches = 6
+        totals.rankedMatches = 4
+        totals.wins = 2
+        totals.kills = 38
+        totals.deaths = 21
+        totals.damage = 21_430
+        let session = GameAnnouncementRenderer.SessionContext(
+            session: GameSession(
+                userID: player?.discordUserID ?? "",
+                guildID: "",
+                gameName: game.displayName,
+                startedAt: end.addingTimeInterval(-5_040),
+                endedAt: end
+            ),
+            displayName: name,
+            game: game,
+            providerName: provider.displayName,
+            totals: totals,
+            rankName: currentTier?.name,
+            score: score,
+            rankIndex: currentTier?.ladderPosition,
+            discordUserID: player?.discordUserID ?? ""
+        )
+        return (change, session)
+    }
+
+    func gameTrackerStylePreview(style: GameAnnouncementStyle) -> AdminWebGameTrackerStylePreview {
+        let samples = gameTrackerSamples(for: gameTrackerSamplePlayer())
+        let rank = GameAnnouncementRenderer.rankUpdateMessages(
+            changes: [samples.change], checkedAt: Date(), style: style
+        ).first?.payload ?? [:]
+        let session = GameAnnouncementRenderer.sessionMessage(samples.session, style: style)
+        func json(_ payload: [String: Any]) -> String {
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let text = String(data: data, encoding: .utf8) else { return "{}" }
+            return text
+        }
+        return AdminWebGameTrackerStylePreview(rankUpdate: json(rank), session: json(session))
+    }
+
+    /// Posts the preview samples to a player's real channel so the operator
+    /// can see them in Discord. Marked "Test post" in the footer.
+    func sendGameTrackerTestAnnouncement(playerID: UUID?, style draft: GameAnnouncementStyle? = nil) async -> Bool {
+        guard let player = gameTrackerSamplePlayer(id: playerID),
+              !player.destinationChannelID.isEmpty else { return false }
+        // The editor tests its unsaved draft, so what's posted matches the preview.
+        var style = draft ?? settings.gameTracking.announcementStyle
+        style.normalize()
+        let samples = gameTrackerSamples(for: player)
+        var ok = true
+        for message in GameAnnouncementRenderer.rankUpdateMessages(
+            changes: [samples.change], checkedAt: Date(), style: style, isTest: true
+        ) {
+            ok = await sendPayload(channelId: player.destinationChannelID, payload: message.payload, action: "gameTrackerRankUpdate") && ok
+        }
+        ok = await sendPayload(
+            channelId: player.destinationChannelID,
+            payload: GameAnnouncementRenderer.sessionMessage(samples.session, style: style, isTest: true),
+            action: "gameTrackerSessionSummary"
+        ) && ok
+        logs.append(ok
+            ? "[OK] Game Tracker test announcement sent for \(player.resolvedDisplayName)."
+            : "[ERR] Game Tracker test announcement failed for \(player.resolvedDisplayName).")
+        return ok
     }
 
     /// Applies one WebUI Game Tracker edit through the same methods the
@@ -3826,8 +3965,6 @@ extension AppModel {
             player.destinationChannelID = input.destinationChannelID
             player.isEnabled = input.isEnabled
             player.discordUserID = input.discordUserID.trimmingCharacters(in: .whitespacesAndNewlines)
-            player.triggerMetrics = Set(input.triggerMetrics.compactMap(GameMetricID.init(rawValue:)))
-            player.contextMetrics = Set(input.contextMetrics.compactMap(GameMetricID.init(rawValue:)))
             upsertTrackedGamePlayer(player)
         case .deletePlayer:
             guard let id = update.playerID.flatMap(UUID.init(uuidString:)) else { return false }
@@ -3841,6 +3978,17 @@ extension AppModel {
             if let enabled = update.sessionTrackingEnabled { settings.gameTracking.sessionTrackingEnabled = enabled }
             if let hour = update.checkHour { settings.gameTracking.checkHour = hour }
             gameTrackingSettingsDidChange()
+        case .updateStyle:
+            guard var style = update.style else { return false }
+            style.normalize()
+            settings.gameTracking.announcementStyle = style
+            gameTrackingSettingsDidChange()
+        case .sendTest:
+            guard gameTrackerSamplePlayer(id: update.playerID.flatMap(UUID.init(uuidString:)))?
+                .destinationChannelID.isEmpty == false else { return false }
+            let id = update.playerID.flatMap(UUID.init(uuidString:))
+            let draft = update.style
+            Task { await self.sendGameTrackerTestAnnouncement(playerID: id, style: draft) }
         }
         return true
     }
@@ -3857,5 +4005,149 @@ extension AppModel {
         let calendar = Calendar.current
         guard let date = calendar.date(from: components) else { return "Daily" }
         return "Daily at \(formatter.string(from: date)) (\(zone.identifier))"
+    }
+}
+
+// MARK: - Host operations (admin web)
+
+extension AppModel {
+    /// Runs one Web UI request to act on the host. nil means done; a string is
+    /// the reason it couldn't be, shown to the person as-is.
+    func runAdminWebHostOperation(_ operation: AdminWebHostOperation) async -> String? {
+        switch operation {
+        case .startBot, .restartBot:
+            if isRemoteLaunchMode { return "This Mac is in Remote Control mode, so it doesn’t run a bot." }
+            if settings.clusterMode == .worker { return "Worker mode is temporarily unavailable. Choose Standalone or Primary in the SwiftBot app on the Mac." }
+            if normalizedDiscordToken(from: settings.token).isEmpty { return "No bot token is set. Add it in the SwiftBot app on the Mac." }
+            if case .startBot = operation, status != .stopped { return "The bot is already running." }
+            if case .restartBot = operation { await stopBot() }
+            // Connecting can take a while; the page follows along through status.
+            Task { await self.startBot() }
+            return nil
+        case .stopBot:
+            guard status != .stopped else { return "The bot is already stopped." }
+            await stopBot()
+            return nil
+        case .announcerTest:
+            guard voiceConnectionStatus.isConnected else { return "The announcer isn’t in a voice channel. Reconnect it first." }
+            await speakAnnouncement("This is a test announcement from SwiftBot.")
+            return nil
+        case .announcerReconnect:
+            guard status == .running else { return "The bot is offline. Start it first." }
+            guard settings.voice.announcerConfigs.contains(where: { $0.enabled && !$0.voiceChannelID.isEmpty }) else {
+                return "Turn on a voice channel first."
+            }
+            // Leaving and rejoining waits on Discord, so don't hold the request.
+            Task { await self.reconnectAnnouncerVoiceFromUI() }
+            return nil
+        case .welcomeTest:
+            guard settings.welcomeFlow.hasPublicWelcome else { return "Turn on the public greeting and choose its channel first." }
+            return await sendWelcomeFlowTestMessage() ? nil : "Couldn’t send the test. Check the channel and SwiftBot’s permissions there."
+        case .refreshWelcomeInvites:
+            guard let guildID = automationServerContext().guildId, !guildID.isEmpty else { return "SwiftBot isn’t connected to a server yet." }
+            return await refreshWelcomeFlowInvites(guildID: guildID) ? nil : "Couldn’t read the server’s invites. SwiftBot needs the Manage Server permission."
+        case .sweepTestMVP(let policy):
+            do {
+                try await sweepService.sendTestWeeklyMVP(for: policy)
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        case .checkForUpdates, .installUpdate, .setAutomaticUpdateChecks, .setUnattendedUpdates:
+            return runAdminWebUpdateOperation(operation)
+        }
+    }
+
+    private func runAdminWebUpdateOperation(_ operation: AdminWebHostOperation) -> String? {
+        guard let updater = appUpdater, updater.canCheckForUpdates else {
+            return "Software updates aren’t set up in this build."
+        }
+        switch operation {
+        case .checkForUpdates:
+            updater.checkForUpdatesInBackground()
+        case .installUpdate:
+            guard updater.isReadyToInstall else { return "No update is downloaded yet." }
+            // Give the response a moment to reach the browser before the relaunch.
+            Task {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                updater.installPendingUpdate()
+            }
+        case .setAutomaticUpdateChecks(let enabled):
+            updater.setAutomaticallyChecksForUpdates(enabled)
+        case .setUnattendedUpdates(let enabled):
+            guard !enabled || updater.automaticallyChecksForUpdates else { return "Turn on automatic checks first." }
+            updater.setAutomaticallyDownloadsUpdates(enabled)
+        default:
+            break
+        }
+        return nil
+    }
+
+    func adminWebUpdatesSnapshot() -> AdminWebUpdatesPayload? {
+        guard let updater = appUpdater else { return nil }
+        let info = Bundle.main.infoDictionary
+        return AdminWebUpdatesPayload(
+            configured: updater.canCheckForUpdates,
+            version: info?["CFBundleShortVersionString"] as? String ?? "",
+            build: info?["CFBundleVersion"] as? String ?? "",
+            channel: updater.selectedChannel.rawValue,
+            automaticChecks: updater.automaticallyChecksForUpdates,
+            unattended: updater.automaticallyDownloadsUpdates,
+            isChecking: updater.isChecking,
+            lastCheckedAt: updater.lastCheckedAt,
+            availableVersion: updater.availableVersion,
+            availableBuild: updater.availableBuild,
+            releaseNotesURL: updater.availableReleaseNotesURL?.absoluteString,
+            readyToInstall: updater.isReadyToInstall,
+            lastError: updater.lastErrorMessage
+        )
+    }
+
+    /// The same check as the native Bot Permissions sheet, for the Web UI.
+    func adminWebBotPermissions() async -> AdminWebBotPermissionsPayload {
+        let token = normalizedDiscordToken(from: settings.token)
+        guard !token.isEmpty else {
+            return AdminWebBotPermissionsPayload(botUsername: nil, error: "No bot token is set. Add it in the SwiftBot app on the Mac.", guilds: [], checkedAt: Date())
+        }
+        do {
+            let identity = try await BotPermissionsProbe.identity(token: token)
+            let guilds = try await BotPermissionsProbe.guilds(token: token).sorted { lhs, rhs in
+                let lhsScore = lhs.missingEssential.count * 100 + lhs.missingRecommended.count
+                let rhsScore = rhs.missingEssential.count * 100 + rhs.missingRecommended.count
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            var rows: [AdminWebBotPermissionsPayload.Guild] = []
+            for guild in guilds {
+                let coverage = try? await BotPermissionsProbe.channelCoverage(token: token, guildID: guild.id)
+                let flags = { (severity: DiscordPermissionFlag.Severity) in
+                    DiscordPermissionCatalog.all
+                        .filter { $0.severity == severity && !guild.has($0) }
+                        .map { AdminWebBotPermissionsPayload.Flag(name: $0.name, detail: $0.detail) }
+                }
+                let botID = identity?.id ?? ""
+                rows.append(AdminWebBotPermissionsPayload.Guild(
+                    id: guild.id,
+                    name: guild.name,
+                    isOwner: guild.isOwner,
+                    hasAdministrator: guild.hasAdministrator,
+                    missingEssential: flags(.essential),
+                    missingRecommended: flags(.recommended),
+                    missingOptional: flags(.optional),
+                    visibleTextChannels: coverage?.visibleTextChannels,
+                    reinviteURL: BotPermissionsProbe.reinviteURL(botID: botID, guildID: guild.id)?.absoluteString,
+                    adminReinviteURL: BotPermissionsProbe.reinviteURL(botID: botID, guildID: guild.id, permissions: DiscordPermissionCatalog.administrator)?.absoluteString
+                ))
+            }
+            return AdminWebBotPermissionsPayload(botUsername: identity?.username, error: nil, guilds: rows, checkedAt: Date())
+        } catch let error as NSError {
+            let message: String
+            switch error.code {
+            case 401: message = "Discord rejected the bot token (401). Re-check it in the SwiftBot app on the Mac."
+            case 429: message = "Discord is rate-limiting SwiftBot (429). Try again in a few seconds."
+            default: message = error.localizedDescription
+            }
+            return AdminWebBotPermissionsPayload(botUsername: nil, error: message, guilds: [], checkedAt: Date())
+        }
     }
 }

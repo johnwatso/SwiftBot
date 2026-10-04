@@ -203,8 +203,8 @@ actor ClusterCoordinator {
     /// Fires on the Standby side when a fresh Discord token has been pulled
     /// from the Primary. AppModel persists it via the Keychain-backed path.
     private var onDiscordTokenFetched: (@Sendable (String) async -> Void)?
-    /// Primary-side: every Game Tracker provider credential, for a Standby.
-    private var gameProviderCredentialsProvider: (@Sendable () async -> [String: String])?
+    /// Primary-side: the Keychain-held secrets a Standby needs to take over.
+    private var credentialsProvider: (@Sendable () async -> MeshCredentialsResponse)?
     private var onLeaderRegistrationSyncNeeded: (@Sendable (String) async -> Void)?
     private var followerStateProvider: FollowerStateProvider?
     /// Primary-side handler for inbound config mutations from Failover GUIs.
@@ -300,8 +300,8 @@ actor ClusterCoordinator {
         self.discordTokenProvider = provider
     }
 
-    func setGameProviderCredentialsProvider(_ provider: @escaping @Sendable () async -> [String: String]) {
-        self.gameProviderCredentialsProvider = provider
+    func setCredentialsProvider(_ provider: @escaping @Sendable () async -> MeshCredentialsResponse) {
+        self.credentialsProvider = provider
     }
 
     /// Wires the Standby-side handler invoked when a pulled token arrives.
@@ -835,8 +835,7 @@ actor ClusterCoordinator {
         }
         let token = (await discordTokenProvider?())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let payload = MeshDiscordTokenResponse(token: token, available: !token.isEmpty)
-        let body = (try? encoder.encode(payload)) ?? Data()
-        return httpResponse(status: "200 OK", body: body)
+        return sealedResponse((try? encoder.encode(payload)) ?? Data())
     }
 
     /// Standby/worker-side helper: called from `registerWithLeader` on each
@@ -854,7 +853,8 @@ actor ClusterCoordinator {
         do {
             let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
-            guard let payload = try? decoder.decode(MeshDiscordTokenResponse.self, from: data),
+            guard let opened = openSealedResponse(data),
+                  let payload = try? decoder.decode(MeshDiscordTokenResponse.self, from: opened),
                   payload.available,
                   !payload.token.isEmpty else { return }
             await handler(payload.token)
@@ -2052,20 +2052,12 @@ actor ClusterCoordinator {
             return await handleHandoverTestEnd(request.body)
         case ("GET", "/v1/mesh/discord-token"):
             return await handleDiscordTokenRequest()
-        case ("GET", "/v1/mesh/game-provider-credentials"):
+        case ("GET", "/v1/mesh/credentials"):
             guard mode == .leader else {
                 return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
             }
-            // Mesh responses are not encrypted by default (only request bodies
-            // are), and the mesh usually runs over plain http, so seal this one:
-            // it carries API keys. No plaintext fallback.
-            let payload = MeshGameProviderCredentialsResponse(tokens: await gameProviderCredentialsProvider?() ?? [:])
-            guard let plaintext = try? encoder.encode(payload),
-                  let key = try? MeshCrypto.deriveKey(from: sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let sealed = try? MeshCrypto.seal(plaintext, using: key) else {
-                return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"seal_failed"}"#.utf8))
-            }
-            return httpResponse(status: "200 OK", body: sealed)
+            let payload = await credentialsProvider?() ?? MeshCredentialsResponse()
+            return sealedResponse((try? encoder.encode(payload)) ?? Data())
         case ("POST", "/v1/mesh/config/mutate"):
             return await handleConfigMutation(request.body)
         default:
@@ -2102,6 +2094,32 @@ actor ClusterCoordinator {
         }
 
         return HTTPRequest(method: String(parts[0]), path: path, query: query, headers: headers, body: body)
+    }
+
+    /// A 200 whose body is sealed with the mesh key. Mesh requests are signed
+    /// and their bodies encrypted, but responses aren't by default and the mesh
+    /// usually runs over plain http, so any route that returns a secret (the
+    /// Discord token, provider keys, settings files that hold the SwiftMiner
+    /// pairing) must answer through this. There is no plaintext fallback: a
+    /// node that can't seal answers 500 instead.
+    private func sealedResponse(_ plaintext: Data) -> Data {
+        let secret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !secret.isEmpty,
+              let key = try? MeshCrypto.deriveKey(from: secret),
+              let sealed = try? MeshCrypto.seal(plaintext, using: key) else {
+            meshLogger.error("Refusing to send a mesh response unsealed")
+            return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"seal_failed"}"#.utf8))
+        }
+        return httpResponse(status: "200 OK", body: sealed)
+    }
+
+    /// Opens a body sent with `sealedResponse`. Nil if it doesn't open, which
+    /// includes a Primary too old to seal: the caller then treats the pull as
+    /// failed rather than trusting an unsealed answer.
+    private func openSealedResponse(_ data: Data) -> Data? {
+        let secret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !secret.isEmpty, let key = try? MeshCrypto.deriveKey(from: secret) else { return nil }
+        return try? MeshCrypto.open(data, using: key)
     }
 
     private func httpResponse(
@@ -3589,7 +3607,9 @@ actor ClusterCoordinator {
 
     private func handleMeshConfigFilesSync() async -> Data {
         if let data = await meshHandler?("config-files") {
-            return httpResponse(status: "200 OK", body: data)
+            // settings.json carries the SwiftMiner pairing (API key and webhook
+            // secret), so the synced files are sealed like the token routes.
+            return sealedResponse(data)
         }
         return httpResponse(status: "404 Not Found", body: Data(#"{"error":"config_unavailable"}"#.utf8))
     }
@@ -3904,25 +3924,24 @@ actor ClusterCoordinator {
         }
     }
 
-    /// Standby only: the Primary's Game Tracker credentials. Nil when the
+    /// Standby only: the Primary's Keychain-held credentials. Nil when the
     /// Primary can't be reached or predates the route, so the caller leaves
     /// its local copies alone.
-    func fetchGameProviderCredentials() async -> [String: String]? {
+    func fetchCredentials() async -> MeshCredentialsResponse? {
         guard mode == .standby,
               let baseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
               !baseURL.isEmpty,
-              let url = URL(string: baseURL + "/v1/mesh/game-provider-credentials") else { return nil }
+              let url = URL(string: baseURL + "/v1/mesh/credentials") else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        applyMeshAuth(to: &request, path: "/v1/mesh/game-provider-credentials")
+        applyMeshAuth(to: &request, path: "/v1/mesh/credentials")
         request.timeoutInterval = 10
         do {
             let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let key = try? MeshCrypto.deriveKey(from: sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let opened = try? MeshCrypto.open(data, using: key),
-                  let payload = try? decoder.decode(MeshGameProviderCredentialsResponse.self, from: opened) else { return nil }
-            return payload.tokens
+                  let opened = openSealedResponse(data),
+                  let payload = try? decoder.decode(MeshCredentialsResponse.self, from: opened) else { return nil }
+            return payload
         } catch {
             return nil
         }
@@ -3940,7 +3959,7 @@ actor ClusterCoordinator {
         do {
             let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-            return data
+            return openSealedResponse(data)
         } catch {
             return nil
         }

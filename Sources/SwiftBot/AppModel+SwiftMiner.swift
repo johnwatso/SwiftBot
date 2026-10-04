@@ -25,6 +25,7 @@ extension AppModel {
         settings.swiftMiner.enabled = false
         settings.swiftMiner.apiKey = ""
         settings.swiftMiner.webhookSecret = ""
+        settings.swiftMiner.credentialsUpdatedAt = Date()
         settings.swiftMiner.webhookHint = ""
         settings.swiftMiner.artworkURL = ""
         settings.swiftMiner.cachedArtworkFileName = ""

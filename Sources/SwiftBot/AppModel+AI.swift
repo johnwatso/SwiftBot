@@ -366,6 +366,7 @@ extension AppModel {
                     action: "sendPatchyNotification"
                 )
             }
+            await communityStatsStore.recordFeatureUse("patchy")
             let detail = "Notification sent successfully."
             logs.append("✅ Patchy: \(detail)")
             return (true, detail)

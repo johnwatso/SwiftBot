@@ -76,6 +76,7 @@ final class ReplayTests: XCTestCase {
         var drop = RewindRecapDrop()
         drop.monthly = true
         drop.personalDMs = true
+        drop.onlyDMActiveMembers = false
         drop.lastPersonalMonthlyKey = "2026-09"
         settings.recapDrops["g1"] = drop
 
@@ -83,12 +84,14 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(loaded.replayDMOptOutUserIDs, ["42"])
         XCTAssertEqual(loaded.lastCatchUpAt, settings.lastCatchUpAt)
         XCTAssertEqual(loaded.recapDrops["g1"]?.personalDMs, true)
+        XCTAssertEqual(loaded.recapDrops["g1"]?.onlyDMActiveMembers, false)
         XCTAssertEqual(loaded.recapDrops["g1"]?.lastPersonalMonthlyKey, "2026-09")
     }
 
     func testDropIsScheduledWithDMsAndNoChannel() throws {
         let old = try JSONDecoder().decode(RewindRecapDrop.self, from: Data(#"{"channelID":"c1","monthly":true}"#.utf8))
         XCTAssertFalse(old.personalDMs, "Drops saved before DMs existed stay channel-only")
+        XCTAssertTrue(old.onlyDMActiveMembers, "Existing settings default to filtering occasional members")
         XCTAssertTrue(old.isScheduled)
 
         var dmsOnly = RewindRecapDrop()
@@ -99,6 +102,48 @@ final class ReplayTests: XCTestCase {
     }
 
     // MARK: Archive summaries
+
+    func testReplayDMActivityRequiresRegularRecentChatInTheSameGuild() async {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rewind-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = RewindStore(rootURL: root)
+        let calendar = Calendar.current
+        let now = calendar.date(from: DateComponents(year: 2027, month: 1, day: 2, hour: 12))!
+        var sequence = 0
+        func post(_ user: String, count: Int, daysAgo: Int, guild: String = "g") async {
+            let date = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
+            for _ in 0..<count {
+                sequence += 1
+                await store.record(RewindMessage(
+                    id: String(sequence), guildID: guild, channelID: "general",
+                    authorID: user, authorName: user, isBot: false,
+                    content: "hello", createdAt: date
+                ), retainContent: false)
+            }
+        }
+        // Exactly ten messages on three days, including the oldest included
+        // day and today. The window crosses the aggregate-file year boundary.
+        await post("regular", count: 4, daysAgo: 29)
+        await post("regular", count: 3, daysAgo: 2)
+        await post("regular", count: 3, daysAgo: 0)
+        await post("burst", count: 100, daysAgo: 0)
+        for day in 0..<3 { await post("sparse", count: 3, daysAgo: day) }
+        await post("old", count: 4, daysAgo: 30)
+        await post("old", count: 3, daysAgo: 31)
+        await post("old", count: 3, daysAgo: 32)
+        await post("boundary", count: 4, daysAgo: 30)
+        await post("boundary", count: 3, daysAgo: 1)
+        await post("boundary", count: 3, daysAgo: 0)
+        for day in 0..<3 { await post("other-guild", count: 4, daysAgo: day, guild: "elsewhere") }
+        for day in 1...3 { await post("future", count: 4, daysAgo: -day) }
+
+        let recipients = await store.replayDMActiveUserIDs(guildID: "g", now: now)
+        XCTAssertEqual(recipients, ["regular"])
+        // The query flushes buffered counts and needs no retained message text.
+        let reloaded = RewindStore(rootURL: root)
+        let persistedRecipients = await reloaded.replayDMActiveUserIDs(guildID: "g", now: now)
+        XCTAssertEqual(persistedRecipients, recipients)
+    }
 
     func testRangeSummaryLeavesOutOptedOutMembers() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("rewind-\(UUID().uuidString)", isDirectory: true)

@@ -34,7 +34,8 @@ The profile card carries the current-season standing under a top-level `ranked` 
 ```
 
 - **SR** is `ranked.score`. A bare `score` is only trusted inside that top-level `ranked` block; anywhere else it could be a match's combat score, which must never be announced as SR. Other providers still go through the generic decoder, which requires an explicit `sr`/`rankedScore`-style key.
-- **Rank name** is `ranked.leagueName`; `ranked.rankIndex` is reported as the Rank metric so promotions can trigger announcements.
+- **Rank name** is resolved to a division such as "Gold 1" (`GameRankTiers.swift`): `ranked.rankIndex` runs 1 (Bronze 4) → 20 (Diamond 1), 21 is Ruby, and must agree with `ranked.leagueName`; otherwise the 2,500-SR division bands decide, then the league alone. `rankIndex` is still stored as the Rank metric so promotions can trigger announcements.
+- **Leaderboard** `ranked.globalRank` is stored as the Leaderboard metric and shown on rank cards; it is not offered as a trigger.
 - **Season** is `season` (falling back to `ranked.boardId`); a season change resets the baseline silently.
 - **Time** is `ranked.capturedAt` (fractional seconds).
 - `rankScoreHidden: true`, or HTTP 403, means the player hid their SR → "This player has hidden their ranked score". `ranked: null` means no standing this season → "no ranked score this season yet". HTTP 404 means the name doesn't resolve → a hint to include the `#tag`.
