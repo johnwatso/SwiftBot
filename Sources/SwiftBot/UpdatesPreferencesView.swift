@@ -60,7 +60,11 @@ struct UpdatesPreferencesView: View {
                         .underline()
                 }
 
-                if !updater.isConfigured {
+                if updater.isDisabledForDebugBuild {
+                    Text("Updates are off in Debug builds, so Sparkle can't install a release over the app Xcode built.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if !updater.isConfigured {
                     Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

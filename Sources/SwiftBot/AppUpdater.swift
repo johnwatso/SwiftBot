@@ -30,6 +30,11 @@ final class AppUpdater: NSObject, ObservableObject {
     private static let updateChannelDefaultsKey = "SwiftBotAppUpdateChannel"
 
     @Published private(set) var isConfigured = false
+    /// Debug builds never start Sparkle. Otherwise a pending update installs on
+    /// quit over the app Xcode built in DerivedData, swapping in a release
+    /// signed with another identity (more Keychain prompts, and not the code
+    /// you just built). Release builds are unaffected.
+    @Published private(set) var isDisabledForDebugBuild = false
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var feedURLString = ""
     @Published private(set) var hasPublicKey = false
@@ -82,7 +87,12 @@ final class AppUpdater: NSObject, ObservableObject {
         bundlePath = bundle.bundlePath
         isConfigured = configured
 
-#if canImport(Sparkle)
+#if DEBUG
+        isDisabledForDebugBuild = true
+        canCheckForUpdates = false
+        automaticallyChecksForUpdates = false
+        automaticallyDownloadsUpdates = false
+#elseif canImport(Sparkle)
         if configured {
             updaterController = SPUStandardUpdaterController(
                 startingUpdater: true,

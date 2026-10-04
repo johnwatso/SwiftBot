@@ -6380,20 +6380,7 @@ extension AdminWebServer {
         let data = try encoder.encode(state)
         // Update in place: delete-then-add would lose every passkey if the
         // replacement failed while the Keychain was locked or unavailable.
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.swiftbot.app",
-            kSecAttrAccount as String: passkeyKeychainAccount,
-        ]
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var item = query
-            item[kSecValueData as String] = data
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw PasskeyError.storage }
-        } else if status != errSecSuccess {
-            throw PasskeyError.storage
-        }
+        guard KeychainHelper.update(data, account: passkeyKeychainAccount) else { throw PasskeyError.storage }
         passkeyState = state
     }
 

@@ -244,6 +244,14 @@ schemes:
     build:
       targets:
         SwiftBot: all
+      # A scheme post-action, not a build phase: Xcode's own ad-hoc CodeSign
+      # step runs after every build phase and would undo it. Debug only, and a
+      # no-op until Tools/DebugSigning/setup.sh has run on this Mac; Release
+      # and archives (ShipHook, Developer ID) are untouched.
+      postActions:
+        - name: Sign Debug Build Locally
+          settingsTarget: SwiftBot
+          script: "\"$SRCROOT/Tools/DebugSigning/sign-debug-build.sh\""
     run:
       config: Debug
     test:
