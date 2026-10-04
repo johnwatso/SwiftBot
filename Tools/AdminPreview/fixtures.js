@@ -720,7 +720,28 @@ const activity = (() => {
   return { entries, totalCount: entries.length };
 })();
 
+// What /api/music/preview returns for the Dawn Beyond link: the payload
+// AppModel.musicTrackPayload builds (real metadata, captured 2026-10-04).
+const musicPreview = {
+  embeds: [{
+    title: 'Dawn Beyond',
+    description: 'by **Embark Studios**\nTHE FINALS (S11 Original Soundtrack) - EP · 2026 · 2:10',
+    color: 0xFA243C,
+    author: { name: 'Shared from Apple Music' },
+    url: 'https://music.apple.com/nz/album/dawn-beyond/6787450308?i=6787450309',
+    image: { url: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/aa/69/86/aa6986d1-4d7e-4430-c2e7-0699bd1f21b5/artwork.jpg/600x600bb.jpg' }
+  }],
+  components: [{ type: 1, components: [
+    { type: 2, style: 5, label: 'Apple Music', url: 'https://music.apple.com/nz/album/dawn-beyond/6787450308?i=6787450309' },
+    { type: 2, style: 5, label: 'Spotify', url: 'https://open.spotify.com/search/Dawn%20Beyond%20Embark%20Studios' },
+    { type: 2, style: 5, label: 'YouTube Music', url: 'https://music.youtube.com/search?q=Dawn%20Beyond%20Embark%20Studios' },
+    { type: 2, style: 5, label: 'YouTube', url: 'https://www.youtube.com/results?search_query=Dawn%20Beyond%20Embark%20Studios' }
+  ] }],
+  allowed_mentions: { parse: [], replied_user: false }
+};
+
 module.exports = {
+  musicPreview,
   updates,
   botPermissions,
   activity,

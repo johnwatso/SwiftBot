@@ -5491,6 +5491,23 @@
     .dc-field-name { font-weight: 600; color: #f2f3f5; margin-bottom: 2px; }
     .dc-field-value { white-space: pre-wrap; word-wrap: break-word; }
     .dc-embed-footer { font-size: 12px; color: #b5bac1; }
+    /* Music card preview: link title, full-width cover, link buttons. */
+    .dc-embed-title a { color: #00a8fc; text-decoration: none; }
+    .dc-embed-title a:hover { text-decoration: underline; }
+    .dc-embed-image { display: block; width: 100%; max-width: 400px; aspect-ratio: 1; object-fit: cover; border-radius: 4px; margin-top: 8px; background: #1e1f22; }
+    .dc-reply { display: flex; align-items: center; gap: 6px; margin: 0 0 4px 20px; font-size: 13px; color: #b5bac1; min-width: 0; }
+    .dc-reply::before { content: ""; width: 26px; height: 10px; border-left: 2px solid #4e5058; border-top: 2px solid #4e5058; border-top-left-radius: 6px; margin-top: 8px; flex: none; }
+    .dc-reply span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dc-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .dc-button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; background: #4e5058; color: #fff; font-size: 14px; font-weight: 500; text-decoration: none; }
+    .dc-button:hover { background: #6d6f78; }
+    .dc-button svg { width: 14px; height: 14px; }
+    .music-preview-form { display: flex; gap: 8px; margin-bottom: 12px; }
+    .music-preview-form input { flex: 1 1 auto; width: auto; min-width: 0; }
+    .music-preview-form button { flex: none; }
+    #musicPreview .placeholder { margin: 0; }
+    /* Long links in the preview must shrink, not widen the dialog. */
+    .automation-editor-section:has(#musicPreview), #musicPreview { min-width: 0; max-width: 100%; overflow: hidden; }
     .dc-chat code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 85%; background: #1e1f22; border-radius: 3px; padding: 0 3px; }
     .dc-chat strong { color: #f2f3f5; }
 
@@ -8648,6 +8665,14 @@
             : ''}
           ${servers.length ? servers.map(serverBlock).join('') : '<div class="ub-help" style="margin-top:0;">No text channels found. Connect SwiftBot to a server first.</div>'}
         </div>
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="eye"></i> Preview</h3>
+          <form id="musicPreviewForm" class="music-preview-form">
+            <input id="musicPreviewLink" class="field-input" type="url" value="${escapeHTML(musicPreviewLink)}" placeholder="Paste a song link" aria-label="Song link to preview" autocomplete="off" spellcheck="false">
+            <button class="secondary-action" type="submit">Preview</button>
+          </form>
+          <div id="musicPreview"></div>
+        </div>
       `, `
         <span id="musicWatchHint" class="modal-hint"></span>
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
@@ -8674,6 +8699,14 @@
       });
       validate();
       refreshIcons();
+      document.getElementById('musicPreviewForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const link = document.getElementById('musicPreviewLink').value.trim();
+        if (!link) return;
+        musicPreviewLink = link;
+        loadMusicCardPreview(link);
+      });
+      loadMusicCardPreview(musicPreviewLink);
 
       document.getElementById('musicWatchSave').onclick = async (e) => {
         const channelIDs = Array.from(document.querySelectorAll('.music-channel:checked')).map(input => input.value);
@@ -12245,6 +12278,56 @@
         return `<span class="dc-mention">@${escapeHTML(name)}</span>`;
       });
       return html;
+    }
+
+    // SwiftBot's reply to a shared music link, drawn the way Discord shows
+    // it: a reply line, the card with full-width cover art, then buttons.
+    function musicCardPreviewHTML(payload, sharedLink) {
+      const embed = (payload.embeds || [])[0] || {};
+      const color = typeof embed.color === 'number' ? '#' + embed.color.toString(16).padStart(6, '0') : '#1e1f22';
+      // The bot escapes markdown in names (\*NSYNC); show those characters as typed.
+      const markdown = (text) => discordMarkdown(String(text || '').replace(/\\([\\*_~`|>])/g, (_, c) => String.fromCharCode(0xE000 + c.charCodeAt(0))))
+        .replace(/[\uE000-\uE0FF]/g, c => escapeHTML(String.fromCharCode(c.charCodeAt(0) - 0xE000)));
+      const safeURL = (url) => /^https:\/\//i.test(url || '') ? escapeHTML(url) : '';
+      const buttons = (payload.components || []).flatMap(row => row.components || [])
+        .filter(button => safeURL(button.url))
+        .map(button => `<a class="dc-button" href="${safeURL(button.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(button.label || '')}<i class="lucide" data-lucide="external-link"></i></a>`).join('');
+      const now = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      return `
+        <div class="dc-chat" aria-label="Discord preview">
+          <div class="dc-reply"><span>${escapeHTML(sharedLink)}</span></div>
+          <div class="dc-msg">
+            <div class="dc-avatar" aria-hidden="true"><i class="lucide" data-lucide="bot"></i></div>
+            <div style="min-width:0;">
+              <div class="dc-name">SwiftBot <span class="dc-app">App</span> <span class="dc-time">Today at ${escapeHTML(now)}</span></div>
+              <div class="dc-embed" style="--dc-accent:${color};">
+                ${embed.author?.name ? `<div class="dc-embed-author">${escapeHTML(embed.author.name)}</div>` : ''}
+                ${embed.title ? `<div class="dc-embed-title">${safeURL(embed.url) ? `<a href="${safeURL(embed.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(embed.title)}</a>` : escapeHTML(embed.title)}</div>` : ''}
+                ${embed.description ? `<div class="dc-embed-desc">${markdown(embed.description)}</div>` : ''}
+                ${safeURL(embed.image?.url) ? `<img class="dc-embed-image" src="${safeURL(embed.image.url)}" alt="" loading="lazy">` : ''}
+              </div>
+              ${buttons ? `<div class="dc-buttons">${buttons}</div>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Reused across dialog opens so the preview doesn't search again.
+    let musicPreviewLink = 'https://music.apple.com/nz/album/dawn-beyond/6787450308?i=6787450309';
+    async function loadMusicCardPreview(link) {
+      const node = document.getElementById('musicPreview');
+      if (!node) return;
+      node.innerHTML = '<div class="placeholder">Looking up the track…</div>';
+      try {
+        const response = await fetch(`/api/music/preview?url=${encodeURIComponent(link)}`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'Couldn’t build a preview.');
+        if (!document.body.contains(node)) return;
+        node.innerHTML = musicCardPreviewHTML(data, link);
+        refreshIcons();
+      } catch (error) {
+        if (document.body.contains(node)) node.innerHTML = `<div class="placeholder">${escapeHTML(error.message || 'Couldn’t build a preview.')}</div>`;
+      }
     }
 
     function discordMessageHTML(payload, members) {

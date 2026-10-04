@@ -1725,6 +1725,9 @@ actor AdminWebServer {
     private var swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)?
     /// (userID, servers a member may see or nil for an admin, guild, period).
     private var memberReplayProvider: (@Sendable (String, [String]?, String?, String?) async -> AdminWebMemberReplayPayload?)?
+    /// The Discord message JSON SwiftBot would post for a shared music link.
+    private var musicPreviewProvider: (@Sendable (String) async -> Data?)?
+    private var musicPreviewCache: [String: (body: Data, builtAt: Date)] = [:]
     private var memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)?
     private var memberMayPlay: (@Sendable (String, String) async -> Bool)?
     private var mediaPlaybackChoiceProvider: (@Sendable (String) async -> (quality: String, preparing: Bool)?)?
@@ -1867,6 +1870,7 @@ actor AdminWebServer {
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         swiftMeshProvider: (@Sendable () async -> AdminWebSwiftMeshPayload?)? = nil,
         memberReplayProvider: (@Sendable (String, [String]?, String?, String?) async -> AdminWebMemberReplayPayload?)? = nil,
+        musicPreviewProvider: (@Sendable (String) async -> Data?)? = nil,
         memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)? = nil,
         memberMayPlay: (@Sendable (String, String) async -> Bool)? = nil,
         mediaPlaybackChoiceProvider: (@Sendable (String) async -> (quality: String, preparing: Bool)?)? = nil,
@@ -1972,6 +1976,7 @@ actor AdminWebServer {
         self.refreshSwiftMesh = refreshSwiftMesh
         self.swiftMeshProvider = swiftMeshProvider
         self.memberReplayProvider = memberReplayProvider
+        self.musicPreviewProvider = musicPreviewProvider
         self.memberClipsProvider = memberClipsProvider
         self.memberMayPlay = memberMayPlay
         self.mediaPlaybackChoiceProvider = mediaPlaybackChoiceProvider
@@ -2917,6 +2922,25 @@ actor AdminWebServer {
             }
             audit(source: "Web Config", actor: actorLabel(session), action: update.enabled ? "Let server members sign in" : "Stopped member sign-in")
             return jsonResponse(["ok": true])
+        case ("GET", "/api/music/preview"):
+            // Runs the real lookup (oEmbed + Apple search), so admins only, and
+            // cached so reopening the dialog doesn't search again.
+            guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+            guard requireRole(.admin, session: session) else { return forbiddenResponse() }
+            let link = (request.query["url"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !link.isEmpty, link.count <= 2048 else {
+                return jsonResponse(["error": "missing_url", "message": "Paste a song link to preview."], status: "400 Bad Request")
+            }
+            musicPreviewCache = musicPreviewCache.filter { Date().timeIntervalSince($0.value.builtAt) < 600 }
+            if let cached = musicPreviewCache[link] {
+                return httpResponse(status: "200 OK", body: cached.body, contentType: "application/json; charset=utf-8")
+            }
+            guard let body = await musicPreviewProvider?(link) else {
+                return jsonResponse(["error": "not_found", "message": "That isn’t a song link SwiftBot recognises, or it couldn’t be identified."], status: "404 Not Found")
+            }
+            if musicPreviewCache.count > 50 { musicPreviewCache.removeAll() }
+            musicPreviewCache[link] = (body, Date())
+            return httpResponse(status: "200 OK", body: body, contentType: "application/json; charset=utf-8")
         case ("GET", "/api/commands"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()

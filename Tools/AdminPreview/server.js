@@ -369,6 +369,7 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/config': return sendJSON(res, config);
       case '/api/settings': return sendJSON(res, { prefix: fixtures.config.commands.prefix });
       case '/api/commands': return sendJSON(res, fixtures.commands);
+      case '/api/music/preview': return sendJSON(res, fixtures.musicPreview);
       case '/api/access': return sendJSON(res, fixtures.access);
       case '/api/activity': return sendJSON(res, fixtures.activity);
       case '/api/automations': {

@@ -2495,6 +2495,14 @@ extension AppModel {
                 guard let model = self else { return nil }
                 return await model.memberReplay(userID: userID, allowedGuildIDs: guildIDs, guildID: guildID, periodKey: period)
             },
+            musicPreviewProvider: { [weak self] link in
+                guard let model = self, let url = URL(string: link), MusicLinkDetector.isSupportedTrackURL(url) else { return nil }
+                let service = await model.musicLookupService
+                guard let track = await service.searchTrack(forMusicURL: url) else { return nil }
+                return await MainActor.run {
+                    try? JSONSerialization.data(withJSONObject: model.musicTrackPayload(for: track, sourceURL: url))
+                }
+            },
             memberClipsProvider: { [weak self] userID, query in
                 guard let model = self else { return nil }
                 return await model.memberClips(userID: userID, query: query)
