@@ -15881,6 +15881,9 @@
       };
       const itemCard = (item) => {
         const modifiedMs = new Date(item.modifiedAt).getTime();
+        // Recordings under 50 MB are usually a few seconds long (a misfire
+        // or a cut-off save), so say so next to the size.
+        const isShort = Number(item.sizeBytes) > 0 && Number(item.sizeBytes) < 50 * 1024 * 1024;
         const isRecent = Number.isFinite(modifiedMs) && (now - modifiedMs) < oneDayMs;
         const clock = Number.isFinite(modifiedMs) ? new Date(modifiedMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
         return `
@@ -15890,7 +15893,7 @@
               <span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span>
               <video class="hover-preview" muted playsinline loop preload="none"></video>
               ${isRecent ? '<span class="media-badge is-new">New</span>' : ''}
-              <span class="media-badge is-size">${escapeHTML(formatFileSize(item.sizeBytes))}</span>
+              <span class="media-badge is-size"${isShort ? ' title="Short recording, likely only a few seconds"' : ''}>${escapeHTML(formatFileSize(item.sizeBytes))}${isShort ? ' · Short' : ''}</span>
               <span class="media-play"><i class="lucide" data-lucide="play"></i></span>
             </span>
             <span class="media-card-text">
