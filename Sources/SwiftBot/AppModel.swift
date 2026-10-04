@@ -162,6 +162,8 @@ final class AppModel: ObservableObject {
     @Published var patchyLastCycleAt: Date?
     var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
     @Published var adminWebResolvedBaseURL: String = ""
+    /// Whether the admin web server's listener is up, as of its last configure/restart.
+    @Published var adminWebIsListening = false
     @Published var adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
     @Published var workerModeMigrated = false
     @Published var swiftMinerPairingStatusMessage: String?
@@ -1153,6 +1155,7 @@ final class AppModel: ObservableObject {
                 await adminWebServer.stop()
                 await service.setOutputAllowed(false)
                 adminWebResolvedBaseURL = ""
+                adminWebIsListening = false
                 adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
             }
 

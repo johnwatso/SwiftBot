@@ -1776,6 +1776,7 @@ extension AppModel {
         guard !Self.isRunningUnderXCTest else {
             await adminWebServer.stop()
             adminWebResolvedBaseURL = ""
+            adminWebIsListening = false
             adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
             return
         }
@@ -2666,6 +2667,7 @@ extension AppModel {
             )
         }
         adminWebResolvedBaseURL = runtimeState.publicBaseURL
+        adminWebIsListening = runtimeState.isListening
         updateAdminWebCertificateRenewalTask()
         await updateAdminWebPublicAccessRuntime()
     }
@@ -3579,6 +3581,7 @@ extension AppModel {
                     let runtimeState = await adminWebServer.restartListener()
                     await MainActor.run {
                         self.adminWebResolvedBaseURL = runtimeState.publicBaseURL
+                        self.adminWebIsListening = runtimeState.isListening
                         self.logs.append("♻️ Reloaded Admin Web UI TLS listener with the renewed certificate.")
                     }
                 }

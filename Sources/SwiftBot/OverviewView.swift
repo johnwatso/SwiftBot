@@ -11,6 +11,7 @@ struct OverviewView: View {
     @EnvironmentObject var app: AppModel
 
     var onOpenSwiftMesh: (() -> Void)?
+    var onShowConsole: (() -> Void)?
     @AppStorage("overview.metric.order.v1") private var metricOrderStorage = ""
     @AppStorage("overview.metric.hidden.v1") private var metricHiddenStorage = ""
     @State private var metricOrder: [String] = []
@@ -414,6 +415,12 @@ struct OverviewView: View {
                 }
                 .disabled(!canResetDashboard)
                 .buttonStyle(.bordered)
+            }
+
+            if let onShowConsole, !isEditingDashboard {
+                Button("Console View", systemImage: "macwindow", action: onShowConsole)
+                    .buttonStyle(GlassActionButtonStyle())
+                    .controlSize(.small)
             }
 
             Button(isEditingDashboard ? "Done" : "Edit") {

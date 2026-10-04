@@ -43,7 +43,7 @@ struct GeneralPreferencesView: View {
             return "Add a Discord bot token below to get started."
         }
         return app.status == .running
-            ? "Auto-start is \(app.settings.autoStart ? "on" : "off")."
+            ? "SwiftBot is online."
             : "Use the toolbar to start the bot."
     }
 
@@ -59,13 +59,7 @@ struct GeneralPreferencesView: View {
                     tint: statusTint,
                     title: statusTitle,
                     subtitle: statusSubtitle
-                ) {
-                    Toggle("", isOn: $app.settings.autoStart)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
-                        .help(app.settings.autoStart ? "Disable auto-start" : "Enable auto-start")
-                }
+                )
 
                 Picker("Show SwiftBot as", selection: $app.settings.presenceMode) {
                     ForEach(AppPresenceMode.allCases) { mode in
@@ -75,6 +69,21 @@ struct GeneralPreferencesView: View {
                 .pickerStyle(.menu)
             }
             .preferencesCardDisabled(when: app.isFailoverManagedNode)
+
+            // App-level startup behaviour. Launch at Login belongs to this Mac,
+            // so it stays editable on Failover nodes; auto-connect is a bot
+            // setting and follows the Failover read-only rule.
+            Section {
+                LaunchAtLoginToggle()
+
+                Toggle(isOn: $app.settings.autoStart) {
+                    Text("Connect to Discord when SwiftBot opens")
+                    Text("Starts the bot automatically instead of waiting for Start.")
+                }
+                .disabled(app.isFailoverManagedNode)
+            } header: {
+                Text("Startup")
+            }
 
             Section {
                 LabeledContent("Bot Token") {

@@ -58,6 +58,7 @@ struct UnifiedRootView: View {
     @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @AppStorage("overview.layout") private var overviewLayout: OverviewLayout = .console
 
     /// Detail content runs up into the titlebar. With the sidebar showing, the
     /// traffic lights sit over the sidebar; once it collapses they (and the
@@ -101,13 +102,19 @@ struct UnifiedRootView: View {
     private var detailView: some View {
         switch selection {
         case .overview:
-            OverviewView(onOpenSwiftMesh: {
-                if !shouldHideSwiftMesh {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selection = .swiftMesh
-                    }
-                }
-            })
+            switch overviewLayout {
+            case .console:
+                ConsoleOverviewView(
+                    onOpenSwiftMesh: openSwiftMesh,
+                    onShowLogs: { select(.activity) },
+                    onShowClassicDashboard: { overviewLayout = .classic }
+                )
+            case .classic:
+                OverviewView(
+                    onOpenSwiftMesh: openSwiftMesh,
+                    onShowConsole: { overviewLayout = .console }
+                )
+            }
         case .patchy: PatchyView()
         case .welcomeFlow: WelcomeFlowView()
         case .automations: AutomationsView()
@@ -134,6 +141,26 @@ struct UnifiedRootView: View {
     private var shouldHideSwiftMesh: Bool {
         app.settings.clusterMode == .standalone
     }
+
+    private func openSwiftMesh() {
+        if !shouldHideSwiftMesh {
+            select(.swiftMesh)
+        }
+    }
+
+    private func select(_ item: SidebarItem) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selection = item
+        }
+    }
+}
+
+/// Which Overview the main window shows. The console layout is the new
+/// host-focused page; the classic one is the metrics dashboard, kept while
+/// the console redesign settles (see Documentation/CONSOLE_REDESIGN_PLAN.md).
+enum OverviewLayout: String {
+    case console
+    case classic
 }
 
 private struct BetaBadgeView: View {
