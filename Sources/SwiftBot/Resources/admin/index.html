@@ -1747,10 +1747,13 @@
       background: rgba(255, 59, 48, 0.08);
     }
 
-    .patchy-shell {
+    .patchy-shell,
+    .wiki-shell {
       display: grid;
       gap: 12px;
     }
+    #wikiSettings { margin-top: 10px; }
+    #wikiSettings:empty { display: none; }
 
     .patchy-accent-grid {
       display: flex;
@@ -5138,21 +5141,71 @@
     /* ---- Lookup editor ---- */
     .wiki-quickstart {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 10px;
       margin-bottom: 12px;
       font-size: 12.5px;
       color: var(--muted);
     }
     .wiki-grid { display: grid; gap: 6px 8px; align-items: center; }
-    .wiki-grid-commands { grid-template-columns: auto minmax(90px, 0.8fr) minmax(120px, 1.6fr) minmax(70px, 0.6fr) auto; }
-    .wiki-grid-rules { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+    .wiki-grid-commands { grid-template-columns: auto minmax(90px, 0.8fr) minmax(120px, 2fr) auto; }
+    .wiki-grid-aliases { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr) auto; }
+    .wiki-alias-arrow { width: 14px; height: 14px; color: var(--muted); }
+    .wiki-misses { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+    .wiki-misses .wiki-field-chip { text-decoration: none; }
+    .wiki-starters { display: flex; flex-wrap: wrap; gap: 6px; }
+    .wiki-starter {
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-stroke);
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .wiki-starter:hover { background: color-mix(in srgb, var(--blue-b) 12%, transparent); }
     .wiki-grid-head { font-size: 11.5px; color: var(--muted); }
     .wiki-grid .field-input { min-width: 0; width: 100%; padding: 7px 10px; min-height: 34px; }
     .wiki-grid input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
     .wiki-grid .we-remove { width: 30px; height: 30px; display: grid; place-items: center; }
     .wiki-grid .we-remove svg { width: 14px; height: 14px; }
     .wiki-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .wiki-try { display: flex; gap: 8px; }
+    .wiki-try .field-input { flex: 1; min-width: 0; }
+    .wiki-try .secondary-action { flex: none; }
+    .wiki-preview { margin-top: 12px; }
+    .wiki-preview .dc-chat { border-radius: 12px; }
+    .wiki-preview-error { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--error); }
+    .wiki-preview-error svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+    .wiki-field-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .wiki-field-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-stroke);
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      text-decoration: line-through;
+    }
+    .wiki-field-chip.is-on { color: var(--text); text-decoration: none; background: color-mix(in srgb, var(--blue-b) 14%, transparent); border-color: color-mix(in srgb, var(--blue-b) 40%, transparent); }
+    .wiki-field-chip svg { width: 13px; height: 13px; }
+    .wiki-preview .dc-embed-title { overflow-wrap: anywhere; }
+    /* Phones: drop the avatar gutter and use two field columns, as Discord's app does. */
+    @media (max-width: 640px) {
+      .wiki-preview .dc-chat { padding: 12px; font-size: 14px; }
+      .wiki-preview .dc-msg { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+      .wiki-preview .dc-avatar { display: none; }
+      .wiki-preview .dc-embed { padding: 8px 12px 12px 10px; }
+      .wiki-preview .dc-embed-head.has-thumb { grid-template-columns: minmax(0, 1fr) 56px; gap: 10px; }
+      .wiki-preview .dc-embed-thumb { width: 56px; height: 56px; }
+      .wiki-preview .dc-embed-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     .wiki-actions-spacer { flex: 1; }
     .wiki-advanced > summary {
       display: flex;
@@ -5168,10 +5221,10 @@
     .wiki-advanced > summary svg { width: 15px; height: 15px; }
     .wiki-advanced[open] > summary { margin-bottom: 12px; }
     @media (max-width: 640px) {
+      .wiki-quickstart { flex-direction: column; gap: 6px; }
       .wiki-grid-commands { grid-template-columns: auto minmax(0, 1fr) auto; }
       .wiki-grid-commands .wiki-grid-head,
-      .wiki-grid-commands .we-cmd-desc,
-      .wiki-grid-commands .we-cmd-endpoint { display: none; }
+      .wiki-grid-commands .we-cmd-desc { display: none; }
     }
 
     /* Dialogs on phones: labels above fields, footer actions on their own row. */
@@ -5491,6 +5544,11 @@
     .dc-field-name { font-weight: 600; color: #f2f3f5; margin-bottom: 2px; }
     .dc-field-value { white-space: pre-wrap; word-wrap: break-word; }
     .dc-embed-footer { font-size: 12px; color: #b5bac1; }
+    .dc-embed-head { display: grid; gap: 8px; min-width: 0; }
+    .dc-embed-head.has-thumb { grid-template-columns: minmax(0, 1fr) 80px; gap: 16px; }
+    .dc-embed-head-text { display: grid; gap: 8px; min-width: 0; align-content: start; }
+    .dc-embed-head-text:empty { display: none; }
+    .dc-embed-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-top: 8px; background: #1e1f22; }
     /* Music card preview: link title, full-width cover, link buttons. */
     .dc-embed-title a { color: #00a8fc; text-decoration: none; }
     .dc-embed-title a:hover { text-decoration: underline; }
@@ -6541,6 +6599,7 @@
           <div class="wiki-shell">
             <section id="wikiTop" class="ub-status glass"></section>
             <section id="wikiSources" class="ub-list glass"></section>
+            <div id="wikiSettings"></div>
           </div>
         </section>
 
@@ -12330,6 +12389,9 @@
       }
     }
 
+    // Only https links/images reach the preview, as Discord would show them.
+    const discordSafeURL = (url) => /^https:\/\//i.test(url || '') ? escapeHTML(url) : '';
+
     function discordMessageHTML(payload, members) {
       const embeds = (payload.embeds || []).map(embed => {
         const color = typeof embed.color === 'number' ? '#' + embed.color.toString(16).padStart(6, '0') : '#1e1f22';
@@ -12340,11 +12402,21 @@
           </div>`).join('');
         const time = embed.timestamp ? new Date(embed.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
         const footer = [embed.footer?.text, time ? `Today at ${time}` : ''].filter(Boolean).map(escapeHTML).join(' • ');
+        const titleURL = discordSafeURL(embed.url);
+        const title = embed.title
+          ? (titleURL ? `<a href="${titleURL}" target="_blank" rel="noopener noreferrer">${escapeHTML(embed.title)}</a>` : discordMarkdown(embed.title, members))
+          : '';
+        const thumb = discordSafeURL(embed.thumbnail?.url);
         return `
           <div class="dc-embed" style="--dc-accent:${color};">
-            ${embed.author?.name ? `<div class="dc-embed-author">${escapeHTML(embed.author.name)}</div>` : ''}
-            ${embed.title ? `<div class="dc-embed-title">${discordMarkdown(embed.title, members)}</div>` : ''}
-            ${embed.description ? `<div class="dc-embed-desc">${discordMarkdown(embed.description, members)}</div>` : ''}
+            <div class="dc-embed-head${thumb ? ' has-thumb' : ''}">
+              <div class="dc-embed-head-text">
+                ${embed.author?.name ? `<div class="dc-embed-author">${escapeHTML(embed.author.name)}</div>` : ''}
+                ${title ? `<div class="dc-embed-title">${title}</div>` : ''}
+                ${embed.description ? `<div class="dc-embed-desc">${discordMarkdown(embed.description, members)}</div>` : ''}
+              </div>
+              ${thumb ? `<img class="dc-embed-thumb" src="${thumb}" alt="" loading="lazy">` : ''}
+            </div>
             ${fields ? `<div class="dc-embed-fields">${fields}</div>` : ''}
             ${footer ? `<div class="dc-embed-footer">${footer}</div>` : ''}
           </div>`;
@@ -14563,6 +14635,19 @@
       try { return new URL(url).host.replace(/^www\./, ''); } catch { return ''; }
     }
 
+    // Same list as WikiSource.starters natively.
+    const WIKI_STARTERS = [
+      { name: 'THE FINALS Wiki', baseURL: 'https://www.thefinals.wiki', apiPath: '/w/api.php', slug: 'finals', sample: 'AKM' },
+      { name: 'Minecraft Wiki', baseURL: 'https://minecraft.wiki', apiPath: '/api.php', slug: 'minecraft', sample: 'Diamond Sword' },
+      { name: 'Terraria Wiki', baseURL: 'https://terraria.wiki.gg', apiPath: '/api.php', slug: 'terraria', sample: "Night's Edge" },
+      { name: 'WARFRAME Wiki', baseURL: 'https://wiki.warframe.com', apiPath: '/api.php', slug: 'warframe', sample: 'Braton' },
+      { name: 'Elden Ring Wiki', baseURL: 'https://eldenring.fandom.com', apiPath: '/api.php', slug: 'eldenring', sample: 'Moonveil' },
+      { name: 'Deep Rock Galactic Wiki', baseURL: 'https://deeprockgalactic.wiki.gg', apiPath: '/api.php', slug: 'drg', sample: 'Deepcore GK2' }
+    ];
+
+    const wikiUsage = (sourceID) => wikiBridgeData?.usage?.[String(sourceID).toUpperCase()] || wikiBridgeData?.usage?.[sourceID] || null;
+    const wikiAliasKey = (text) => String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
     function wikiSlashTrigger(raw) {
       let value = String(raw || '').trim().toLowerCase().split(/\s+/)[0] || '';
       value = value.replace(/^[!/]+/, '').replace(/[^\p{L}\p{N}_-]/gu, '-').replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '');
@@ -14588,17 +14673,24 @@
         pageType: String(rule.pageType || '').trim(),
         templateName: String(rule.templateName || '').trim()
       })).filter(rule => rule.pageType || rule.templateName);
+      const aliases = (source.aliases || []).map(alias => ({
+        ...alias,
+        from: String(alias.from || '').trim(),
+        to: String(alias.to || '').trim()
+      })).filter(alias => alias.from && alias.to);
       const hidden = [...new Set((source.formatting?.hiddenEmbedFields || [])
         .map(name => String(name).toLowerCase().replace(/[^a-z0-9]/g, ''))
         .filter(Boolean))];
+      const saved = Object.fromEntries(Object.entries(source).filter(([key]) => !key.startsWith('__')));
       return {
-        ...source,
+        ...saved,
         name: String(source.name || '').trim(),
         baseURL: String(source.baseURL || '').trim(),
         apiPath: String(source.apiPath || '').trim() || '/api.php',
         searchScope: String(source.searchScope || '').trim(),
         commands,
         parsingRules,
+        aliases,
         // Lookup replies are always embeds, as in the native editor.
         formatting: { ...(source.formatting || {}), useEmbeds: true, hiddenEmbedFields: hidden }
       };
@@ -14619,7 +14711,12 @@
       const tone = /fail|error/i.test(source.lastStatus || '') ? 'critical'
         : (/^ok\b|success/i.test(source.lastStatus || '') ? 'healthy' : 'neutral');
       const triggers = (source.commands || []).filter(c => c.enabled !== false).map(c => c.trigger);
-      const sub = [wikiHost(source.baseURL) || source.baseURL, triggers.length ? triggers.join(', ') : 'No commands'].filter(Boolean).join(' · ');
+      const week = wikiUsage(source.id)?.lookupsThisWeek || 0;
+      const sub = [
+        wikiHost(source.baseURL) || source.baseURL,
+        triggers.length ? triggers.join(', ') : 'No commands',
+        week ? `${week} this week` : ''
+      ].filter(Boolean).join(' · ');
       const used = relativeTime(source.lastLookupAt);
       return `
         <div class="ub-item${source.enabled ? '' : ' is-off'}" data-wiki-id="${escapeHTML(source.id)}">
@@ -14693,6 +14790,7 @@
         commands: [],
         formatting: { includeStatBlocks: true, useEmbeds: true, compactMode: false, hiddenEmbedFields: [] },
         parsingRules: [],
+        aliases: [],
         lastLookupAt: null,
         lastStatus: 'Never used'
       }, { isNew: true });
@@ -14700,6 +14798,28 @@
       sourcesNode.innerHTML = sources.length
         ? sources.map(wikiRowHTML).join('')
         : `<div class="placeholder">No Lookup sources yet. Use <strong>Add Source</strong> to connect a game wiki.</div>`;
+
+      const settingsNode = document.getElementById('wikiSettings');
+      if (settingsNode) {
+        settingsNode.innerHTML = `
+          <section class="ub-group">
+            <div class="ub-group-head"><h2>Settings</h2></div>
+            <div class="ub-group-card glass">
+              <div class="ub-row">
+                <div class="ub-row-text">
+                  <div class="ub-row-title">Answer questions in chat</div>
+                  <div class="ub-row-desc">When someone asks SwiftBot about an item, it looks it up before answering.</div>
+                </div>
+                <label class="switch"><input id="wikiAnswers" type="checkbox" ${wikiBridgeData.answersQuestions !== false ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+              </div>
+            </div>
+          </section>`;
+        settingsNode.querySelector('#wikiAnswers')?.addEventListener('change', async (e) => {
+          await postJSON('/api/wikibridge/state', { answersQuestions: e.target.checked });
+          await loadWikiBridge();
+          renderWikiBridgeView();
+        });
+      }
 
       sourcesNode.querySelectorAll('[data-wiki-id]').forEach(row => {
         const sourceID = row.dataset.wikiId;
@@ -14726,13 +14846,13 @@
         : `
           <div class="modal-footer-start">
             ${draft.isPrimary ? '' : '<button id="wikiEditorPrimary" class="secondary-action" type="button"><i class="lucide" data-lucide="star"></i> Make Primary</button>'}
-            <button id="wikiEditorTest" class="secondary-action" type="button"><i class="lucide" data-lucide="flask-conical"></i> Test</button>
             <button id="wikiEditorDelete" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>
           </div>
           <span id="wikiEditorHint" class="modal-hint"></span>
           <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
           <button id="wikiEditorSave" class="primary-action" type="button">Save</button>`;
 
+      wikiPreview = { query: wikiHost(draft.baseURL).includes('thefinals.wiki') ? 'AKM' : '', data: null, error: '', loading: false };
       showModal(isNew ? 'New Lookup source' : (draft.name || 'Lookup source'), '<div id="wikiEditorBody"></div>', footer, { wide: true });
       renderWikiSourceEditor(draft, isNew);
 
@@ -14744,26 +14864,6 @@
         await postJSON('/api/wikibridge/source/primary', { sourceID });
         await reload();
         hideModal();
-      });
-      document.getElementById('wikiEditorTest')?.addEventListener('click', async (e) => {
-        const button = e.currentTarget;
-        const original = button.innerHTML;
-        button.disabled = true;
-        button.textContent = 'Testing…';
-        try {
-          await postJSON('/api/wikibridge/source/test', { sourceID });
-          await loadWikiBridge();
-          renderWikiBridgeView();
-          const fresh = (wikiBridgeData.sources || []).find(s => s.id === sourceID);
-          readWikiEditorInto(draft);
-          if (fresh) Object.assign(draft, { lastStatus: fresh.lastStatus, lastLookupAt: fresh.lastLookupAt });
-          renderWikiSourceEditor(draft, isNew);
-        } catch (error) {
-          setMessage(error.message || 'Lookup test failed.', 'error');
-        }
-        button.disabled = false;
-        button.innerHTML = original;
-        refreshIcons();
       });
       document.getElementById('wikiEditorDelete')?.addEventListener('click', async () => {
         if (!confirm(`Delete "${draft.name || 'this source'}" and its commands?`)) return;
@@ -14787,6 +14887,32 @@
         }
       });
       refreshIcons();
+    }
+
+    // The editor's Try it result, reset each time the dialog opens:
+    // { query, data: { embed, fields }, error, loading }.
+    let wikiPreview = null;
+    const wikiFieldKey = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // One lookup against the unsaved draft, like native's Run Test.
+    async function runWikiPreview(draft, isNew) {
+      readWikiEditorInto(draft);
+      const query = String(wikiPreview.query || '').trim();
+      if (!query || wikiPreview.loading || !wikiHost(String(draft.baseURL || '').trim())) return;
+      Object.assign(wikiPreview, { loading: true, error: '' });
+      renderWikiSourceEditor(draft, isNew);
+      try {
+        wikiPreview.data = await postJSON('/api/wikibridge/source/preview', { source: sanitizeWikiSource(draft), query });
+      } catch (error) {
+        wikiPreview.data = null;
+        wikiPreview.error = /no_result/.test(error.message || '')
+          ? `Nothing found for “${query}”. Try the exact page name.`
+          : 'The wiki didn’t answer. Check the address, or the API path under Advanced.';
+      }
+      wikiPreview.loading = false;
+      if (!document.getElementById('wikiEditorBody')) return;
+      readWikiEditorInto(draft);
+      renderWikiSourceEditor(draft, isNew);
     }
 
     function updateWikiEditorValidity(draft) {
@@ -14826,31 +14952,33 @@
 
       const quickStart = isNew && !draft.baseURL && !draft.name ? `
         <div class="wiki-quickstart">
-          <span>Quick start</span>
-          <button id="wikiStartFinals" class="secondary-action" type="button"><i class="lucide" data-lucide="sparkles"></i> THE FINALS Wiki</button>
+          <span>Popular wikis</span>
+          <div class="wiki-starters">
+            ${WIKI_STARTERS.map((starter, i) => `<button class="wiki-starter" type="button" data-wiki-starter="${i}">${escapeHTML(starter.name.replace(/ Wiki$/, ''))}</button>`).join('')}
+          </div>
         </div>` : '';
 
       const sourceSection = section('globe', 'Wiki',
         quickStart
         + row('Address', input('weBase', draft.baseURL, 'https://example.fandom.com', 'type="url" autocomplete="off" spellcheck="false"')
-          + '<div class="ub-help">MediaWiki and Fandom wikis work best.</div>')
+          + `<div id="weDetectHint" class="ub-help">${escapeHTML(draft.__detectHint || 'MediaWiki, Fandom and wiki.gg wikis work. Paste one and Lookup finds the rest.')}</div>`)
         + row('Name', input('weName', draft.name, 'e.g. Minecraft Wiki')));
 
       const commands = draft.commands || [];
       const commandRows = commands.length
         ? `<div class="wiki-grid wiki-grid-commands">
-            <span class="wiki-grid-head"></span><span class="wiki-grid-head">Trigger</span><span class="wiki-grid-head">Description</span><span class="wiki-grid-head">Endpoint</span><span class="wiki-grid-head"></span>
+            <span class="wiki-grid-head"></span><span class="wiki-grid-head">Trigger</span><span class="wiki-grid-head">Description</span><span class="wiki-grid-head"></span>
             ${commands.map((c, i) => `
               <input type="checkbox" class="we-cmd-enabled" data-index="${i}" ${c.enabled !== false ? 'checked' : ''} aria-label="Command enabled">
               <input class="field-input we-cmd-trigger" data-index="${i}" value="${escapeHTML(c.trigger || '')}" placeholder="/finals" spellcheck="false">
               <input class="field-input we-cmd-desc" data-index="${i}" value="${escapeHTML(c.description || '')}" placeholder="What it does">
-              <input class="field-input we-cmd-endpoint" data-index="${i}" value="${escapeHTML(c.endpoint || 'search')}" placeholder="search" spellcheck="false">
               <button class="icon-btn we-remove" type="button" data-remove-command="${i}" aria-label="Remove command"><i class="lucide" data-lucide="x"></i></button>
             `).join('')}
           </div>`
         : '<div class="ub-help" style="margin-top:0;">No commands yet. Add one, or start from a preset.</div>';
       const commandsSection = section('terminal', 'Commands', `
         ${commandRows}
+        <div class="ub-help" style="margin-top:8px;">Compare two things with <code>${escapeHTML((commands.find(c => c.enabled !== false)?.trigger) || '/lookup')} akm vs fcar</code>.</div>
         <div class="wiki-actions">
           <button id="weAddCommand" class="secondary-action" type="button"><i class="lucide" data-lucide="plus"></i> Add command</button>
           <span class="wiki-actions-spacer"></span>
@@ -14860,61 +14988,105 @@
         </div>`);
 
       const formatting = draft.formatting || {};
+      const hidden = new Set((formatting.hiddenEmbedFields || []).map(wikiFieldKey));
+      const preview = wikiPreview || {};
+      const previewFields = preview.data?.fields || [];
+      const fieldPicker = previewFields.length
+        ? `<div class="ac-field-label" style="margin-top:12px;">Fields</div>
+          <div class="wiki-field-chips">
+            ${previewFields.map(f => `
+              <button type="button" class="wiki-field-chip${hidden.has(f.key) ? '' : ' is-on'}" data-field-key="${escapeHTML(f.key)}" aria-pressed="${!hidden.has(f.key)}" title="${escapeHTML(f.value)}">
+                <i class="lucide" data-lucide="${hidden.has(f.key) ? 'eye-off' : 'check'}"></i>${escapeHTML(f.name)}
+              </button>`).join('')}
+          </div>
+          <div class="ub-help">Fields from the “${escapeHTML(preview.query)}” reply. Click one to hide it.</div>`
+        : row('Hide fields', input('weHidden', (formatting.hiddenEmbedFields || []).join(', '), 'e.g. price, weight')
+          + '<div class="ub-help">Or look something up above and pick fields from the reply.</div>');
       const formattingSection = section('layout-template', 'Replies',
         toggle('weStatBlocks', formatting.includeStatBlocks !== false, 'Include stat blocks', 'Show item stats parsed from the page.')
         + toggle('weCompact', !!formatting.compactMode, 'Compact replies', 'Shorter embeds with fewer fields.')
-        + row('Hide fields', input('weHidden', (formatting.hiddenEmbedFields || []).join(', '), 'e.g. price, weight'))
+        + fieldPicker
         + '<div class="ub-help">Replies are always sent as Discord embeds.</div>');
 
-      const rules = draft.parsingRules || [];
-      const rulesHTML = rules.length
-        ? `<div class="wiki-grid wiki-grid-rules">
-            <span class="wiki-grid-head">Page type</span><span class="wiki-grid-head">Template</span><span class="wiki-grid-head"></span>
-            ${rules.map((r, i) => `
-              <input class="field-input we-rule-type" data-index="${i}" value="${escapeHTML(r.pageType || '')}" placeholder="weapon" spellcheck="false">
-              <input class="field-input we-rule-template" data-index="${i}" value="${escapeHTML(r.templateName || '')}" placeholder="Weapon" spellcheck="false">
-              <button class="icon-btn we-remove" type="button" data-remove-rule="${i}" aria-label="Remove rule"><i class="lucide" data-lucide="x"></i></button>
-            `).join('')}
-          </div>`
-        : '<div class="ub-help" style="margin-top:0;">No parsing rules. Pages are read with the default parser.</div>';
+      let previewBody = '';
+      if (preview.loading) {
+        previewBody = '<div class="placeholder">Looking it up…</div>';
+      } else if (preview.error) {
+        previewBody = `<div class="wiki-preview-error"><i class="lucide" data-lucide="circle-alert"></i><span>${escapeHTML(preview.error)}</span></div>`;
+      } else if (preview.data?.embed) {
+        const embed = preview.data.embed;
+        const fields = (embed.fields || []).filter(f => !hidden.has(wikiFieldKey(f.name)));
+        previewBody = discordMessageHTML({ embeds: [{ ...embed, fields }] });
+      }
+      const trySection = section('scan-search', 'Try it', `
+        <div class="wiki-try">
+          <input id="weTryQuery" class="field-input" value="${escapeHTML(preview.query || '')}" placeholder="An item or page, e.g. AKM" spellcheck="false" autocomplete="off" aria-label="Lookup query">
+          <button id="weTryRun" class="secondary-action" type="button" disabled>
+            <i class="lucide" data-lucide="search"></i> Look up
+          </button>
+        </div>
+        ${previewBody ? `<div class="wiki-preview">${previewBody}</div>` : '<div id="weTryHelp" class="ub-help"></div>'}`);
+
       const advanced = `
         <details class="automation-editor-section wiki-advanced" ${draft.__advancedOpen ? 'open' : ''}>
           <summary><i class="lucide" data-lucide="sliders-horizontal"></i> Advanced</summary>
           ${row('API path', input('weApi', draft.apiPath, '/api.php', 'spellcheck="false"'))}
           ${row('Search scope', input('weScope', draft.searchScope, 'Optional namespace or category'))}
-          <div class="ac-field-label" style="margin-top:12px;">Parsing rules</div>
-          ${rulesHTML}
-          <div class="wiki-actions"><button id="weAddRule" class="secondary-action" type="button"><i class="lucide" data-lucide="plus"></i> Add rule</button></div>
         </details>`;
 
+      const aliasRows = (draft.aliases || []).map((alias, i) => `
+        <input class="field-input we-alias-from" data-index="${i}" value="${escapeHTML(alias.from || '')}" placeholder="ak" spellcheck="false" aria-label="People type">
+        <i class="lucide wiki-alias-arrow" data-lucide="arrow-right"></i>
+        <input class="field-input we-alias-to" data-index="${i}" value="${escapeHTML(alias.to || '')}" placeholder="AKM" spellcheck="false" aria-label="Opens page">
+        <button class="icon-btn we-remove" type="button" data-remove-alias="${i}" aria-label="Remove alias"><i class="lucide" data-lucide="x"></i></button>`).join('');
+      const aliasedKeys = new Set((draft.aliases || []).map(a => wikiAliasKey(a.from)));
+      const misses = (wikiUsage(draft.id)?.recentMisses || []).filter(m => !aliasedKeys.has(wikiAliasKey(m)));
+      const aliasesSection = section('replace', 'Aliases', `
+        ${aliasRows ? `<div class="wiki-grid wiki-grid-aliases">${aliasRows}</div>` : '<div class="ub-help" style="margin-top:0;">Nicknames people type, mapped to the page they mean.</div>'}
+        ${misses.length ? `
+          <div class="wiki-misses">
+            <span class="ub-help" style="margin:0;">Recent misses:</span>
+            ${misses.map(m => `<button class="wiki-field-chip" type="button" data-alias-miss="${escapeHTML(m)}" title="Add an alias for this"><i class="lucide" data-lucide="plus"></i>${escapeHTML(m)}</button>`).join('')}
+          </div>` : ''}
+        <div class="wiki-actions"><button id="weAddAlias" class="secondary-action" type="button"><i class="lucide" data-lucide="plus"></i> Add alias</button></div>`);
+
+      const usage = wikiUsage(draft.id);
+      const topItems = (usage?.topItems || []).slice(0, 3).map(item => item.title).join(', ');
       const statusSection = isNew ? '' : section('activity', 'Status', `
         <div class="ub-editor-stats" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
           <div class="ub-editor-stat"><span>Last lookup</span><strong title="${escapeHTML(formatTime(draft.lastLookupAt))}">${escapeHTML(relativeTime(draft.lastLookupAt) || 'Never')}</strong></div>
           <div class="ub-editor-stat"><span>Result</span><strong>${escapeHTML(draft.lastStatus || 'Never used')}</strong></div>
+          <div class="ub-editor-stat"><span>This week</span><strong>${usage?.lookupsThisWeek || 0} lookup${usage?.lookupsThisWeek === 1 ? '' : 's'}</strong></div>
+          <div class="ub-editor-stat"><span>Asked for most</span><strong>${escapeHTML(topItems || '—')}</strong></div>
         </div>`);
 
-      root.innerHTML = sourceSection + commandsSection + formattingSection + advanced + statusSection;
+      root.innerHTML = sourceSection + commandsSection + trySection + formattingSection + aliasesSection + advanced + statusSection;
 
       const mutate = (change) => () => { readWikiEditorInto(draft); change(); renderWikiSourceEditor(draft, isNew); };
-      document.getElementById('wikiStartFinals')?.addEventListener('click', mutate(() => {
-        Object.assign(draft, { name: 'THE FINALS Wiki', baseURL: 'https://www.thefinals.wiki', apiPath: '/api.php' });
-        applyWikiPreset(draft, 'stats');
+      root.querySelectorAll('[data-wiki-starter]').forEach(btn => btn.addEventListener('click', mutate(() => {
+        const starter = WIKI_STARTERS[Number(btn.dataset.wikiStarter)];
+        Object.assign(draft, { name: starter.name, baseURL: starter.baseURL, apiPath: starter.apiPath, __detectHint: '' });
+        applyWikiPreset(draft, 'stats', starter.slug);
+        wikiPreview.query = starter.sample;
+      })));
+      document.getElementById('weAddAlias')?.addEventListener('click', mutate(() => {
+        draft.aliases = [...(draft.aliases || []), { id: autoNewID(), from: '', to: '' }];
       }));
+      root.querySelectorAll('[data-remove-alias]').forEach(btn => btn.addEventListener('click', mutate(() => {
+        draft.aliases.splice(Number(btn.dataset.removeAlias), 1);
+      })));
+      root.querySelectorAll('[data-alias-miss]').forEach(btn => btn.addEventListener('click', mutate(() => {
+        draft.aliases = [...(draft.aliases || []), { id: autoNewID(), from: btn.dataset.aliasMiss, to: '' }];
+      })));
+      // Paste an address and Lookup asks the wiki for its name and API path.
+      document.getElementById('weBase')?.addEventListener('change', () => detectWikiSite(draft, isNew));
       document.getElementById('weAddCommand')?.addEventListener('click', mutate(() => {
         draft.commands = [...(draft.commands || []), { id: autoNewID(), trigger: '', endpoint: 'search', description: '', enabled: true }];
       }));
       document.getElementById('wePresetStats')?.addEventListener('click', mutate(() => applyWikiPreset(draft, 'stats')));
       document.getElementById('wePresetSearch')?.addEventListener('click', mutate(() => applyWikiPreset(draft, 'search')));
-      document.getElementById('weAddRule')?.addEventListener('click', mutate(() => {
-        draft.__advancedOpen = true;
-        draft.parsingRules = [...(draft.parsingRules || []), { id: autoNewID(), pageType: '', templateName: '' }];
-      }));
       root.querySelectorAll('[data-remove-command]').forEach(btn => btn.addEventListener('click', mutate(() => {
         draft.commands.splice(Number(btn.dataset.removeCommand), 1);
-      })));
-      root.querySelectorAll('[data-remove-rule]').forEach(btn => btn.addEventListener('click', mutate(() => {
-        draft.__advancedOpen = true;
-        draft.parsingRules.splice(Number(btn.dataset.removeRule), 1);
       })));
       // Name the source from its address until the name is typed by hand.
       document.getElementById('weBase')?.addEventListener('input', (e) => {
@@ -14927,21 +15099,72 @@
       });
       document.getElementById('weName')?.addEventListener('input', (e) => { e.target.dataset.auto = 'false'; });
       root.querySelector('.wiki-advanced')?.addEventListener('toggle', (e) => { draft.__advancedOpen = e.target.open; });
-      root.addEventListener('input', () => updateWikiEditorValidity(draft));
-      root.addEventListener('change', () => updateWikiEditorValidity(draft));
+      const tryQuery = document.getElementById('weTryQuery');
+      const tryRun = document.getElementById('weTryRun');
+      // Live, so typing an address enables Look up without a re-render.
+      const syncTry = () => {
+        const canTry = !!wikiHost(String(document.getElementById('weBase')?.value || '').trim());
+        if (tryRun) tryRun.disabled = !canTry || !String(wikiPreview.query || '').trim() || wikiPreview.loading;
+        const help = document.getElementById('weTryHelp');
+        if (help) help.textContent = canTry ? 'See the reply Discord would get, using these settings. Nothing is saved.' : 'Enter the wiki’s address first.';
+      };
+      syncTry();
+      tryQuery?.addEventListener('input', () => { wikiPreview.query = tryQuery.value; syncTry(); });
+      document.getElementById('weBase')?.addEventListener('input', syncTry);
+      tryQuery?.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        runWikiPreview(draft, isNew);
+      });
+      tryRun?.addEventListener('click', () => runWikiPreview(draft, isNew));
+      root.querySelectorAll('[data-field-key]').forEach(chip => chip.addEventListener('click', mutate(() => {
+        const key = chip.dataset.fieldKey;
+        const keys = new Set((draft.formatting.hiddenEmbedFields || []).map(wikiFieldKey));
+        if (keys.has(key)) keys.delete(key); else keys.add(key);
+        draft.formatting.hiddenEmbedFields = [...keys];
+      })));
+      // Stat blocks and compact mode change the reply itself, so refresh it.
+      ['weStatBlocks', 'weCompact'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+        if (wikiPreview?.data) runWikiPreview(draft, isNew);
+      }));
+      // Assigned, not added: the body element survives each re-render.
+      root.oninput = () => updateWikiEditorValidity(draft);
+      root.onchange = () => updateWikiEditorValidity(draft);
       updateWikiEditorValidity(draft);
       refreshIcons();
     }
 
     // Native presets (WikiSourceEditorSheet): one search command plus defaults.
-    function applyWikiPreset(draft, kind) {
-      const slug = wikiSuggestedSlug(draft);
+    function applyWikiPreset(draft, kind, slugOverride) {
+      const slug = slugOverride || wikiSuggestedSlug(draft);
       const label = draft.name || 'the wiki';
       draft.commands = [{ id: autoNewID(), trigger: `/${slug}`, endpoint: 'search', description: kind === 'stats' ? `Search ${label} stats` : `Search ${label}`, enabled: true }];
       draft.formatting = { ...(draft.formatting || {}), useEmbeds: true, includeStatBlocks: kind === 'stats', compactMode: kind !== 'stats' };
-      if (kind === 'stats' && !(draft.parsingRules || []).length) {
-        draft.parsingRules = [{ id: autoNewID(), pageType: 'weapon', templateName: 'Weapon' }];
+    }
+
+    async function detectWikiSite(draft, isNew) {
+      readWikiEditorInto(draft);
+      const baseURL = String(draft.baseURL || '').trim();
+      if (!wikiHost(baseURL)) return;
+      const hint = document.getElementById('weDetectHint');
+      if (hint) hint.textContent = 'Checking the wiki…';
+      try {
+        const site = await postJSON('/api/wikibridge/source/detect', { baseURL, apiPath: draft.apiPath || '' });
+        if (!document.getElementById('wikiEditorBody') || String(draft.baseURL || '').trim() !== baseURL) return;
+        readWikiEditorInto(draft);
+        draft.apiPath = site.apiPath || draft.apiPath;
+        const nameField = document.getElementById('weName');
+        if (site.siteName && (!draft.name || nameField?.dataset.auto === 'true')) {
+          draft.name = /wiki/i.test(site.siteName) ? site.siteName : `${site.siteName} Wiki`;
+        }
+        if (isNew && !(draft.commands || []).length) applyWikiPreset(draft, 'stats');
+        draft.__detectHint = `Found ${site.siteName || 'a MediaWiki'} (API at ${site.apiPath}).`;
+      } catch {
+        if (!document.getElementById('wikiEditorBody')) return;
+        readWikiEditorInto(draft);
+        draft.__detectHint = 'Couldn’t find a MediaWiki API at this address. Check it, or set the API path under Advanced.';
       }
+      renderWikiSourceEditor(draft, isNew);
     }
 
     function readWikiEditorInto(draft) {
@@ -14958,9 +15181,8 @@
       each('.we-cmd-enabled', (i, n) => { if (draft.commands[i]) draft.commands[i].enabled = n.checked; });
       each('.we-cmd-trigger', (i, n) => { if (draft.commands[i]) draft.commands[i].trigger = n.value; });
       each('.we-cmd-desc', (i, n) => { if (draft.commands[i]) draft.commands[i].description = n.value; });
-      each('.we-cmd-endpoint', (i, n) => { if (draft.commands[i]) draft.commands[i].endpoint = n.value; });
-      each('.we-rule-type', (i, n) => { if (draft.parsingRules[i]) draft.parsingRules[i].pageType = n.value; });
-      each('.we-rule-template', (i, n) => { if (draft.parsingRules[i]) draft.parsingRules[i].templateName = n.value; });
+      each('.we-alias-from', (i, n) => { if (draft.aliases?.[i]) draft.aliases[i].from = n.value; });
+      each('.we-alias-to', (i, n) => { if (draft.aliases?.[i]) draft.aliases[i].to = n.value; });
     }
 
     // Settings: one column of grouped rows. Features that have their own page

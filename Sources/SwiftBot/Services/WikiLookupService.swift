@@ -1,6 +1,12 @@
 import Foundation
 import SwiftSoup
 
+/// What a MediaWiki answers about itself, used to fill in a new source.
+struct WikiSiteInfo: Sendable, Equatable {
+    let siteName: String
+    let apiPath: String
+}
+
 actor WikiLookupService {
     private let session: URLSession
     private let finalsWikiAPI: URL
@@ -8,10 +14,19 @@ actor WikiLookupService {
     private let skycoachFinalsMetaURL: URL
     private var finalsWeaponAliasCache: [String: String] = [:]
     private var finalsWeaponAliasCacheAt: Date?
+    /// Recent answers, so a popular item isn't fetched and parsed every time.
+    private var resultCache: [String: (result: FinalsWikiLookupResult, at: Date)] = [:]
+    private let resultCacheLifetime: TimeInterval = 15 * 60
+    private let resultCacheLimit = 256
+    /// Autocomplete runs on every keystroke; keep a short memory of it.
+    private var suggestionCache: [String: (titles: [String], at: Date)] = [:]
+    /// The API URL that actually answered for a base URL + configured path.
+    private var resolvedAPIURLs: [String: (url: URL, at: Date)] = [:]
 
     init(
         session: URLSession,
-        finalsWikiAPI: URL = URL(string: "https://www.thefinals.wiki/api.php")!,
+        // THE FINALS wiki serves its API under /w/; /api.php is a 404.
+        finalsWikiAPI: URL = URL(string: "https://www.thefinals.wiki/w/api.php")!,
         duckDuckGoHTML: URL = URL(string: "https://duckduckgo.com/html/")!,
         skycoachFinalsMetaURL: URL = URL(string: "https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds")!
     ) {
@@ -22,11 +37,170 @@ actor WikiLookupService {
     }
 
     func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
+        let cacheKey = Self.resultCacheKey(query: query, source: source)
+        if let cached = resultCache[cacheKey], Date().timeIntervalSince(cached.at) < resultCacheLifetime {
+            return cached.result
+        }
+        let result: FinalsWikiLookupResult?
         let isFinalsSource = source.baseURL.lowercased().contains("thefinals.wiki")
         if isFinalsSource, let finalsResult = await lookupFinalsWiki(query: query) {
-            return finalsResult
+            result = finalsResult
+        } else {
+            result = await lookupGenericMediaWiki(query: query, source: source)
         }
-        return await lookupGenericMediaWiki(query: query, source: source)
+        if let result {
+            if resultCache.count >= resultCacheLimit,
+               let oldest = resultCache.min(by: { $0.value.at < $1.value.at })?.key {
+                resultCache.removeValue(forKey: oldest)
+            }
+            resultCache[cacheKey] = (result, Date())
+        }
+        return result
+    }
+
+    static func resultCacheKey(query: String, source: WikiSource) -> String {
+        [
+            source.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            source.apiPath.trimmingCharacters(in: .whitespacesAndNewlines),
+            source.searchScope.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            WikiAlias.key(query)
+        ].joined(separator: "|")
+    }
+
+    /// Page titles starting with `prefix`, for Discord autocomplete. Kept fast:
+    /// Discord drops an autocomplete answer that takes over three seconds.
+    func suggestTitles(prefix: String, source: WikiSource, limit: Int = 10) async -> [String] {
+        let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let apiURL = await resolvedAPIURL(for: source, waitForProbe: false) else { return [] }
+        let cacheKey = apiURL.absoluteString + "|" + trimmed.lowercased()
+        if let cached = suggestionCache[cacheKey], Date().timeIntervalSince(cached.at) < 300 {
+            return Array(cached.titles.prefix(limit))
+        }
+        var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "opensearch"),
+            URLQueryItem(name: "search", value: trimmed),
+            URLQueryItem(name: "limit", value: String(max(1, min(limit, 25)))),
+            URLQueryItem(name: "namespace", value: "0"),
+            URLQueryItem(name: "redirects", value: "resolve"),
+            URLQueryItem(name: "format", value: "json")
+        ]
+        guard let url = components?.url,
+              let data = await fetchData(url, timeout: 2),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [Any],
+              array.count > 1,
+              let titles = array[1] as? [String] else { return [] }
+        var seen: Set<String> = []
+        let unique = titles.filter { seen.insert($0.lowercased()).inserted }
+        if suggestionCache.count > 500 { suggestionCache.removeAll() }
+        suggestionCache[cacheKey] = (unique, Date())
+        return Array(unique.prefix(limit))
+    }
+
+    /// Other pages a query could mean, best match first, for "Not this one?".
+    func searchTitles(query: String, source: WikiSource, limit: Int = 8) async -> [String] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let apiURL = await resolvedAPIURL(for: source) else { return [] }
+        var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "list", value: "search"),
+            URLQueryItem(name: "srsearch", value: scopedSearchQuery(query: trimmed, scope: source.searchScope)),
+            URLQueryItem(name: "srlimit", value: String(max(1, min(limit, 20)))),
+            URLQueryItem(name: "srnamespace", value: "0"),
+            URLQueryItem(name: "format", value: "json")
+        ]
+        var titles: [String] = []
+        if let url = components?.url,
+           let data = await fetchData(url, timeout: 6),
+           let decoded = try? JSONDecoder().decode(MediaWikiSearchResponse.self, from: data) {
+            titles = decoded.query?.search.map(\.title) ?? []
+        }
+        // Prefix matches catch short names full-text search ranks low.
+        titles += await suggestTitles(prefix: trimmed, source: source, limit: limit)
+        var seen: Set<String> = []
+        let unique = titles.filter { seen.insert($0.lowercased()).inserted }
+        // Full-text search pads results with hub pages ("Weapons", "Blueprints");
+        // keep the titles that share the query's words when there are any.
+        let queryKey = WikiAlias.key(trimmed)
+        let related = unique.filter { WikiAlias.key($0).contains(queryKey) }
+        return Array((related.isEmpty ? unique : related).prefix(limit))
+    }
+
+    /// Resolves each source's API path ahead of time, so the first
+    /// autocomplete after launch already uses the layout that answers.
+    func warmUp(sources: [WikiSource]) async {
+        for source in sources {
+            _ = await resolvedAPIURL(for: source)
+        }
+    }
+
+    /// Finds the MediaWiki API behind a wiki address and the site's own name.
+    /// Tries the given path, then the two common layouts (/api.php, /w/api.php).
+    func detectSite(baseURL raw: String, apiPath: String) async -> WikiSiteInfo? {
+        guard let baseURL = normalizedWikiBaseURL(from: raw) else { return nil }
+        let configured = apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        var candidates: [String] = []
+        for path in [configured, "/api.php", "/w/api.php"] where !path.isEmpty && !candidates.contains(path) {
+            candidates.append(path)
+        }
+        for path in candidates {
+            guard let apiURL = mediaWikiAPIURL(baseURL: baseURL, apiPath: path),
+                  let siteName = await siteName(apiURL: apiURL) else { continue }
+            return WikiSiteInfo(siteName: siteName, apiPath: path)
+        }
+        return nil
+    }
+
+    private func siteName(apiURL: URL) async -> String? {
+        var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "meta", value: "siteinfo"),
+            URLQueryItem(name: "siprop", value: "general"),
+            URLQueryItem(name: "format", value: "json")
+        ]
+        guard let url = components?.url,
+              let data = await fetchData(url, timeout: 6),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let query = object["query"] as? [String: Any],
+              let general = query["general"] as? [String: Any] else { return nil }
+        return (general["sitename"] as? String) ?? (general["wikiid"] as? String) ?? ""
+    }
+
+    /// The configured API URL, or the layout that actually answers when the
+    /// configured one doesn't (older THE FINALS sources saved /api.php).
+    /// `waitForProbe: false` answers at once with the configured URL while the
+    /// check runs in the background — autocomplete can't afford the probe.
+    private func resolvedAPIURL(for source: WikiSource, waitForProbe: Bool = true) async -> URL? {
+        guard let baseURL = normalizedWikiBaseURL(from: source.baseURL),
+              let configured = mediaWikiAPIURL(baseURL: baseURL, apiPath: source.apiPath) else { return nil }
+        let key = configured.absoluteString
+        if let cached = resolvedAPIURLs[key], Date().timeIntervalSince(cached.at) < 6 * 60 * 60 {
+            return cached.url
+        }
+        if !waitForProbe {
+            Task { _ = await self.resolvedAPIURL(for: source) }
+            return configured
+        }
+        var resolved = configured
+        if await siteName(apiURL: configured) == nil,
+           let detected = await detectSite(baseURL: source.baseURL, apiPath: source.apiPath),
+           let url = mediaWikiAPIURL(baseURL: baseURL, apiPath: detected.apiPath) {
+            resolved = url
+        }
+        resolvedAPIURLs[key] = (resolved, Date())
+        return resolved
+    }
+
+    private func fetchData(_ url: URL, timeout: TimeInterval) async -> Data? {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
+        request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else { return nil }
+        return data
     }
 
     func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
@@ -503,7 +677,7 @@ actor WikiLookupService {
         let searchScope = source.searchScope.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             let baseURL = normalizedWikiBaseURL(from: source.baseURL),
-            let apiURL = mediaWikiAPIURL(baseURL: baseURL, apiPath: source.apiPath)
+            let apiURL = await resolvedAPIURL(for: source)
         else {
             return nil
         }
@@ -1079,7 +1253,9 @@ actor WikiLookupService {
             guard let elements = try? document.select(selector) else { continue }
             for element in elements.array() {
                 let text = cleanedSoupText((try? element.text()) ?? "")
+                // Some wikis (WARFRAME) keep a JSON data blob in a paragraph.
                 if text.count >= minimumLength,
+                   !text.hasPrefix("{"), !text.hasPrefix("["),
                    !text.lowercased().contains("retrieved from"),
                    !text.lowercased().hasPrefix("main page:") {
                     return text
@@ -1108,38 +1284,10 @@ actor WikiLookupService {
         return nil
     }
 
+    /// SwiftSoup has already decoded entities, so these skip cleanedSoupText:
+    /// a second HTML pass would read labels like "<impact>" as tags.
     private func extractSoupFields(from document: Element) -> [WikiResultField] {
-        var fields: [WikiResultField] = []
-        var seen: Set<String> = []
-
-        func append(name rawName: String, value rawValue: String) {
-            let name = cleanedSoupText(rawName)
-            let value = cleanedSoupText(rawValue)
-            guard !name.isEmpty, !value.isEmpty, name.count <= 40, value.count <= 180 else { return }
-            let key = normalizedLabel(name)
-            guard !key.isEmpty, seen.insert(key).inserted else { return }
-            fields.append(WikiResultField(name: name, value: value, inline: true))
-        }
-
-        if let items = try? document.select(".portable-infobox .pi-item.pi-data") {
-            for item in items.array() {
-                let label = (try? item.select(".pi-data-label").first()?.text()) ?? ""
-                let value = (try? item.select(".pi-data-value").first()?.text()) ?? ""
-                append(name: label, value: value)
-            }
-        }
-
-        if let rows = try? document.select(".infobox tr, table.infobox tr, .mw-parser-output table.wikitable tr") {
-            for row in rows.array() {
-                let cells = (try? row.select("th, td").array()) ?? []
-                guard cells.count >= 2 else { continue }
-                let label = (try? cells[0].text()) ?? ""
-                let value = (try? cells[1].text()) ?? ""
-                append(name: label, value: value)
-            }
-        }
-
-        return Array(fields.prefix(18))
+        WikiInfoboxParser.fields(in: document)
     }
 
     private func inferredPageType(from fields: [WikiResultField], title: String) -> String? {
@@ -1705,7 +1853,12 @@ actor WikiLookupService {
         guard let data = text.data(using: .utf8),
               let attributed = try? NSAttributedString(
                 data: data,
-                options: [.documentType: NSAttributedString.DocumentType.html],
+                // Without an explicit encoding the importer reads UTF-8 as
+                // Latin-1, turning “ into â€œ and × into Ã—.
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
                 documentAttributes: nil
               ) else {
             return text
@@ -1724,6 +1877,113 @@ actor WikiLookupService {
             guard capture.location != NSNotFound else { return nil }
             return (text as NSString).substring(with: capture)
         }
+    }
+}
+
+/// Reads label/value pairs from a wiki page's infobox. Covers the layouts the
+/// big game wikis use: Fandom/wiki.gg portable infoboxes (rows, smart groups,
+/// horizontal groups), wiki.gg "druid" boxes, table infoboxes (Minecraft,
+/// Terraria) and div-row infoboxes (Warframe). Plain wikitables are only a
+/// fallback, since their first two columns are rarely label and value.
+enum WikiInfoboxParser {
+    static let fieldLimit = 24
+
+    static func fields(in root: Element) -> [WikiResultField] {
+        var fields: [WikiResultField] = []
+        var seen: Set<String> = []
+        // A line break between values ("Weapon<br>Crafting material") would
+        // otherwise run the words together.
+        for lineBreak in (try? root.select(".portable-infobox br, [class*=infobox] br, .druid-row br").array()) ?? [] {
+            _ = try? lineBreak.after(" ")
+        }
+        // Tag pills (Terraria's "Weapon" "Crafting material") and list items
+        // are separate values; keep them readable as a list.
+        let listItems = "[class*=infobox] .tags > :not(:first-child), [class*=infobox] li:not(:first-child), .portable-infobox li:not(:first-child)"
+        for item in (try? root.select(listItems).array()) ?? [] {
+            _ = try? item.before(", ")
+        }
+
+        func text(_ element: Element?) -> String {
+            guard let element, let raw = try? element.text() else { return "" }
+            return clean(raw)
+        }
+
+        func append(_ rawName: String, _ rawValue: String) {
+            var name = clean(rawName)
+                .replacingOccurrences(of: #"\[[^\]]*\]"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " :"))
+            // Icon-only labels come through as their alt text, e.g. "<impact>".
+            if name.hasPrefix("<"), name.hasSuffix(">"), name.count > 2 {
+                let inner = String(name.dropFirst().dropLast())
+                name = inner.prefix(1).uppercased() + inner.dropFirst()
+            }
+            let value = clean(rawValue)
+                .replacingOccurrences(of: #"\[(\d+|note \d+|citation needed)\]"#, with: "", options: [.regularExpression, .caseInsensitive])
+                .trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, !value.isEmpty, name.count <= 40, value.count <= 180,
+                  name.caseInsensitiveCompare(value) != .orderedSame else { return }
+            let key = name.lowercased().filter { $0.isLetter || $0.isNumber }
+            guard !key.isEmpty, seen.insert(key).inserted else { return }
+            fields.append(WikiResultField(name: name, value: value, inline: true))
+        }
+
+        func each(_ selector: String, _ body: (Element) -> Void) {
+            guard let elements = try? root.select(selector) else { return }
+            elements.array().forEach(body)
+        }
+
+        each(".portable-infobox .pi-item.pi-data") { item in
+            append(text(try? item.select(".pi-data-label").first()), text(try? item.select(".pi-data-value").first()))
+        }
+        // Smart groups put labels and values in separate rows, joined by data-source.
+        each(".portable-infobox .pi-smart-group") { group in
+            var labels: [String: String] = [:]
+            for label in (try? group.select(".pi-smart-data-label").array()) ?? [] {
+                labels[(try? label.attr("data-source")) ?? ""] = text(label)
+            }
+            for value in (try? group.select(".pi-smart-data-value").array()) ?? [] {
+                append(labels[(try? value.attr("data-source")) ?? ""] ?? "", text(value))
+            }
+        }
+        each(".portable-infobox table.pi-horizontal-group") { table in
+            let labels = ((try? table.select("thead th").array()) ?? []).map { text($0) }
+            let values = ((try? table.select("tbody td").array()) ?? []).map { text($0) }
+            zip(labels, values).forEach { append($0, $1) }
+        }
+        each(".druid-row") { row in
+            append(text(try? row.select(".druid-label").first()), text(try? row.select(".druid-data").first()))
+        }
+        // A header row (th + th) is a section title, not a stat.
+        each("[class*=infobox] tr") { row in
+            let cells = row.children().array().filter { ["th", "td"].contains($0.tagName()) }
+            guard cells.count >= 2, cells[1].tagName() == "td" else { return }
+            append(text(cells[0]), text(cells[1]))
+        }
+        each(".infobox .row") { row in
+            let children = row.children().array()
+            append(text(children.first { $0.hasClass("label") }), text(children.first { $0.hasClass("value") }))
+        }
+        if fields.count < 3 {
+            each("table.wikitable tr") { row in
+                let cells = row.children().array().filter { ["th", "td"].contains($0.tagName()) }
+                guard cells.count == 2 else { return }
+                append(text(cells[0]), text(cells[1]))
+            }
+        }
+        return Array(fields.prefix(fieldLimit))
+    }
+
+    static func fields(html: String, baseURL: String = "") -> [WikiResultField] {
+        guard let document = try? SwiftSoup.parse(html, baseURL) else { return [] }
+        return fields(in: document)
+    }
+
+    private static func clean(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\u{200B}", with: "")
+            .replacingOccurrences(of: "\u{200C}", with: "")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

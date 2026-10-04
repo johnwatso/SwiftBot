@@ -32,6 +32,20 @@ struct WikiBridgeView: View {
 
             if app.settings.wikiBot.isEnabled {
                 metricRail
+                Toggle(isOn: Binding(
+                    get: { app.settings.wikiBot.answersQuestions },
+                    set: { app.setWikiBridgeAnswersQuestions($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Answer questions in chat")
+                            .font(.subheadline.weight(.semibold))
+                        Text("When someone asks SwiftBot about an item, it looks it up before answering.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+                .padding(.top, 6)
                 sourcesList
             } else {
                 disabledStateContent
@@ -44,6 +58,7 @@ struct WikiBridgeView: View {
         .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
         .meshConfigMutationErrorAlert()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task { await app.refreshWikiUsageSummaries() }
         .sheet(item: $editorDraft) { draft in
             WikiSourceEditorSheet(
                 draft: draft,
@@ -125,6 +140,7 @@ struct WikiBridgeView: View {
                     ForEach(sortedSources) { source in
                         WikiSourceCard(
                             source: source,
+                            usage: app.wikiUsageSummaries[source.id],
                             onSetPrimary: {
                                 app.setWikiBridgePrimarySource(source.id)
                             },
@@ -263,6 +279,7 @@ struct WikiBridgeView: View {
 
 private struct WikiSourceCard: View {
     let source: WikiSource
+    let usage: WikiLookupUsageSummary?
     let onSetPrimary: () -> Void
     let onTest: () -> Void
     let onEdit: () -> Void
@@ -313,10 +330,17 @@ private struct WikiSourceCard: View {
                     tone: .primary
                 )
                 DiagnosticsLine(
-                    label: "Parsing Rules",
-                    value: source.parsingRules.isEmpty ? "None" : "\(source.parsingRules.count) configured",
-                    tone: .primary
+                    label: "This Week",
+                    value: usageLabel,
+                    tone: (usage?.lookupsThisWeek ?? 0) == 0 ? .secondary : .primary
                 )
+                if let misses = usage?.recentMisses, !misses.isEmpty {
+                    DiagnosticsLine(
+                        label: "Misses",
+                        value: misses.map { "\"\($0)\"" }.joined(separator: ", "),
+                        tone: .secondary
+                    )
+                }
                 DiagnosticsLine(
                     label: "Last Lookup",
                     value: lastLookupLabel,
@@ -381,6 +405,13 @@ private struct WikiSourceCard: View {
                 .strokeBorder(tint.opacity(0.12), lineWidth: 1)
                 .allowsHitTesting(false)
         )
+    }
+
+    private var usageLabel: String {
+        guard let usage, usage.lookupsThisWeek > 0 else { return "No lookups" }
+        let count = "\(usage.lookupsThisWeek) lookup\(usage.lookupsThisWeek == 1 ? "" : "s")"
+        let top = usage.topItems.prefix(3).map(\.title).joined(separator: ", ")
+        return top.isEmpty ? count : "\(count) · Top: \(top)"
     }
 
     private var lastLookupLabel: String {
@@ -615,6 +646,7 @@ private struct WikiSourceDraft: Identifiable {
     var commands: [WikiCommand]
     var formatting: WikiFormatting
     var parsingRules: [WikiParsingRule]
+    var aliases: [WikiAlias]
     var lastLookupAt: Date?
     var lastStatus: String
 
@@ -629,6 +661,7 @@ private struct WikiSourceDraft: Identifiable {
         commands = source.commands
         formatting = source.formatting
         parsingRules = source.parsingRules
+        aliases = source.aliases
         lastLookupAt = source.lastLookupAt
         lastStatus = source.lastStatus
     }
@@ -687,6 +720,12 @@ private struct WikiSourceDraft: Identifiable {
             commands: sanitizedCommands,
             formatting: sanitizedFormatting,
             parsingRules: sanitizedRules,
+            aliases: aliases.compactMap { alias in
+                var cleaned = alias
+                cleaned.from = alias.from.trimmingCharacters(in: .whitespacesAndNewlines)
+                cleaned.to = alias.to.trimmingCharacters(in: .whitespacesAndNewlines)
+                return cleaned.from.isEmpty || cleaned.to.isEmpty ? nil : cleaned
+            },
             lastLookupAt: lastLookupAt,
             lastStatus: lastStatus
         )
@@ -751,6 +790,7 @@ private struct WikiSourceEditorSheet: View {
                 sourceSection
                 presetSection
                 testQuerySection
+                aliasesSection
                 advancedSection
             }
             .formStyle(.grouped)
@@ -835,12 +875,16 @@ private struct WikiSourceEditorSheet: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button {
-                        applyTheFinalsStarter()
+                    Menu {
+                        ForEach(WikiSource.starters) { starter in
+                            Button(starter.name) {
+                                Task { await applyStarter(starter) }
+                            }
+                        }
                     } label: {
-                        Label("Use THE FINALS", systemImage: "scope")
+                        Label("Popular Wikis", systemImage: "sparkles")
                     }
-                    .buttonStyle(.bordered)
+                    .fixedSize()
 
                     Button {
                         applyGamingStatsPreset()
@@ -943,9 +987,6 @@ private struct WikiSourceEditorSheet: View {
                     Text("Trigger")
                         .font(.caption.weight(.semibold))
                         .frame(width: 140, alignment: .leading)
-                    Text("Endpoint")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 190, alignment: .leading)
                     Text("Enabled")
                         .font(.caption.weight(.semibold))
                         .frame(width: 70, alignment: .center)
@@ -958,10 +999,6 @@ private struct WikiSourceEditorSheet: View {
                             TextField("/game", text: $command.trigger)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 140)
-
-                            TextField("search", text: $command.endpoint)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 190)
 
                             Toggle("", isOn: $command.enabled)
                                 .labelsHidden()
@@ -1008,58 +1045,58 @@ private struct WikiSourceEditorSheet: View {
         }
     }
 
-    private var parsingRulesSection: some View {
+    /// Nicknames people type, mapped to the page they mean. The Lookup page
+    /// lists recent misses, which are the usual candidates.
+    private var aliasesSection: some View {
         Section {
-            HStack {
-                Button {
-                    draft.parsingRules.append(
-                        WikiParsingRule(
-                            id: UUID(),
-                            pageType: "pageType",
-                            templateName: "TemplateName"
-                        )
-                    )
-                } label: {
-                    Label("Add Parsing Rule", systemImage: "plus")
-                }
-                Spacer()
-            }
-
-            if draft.parsingRules.isEmpty {
-                Text("No parsing rules configured.")
-                    .foregroundStyle(.secondary)
-            } else {
+            ForEach($draft.aliases) { $alias in
                 HStack(spacing: 8) {
-                    Text("Page Type")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 180, alignment: .leading)
-                    Text("Template")
-                        .font(.caption.weight(.semibold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Spacer()
+                    TextField("ak", text: $alias.from)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 160)
+                    Image(systemName: "arrow.right")
+                        .foregroundStyle(.secondary)
+                    TextField("AKM", text: $alias.to)
+                        .textFieldStyle(.roundedBorder)
+                    Button(role: .destructive) {
+                        draft.aliases.removeAll { $0.id == alias.id }
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
                 }
-
-                ForEach($draft.parsingRules) { $rule in
-                    HStack(spacing: 8) {
-                        TextField("weapon", text: $rule.pageType)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 180)
-
-                        TextField("Weapon", text: $rule.templateName)
-                            .textFieldStyle(.roundedBorder)
-
-                        Button(role: .destructive) {
-                            removeParsingRule(rule.id)
-                        } label: {
-                            Image(systemName: "trash")
+            }
+            if !misses.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Recent misses:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(misses, id: \.self) { miss in
+                        Button(miss) {
+                            draft.aliases.append(WikiAlias(from: miss, to: ""))
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Add an alias for \"\(miss)\"")
                     }
                 }
             }
+            Button {
+                draft.aliases.append(WikiAlias())
+            } label: {
+                Label("Add Alias", systemImage: "plus")
+            }
         } header: {
-            Text("Parsing Rules")
+            Text("Aliases")
+        } footer: {
+            Text("When someone looks up the left side, Lookup opens the page on the right.")
         }
+    }
+
+    /// Misses that don't have an alias yet.
+    private var misses: [String] {
+        let aliased = Set(draft.aliases.map { WikiAlias.key($0.from) })
+        return (app.wikiUsageSummaries[draft.id]?.recentMisses ?? []).filter { !aliased.contains(WikiAlias.key($0)) }
     }
 
     private var testQuerySection: some View {
@@ -1153,7 +1190,6 @@ private struct WikiSourceEditorSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     commandsSection
                     formattingSection
-                    parsingRulesSection
                 }
                 .padding(.top, 6)
             } label: {
@@ -1320,42 +1356,10 @@ private struct WikiSourceEditorSheet: View {
     }
 
     private func detectMediaWikiSiteInfo(baseURL: URL, apiPath: String) async -> (siteName: String, apiPath: String)? {
-        let candidatePaths = Array(Set([
-            apiPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "/api.php" : apiPath,
-            "/api.php",
-            "/w/api.php"
-        ]))
-
-        for path in candidatePaths {
-            guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { continue }
-            components.path = path.hasPrefix("/") ? path : "/\(path)"
-            components.queryItems = [
-                URLQueryItem(name: "action", value: "query"),
-                URLQueryItem(name: "meta", value: "siteinfo"),
-                URLQueryItem(name: "siprop", value: "general"),
-                URLQueryItem(name: "format", value: "json"),
-                URLQueryItem(name: "origin", value: "*")
-            ]
-            guard let url = components.url else { continue }
-
-            do {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 6
-                request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode),
-                      let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let query = object["query"] as? [String: Any],
-                      let general = query["general"] as? [String: Any] else { continue }
-                let siteName = general["sitename"] as? String ?? general["wikiid"] as? String ?? ""
-                return (siteName, path)
-            } catch {
-                continue
-            }
+        guard let site = await app.wikiLookupService.detectSite(baseURL: baseURL.absoluteString, apiPath: apiPath) else {
+            return nil
         }
-
-        return nil
+        return (site.siteName, site.apiPath)
     }
 
     private func suggestedSourceName(host: String) -> String {
@@ -1398,13 +1402,18 @@ private struct WikiSourceEditorSheet: View {
         return slug.isEmpty ? "lookup" : String(slug.prefix(32))
     }
 
-    private func applyTheFinalsStarter() {
-        draft.name = "THE FINALS Wiki"
-        draft.baseURL = "https://www.thefinals.wiki"
-        draft.apiPath = "/api.php"
-        testQuery = "AKM"
-        applyGamingStatsPreset(commandSlug: "finals")
+    private func applyStarter(_ starter: WikiSource.Starter) async {
+        draft.name = starter.name
+        draft.baseURL = starter.baseURL
+        draft.apiPath = starter.apiPath
+        testQuery = starter.sampleQuery
         didAutoNameFromURL = true
+        applyGamingStatsPreset(commandSlug: starter.commandSlug)
+        detectionResult = .success(
+            title: "Using \(starter.name)",
+            message: "Filled in the address and a /\(starter.commandSlug) command with stat blocks.",
+            nextStep: "Run Preview with \"\(starter.sampleQuery)\" to check the first result."
+        )
     }
 
     private func applyGamingStatsPreset(commandSlug: String? = nil) {
@@ -1418,9 +1427,6 @@ private struct WikiSourceEditorSheet: View {
         draft.formatting.includeStatBlocks = true
         draft.formatting.useEmbeds = true
         draft.formatting.compactMode = false
-        if draft.parsingRules.isEmpty {
-            draft.parsingRules = [WikiParsingRule(pageType: "weapon", templateName: "Weapon")]
-        }
     }
 
     private func applySearchOnlyPreset() {
@@ -1447,10 +1453,6 @@ private struct WikiSourceEditorSheet: View {
 
     private func removeCommand(_ id: UUID) {
         draft.commands.removeAll { $0.id == id }
-    }
-
-    private func removeParsingRule(_ id: UUID) {
-        draft.parsingRules.removeAll { $0.id == id }
     }
 
     private var isValid: Bool {

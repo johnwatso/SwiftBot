@@ -845,7 +845,16 @@ async function handleAPI(req, res, pathname, query) {
       switch (pathname) {
         case '/api/wikibridge/state':
           if (typeof body.enabled === 'boolean') wikibridge.enabled = body.enabled;
+          if (typeof body.answersQuestions === 'boolean') wikibridge.answersQuestions = body.answersQuestions;
           break;
+        case '/api/wikibridge/source/detect': {
+          // Shaped like the Swift route; "example" exercises the not-a-wiki path.
+          let host = '';
+          try { host = new URL(String(body.baseURL || '')).host.replace(/^www\./, ''); } catch {}
+          if (!host || host.includes('example')) return sendJSON(res, { error: 'not_mediawiki' }, 404);
+          const word = host.split('.')[0];
+          return sendJSON(res, { siteName: `${word.charAt(0).toUpperCase()}${word.slice(1)} Wiki`, apiPath: host.includes('thefinals') ? '/w/api.php' : '/api.php' });
+        }
         case '/api/wikibridge/source/upsert': {
           const index = wikibridge.sources.findIndex((s) => s.id === body.source?.id);
           if (index < 0) wikibridge.sources.push(body.source);
@@ -859,6 +868,26 @@ async function handleAPI(req, res, pathname, query) {
         case '/api/wikibridge/source/primary':
           wikibridge.sources.forEach((s) => { s.isPrimary = s.id === body.sourceID; });
           break;
+        case '/api/wikibridge/source/preview': {
+          // Shaped like AppModel.previewAdminWebWikiSource; "nothing" exercises the no-result path.
+          const query = String(body.query || '').trim();
+          if (!query || /^nothing$/i.test(query)) return sendJSON(res, { error: 'no_result' }, 404);
+          const stats = body.source?.formatting?.includeStatBlocks !== false;
+          const compact = !!body.source?.formatting?.compactMode;
+          const raw = stats
+            ? [['Type', 'Assault Rifle'], ['Body Damage', '18'], ['Head Damage', '27'], ['Fire Rate', '600 RPM'], ['Dropoff Start', '25m'], ['Dropoff End', '35m'], ['Minimum Damage', '12'], ['Magazine', '35'], ['Short Reload', '1.9s']]
+            : [['Class', 'Medium'], ['Released', 'Season 1']];
+          const fields = raw.map(([name, value]) => ({ name, value, inline: true }));
+          const description = compact
+            ? `The ${query.toUpperCase()} is a fully automatic assault rifle.`
+            : `The ${query.toUpperCase()} is a fully automatic assault rifle available to the Medium build. It trades a slower fire rate for strong per-shot damage and a generous magazine.`;
+          const embed = {
+            title: query.toUpperCase(), url: `${body.source?.baseURL || 'https://example.wiki'}/wiki/${encodeURIComponent(query)}`,
+            description, color: 0x0c8f73, thumbnail: { url: 'https://placehold.co/160x160/png' },
+            footer: { text: `${body.source?.name || 'Wiki'} • Lookup` }, fields
+          };
+          return sendJSON(res, { embed, fields: raw.map(([name, value]) => ({ key: name.toLowerCase().replace(/[^a-z0-9]/g, ''), name, value })) });
+        }
         case '/api/wikibridge/source/test':
           if (find(body.sourceID)) Object.assign(find(body.sourceID), { lastStatus: 'OK', lastLookupAt: new Date().toISOString() });
           break;

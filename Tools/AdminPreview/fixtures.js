@@ -533,14 +533,24 @@ const wikiSource = (id, name, baseURL, isPrimary) => ({
   commands: [{ id: `${id.slice(0, 24)}000000000001`, trigger: `/${name.toLowerCase().split(' ')[0]}`, endpoint: 'search', description: `Search ${name}`, enabled: true }],
   formatting: { includeStatBlocks: true, useEmbeds: true, compactMode: false, hiddenEmbedFields: [] },
   parsingRules: isPrimary ? [{ id: `${id.slice(0, 24)}000000000002`, pageType: 'weapon', templateName: 'Weapon' }] : [],
+  aliases: isPrimary ? [{ id: `${id.slice(0, 24)}000000000003`, from: 'ak', to: 'AKM' }] : [],
   lastLookupAt: minutesAgo(40), lastStatus: 'OK'
 });
+// Shapes mirror AdminWebWikiBridgePayload; usage is keyed by uppercase UUID like Swift's uuidString.
 const wikibridge = {
   enabled: true,
+  answersQuestions: true,
   sources: [
-    wikiSource('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Finals Wiki', 'https://thefinals.wiki', true),
+    wikiSource('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Finals Wiki', 'https://www.thefinals.wiki', true),
     wikiSource('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Minecraft Wiki', 'https://minecraft.wiki', false)
-  ]
+  ],
+  usage: {
+    'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA': {
+      lookupsThisWeek: 23,
+      topItems: [{ title: 'AKM', count: 9 }, { title: 'FCAR', count: 6 }, { title: 'Sledgehammer', count: 3 }],
+      recentMisses: ['akm2', 'the big hammer']
+    }
+  }
 };
 
 // Shapes mirror SweepPolicy / SweepRunReport / SweepSuggestion (SweepView.swift);

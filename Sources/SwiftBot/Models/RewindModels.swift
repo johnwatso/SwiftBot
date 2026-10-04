@@ -151,6 +151,9 @@ struct RewindMessage: Codable, Sendable, Hashable {
     let isBot: Bool
     let content: String
     let createdAt: Date
+    /// Attachments, stickers, replies, mentions and the like. Nil for plain
+    /// text and for anything archived before metadata was kept.
+    var meta: RewindMessageMeta? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "i"
@@ -161,6 +164,7 @@ struct RewindMessage: Codable, Sendable, Hashable {
         case isBot = "b"
         case content = "t"
         case createdAt = "d"
+        case meta = "x"
     }
 
     init(
@@ -171,7 +175,8 @@ struct RewindMessage: Codable, Sendable, Hashable {
         authorName: String,
         isBot: Bool,
         content: String,
-        createdAt: Date
+        createdAt: Date,
+        meta: RewindMessageMeta? = nil
     ) {
         self.id = id
         self.guildID = guildID
@@ -181,6 +186,7 @@ struct RewindMessage: Codable, Sendable, Hashable {
         self.isBot = isBot
         self.content = content
         self.createdAt = createdAt
+        self.meta = meta
     }
 
     init(from decoder: Decoder) throws {
@@ -193,6 +199,7 @@ struct RewindMessage: Codable, Sendable, Hashable {
         isBot = try container.decodeIfPresent(Bool.self, forKey: .isBot) ?? false
         content = try container.decode(String.self, forKey: .content)
         createdAt = Date(timeIntervalSince1970: try container.decode(Double.self, forKey: .createdAt))
+        meta = try? container.decodeIfPresent(RewindMessageMeta.self, forKey: .meta)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -205,6 +212,7 @@ struct RewindMessage: Codable, Sendable, Hashable {
         if isBot { try container.encode(true, forKey: .isBot) }
         try container.encode(content, forKey: .content)
         try container.encode(createdAt.timeIntervalSince1970.rounded(), forKey: .createdAt)
+        try container.encodeIfPresent(meta, forKey: .meta)
     }
 }
 

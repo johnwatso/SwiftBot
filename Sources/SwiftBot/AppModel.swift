@@ -34,6 +34,8 @@ final class AppModel: ObservableObject {
     @Published var stats = StatCounter()
     @Published var events: [ActivityEvent] = []
     @Published var commandLog: [CommandLogEntry] = []
+    /// Lookup usage per source, refreshed from `wikiUsageStore` after each lookup.
+    @Published var wikiUsageSummaries: [UUID: WikiLookupUsageSummary] = [:]
     @Published var auditLog: [AuditLogEntry] = []
     private let auditLogCap = 500
 
@@ -286,6 +288,8 @@ final class AppModel: ObservableObject {
     lazy var guildRESTClient = DiscordGuildRESTClient(session: discordRESTSession)
     lazy var messageRESTClient = DiscordMessageRESTClient(session: discordRESTSession)
     lazy var wikiLookupService = WikiLookupService(session: discordRESTSession)
+    /// Real Discord lookups per source, for the Lookup pages' usage lines.
+    let wikiUsageStore = WikiLookupUsageStore()
     lazy var musicLookupService = MusicLookupService(session: discordRESTSession)
     lazy var gameProviderRegistry = GameProviderRegistry(session: discordRESTSession)
     /// Direct handle for the finals.id-only latest-round endpoint, which is not
@@ -327,6 +331,7 @@ final class AppModel: ObservableObject {
     /// `AnalyticsRuntimeStore` on purpose: that one rewrites its whole file per
     /// append, which does not survive message volume.
     let rewindStore = RewindStore()
+    let rewindActivityStore = RewindActivityStore()
     /// Progress for a running historical import, nil when none is in flight.
     @Published var rewindBackfillProgress: RewindBackfillProgress?
     var rewindBackfillTask: Task<Void, Never>?

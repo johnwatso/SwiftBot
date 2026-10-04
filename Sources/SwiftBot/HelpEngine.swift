@@ -240,7 +240,7 @@ struct CommandCatalog {
             entries.append(CommandEntry(
                 name: key,
                 aliases: [],
-                usage: "\(prefix)\(key) <query>",
+                usage: "\(prefix)\(key) <query> [vs <query>]",
                 description: desc,
                 examples: ["\(prefix)\(key) example query"],
                 category: .wiki,

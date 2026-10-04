@@ -23,8 +23,10 @@ extension AppModel {
         if case .string? = event.rawMap["webhook_id"] { isBot = true }
         guard settings.collects(userID: event.userID, isBot: isBot) else { return }
 
-        // Nothing to count and nothing to store — an attachment-only post.
-        guard !event.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Attachment-, sticker- and poll-only posts are kept for their metadata;
+        // only a post with neither text nor metadata has nothing to store.
+        let meta = RewindMessageMeta(raw: event.rawMap)
+        guard meta != nil || !event.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let authorName = event.displayName.isEmpty ? event.username : event.displayName
         let message = RewindMessage(
@@ -37,7 +39,8 @@ extension AppModel {
             content: event.content,
             // Snowflake rather than the payload's `timestamp` string, so live
             // ingest and the REST backfill derive the date the same way.
-            createdAt: DiscordService.messageCreatedDate(fromSnowflake: event.messageID) ?? Date()
+            createdAt: DiscordService.messageCreatedDate(fromSnowflake: event.messageID) ?? Date(),
+            meta: meta
         )
 
         let retainContent = settings.retainMessageContent
@@ -58,6 +61,7 @@ extension AppModel {
             await store.setBackupExclusion(excludeFromBackups)
             await store.start()
         }
+        startRewindActivityIfNeeded()
 
         guard rewindRetentionTask == nil else { return }
         let retentionDays = settings.rewind.retentionDays
@@ -66,6 +70,7 @@ extension AppModel {
         rewindRetentionTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.rewindStore.applyRetention(days: retentionDays)
+                await self?.rewindActivityStore.applyRetention(days: retentionDays)
                 try? await Task.sleep(nanoseconds: 6 * 60 * 60 * 1_000_000_000)
             }
         }
@@ -86,6 +91,7 @@ extension AppModel {
         rewindBackfillTask?.cancel()
         rewindBackfillTask = nil
         await rewindStore.stop()
+        await stopRewindActivity()
     }
 }
 

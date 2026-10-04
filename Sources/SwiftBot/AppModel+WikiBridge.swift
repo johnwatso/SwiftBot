@@ -23,6 +23,11 @@ extension AppModel {
         persistWikiBotEdit()
     }
 
+    func setWikiBridgeAnswersQuestions(_ enabled: Bool) {
+        settings.wikiBot.answersQuestions = enabled
+        persistWikiBotEdit()
+    }
+
     func addWikiBridgeSourceTarget(_ target: WikiSource) {
         settings.wikiBot.sources.append(target)
         settings.wikiBot.normalizeSources()
@@ -40,6 +45,10 @@ extension AppModel {
         settings.wikiBot.sources.removeAll { $0.id == targetID }
         settings.wikiBot.normalizeSources()
         persistWikiBotEdit()
+        Task {
+            await wikiUsageStore.removeSource(targetID)
+            await refreshWikiUsageSummaries()
+        }
     }
 
     func toggleWikiBridgeSourceTargetEnabled(_ targetID: UUID) {

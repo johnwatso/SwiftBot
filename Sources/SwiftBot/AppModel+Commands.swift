@@ -1012,10 +1012,13 @@ extension AppModel {
             )
         }
 
+        // A fresh lookup for an item the question names comes first; cached
+        // context from earlier lookups fills in around it.
+        let liveWikiContext = await proactiveWikiContext(for: currentContent)
         let wikiContextEntries = await wikiContextCache.contextEntries(for: currentContent, limit: 3)
         let wikiContext = renderWikiContext(entries: wikiContextEntries)
         let aiMemoryContext = renderAIMemoryContext(for: currentContent, history: conversationalMessages, limit: 4)
-        let combinedContext = [wikiContext, aiMemoryContext]
+        let combinedContext = [liveWikiContext, wikiContext, aiMemoryContext]
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
 
@@ -1279,49 +1282,15 @@ extension AppModel {
         query: String,
         channelId: String
     ) async -> Bool {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trigger = normalizedWikiCommandTrigger(command.trigger)
-        let usageTrigger = trigger.isEmpty ? command.trigger : "/\(trigger)"
-        guard !trimmedQuery.isEmpty else {
-            return await send(
-                channelId,
-                "📘 Usage: \(usageTrigger) <query> (optional source selector: <wiki-command> <source>::<query>)"
-            )
+        let reply = await wikiLookupReply(command: command, source: source, query: query)
+        guard reply.found else {
+            return await send(channelId, reply.content ?? "❌ Nothing found.")
         }
-
-        guard let resolved = resolveWikiSourceAndQuery(defaultSource: source, query: trimmedQuery) else {
-            return await send(channelId, "⚠️ No Lookup sources are enabled. Add or enable a source in Lookup settings.")
-        }
-
-        let resolvedSource = resolved.source
-        let sourceQuery = resolved.query
-        guard !sourceQuery.isEmpty else {
-            return await send(channelId, "📘 Provide a query after the source selector. Example: \(usageTrigger) \(resolvedSource.name)::AKM")
-        }
-
-        guard let result = await cluster.lookupWiki(query: sourceQuery, source: resolvedSource) else {
-            updateWikiBridgeSourceRuntimeState(id: resolvedSource.id) { entry in
-                entry.lastLookupAt = Date()
-                entry.lastStatus = "No match for \"\(sourceQuery)\""
-            }
-            persistSettingsQuietly()
-            return await send(channelId, "❌ I couldn't find a relevant page on \(resolvedSource.name) for \"\(sourceQuery)\".")
-        }
-
-        updateWikiBridgeSourceRuntimeState(id: resolvedSource.id) { entry in
-            entry.lastLookupAt = Date()
-            entry.lastStatus = "Resolved: \(result.title)"
-        }
-        persistSettingsQuietly()
-        await wikiContextCache.store(sourceName: resolvedSource.name, query: sourceQuery, result: result)
-
-        let embedSent = await sendWikiEmbed(channelId: channelId, source: resolvedSource, result: result)
-        if embedSent {
+        if await sendPayload(channelId: channelId, payload: reply.payload, action: "sendMessage(embed)") {
             return true
         }
-
-        let body = formattedWikiResponse(source: resolvedSource, result: result)
-        return await send(channelId, body)
+        guard let fallback = reply.fallbackText else { return false }
+        return await send(channelId, fallback)
     }
 
     func resolveWikiSourceAndQuery(defaultSource: WikiSource, query: String) -> (source: WikiSource, query: String)? {
@@ -1394,7 +1363,7 @@ extension AppModel {
             result.extract,
             limit: formatting.compactMode ? 220 : 420
         )
-        let fieldLines = result.fields
+        let fieldLines = (formatting.includeStatBlocks ? result.fields : [])
             .filter { wikiShouldShowEmbedField($0.name, source: source) }
             .prefix(8)
             .map { "**\($0.name):** \($0.value)" }
@@ -1441,7 +1410,9 @@ extension AppModel {
             embed["thumbnail"] = ["url": imageURL]
         }
 
-        var fields = result.fields.prefix(18).compactMap { field -> [String: Any]? in
+        // "Include stat blocks" covers every wiki's infobox, not just weapon pages.
+        let statFields = source.formatting.includeStatBlocks ? result.fields : []
+        var fields = statFields.prefix(18).compactMap { field -> [String: Any]? in
             guard wikiShouldShowEmbedField(field.name, source: source) else { return nil }
             return [
                 "name": field.name,

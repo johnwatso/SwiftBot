@@ -979,6 +979,8 @@ struct WelcomeFlowRule: Codable, Identifiable, Hashable {
 struct WikiCommand: Codable, Hashable, Identifiable {
     var id = UUID()
     var trigger: String = "/lookup"
+    /// Not read by lookups and no longer shown in the editors; kept so
+    /// saved settings round-trip unchanged.
     var endpoint: String = "search"
     var description: String = ""
     var enabled: Bool = true
@@ -1049,10 +1051,24 @@ struct WikiFormatting: Codable, Hashable {
     }
 }
 
+/// Not read by lookups and no longer shown in the editors; kept so saved
+/// settings round-trip unchanged. Stat fields come from the page's infobox.
 struct WikiParsingRule: Codable, Hashable, Identifiable {
     var id = UUID()
     var pageType: String = "weapon"
     var templateName: String = "Weapon"
+}
+
+/// Maps a nickname people type ("ak") to the wiki page it means ("AKM").
+struct WikiAlias: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var from: String = ""
+    var to: String = ""
+
+    /// Lowercased letters and digits, so "Night's Edge" and "nights edge" match.
+    static func key(_ raw: String) -> String {
+        raw.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
 }
 
 struct WikiSource: Codable, Hashable, Identifiable {
@@ -1066,8 +1082,18 @@ struct WikiSource: Codable, Hashable, Identifiable {
     var commands: [WikiCommand] = []
     var formatting = WikiFormatting()
     var parsingRules: [WikiParsingRule] = []
+    var aliases: [WikiAlias] = []
     var lastLookupAt: Date?
     var lastStatus: String = "Never used"
+
+    /// The page an alias points at, or the query unchanged.
+    func resolvingAlias(_ query: String) -> String {
+        let key = WikiAlias.key(query)
+        guard !key.isEmpty,
+              let alias = aliases.first(where: { WikiAlias.key($0.from) == key }) else { return query }
+        let target = alias.to.trimmingCharacters(in: .whitespacesAndNewlines)
+        return target.isEmpty ? query : target
+    }
 
     init(
         id: UUID = UUID(),
@@ -1080,6 +1106,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         commands: [WikiCommand] = [],
         formatting: WikiFormatting = WikiFormatting(),
         parsingRules: [WikiParsingRule] = [],
+        aliases: [WikiAlias] = [],
         lastLookupAt: Date? = nil,
         lastStatus: String = "Never used"
     ) {
@@ -1093,6 +1120,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         self.commands = commands
         self.formatting = formatting
         self.parsingRules = parsingRules
+        self.aliases = aliases
         self.lastLookupAt = lastLookupAt
         self.lastStatus = lastStatus
     }
@@ -1102,7 +1130,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
             id: UUID(),
             name: "THE FINALS Wiki",
             baseURL: "https://www.thefinals.wiki",
-            apiPath: "/api.php",
+            apiPath: "/w/api.php",
             searchScope: "",
             enabled: true,
             isPrimary: true,
@@ -1122,6 +1150,27 @@ struct WikiSource: Codable, Hashable, Identifiable {
         )
     }
 
+    /// Popular game wikis offered as one-click starters in both editors. The
+    /// WebUI keeps the same list (`WIKI_STARTERS` in admin/index.html).
+    struct Starter: Identifiable, Hashable {
+        let name: String
+        let baseURL: String
+        let apiPath: String
+        let commandSlug: String
+        /// A page that exists, for the editor's first preview.
+        let sampleQuery: String
+        var id: String { baseURL }
+    }
+
+    static let starters: [Starter] = [
+        Starter(name: "THE FINALS Wiki", baseURL: "https://www.thefinals.wiki", apiPath: "/w/api.php", commandSlug: "finals", sampleQuery: "AKM"),
+        Starter(name: "Minecraft Wiki", baseURL: "https://minecraft.wiki", apiPath: "/api.php", commandSlug: "minecraft", sampleQuery: "Diamond Sword"),
+        Starter(name: "Terraria Wiki", baseURL: "https://terraria.wiki.gg", apiPath: "/api.php", commandSlug: "terraria", sampleQuery: "Night's Edge"),
+        Starter(name: "WARFRAME Wiki", baseURL: "https://wiki.warframe.com", apiPath: "/api.php", commandSlug: "warframe", sampleQuery: "Braton"),
+        Starter(name: "Elden Ring Wiki", baseURL: "https://eldenring.fandom.com", apiPath: "/api.php", commandSlug: "eldenring", sampleQuery: "Moonveil"),
+        Starter(name: "Deep Rock Galactic Wiki", baseURL: "https://deeprockgalactic.wiki.gg", apiPath: "/api.php", commandSlug: "drg", sampleQuery: "Deepcore GK2")
+    ]
+
     static func genericTemplate() -> WikiSource {
         WikiSource(
             id: UUID(),
@@ -1137,9 +1186,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
                 useEmbeds: true,
                 compactMode: false
             ),
-            parsingRules: [
-                WikiParsingRule(pageType: "weapon", templateName: "Weapon")
-            ],
+            parsingRules: [],
             lastLookupAt: nil,
             lastStatus: "Ready"
         )
@@ -1156,6 +1203,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         case commands
         case formatting
         case parsingRules
+        case aliases
         case lastLookupAt
         case lastStatus
         // Legacy key
@@ -1176,6 +1224,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         commands = try container.decodeIfPresent([WikiCommand].self, forKey: .commands) ?? []
         formatting = try container.decodeIfPresent(WikiFormatting.self, forKey: .formatting) ?? WikiFormatting()
         parsingRules = try container.decodeIfPresent([WikiParsingRule].self, forKey: .parsingRules) ?? []
+        aliases = try container.decodeIfPresent([WikiAlias].self, forKey: .aliases) ?? []
         lastLookupAt = try container.decodeIfPresent(Date.self, forKey: .lastLookupAt)
         lastStatus = try container.decodeIfPresent(String.self, forKey: .lastStatus) ?? "Never used"
     }
@@ -1192,6 +1241,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         try container.encode(commands, forKey: .commands)
         try container.encode(formatting, forKey: .formatting)
         try container.encode(parsingRules, forKey: .parsingRules)
+        try container.encode(aliases, forKey: .aliases)
         try container.encodeIfPresent(lastLookupAt, forKey: .lastLookupAt)
         try container.encode(lastStatus, forKey: .lastStatus)
     }
@@ -1215,10 +1265,14 @@ private struct LegacyWikiBridgeSourceTarget: Decodable {
 
 struct WikiBotSettings: Codable, Hashable {
     var isEnabled: Bool = true
+    /// Lets AI replies look up an item a question names ("what's the AKM
+    /// damage?") on the enabled sources before answering.
+    var answersQuestions: Bool = true
     var sources: [WikiSource] = []
 
     private enum CodingKeys: String, CodingKey {
         case isEnabled
+        case answersQuestions
         case sources
         // Legacy key
         case defaultSourceID
@@ -1238,6 +1292,7 @@ struct WikiBotSettings: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        answersQuestions = try container.decodeIfPresent(Bool.self, forKey: .answersQuestions) ?? true
 
         let allowFinalsCommand = try container.decodeIfPresent(Bool.self, forKey: .allowFinalsCommand) ?? true
         let allowWikiAlias = try container.decodeIfPresent(Bool.self, forKey: .allowWikiAlias) ?? true
@@ -1272,6 +1327,7 @@ struct WikiBotSettings: Codable, Hashable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(answersQuestions, forKey: .answersQuestions)
         try container.encode(sources, forKey: .sources)
     }
 
@@ -1302,6 +1358,12 @@ struct WikiBotSettings: Codable, Hashable {
                 normalized.pageType = rule.pageType.trimmingCharacters(in: .whitespacesAndNewlines)
                 normalized.templateName = rule.templateName.trimmingCharacters(in: .whitespacesAndNewlines)
                 return normalized
+            }
+            updated.aliases = source.aliases.compactMap { alias in
+                var normalized = alias
+                normalized.from = alias.from.trimmingCharacters(in: .whitespacesAndNewlines)
+                normalized.to = alias.to.trimmingCharacters(in: .whitespacesAndNewlines)
+                return normalized.from.isEmpty || normalized.to.isEmpty ? nil : normalized
             }
             if updated.name.isEmpty {
                 updated.name = "Wiki Source"

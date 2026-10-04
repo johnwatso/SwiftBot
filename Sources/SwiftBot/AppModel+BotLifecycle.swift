@@ -607,7 +607,7 @@ extension AppModel {
         switch code {
         case 4004: return "Close 4004 — Authentication failed. Token is invalid. Use Clear API Key to reset."
         case 4014: return "Close 4014 — Privileged intent not enabled. Enable SERVER MEMBERS INTENT and MESSAGE CONTENT INTENT in the Discord Developer Portal → Bot tab."
-        case 4013: return "Close 4013 — Invalid intents specified. Check the gateway intents bitmask (required: 37507)."
+        case 4013: return "Close 4013 — Invalid intents specified. Check the gateway intents bitmask (required: 16891855)."
         case 4009: return "Close 4009 — Session timed out. The bot will reconnect automatically."
         case 4000: return "Close 4000 — Unknown gateway error. The bot will attempt to reconnect."
         default:   return "Close \(code) — Gateway closed with error. The bot will attempt to reconnect."

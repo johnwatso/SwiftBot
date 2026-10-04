@@ -49,6 +49,9 @@ extension AppModel {
             },
             onPresenceUpdate: { [weak self] event in
                 await self?.handlePresenceUpdate(event)
+            },
+            onRawEvent: { [weak self] name, payload in
+                await self?.recordRewindGatewayEvent(name: name, payload: payload)
             }
         )
     }
@@ -483,6 +486,12 @@ extension AppModel {
                 await handleSwiftMinerEditGamesButton(event: event, context: context)
                 return
             }
+            // Lookup commands answer with the card (and its buttons) directly.
+            if !builtInSlashCommandNames().contains(slashName),
+               let resolvedWiki = resolveWikiCommand(named: slashName) {
+                await handleWikiSlash(event: event, context: context, resolved: resolvedWiki)
+                return
+            }
 
             do {
                 // Personal recaps are only shown to the member who asked.
@@ -647,10 +656,16 @@ extension AppModel {
                 await handleMusicComponentInteraction(event: event, context: context)
                 return
             }
+            if customID.hasPrefix("wiki:") {
+                await handleWikiComponentInteraction(event: event, context: context)
+                return
+            }
             if customID.hasPrefix("playlist:") {
                 await handlePlaylistComponentInteraction(event: event, context: context)
                 return
             }
+        case 4: // APPLICATION_COMMAND_AUTOCOMPLETE
+            await handleWikiAutocomplete(event: event)
         case 5: // MODAL_SUBMIT
             let customID = slashCustomID(in: event.data)
             if customID == SwiftMinerDMEmbedBuilders.editGamesModalCustomID {
@@ -1391,7 +1406,7 @@ extension AppModel {
         }
     }
 
-    private func formatSlashCommandForLog(name: String, data: [String: DiscordJSON]) -> String {
+    func formatSlashCommandForLog(name: String, data: [String: DiscordJSON]) -> String {
         guard case let .array(options)? = data["options"], !options.isEmpty else {
             return "/\(name)"
         }
@@ -1415,7 +1430,7 @@ extension AppModel {
         return "/\(name) " + rendered.joined(separator: " ")
     }
 
-    private func slashOptionString(named name: String, in data: [String: DiscordJSON]) -> String? {
+    func slashOptionString(named name: String, in data: [String: DiscordJSON]) -> String? {
         guard case let .array(options)? = data["options"] else { return nil }
         for option in options {
             guard case let .object(map) = option,
@@ -1460,14 +1475,14 @@ extension AppModel {
         return nil
     }
 
-    private func slashCustomID(in data: [String: DiscordJSON]) -> String {
+    func slashCustomID(in data: [String: DiscordJSON]) -> String {
         if case let .string(value)? = data["custom_id"] {
             return value
         }
         return ""
     }
 
-    private func slashComponentValues(in data: [String: DiscordJSON]) -> [String] {
+    func slashComponentValues(in data: [String: DiscordJSON]) -> [String] {
         guard case let .array(values)? = data["values"] else { return [] }
         return values.compactMap { item in
             if case let .string(value) = item {
@@ -1491,6 +1506,8 @@ extension AppModel {
             lastSlashCommandsEnabledState = slashEnabled
         }
         let allCommands = buildSlashCommandDefinitions()
+        let wikiSources = orderedEnabledWikiSources()
+        Task { await wikiLookupService.warmUp(sources: wikiSources) }
         // Commands that should also work in user DMs with the bot. Registered globally with
         // `contexts: [0, 1]` (GUILD + BOT_DM) instead of per-guild.
         let dmEnabledCommandNames: Set<String> = ["miner"]

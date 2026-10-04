@@ -1490,16 +1490,21 @@ extension AppModel {
     func adminWebWikiBridgeSnapshot() -> AdminWebWikiBridgePayload {
         AdminWebWikiBridgePayload(
             enabled: settings.wikiBot.isEnabled,
+            answersQuestions: settings.wikiBot.answersQuestions,
             sources: settings.wikiBot.sources.sorted { lhs, rhs in
                 if lhs.isPrimary != rhs.isPrimary { return lhs.isPrimary && !rhs.isPrimary }
                 return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
+            },
+            usage: Dictionary(uniqueKeysWithValues: wikiUsageSummaries.map { ($0.key.uuidString, $0.value) })
         )
     }
 
     func updateAdminWebWikiBridgeState(_ patch: AdminWebWikiBridgeStatePatch) -> Bool {
         if let enabled = patch.enabled {
             settings.wikiBot.isEnabled = enabled
+        }
+        if let answersQuestions = patch.answersQuestions {
+            settings.wikiBot.answersQuestions = answersQuestions
         }
         settings.wikiBot.normalizeSources()
         saveSettings()
@@ -1538,6 +1543,25 @@ extension AppModel {
     func testAdminWebWikiSource(_ sourceID: UUID) -> Bool {
         testWikiBridgeSource(targetID: sourceID)
         return true
+    }
+
+    /// Mirrors the native editor's Preview: the reply embed with every field
+    /// shown, plus the field list so the page can hide fields live.
+    func previewAdminWebWikiSource(_ request: AdminWebWikiPreviewRequest) async -> Data? {
+        guard let result = await runWikiBridgeSourceTestQuery(source: request.source, query: request.query) else {
+            return nil
+        }
+        var source = request.source
+        source.formatting.hiddenEmbedFields = []
+        let embed = wikiEmbed(source: source, result: result)
+        var seen: Set<String> = []
+        let fields: [[String: Any]] = ((embed["fields"] as? [[String: Any]]) ?? []).compactMap { raw in
+            guard let name = raw["name"] as? String, let value = raw["value"] as? String else { return nil }
+            let key = normalizedWikiEmbedFieldName(name)
+            guard !key.isEmpty, seen.insert(key).inserted else { return nil }
+            return ["key": key, "name": name, "value": value]
+        }
+        return try? JSONSerialization.data(withJSONObject: ["embed": embed, "fields": fields], options: [.sortedKeys])
     }
 
     func deleteAdminWebWikiSource(_ sourceID: UUID) -> Bool {
@@ -2240,6 +2264,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebWikiBridgePayload(enabled: false, sources: [])
                 }
+                await model.refreshWikiUsageSummaries()
                 return await MainActor.run { model.adminWebWikiBridgeSnapshot() }
             },
             updateWikiBridgeState: { [weak self] patch in
@@ -2265,6 +2290,14 @@ extension AppModel {
             testWikiSource: { [weak self] sourceID in
                 guard let model = self else { return false }
                 return await MainActor.run { model.testAdminWebWikiSource(sourceID) }
+            },
+            previewWikiSource: { [weak self] request in
+                guard let model = self else { return nil }
+                return await model.previewAdminWebWikiSource(request)
+            },
+            detectWikiSite: { [weak self] request in
+                guard let model = self else { return nil }
+                return await model.wikiLookupService.detectSite(baseURL: request.baseURL, apiPath: request.apiPath ?? "")
             },
             deleteWikiSource: { [weak self] sourceID in
                 guard let model = self else { return false }

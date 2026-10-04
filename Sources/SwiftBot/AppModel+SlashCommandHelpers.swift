@@ -2,7 +2,48 @@ import Foundation
 
 extension AppModel {
     func allSlashCommandDefinitions() -> [[String: Any]] {
-        var definitions: [[String: Any]] = [
+        var definitions = builtInSlashCommandDefinitions()
+        var existingNames = Set(definitions.compactMap { $0["name"] as? String })
+        for source in orderedEnabledWikiSources() {
+            for command in source.commands where command.enabled {
+                let name = discordSlashSafeWikiCommandName(command.trigger)
+                guard !name.isEmpty, !existingNames.contains(name) else { continue }
+                existingNames.insert(name)
+
+                let description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                definitions.append([
+                    "name": name,
+                    "description": description.isEmpty ? "Look something up on \(source.name)" : String(description.prefix(100)),
+                    "type": 1,
+                    "options": [
+                        [
+                            "type": 3,
+                            "name": "query",
+                            "description": "What to look up",
+                            "required": true,
+                            "autocomplete": true
+                        ],
+                        [
+                            "type": 3,
+                            "name": "vs",
+                            "description": "Something to compare it with",
+                            "required": false,
+                            "autocomplete": true
+                        ]
+                    ]
+                ])
+            }
+        }
+        return definitions
+    }
+
+    /// Names the built-in commands own; a Lookup trigger can never take one.
+    func builtInSlashCommandNames() -> Set<String> {
+        Set(builtInSlashCommandDefinitions().compactMap { $0["name"] as? String })
+    }
+
+    func builtInSlashCommandDefinitions() -> [[String: Any]] {
+        [
             ["name": "help", "description": "Show help for SwiftBot", "type": 1, "options": [["type": 3, "name": "command", "description": "Optional command name", "required": false]]],
             ["name": "ping", "description": "Check if bot is alive", "type": 1],
             ["name": "roll", "description": "Roll dice, example: 2d6", "type": 1, "options": [["type": 3, "name": "notation", "description": "Dice notation NdS", "required": true]]],
@@ -90,30 +131,6 @@ extension AppModel {
                 ]]
             ]]
         ]
-
-        var existingNames = Set(definitions.compactMap { $0["name"] as? String })
-        for source in orderedEnabledWikiSources() {
-            for command in source.commands where command.enabled {
-                let name = discordSlashSafeWikiCommandName(command.trigger)
-                guard !name.isEmpty, !existingNames.contains(name) else { continue }
-                existingNames.insert(name)
-
-                let description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
-                definitions.append([
-                    "name": name,
-                    "description": description.isEmpty ? "Query \(source.name)" : String(description.prefix(100)),
-                    "type": 1,
-                    "options": [[
-                        "type": 3,
-                        "name": "query",
-                        "description": "Wiki query",
-                        "required": true
-                    ]]
-                ])
-            }
-        }
-
-        return definitions
     }
 
     func buildSlashCommandDefinitions() -> [[String: Any]] {

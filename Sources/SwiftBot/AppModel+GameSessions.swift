@@ -9,6 +9,7 @@ import Foundation
 extension AppModel {
 
     func handlePresenceUpdate(_ event: GatewayPresenceUpdateEvent) async {
+        recordRewindPresence(event)
         guard settings.gameTracking.sessionTrackingEnabled else { return }
         guard usesLocalRuntime else { return }
         let mode = runtimeClusterMode

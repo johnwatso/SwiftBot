@@ -43,6 +43,18 @@ struct GatewayPresenceActivity: Sendable, Equatable {
     let details: String?
     let state: String?
     let startedAt: Date?
+    // The rest of the activity, kept for the Rewind presence archive. Games
+    // put map/mode/character/rank in `details`, `state` and the asset hover
+    // text, which is exactly what a recording or a recap wants to know.
+    var endsAt: Date? = nil
+    var largeText: String? = nil
+    var smallText: String? = nil
+    var partyID: String? = nil
+    var partySize: Int? = nil
+    var partyMax: Int? = nil
+    var url: String? = nil
+    var platform: String? = nil
+    var emoji: String? = nil
 
     var isPlaying: Bool { type == Self.playingType }
 }
@@ -53,6 +65,8 @@ struct GatewayPresenceUpdateEvent: Sendable, Equatable {
     /// `online`, `idle`, `dnd`, or `offline`.
     let status: String
     let activities: [GatewayPresenceActivity]
+    /// Per-device status (`desktop`, `mobile`, `web` → `online`/`idle`/`dnd`).
+    var clientStatus: [String: String] = [:]
 
     var isOffline: Bool { status.lowercased() == "offline" }
 
@@ -153,6 +167,7 @@ actor GatewayEventDispatcher {
     typealias EventRecorder = @Sendable (String) async -> Void
     typealias MessageCreateHandler = @Sendable (GatewayMessageCreateEvent) async -> Void
     typealias PayloadHandler = @Sendable (DiscordJSON?) async -> Void
+    typealias RawEventHandler = @Sendable (String, DiscordJSON?) async -> Void
     typealias VoiceStateUpdateHandler = @Sendable (GatewayVoiceStateUpdateEvent) async -> Void
     typealias VoiceServerUpdateHandler = @Sendable (GatewayVoiceServerUpdateEvent) async -> Void
     typealias ReadyHandler = @Sendable (GatewayReadyEvent, Bool) async -> Void
@@ -177,6 +192,9 @@ actor GatewayEventDispatcher {
     private let onMemberLeave: MemberLeaveHandler
     private let onGuildDelete: GuildDeleteHandler
     private let onPresenceUpdate: PresenceUpdateHandler
+    /// Every primary-processed dispatch with its raw payload, for the Rewind
+    /// server journal. Runs before the typed handlers.
+    private let onRawEvent: RawEventHandler?
 
     init(
         onEventReceived: @escaping EventRecorder,
@@ -191,7 +209,8 @@ actor GatewayEventDispatcher {
         onMemberJoin: @escaping MemberJoinHandler,
         onMemberLeave: @escaping MemberLeaveHandler,
         onGuildDelete: @escaping GuildDeleteHandler,
-        onPresenceUpdate: @escaping PresenceUpdateHandler
+        onPresenceUpdate: @escaping PresenceUpdateHandler,
+        onRawEvent: RawEventHandler? = nil
     ) {
         self.onEventReceived = onEventReceived
         self.onMessageCreate = onMessageCreate
@@ -206,12 +225,16 @@ actor GatewayEventDispatcher {
         self.onMemberLeave = onMemberLeave
         self.onGuildDelete = onGuildDelete
         self.onPresenceUpdate = onPresenceUpdate
+        self.onRawEvent = onRawEvent
     }
 
     func dispatch(_ payload: GatewayPayload, shouldProcessPrimaryGatewayActions: Bool) async {
         guard payload.op == 0, let eventName = payload.t else { return }
 
         await onEventReceived(eventName)
+        if shouldProcessPrimaryGatewayActions, let onRawEvent {
+            await onRawEvent(eventName, payload.d)
+        }
 
         switch eventName {
         case "MESSAGE_CREATE":
@@ -347,7 +370,8 @@ actor GatewayEventDispatcher {
               let interactionID = stringValue(for: "id", in: map),
               let interactionToken = stringValue(for: "token", in: map),
               case let .int(kind)? = map["type"],
-              kind == 2 || kind == 3,
+              // 2 command, 3 component, 4 autocomplete (Lookup suggestions).
+              kind == 2 || kind == 3 || kind == 4,
               case let .object(data)? = map["data"] else {
             return nil
         }
@@ -507,55 +531,92 @@ actor GatewayEventDispatcher {
 
     private func parsePresenceUpdateEvent(from raw: DiscordJSON?) -> GatewayPresenceUpdateEvent? {
         guard case let .object(map)? = raw,
-              case let .object(user)? = map["user"],
-              let userID = stringValue(for: "id", in: user),
               let guildID = stringValue(for: "guild_id", in: map) else {
             return nil
+        }
+        return Self.parsePresence(map, guildID: guildID)
+    }
+
+    /// Shared by `PRESENCE_UPDATE` and the `presences` array in `GUILD_CREATE`,
+    /// which carries no `guild_id` of its own.
+    static func parsePresence(_ map: [String: DiscordJSON], guildID: String) -> GatewayPresenceUpdateEvent? {
+        guard case let .object(user)? = map["user"],
+              case let .string(userID)? = user["id"] else {
+            return nil
+        }
+
+        func string(_ key: String, _ map: [String: DiscordJSON]) -> String? {
+            guard case let .string(value)? = map[key] else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        func number(_ value: DiscordJSON?) -> Double? {
+            switch value {
+            case let .int(number)?: return Double(number)
+            case let .double(number)?: return number
+            default: return nil
+            }
         }
 
         var activities: [GatewayPresenceActivity] = []
         if case let .array(rawActivities)? = map["activities"] {
             for entry in rawActivities {
                 guard case let .object(activity) = entry,
-                      let name = nonEmptyStringValue(for: "name", in: activity) else { continue }
-                let type: Int
-                if case let .int(value)? = activity["type"] {
-                    type = value
-                } else if case let .double(value)? = activity["type"] {
-                    type = Int(value)
-                } else {
-                    continue
+                      let name = string("name", activity),
+                      let type = number(activity["type"]).map(Int.init) else { continue }
+
+                // `timestamps.start`/`end` are milliseconds since epoch when present.
+                var startedAt: Date?
+                var endsAt: Date?
+                if case let .object(timestamps)? = activity["timestamps"] {
+                    startedAt = number(timestamps["start"]).map { Date(timeIntervalSince1970: $0 / 1000) }
+                    endsAt = number(timestamps["end"]).map { Date(timeIntervalSince1970: $0 / 1000) }
                 }
 
-                // `timestamps.start` is milliseconds since epoch when present.
-                var startedAt: Date?
-                if case let .object(timestamps)? = activity["timestamps"] {
-                    if case let .int(start)? = timestamps["start"] {
-                        startedAt = Date(timeIntervalSince1970: Double(start) / 1000)
-                    } else if case let .double(start)? = timestamps["start"] {
-                        startedAt = Date(timeIntervalSince1970: start / 1000)
+                var parsed = GatewayPresenceActivity(
+                    name: name,
+                    type: type,
+                    applicationID: string("application_id", activity),
+                    details: string("details", activity),
+                    state: string("state", activity),
+                    startedAt: startedAt
+                )
+                parsed.endsAt = endsAt
+                if case let .object(assets)? = activity["assets"] {
+                    parsed.largeText = string("large_text", assets)
+                    parsed.smallText = string("small_text", assets)
+                }
+                if case let .object(party)? = activity["party"] {
+                    parsed.partyID = string("id", party)
+                    if case let .array(size)? = party["size"], size.count == 2 {
+                        parsed.partySize = number(size[0]).map(Int.init)
+                        parsed.partyMax = number(size[1]).map(Int.init)
                     }
                 }
-
-                activities.append(
-                    GatewayPresenceActivity(
-                        name: name,
-                        type: type,
-                        applicationID: stringValue(for: "application_id", in: activity),
-                        details: nonEmptyStringValue(for: "details", in: activity),
-                        state: nonEmptyStringValue(for: "state", in: activity),
-                        startedAt: startedAt
-                    )
-                )
+                parsed.url = string("url", activity)
+                parsed.platform = string("platform", activity)
+                if case let .object(emoji)? = activity["emoji"] {
+                    parsed.emoji = string("name", emoji)
+                }
+                activities.append(parsed)
             }
         }
 
-        return GatewayPresenceUpdateEvent(
+        var clientStatus: [String: String] = [:]
+        if case let .object(devices)? = map["client_status"] {
+            for (device, value) in devices {
+                if case let .string(status) = value { clientStatus[device] = status }
+            }
+        }
+
+        var event = GatewayPresenceUpdateEvent(
             guildID: guildID,
             userID: userID,
-            status: stringValue(for: "status", in: map) ?? "online",
+            status: string("status", map) ?? "online",
             activities: activities
         )
+        event.clientStatus = clientStatus
+        return event
     }
 
     private func stringValue(for key: String, in map: [String: DiscordJSON]) -> String? {

@@ -886,7 +886,8 @@ actor DiscordService {
                 authorName: authorName,
                 isBot: isBot,
                 content: content,
-                createdAt: Self.messageCreatedDate(fromSnowflake: id) ?? Date()
+                createdAt: Self.messageCreatedDate(fromSnowflake: id) ?? Date(),
+                meta: RewindMessageMeta(raw: raw)
             )
         }
 

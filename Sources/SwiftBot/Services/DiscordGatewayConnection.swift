@@ -381,7 +381,12 @@ actor DiscordGatewayConnection {
             "afk": false
         ]
 
-        let intents = 49_027
+        // GUILDS, MEMBERS*, MODERATION, EXPRESSIONS, INVITES, VOICE_STATES,
+        // PRESENCES*, MESSAGES, MESSAGE_REACTIONS, MESSAGE_TYPING, DIRECT_MESSAGES,
+        // DM_REACTIONS, MESSAGE_CONTENT*, SCHEDULED_EVENTS, MESSAGE_POLLS
+        // (* privileged). Everything past what features use feeds the Rewind
+        // server journal.
+        let intents = 16_891_855
         let identify: [String: Any] = [
             "token": token,
             "intents": intents,

@@ -1289,11 +1289,20 @@ struct AdminWebPatchyTargetIDPatch: Codable {
 
 struct AdminWebWikiBridgePayload: Codable {
     let enabled: Bool
+    var answersQuestions: Bool = true
     let sources: [WikiSource]
+    /// Keyed by source ID; sources nobody has used yet are missing.
+    var usage: [String: WikiLookupUsageSummary] = [:]
 }
 
 struct AdminWebWikiBridgeStatePatch: Codable {
     let enabled: Bool?
+    var answersQuestions: Bool?
+}
+
+struct AdminWebWikiDetectRequest: Codable {
+    let baseURL: String
+    var apiPath: String?
 }
 
 struct AdminWebWikiSourcePatch: Codable, Validatable {
@@ -1306,6 +1315,13 @@ struct AdminWebWikiSourcePatch: Codable, Validatable {
 
 struct AdminWebWikiSourceIDPatch: Codable {
     let sourceID: UUID
+}
+
+/// Runs one lookup against an unsaved source draft, like the native
+/// editor's Preview section, so the web editor can show the reply embed.
+struct AdminWebWikiPreviewRequest: Codable {
+    let source: WikiSource
+    let query: String
 }
 
 /// Read-only mirror of the native Announcer tab's "Current State" panel.
@@ -1677,6 +1693,9 @@ actor AdminWebServer {
     private var setWikiSourceEnabled: (@Sendable (UUID, Bool) async -> Bool)?
     private var setWikiSourcePrimary: (@Sendable (UUID) async -> Bool)?
     private var testWikiSource: (@Sendable (UUID) async -> Bool)?
+    /// Returns the preview JSON ({ embed, fields }), or nil when nothing matched.
+    private var previewWikiSource: (@Sendable (AdminWebWikiPreviewRequest) async -> Data?)?
+    private var detectWikiSite: (@Sendable (AdminWebWikiDetectRequest) async -> WikiSiteInfo?)?
     private var deleteWikiSource: (@Sendable (UUID) async -> Bool)?
     private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
     private var mediaStreamProvider: (@Sendable (String, String?, String?) async -> BinaryHTTPResponse?)?
@@ -1831,6 +1850,8 @@ actor AdminWebServer {
         setWikiSourceEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
         setWikiSourcePrimary: @escaping @Sendable (UUID) async -> Bool,
         testWikiSource: @escaping @Sendable (UUID) async -> Bool,
+        previewWikiSource: (@Sendable (AdminWebWikiPreviewRequest) async -> Data?)? = nil,
+        detectWikiSite: (@Sendable (AdminWebWikiDetectRequest) async -> WikiSiteInfo?)? = nil,
         deleteWikiSource: @escaping @Sendable (UUID) async -> Bool,
         mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
         mediaStreamProvider: @escaping @Sendable (String, String?, String?) async -> BinaryHTTPResponse?,
@@ -1937,6 +1958,8 @@ actor AdminWebServer {
         self.setWikiSourceEnabled = setWikiSourceEnabled
         self.setWikiSourcePrimary = setWikiSourcePrimary
         self.testWikiSource = testWikiSource
+        self.previewWikiSource = previewWikiSource
+        self.detectWikiSite = detectWikiSite
         self.deleteWikiSource = deleteWikiSource
         self.mediaLibraryProvider = mediaLibraryProvider
         self.mediaStreamProvider = mediaStreamProvider
@@ -3989,6 +4012,43 @@ actor AdminWebServer {
                 return jsonResponse(["error": "test_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+        case ("POST", "/api/wikibridge/source/detect"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let detect = try? decoder.decode(AdminWebWikiDetectRequest.self, from: request.body),
+                  detect.baseURL.count <= 300 else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard let site = await detectWikiSite?(detect) else {
+                return jsonResponse(["error": "not_mediawiki"], status: "404 Not Found")
+            }
+            return jsonResponse(["siteName": site.siteName, "apiPath": site.apiPath])
+        case ("POST", "/api/wikibridge/source/preview"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let preview = try? apiDecoder.decode(AdminWebWikiPreviewRequest.self, from: request.body),
+                  !preview.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  preview.query.count <= 200 else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard let body = await previewWikiSource?(preview) else {
+                return jsonResponse(["error": "no_result"], status: "404 Not Found")
+            }
+            return httpResponse(status: "200 OK", body: body, contentType: "application/json; charset=utf-8", headers: [:])
         case ("POST", "/api/wikibridge/source/delete"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()

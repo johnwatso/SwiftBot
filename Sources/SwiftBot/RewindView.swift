@@ -186,8 +186,8 @@ struct RewindView: View {
         AutomationsSection(title: "Collection", symbol: "dot.radiowaves.left.and.right") {
             VStack(alignment: .leading, spacing: 10) {
                 settingRow(
-                    title: "Archive server messages",
-                    detail: "Stores messages from server channels so Rewind can count words, phrases and people. Direct messages are never archived.",
+                    title: "Archive server activity",
+                    detail: "Stores messages, what members play, stream and watch while in voice, and server events (edits, deletes, reactions, polls, member and voice changes) so Rewind and recordings can use them. Listening activity and direct messages are never archived.",
                     isOn: $app.settings.rewind.isEnabled,
                     requiresCollection: false
                 )
