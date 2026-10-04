@@ -4368,7 +4368,8 @@ actor AdminWebServer {
         let stateCookie = cookieHeader(
             name: "swiftbot_oauth_state",
             value: state,
-            maxAge: Int(stateTTL)
+            maxAge: Int(stateTTL),
+            secure: isHTTPSRequest(request)
         )
         return redirectResponse(to: url.absoluteString, headers: ["Set-Cookie": stateCookie])
     }
@@ -4450,7 +4451,8 @@ actor AdminWebServer {
         let stateCookie = cookieHeader(
             name: "swiftbot_oauth_state",
             value: state,
-            maxAge: Int(stateTTL)
+            maxAge: Int(stateTTL),
+            secure: isHTTPSRequest(request)
         )
         return redirectResponse(to: url.absoluteString, headers: ["Set-Cookie": stateCookie])
     }
@@ -4509,7 +4511,7 @@ actor AdminWebServer {
                 "ok": true,
                 "user": expectedUsername
             ],
-            headers: ["Set-Cookie": sessionCookie(for: session.id)]
+            headers: ["Set-Cookie": sessionCookie(for: session.id, secure: isHTTPSRequest(request))]
         )
     }
 
@@ -4643,7 +4645,7 @@ actor AdminWebServer {
             ) ?? "/"
             return redirectResponse(
                 to: redirectTarget,
-                headers: ["Set-Cookie": sessionCookie(for: session.id)]
+                headers: ["Set-Cookie": sessionCookie(for: session.id, secure: isHTTPSRequest(request))]
             )
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -4756,7 +4758,8 @@ actor AdminWebServer {
                 "Set-Cookie": cookieHeader(
                     name: "swiftbot_admin_session",
                     value: "",
-                    maxAge: 0
+                    maxAge: 0,
+                    secure: isHTTPSRequest(request)
                 )
             ]
         )
@@ -4990,7 +4993,7 @@ actor AdminWebServer {
         persistSessions()
         await logger?("Web UI member sign-in for \(user.username) (\(user.id))")
         audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Member signed in", detail: "\(guildIDs.count) server\(guildIDs.count == 1 ? "" : "s")", level: "ok")
-        return redirectResponse(to: "/", headers: ["Set-Cookie": sessionCookie(for: session.id)])
+        return redirectResponse(to: "/", headers: ["Set-Cookie": sessionCookie(for: session.id, secure: isHTTPSRequest(request))])
     }
 
     private func isMemberOfConnectedGuild(guilds: [DiscordGuildSummary]) async -> Bool {
@@ -5478,17 +5481,27 @@ actor AdminWebServer {
         )
     }
 
-    private func sessionCookie(for sessionID: String) -> String {
+    private func sessionCookie(for sessionID: String, secure: Bool) -> String {
         cookieHeader(
             name: "swiftbot_admin_session",
             value: sessionID,
-            maxAge: Int(sessionTTL)
+            maxAge: Int(sessionTTL),
+            secure: secure
         )
     }
 
-    private func cookieHeader(name: String, value: String, maxAge: Int) -> String {
-        let secure = activeTransportUsesTLS ? "; Secure" : ""
-        return "\(name)=\(value); Path=/; Max-Age=\(maxAge); HttpOnly\(secure); SameSite=Lax"
+    private func cookieHeader(name: String, value: String, maxAge: Int, secure: Bool) -> String {
+        "\(name)=\(value); Path=/; Max-Age=\(maxAge); HttpOnly\(secure ? "; Secure" : ""); SameSite=Lax"
+    }
+
+    /// Whether the browser reached us over HTTPS: TLS terminated here, or by
+    /// a tunnel on this Mac (cloudflared) that says so. Only a loopback peer
+    /// is trusted to set X-Forwarded-Proto. Plain-HTTP LAN visits get cookies
+    /// without Secure, which browsers would otherwise refuse to store.
+    private func isHTTPSRequest(_ request: HTTPRequest) -> Bool {
+        if activeTransportUsesTLS { return true }
+        guard Self.isLoopbackPeer(request.peerIP) else { return false }
+        return request.headers["x-forwarded-proto"]?.lowercased() == "https"
     }
 
     private func pruneExpiredState() {
@@ -6468,7 +6481,7 @@ extension AdminWebServer {
                 sessions[session.id] = session
                 persistSessions()
                 audit(source: "Web Auth", actor: actorLabel(session), action: "Logged in", detail: "Passkey", level: "ok")
-                return jsonResponse(["ok": true], headers: ["Set-Cookie": sessionCookie(for: session.id) + (activeTransportUsesTLS ? "" : "; Secure")])
+                return jsonResponse(["ok": true], headers: ["Set-Cookie": sessionCookie(for: session.id, secure: true)])
             default:
                 return httpResponse(status: "404 Not Found", body: Data())
             }
