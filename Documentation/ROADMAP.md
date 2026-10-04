@@ -9,6 +9,12 @@
 
 ## Recent Engineering Log
 
+### 2026-10-04 — ShipHook publishing blocker
+
+- [x] Diagnosed the supplied release log: archive, signing, notarization and stapling succeeded, then ShipHook aborted while copying `docs/release-notes/1.27.1.html` onto itself. Fixed the publisher in the sibling ShipHook checkout using a same-file guard; 14 isolated stable/beta publishing checks pass, including symlinks, hard links, external/replacement notes, missing notes and no notes. Added an upstream-compatible patch and deployment instructions in `Documentation/SHIPHOOK_RELEASE_FIX.md`. Refreshed SwiftBot's timestamp build to `2026100415` and regenerated the project without unrelated drift; marketing version remains 1.27.1. Local and live signed stable feeds remain 1.27.0 (2026100220), deliberately preserved until real publication. Working tree changes, not committed.
+- [ ] Deploy the corrected bundled ShipHook publisher on the release Mac (or stage the notes outside `docs/release-notes` and change its configured notes source), then retry publication. No build trigger, push or publication performed.
+- [x] SwiftBot Release build passed with local signing disabled; verified built Info.plist version/build and preserved Sparkle URL/key. ShipHook Debug build passed and its embedded publisher matches the corrected script. Sparkle pipeline validation passed; upstream patch applies cleanly. Existing app/dependency warnings remain.
+
 ### 2026-10-04 — Rewind DM activity filter
 
 - [x] Added a per-server “Only DM active members” toggle in Rewind recap drops, defaulting on for new and existing settings. Scheduled/manual sends and recipient previews require 10 messages across 3 days in the last 30 calendar days in that server, plus participation in the recap period; disabling restores the broader message/voice audience. Bots and opt-outs remain excluded, and sending verifies current guild membership. Debug app build-for-testing passed; isolated production archive checks covered thresholds, recent-window/year boundaries, guild isolation, count-only persistence and toggle migration/round trip. Admin JavaScript syntax and toggle rendering/save checks passed. XCTest cases compiled; the hosted suite was not launched to avoid interrupting the running bot. Working tree changes, not committed.
