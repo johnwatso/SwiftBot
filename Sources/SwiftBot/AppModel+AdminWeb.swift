@@ -4167,4 +4167,19 @@ extension SweepRunReport {
             summary: summary, groups: groups
         )
     }
+
+    /// Counts and authors only: no message previews, examples or digest.
+    var withoutMessageText: SweepRunReport {
+        SweepRunReport(
+            id: id, policyID: policyID, policyName: policyName, startedAt: startedAt,
+            durationMS: durationMS, scanned: scanned, matched: matched, executed: executed,
+            suppressed: suppressed, dryRun: dryRun, actions: [], error: error,
+            summary: nil,
+            groups: (groups ?? SweepActionGroup.summarise(actions)).map { group in
+                var redacted = group
+                redacted.examples = []
+                return redacted
+            }
+        )
+    }
 }

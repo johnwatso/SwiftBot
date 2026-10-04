@@ -432,8 +432,8 @@ struct AdminWebSweepPayload: Codable {
     let suppressedTodayCount: Int
     let summariesThisWeekCount: Int
     let policies: [SweepPolicy]
-    let recentReports: [SweepRunReport]
-    let suggestions: [SweepSuggestion]
+    var recentReports: [SweepRunReport]
+    var suggestions: [SweepSuggestion]
     let isScanningSuggestions: Bool
     let lastSuggestionScanAt: Date?
     let scanProgressDone: Int
@@ -3391,10 +3391,20 @@ actor AdminWebServer {
         case ("POST", let path) where Self.hostOperationPaths.contains(path):
             return await handleHostOperation(request)
         case ("GET", "/api/sweep"):
-            guard authenticatedSession(for: request) != nil else {
+            guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
-            if let payload = await sweepProvider?() {
+            if var payload = await sweepProvider?() {
+                // Run previews quote members' messages, so only admins get
+                // them, matching /api/analytics and /api/rewind.
+                if session.role != .admin {
+                    payload.recentReports = payload.recentReports.map(\.withoutMessageText)
+                    payload.suggestions = payload.suggestions.map { suggestion in
+                        var redacted = suggestion
+                        redacted.projection = suggestion.projection?.withoutMessageText
+                        return redacted
+                    }
+                }
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "sweep_unavailable"], status: "503 Service Unavailable")
