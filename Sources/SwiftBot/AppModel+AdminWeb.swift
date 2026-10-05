@@ -1281,9 +1281,8 @@ extension AppModel {
         )
     }
 
-    /// Mirrors `AppleIntelligenceView` so the WebUI "AI Bots" page shows the
-    /// same status, personality presets, reply rules, memory and capabilities
-    /// as the native surface.
+    /// The WebUI's Apple Intelligence settings: status, personality presets,
+    /// reply rules, memory and capabilities.
     func adminWebAIBotsSnapshot() -> AdminWebAIBotsPayload {
         let dmReplies = settings.localAIDMReplyEnabled
         let guildReplies = settings.behavior.useAIInGuildChannels
@@ -3583,8 +3582,7 @@ extension AppModel {
 // MARK: - Announcer live state
 
 extension AppModel {
-    /// Mirrors the native Announcer tab's "Current State" panel for the WebUI.
-    /// Kept in sync with `VoiceView`'s equivalent computed properties.
+    /// The Announcer's current state for the WebUI.
     @MainActor
     func adminWebAnnouncerLiveState() -> AdminWebAnnouncerLiveState {
         let configs = settings.voice.announcerConfigs

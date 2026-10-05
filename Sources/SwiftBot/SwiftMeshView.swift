@@ -1901,3 +1901,24 @@ private struct HandoverCountdownText: View {
         }
     }
 }
+
+struct PlaceholderPanelLine: View {
+    let text: String
+
+    var body: some View {
+        HStack {
+            Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                .foregroundStyle(.secondary)
+            Text(text)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+        )
+    }
+}

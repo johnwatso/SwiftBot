@@ -9,6 +9,11 @@
 
 ## Recent Engineering Log
 
+### 2026-10-06 — Remove outdated native views
+
+- [x] Deleted about 22,600 lines of native UI the app could no longer reach: the twelve WebUI-only feature pages (Commands, Welcome Flow, Automations, Moderation, Game Tracker, Patchy, Sweep, Lookup, Announcer, Apple Intelligence, Analytics, Rewind) and their editors, the classic Overview dashboard, the old native Recordings library, the unwired Server Audit feature, the schema-driven SettingsView and unused Preferences components. Shared models moved to files named for them (`Services/SweepService.swift`, `Models/SlashCommandGroup.swift`, `Models/AppleIntelligencePersonality.swift`). `SidebarItem` lists only the host console; `AdminWebCopyTests` still checks every feature page exists in the WebUI.
+- [x] The WebUI automation editor gained trigger-aware variable chips, the one gap found in the web workflows. Debug build and test build passed; tests not run. Working tree changes, not committed.
+
 ### 2026-10-06 — Sign-in handoff review
 
 - [x] Discord sign-in started from any address other than the OAuth callback's (the LAN, `127.0.0.1`) always failed with "browser session no longer matches", because the state cookie was set on the wrong host. `/auth/discord/login` now moves the browser to the callback's host before starting.
@@ -311,8 +316,8 @@
 - [x] Activity export and clear — redacted diagnostic report download (`GET /api/activity/export`) and Clear (`POST /api/activity/clear`).
 - [x] Kick & re-invite — in the web Bot permissions dialog (`POST /api/bot/permissions/force-rejoin`).
 - [x] SwiftMesh node icon overrides — Set icon on each node (`setIcon` SwiftMesh action).
-- [ ] Verify end-to-end web workflows before removing native feature views: variable insertion, permissions, user timezones, game-provider setup, SwiftMiner pairing.
-- [ ] Remove the native feature views the WebUI replaces once parity is verified.
+- [x] Verify web workflows before removing native feature views — permissions, user timezones and game-provider keys are on the web; SwiftMiner pairing stays native by design; variable insertion was missing from the web automation editor and was added (2026-10-06).
+- [x] Remove the native feature views the WebUI replaces — done 2026-10-06, along with the classic Overview dashboard and other dead views.
 
 ### Polish
 - [x] ~~Remote mode on the Overview styling~~ — Remote Control mode removed instead (2026-10-06); the WebUI replaces it.

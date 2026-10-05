@@ -11265,6 +11265,26 @@
       bindAutomationStepFieldEvents();
     }
 
+    // Variables a step can use, by trigger. Mirrors Automations.Variable.appliesTo.
+    function automationVariables(kind) {
+      const voice = ['userJoinedVoice', 'userLeftVoice', 'userMovedVoice'].includes(kind);
+      const noChannel = ['memberJoined', 'memberLeft', 'mediaAdded'].includes(kind);
+      return [
+        '{username}', '{userMention}', '{userId}', '{guildName}', '{guildId}',
+        ...(noChannel ? [] : ['{channelName}', '{channelId}']),
+        ...(kind === 'messageCreated' ? ['{message}', '{messageId}'] : []),
+        ...(voice ? ['{duration}'] : []),
+        ...(kind === 'mediaAdded' ? ['{mediaFile}', '{mediaSource}'] : []),
+        '{ai_output}'
+      ];
+    }
+
+    function automationVariableChips(field, idx) {
+      const kind = automationEditorState?.rule?.trigger?.kind;
+      return `<div class="wf-tokens"><span>Insert</span>${automationVariables(kind).map(t =>
+        `<button type="button" class="cmd-opt wf-token auto-var-token" data-field="${field}" data-step-index="${idx}" data-token="${t}">${t}</button>`).join('')}</div>`;
+    }
+
     function renderAutomationStepFields(s, idx, ctx) {
       const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label>${html}</div>`;
       const channelOpts = (pool, selectedID) =>
@@ -11285,7 +11305,7 @@
             </select>`),
             (s.sendTarget === 'specificChannel' ? row('Channel',
               `<select class="field-select auto-step-field" data-field="channelId" data-step-index="${idx}">${channelOpts(ctx.textChannels, s.channelId)}</select>`) : ''),
-            row('Message', `<textarea class="field-input auto-step-field" data-field="content" data-step-index="${idx}" rows="3" placeholder="Hey {username}!">${escapeHTML(s.content || '')}</textarea>`),
+            row('Message', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="content" data-step-index="${idx}" rows="3" placeholder="Hey {username}!">${escapeHTML(s.content || '')}</textarea>${automationVariableChips('content', idx)}</div>`),
             renderAutomationAIPromptRow(s, idx)
           ].join('');
         case 'modifyMember':
@@ -11318,10 +11338,10 @@
               : ''
           ].join('');
         case 'log':
-          return row('Log text', `<textarea class="field-input auto-step-field" data-field="logText" data-step-index="${idx}" rows="2">${escapeHTML(s.logText || '')}</textarea>`);
+          return row('Log text', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="logText" data-step-index="${idx}" rows="2">${escapeHTML(s.logText || '')}</textarea>${automationVariableChips('logText', idx)}</div>`);
         case 'webhook':
           return row('URL', `<input class="field-input auto-step-field" data-field="webhookUrl" data-step-index="${idx}" value="${escapeHTML(s.webhookUrl || '')}" placeholder="https://...">`) +
-                 row('Body', `<textarea class="field-input auto-step-field" data-field="webhookContent" data-step-index="${idx}" rows="3">${escapeHTML(s.webhookContent || '')}</textarea>`);
+                 row('Body', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="webhookContent" data-step-index="${idx}" rows="3">${escapeHTML(s.webhookContent || '')}</textarea>${automationVariableChips('webhookContent', idx)}</div>`);
         case 'delay':
           return row('Seconds', `<input type="number" class="field-input auto-step-field" data-field="delaySeconds" data-step-index="${idx}" value="${s.delaySeconds ?? 5}">`);
         case 'aiTransform':
@@ -11382,6 +11402,16 @@
         el.addEventListener('input', handler);
         el.addEventListener('change', handler);
       });
+      body.querySelectorAll('.auto-var-token').forEach(btn => btn.addEventListener('click', () => {
+        const field = body.querySelector(`.auto-step-field[data-field="${btn.dataset.field}"][data-step-index="${btn.dataset.stepIndex}"]`);
+        if (!field) return;
+        const start = field.selectionStart ?? field.value.length;
+        const end = field.selectionEnd ?? start;
+        field.value = field.value.slice(0, start) + btn.dataset.token + field.value.slice(end);
+        field.focus();
+        field.setSelectionRange(start + btn.dataset.token.length, start + btn.dataset.token.length);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }));
       body.querySelectorAll('.auto-ai-prompt-help').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.preventDefault();

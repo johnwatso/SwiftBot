@@ -52,7 +52,6 @@ struct UnifiedRootView: View {
     @Binding var selection: SidebarItem
     @EnvironmentObject var app: AppModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @AppStorage("overview.layout") private var overviewLayout: OverviewLayout = .console
 
     /// Detail content runs up into the titlebar. With the sidebar showing, the
     /// traffic lights sit over the sidebar; once it collapses they (and the
@@ -106,38 +105,13 @@ struct UnifiedRootView: View {
     private var detailView: some View {
         switch selection {
         case .overview:
-            switch overviewLayout {
-            case .console:
-                ConsoleOverviewView(
-                    onNavigate: select,
-                    onShowClassicDashboard: { overviewLayout = .classic }
-                )
-            case .classic:
-                OverviewView(
-                    onOpenSwiftMesh: { select(.swiftMesh) },
-                    onShowConsole: { overviewLayout = .console }
-                )
-            }
+            ConsoleOverviewView(onNavigate: select)
         case .discord: DiscordPage()
         case .webInterface: WebInterfacePage()
         case .integrations: IntegrationsPage()
         case .swiftMesh: SwiftMeshPage()
         case .activity: ActivityLogView()
         case .recordings: RecordingsPage()
-        // WebUI-only feature pages (`SidebarItem.webOnlyItems`). Not listed in
-        // the sidebar; their native views stay until they're deleted.
-        case .patchy: PatchyView()
-        case .welcomeFlow: WelcomeFlowView()
-        case .automations: AutomationsView()
-        case .moderation: ModerationView()
-        case .commands: CommandsView()
-        case .wikiBridge: WikiBridgeView()
-        case .appleIntelligence: AppleIntelligenceView()
-        case .voice: VoiceView()
-        case .analytics: AnalyticsView()
-        case .rewind: RewindView()
-        case .sweep: SweepView()
-        case .gameTracker: GameTrackerView()
         }
     }
 
@@ -146,14 +120,6 @@ struct UnifiedRootView: View {
             selection = item
         }
     }
-}
-
-/// Which Overview the main window shows. The console layout is the new
-/// host-focused page; the classic one is the metrics dashboard, kept while
-/// the console redesign settles (see Documentation/CONSOLE_REDESIGN_PLAN.md).
-enum OverviewLayout: String {
-    case console
-    case classic
 }
 
 private struct BetaBadgeView: View {

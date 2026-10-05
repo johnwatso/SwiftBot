@@ -71,22 +71,7 @@ This document provides a high-level overview of the SwiftBot application archite
 
 ### 6. User Interface
 - **Main View:** `RootView` - A modern, responsive multi-section `NavigationSplitView` container styled under standard macOS HIG.
-- **Sidebar Sections:**
-  - **Dashboard:** `OverviewView` (high-level bot status, activity events feed, performance metrics)
-  - **Workflows:**
-    - `CommandsView` (slash command configurations and routing)
-    - `AutomationsView` (unified general automated rule builder, NL drafting, templates catalog)
-    - `ModerationView` (moderation-specific rules and enforcement policies)
-  - **Services:**
-    - `PatchyView` (source-target monitors for updates with grouped list and custom modal target editor)
-    - `SweepView` (channel housekeeping and automated message cleanup policies)
-    - `WikiBridgeView` (external knowledge bases and keyword commands mapping)
-    - `RecordingsView` (audio logs and transient recorded captures)
-  - **System:**
-    - `AIBotsView` (Apple Intelligence, OpenAI, and Ollama engine routing settings)
-    - `AnalyticsView` (server and user engagement graphs and statistics)
-    - `ActivityLogView` (live, auto-scrolled debug logs)
-    - `SwiftMeshView` (cluster node status, heartbeat stats, term logs, failover controls)
+- **Sidebar:** the host console — Overview (`ConsoleOverviewView`), Discord, Web Interface, SwiftMesh, Integrations, Recordings and Activity. Feature pages (commands, automations, moderation, Patchy, Sweep, Lookup, Announcer, Apple Intelligence, Analytics, Rewind, Game Tracker, Welcome Flow) exist only in the admin WebUI (`Resources/admin/index.html`).
 
 ### 7. UpdateEngine Package + Patchy Runtime Use
 - **Path:** `Sources/UpdateEngine`
@@ -314,7 +299,7 @@ SwiftBot.xcodeproj
     │   ├── Security/
     │   ├── Resources/
     │   │   └── cloudflared (bundled dependency for Cloudflare Tunnel)
-    │   └── [Views].swift (RootView, AutomationsView, AutomationRuleEditor, OverviewView, etc.)
+    │   └── [Views].swift (RootView, ConsolePages, ConsoleOverview/, SwiftMeshView, etc.)
     └── Sources/UpdateEngine (nested isolated update monitor package)
 ```
 
@@ -401,11 +386,11 @@ All previously planned extensions have been successfully integrated as core subs
 
 ### 1. API Diagnostics & Debugging (Shipped)
 - **Features:** Gateway/REST diagnostics, latency monitoring, privilege permissions verification, rate-limit warnings, and gateway events charts.
-- **Components:** `DiagnosticsPanel`, gateway metrics tracking in `AppModel.swift` and `OverviewView.swift`.
+- **Components:** gateway metrics tracking in `AppModel.swift` and the console Overview.
 
 ### 2. Welcome & Member Automations (Shipped)
 - **Features:** Integrated voice channel, member join/leave, reaction added, and slash command triggers in the general automations system.
-- **Components:** `AutomationsView.swift` and `AutomationRuleEditor.swift` rule configurations.
+- **Components:** `AutomationService` and the WebUI automation editor.
 
 ### 3. Onboarding Splash Flow (Shipped)
 - **Features:** A seamless `OnboardingView` that guides the user through token setup, privileged intent checks, permissions verification, and dynamic OAuth2 bot invite link generation.
@@ -414,4 +399,4 @@ All previously planned extensions have been successfully integrated as core subs
 - **Features:** Automatic Dock icon runtime swaps (`NSApp.applicationIconImage`) based on `-beta` build environment checks.
 
 ### 5. Analytics & Context-Aware AI (Shipped)
-- **Features:** Engagement and message volume analytics tracking (`AnalyticsView.swift`), unified AI reply generation leveraging local LLMs and Apple Intelligence, and context variables parsing.
+- **Features:** Engagement and message volume analytics tracking (WebUI Analytics, `CommunityStatsStore`), unified AI reply generation leveraging local LLMs and Apple Intelligence, and context variables parsing.

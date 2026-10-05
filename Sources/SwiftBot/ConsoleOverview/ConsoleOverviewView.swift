@@ -18,7 +18,6 @@ struct ConsoleOverviewView: View {
 
     /// Shows another sidebar page (a service's settings, the log).
     var onNavigate: (SidebarItem) -> Void = { _ in }
-    var onShowClassicDashboard: () -> Void = {}
 
     var body: some View {
         let snapshot = app.consoleOverviewSnapshot
@@ -111,8 +110,6 @@ struct ConsoleOverviewView: View {
             Button("Export Diagnostic Logs…", systemImage: "square.and.arrow.up") {
                 Task { await LogExporter.presentSavePanel(app: app) }
             }
-            Divider()
-            Button("Show Classic Dashboard", systemImage: "square.grid.2x2", action: onShowClassicDashboard)
         } label: {
             Label("More", systemImage: "wrench.and.screwdriver")
                 .labelStyle(.iconOnly)

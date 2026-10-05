@@ -20,23 +20,19 @@ final class AdminWebCopyTests: XCTestCase {
         let html = try String(contentsOf: adminHTML, encoding: .utf8)
         let webViewsBySidebarItem: [SidebarItem: String] = [
             .overview: "overview",
-            .patchy: "patchy",
-            .welcomeFlow: "welcome",
-            .automations: "automations",
-            .moderation: "moderation",
-            .commands: "commands",
             .activity: "activity",
-            .wikiBridge: "wikibridge",
-            // Apple Intelligence lives in Settings on the web.
-            .appleIntelligence: "settings",
-            .voice: "announcer",
             .recordings: "recordings",
-            .analytics: "analytics",
-            .rewind: "rewind",
-            .swiftMesh: "swiftmesh",
-            .sweep: "sweep",
-            .gameTracker: "gametracker"
+            .swiftMesh: "swiftmesh"
         ]
+        // Feature pages exist only in the WebUI; Apple Intelligence is a
+        // Settings group there, so it's covered by its own test below.
+        let webOnlyViews = ["patchy", "welcome", "automations", "moderation", "commands", "wikibridge",
+                            "announcer", "analytics", "rewind", "sweep", "gametracker"]
+        for webView in webOnlyViews {
+            XCTAssertTrue(html.contains(#"data-view="\#(webView)""#), "\(webView) is missing from WebUI navigation")
+            XCTAssertTrue(html.contains(#"id="\#(webView)View""#), "\(webView) is missing a WebUI view section")
+            XCTAssertTrue(html.contains(#"view === '\#(webView)'"#), "\(webView) is missing a WebUI selection branch")
+        }
 
         // Native-only host pages (this Mac's Discord, Web Interface and Integrations
         // settings) have no WebUI page by design.

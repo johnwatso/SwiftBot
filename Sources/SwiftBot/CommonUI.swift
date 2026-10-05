@@ -146,17 +146,6 @@ extension View {
     }
 }
 
-/// Shared sizing for any `LazyVGrid` that hosts `DashboardMetricCard`. Keeping
-/// these in one place ensures Overview and the per-feature metric rails render
-/// cards at the same width and spacing.
-enum DashboardMetricGrid {
-    static let minItemWidth: CGFloat = 180
-    static let spacing: CGFloat = 12
-    static var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: minItemWidth), spacing: spacing)]
-    }
-}
-
 private struct DashboardMetricGlowPreference {
     let bounds: Anchor<CGRect>
     let cornerRadius: CGFloat
@@ -206,170 +195,6 @@ private struct DashboardMetricGlowLayerModifier: ViewModifier {
 extension View {
     func dashboardMetricGlowLayer() -> some View {
         modifier(DashboardMetricGlowLayerModifier())
-    }
-}
-
-struct DashboardMetricCard: View {
-    let title: String
-    let value: String
-    let subtitle: String
-    let symbol: String
-    var detail: String = ""
-    let color: Color
-    var appleIntelligenceGlowEnabled = false
-    @State private var isHovering = false
-    @State private var glowOpacity = 0.0
-    @State private var playPulse = false
-    @State private var pulseTask: Task<Void, Never>?
-
-    private let cornerRadius: CGFloat = 14
-
-    init(
-        title: String,
-        value: String,
-        subtitle: String,
-        symbol: String,
-        detail: String = "",
-        color: Color,
-        appleIntelligenceGlowEnabled: Bool = false
-    ) {
-        self.title = title
-        self.value = value
-        self.subtitle = subtitle
-        self.symbol = symbol
-        self.detail = detail
-        self.color = color
-        self.appleIntelligenceGlowEnabled = appleIntelligenceGlowEnabled
-    }
-
-    init(metric: DashboardMetricDescriptor) {
-        self.init(
-            title: metric.title,
-            value: metric.value,
-            subtitle: metric.subtitle,
-            symbol: metric.symbol,
-            detail: metric.detail,
-            color: metric.color,
-            appleIntelligenceGlowEnabled: metric.appleIntelligenceGlowEnabled
-        )
-    }
-
-    private var isGlowActive: Bool {
-        appleIntelligenceGlowEnabled && isHovering
-    }
-
-    private var shouldRenderGlow: Bool {
-        isGlowActive || glowOpacity > 0.001
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(color)
-                    .frame(width: 22, height: 22)
-                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                // Always render the detail row (with a non-breaking space when
-                // empty) so every card has the same intrinsic height. Without
-                // this, LazyVGrid sizes each row to its tallest card and rows
-                // with no detail-having cards visually shrink.
-                Text(detail.isEmpty ? "\u{00A0}" : detail)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .dashboardSurface(
-            cornerRadius: cornerRadius,
-            fillOpacity: 0.035,
-            strokeOpacity: 0.07,
-            shadowOpacity: 0.02
-        )
-        .anchorPreference(key: DashboardMetricGlowPreferenceKey.self, value: .bounds) { bounds in
-            guard shouldRenderGlow || playPulse else { return [] }
-            return [
-                DashboardMetricGlowPreference(
-                    bounds: bounds,
-                    cornerRadius: cornerRadius,
-                    glowOpacity: glowOpacity,
-                    isAnimating: isGlowActive,
-                    showsPulse: playPulse
-                )
-            ]
-        }
-        .onHover { hovering in
-            let wasHovering = isHovering
-            isHovering = hovering
-
-            if hovering && appleIntelligenceGlowEnabled && !wasHovering {
-                startGlowPulse()
-            } else if !hovering {
-                pulseTask?.cancel()
-                playPulse = false
-            }
-
-            updateGlowState()
-        }
-        .onAppear {
-            updateGlowState(animated: false)
-        }
-        .onChange(of: appleIntelligenceGlowEnabled) { _, enabled in
-            if !enabled {
-                pulseTask?.cancel()
-                playPulse = false
-            }
-            updateGlowState()
-        }
-        .onDisappear {
-            pulseTask?.cancel()
-            playPulse = false
-        }
-    }
-
-    private func startGlowPulse() {
-        pulseTask?.cancel()
-        playPulse = true
-        pulseTask = Task {
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                playPulse = false
-                pulseTask = nil
-            }
-        }
-    }
-
-    private func updateGlowState(animated: Bool = true) {
-        let targetOpacity = isGlowActive ? 1.0 : 0.0
-
-        if animated {
-            withAnimation(.easeInOut(duration: isGlowActive ? 0.18 : 0.32)) {
-                glowOpacity = targetOpacity
-            }
-        } else {
-            glowOpacity = targetOpacity
-        }
     }
 }
 
@@ -514,24 +339,6 @@ struct PreferencesReadOnlyBanner: View {
     }
 }
 
-/// Banner for surfaces that are editable on a Failover node and push their
-/// edits up to the Primary (which remains the single writer). Distinguishes
-/// "you can edit, it just round-trips" from the lock-icon read-only state.
-struct PreferencesSyncsToPrimaryBanner: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.blue)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 2)
-    }
-}
-
 /// Presents `AppModel.meshConfigMutationError` as a blocking alert. Attach to
 /// any Failover-editable surface so a failed push to the Primary surfaces
 /// clearly (block-with-error) rather than silently dropping the edit.
@@ -645,27 +452,6 @@ struct SettingsForm<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-    }
-}
-
-/// Secondary caption row used beneath form controls. Mirrors SwiftMiner's
-/// `SettingsSecondaryText` so prefs no longer scatter
-/// `Text(...).font(.caption).foregroundStyle(.secondary)` inline.
-struct SettingsSecondaryText: View {
-    let text: String
-    var tint: Color = .secondary
-
-    init(_ text: String, tint: Color = .secondary) {
-        self.text = text
-        self.tint = tint
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(tint)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 1)
     }
 }
 

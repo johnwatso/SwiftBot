@@ -349,66 +349,6 @@ struct ActivityLogView: View {
     }
 }
 
-enum ActivityDashboardSummary {
-    @MainActor
-    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
-        let commandCount = app.commandLog.count
-        let systemCount = app.logs.lines.count
-        let warningCount = app.logs.lines.filter { line in
-            let text = line.lowercased()
-            return text.contains("warning") || text.contains("warn") || text.contains("⚠")
-        }.count
-        let errorCount = app.commandLog.filter { !$0.ok }.count + app.logs.lines.filter { line in
-            let text = line.lowercased()
-            return text.contains("error") || text.contains("failed") || text.contains("❌")
-        }.count
-        let lastCommand = app.commandLog.first?.time
-
-        return [
-            DashboardMetricDescriptor(
-                id: "activity",
-                title: "Activity",
-                value: "\(commandCount + systemCount)",
-                subtitle: "\(commandCount) commands · \(systemCount) system",
-                symbol: "list.bullet.clipboard.fill",
-                color: .blue
-            ),
-            DashboardMetricDescriptor(
-                id: "activity-errors",
-                title: "Errors",
-                value: "\(errorCount)",
-                subtitle: errorCount == 0 ? "No errors" : "Needs review",
-                symbol: "xmark.octagon.fill",
-                color: errorCount == 0 ? .gray : .red
-            ),
-            DashboardMetricDescriptor(
-                id: "activity-warnings",
-                title: "Warnings",
-                value: "\(warningCount)",
-                subtitle: warningCount == 0 ? "No warnings" : "Review log",
-                symbol: "exclamationmark.triangle.fill",
-                color: warningCount == 0 ? .gray : .yellow
-            ),
-            DashboardMetricDescriptor(
-                id: "activity-last-event",
-                title: "Last Event",
-                value: lastCommand.map { relativeText(since: $0) } ?? "-",
-                subtitle: app.commandLog.first.map { $0.command } ?? "No command events",
-                symbol: "clock.fill",
-                color: .teal
-            )
-        ]
-    }
-
-    private static func relativeText(since date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date)))
-        if seconds < 60 { return "\(seconds)s ago" }
-        if seconds < 3600 { return "\(seconds / 60)m ago" }
-        if seconds < 86_400 { return "\(seconds / 3600)h ago" }
-        return "\(seconds / 86_400)d ago"
-    }
-}
-
 private struct ActivityRow: View {
     let entry: ActivityLogView.ActivityEntry
 

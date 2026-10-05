@@ -18,7 +18,7 @@ work before the web server exists.
 - Native sidebar: Overview, Discord, Web Interface, SwiftMesh, Integrations,
   Recordings, Activity.
 - Console Overview with host identity, service health, quick actions, and system
-  facts; the classic dashboard remains available from the overflow menu.
+  facts. The classic dashboard was removed on 2026-10-06.
 - Web Interface, SwiftMesh configuration, and Integrations use console forms.
   App Settings retains General and Updates.
 - Discord has a service summary, connection controls, token management sheet,
@@ -60,10 +60,8 @@ work before the web server exists.
   title type and console surfaces; it still needs a visual check.
 - Validate the updated console visually in light/dark mode, Increase Contrast,
   Reduce Transparency, VoiceOver, and the narrower window size.
-- Before deleting retained native feature views, verify full web workflows:
-  automation simulation, variable insertion, permissions, user timezones,
-  game-provider setup, and SwiftMiner pairing. Presence of a web page alone
-  does not establish parity.
+- Native feature views were deleted on 2026-10-06 after checking the WebUI
+  covers them; the WebUI automation editor gained variable chips to match.
 - Review browser handoff URLs and sign-in continuity. Keep any authentication
   changes separate from visual work and covered by auth tests.
 

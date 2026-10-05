@@ -2,9 +2,7 @@ import Darwin
 import Foundation
 
 /// Operational health for the Overview: the status tiles, attention items, and
-/// live activity feed. Shared by the native Overview and the admin WebUI so the
-/// two always agree on what is healthy and what needs attention. Platform-
-/// neutral on purpose — SwiftUI colors live in OverviewView's extensions.
+/// live activity feed for the WebUI's Overview. Platform-neutral on purpose.
 struct OverviewHealthReport {
     enum State: String {
         case healthy

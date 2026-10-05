@@ -303,31 +303,3 @@ enum SwiftBotEvent: Codable, Sendable {
 
 // MARK: - Pipeline Context
 
-/// Context maintained during a single rule execution pipeline
-struct PipelineContext: CustomStringConvertible {
-    var aiResponse: String?
-    var aiSummary: String?
-    var aiClassification: String?
-    var aiEntities: String?
-    var aiRewrite: String?
-    var triggerGuildId: String?
-    var triggerChannelId: String?
-    var triggerMessageId: String?
-    var targetChannelId: String?
-    var targetServerId: String?
-    var mentionUser: Bool = true
-    var prependUserMention: Bool = false
-    var replyToTriggerMessage: Bool = false
-    var mentionRole: String?
-    var isDirectMessage: Bool = false
-    var sendToDM: Bool = false
-    var eventHandled: Bool = false
-
-    var description: String {
-        let ai = aiResponse != nil ? "AI(\(aiResponse!.count) chars)" : "nil"
-        let summary = aiSummary != nil ? "Summary(\(aiSummary!.count) chars)" : "nil"
-        let target = targetChannelId ?? "default"
-        let trigger = triggerChannelId ?? "none"
-        return "[PipelineContext target: \(target), trigger: \(trigger), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai), summary: \(summary), handled: \(eventHandled)]"
-    }
-}

@@ -11,23 +11,12 @@ final class SidebarLayoutTests: XCTestCase {
     private var listed: [SidebarItem] { SidebarItem.sidebarSections.flatMap(\.items) }
 
     func testEveryNativePageIsReachableFromTheSidebar() {
-        for item in SidebarItem.allCases where !SidebarItem.webOnlyItems.contains(item) {
+        for item in SidebarItem.allCases {
             XCTAssertTrue(
                 listed.contains(item),
                 "\(item.rawValue) has no sidebar row — it is unreachable in the app"
             )
         }
-    }
-
-    /// Feature pages are managed in the WebUI; the native sidebar is the host console.
-    func testWebOnlyPagesAreNotListed() {
-        for item in SidebarItem.webOnlyItems {
-            XCTAssertFalse(listed.contains(item), "\(item.rawValue) is WebUI-only but still has a sidebar row")
-        }
-    }
-
-    func testNoPageIsBothWebOnlyAndNativeOnly() {
-        XCTAssertTrue(SidebarItem.webOnlyItems.isDisjoint(with: SidebarItem.nativeOnlyItems))
     }
 
     func testNoSidebarItemIsListedTwice() {

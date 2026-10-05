@@ -107,9 +107,7 @@ struct PipelineContext {
 | `ClusterCoordinator.swift` | SwiftMesh cluster: leader election, health monitoring, replication, failover |
 | `Persistence.swift` | ConfigStore, RuleConfigStore, DiscordCacheStore, SwiftMeshConfigStore, MeshCursorStore (all actors). Keychain for secrets. |
 | `AdminWebServer.swift` | HTTP REST API for web admin UI. Discord OAuth. |
-| `AutomationsView.swift` | The Automations/Moderation tab: Rule list, template catalog, Natural Language drafting box. |
-| `AutomationRuleEditor.swift` | Sheet-style rule editor: configure trigger, polymorphic filters, and sequential steps. |
-| `EmptyRuleOnboardingView.swift` | Ghost placeholder shown when a rule has no steps yet |
+| `Resources/admin/index.html` | The admin WebUI: every feature page (automations, moderation, commands, Patchy, Sweep, Lookup, Announcer, Analytics, Rewind, Game Tracker, Welcome Flow). The native app has no feature pages. |
 | `Sources/UpdateEngine` | Standalone Swift package: vendor-agnostic update detection used by Patchy |
 
 ### Storage
@@ -188,37 +186,16 @@ All UI in SwiftBot **must** follow:
 
 ## 6. Rule Builder System
 
-### Automations Tab View Layout
-
-```
-AutomationsView (tab content panel)
-├── Read-only Banner (shown only on Failover nodes)
-└── ScrollView
-    ├── Metrics Row (Grid of summary cards: Rules, Enabled, Triggers, Apple Intelligence status)
-    ├── Natural Language drafting section (TextField box + "Create with AI" button)
-    ├── Template Catalog (Horizontal ScrollView of preset cards like welcome templates)
-    └── Rules List section
-        ├── Enabled/Disabled toggle, category symbols/tints
-        └── Action buttons: Add rule button -> opens sheet with default trigger/step
-```
-
-### Sheet-Style Rule Editor View Layout
-
-```
-AutomationRuleEditor (modal sheet)
-├── Hero Header (displays rule category icon, Edit/New label, and context-dependent description)
-├── ScrollView (form sections enclosed in standard Apple-design cards)
-│   ├── Form Section: Name (TextField name + Enabled Toggle switch)
-│   ├── Form Section: WHEN this happens (Trigger kind Picker + commandName field if slashCommand)
-│   ├── Form Section: IF these conditions match (Flat card list of active polymorphic filters + Add condition Menu)
-│   └── Form Section: THEN do these steps (Step card list + Add step Menu with categorized presets)
-└── Footer Bar (Cancel button + Save/Create button)
-```
+Rules are edited in the WebUI's automation editor (`openAutomationEditor` in
+`Resources/admin/index.html`): name, WHEN trigger, IF filters, THEN steps,
+variable chips filtered by trigger (`automationVariables`, mirroring
+`Automations.Variable.appliesTo`), Check (`/api/automations/validate`) and
+Simulate (`/api/automations/simulate`, `AutomationService.simulate`).
 
 ### Validations & Custom Inputs
 
 - **Validation:** Save/Create button is gated by rule name non-emptiness and presence of at least 1 action step (`rule.steps.isEmpty == false`).
-- **Autocompletes:** Text input areas for message content, AI prompts, log text, or webhooks use `VariableAutocompleteField` providing inline suggestions for context tokens (e.g. `{username}`, `{channelName}`).
+- **Variables:** message, log and webhook fields offer insertable chips for the context tokens the trigger supports (e.g. `{username}`, `{channelName}`).
 
 ---
 

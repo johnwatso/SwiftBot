@@ -146,21 +146,9 @@ struct SidebarItemGroup: Identifiable {
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case discord = "Discord"
-    case patchy = "Patchy"
-    case welcomeFlow = "Welcome Flow"
-    case automations = "Automations"
-    case moderation = "Moderation"
-    case commands = "Commands"
     case activity = "Activity"
-    case wikiBridge = "Lookup"
-    case appleIntelligence = "Apple Intelligence"
-    case voice = "Announcer"
     case recordings = "Recordings"
-    case analytics = "Analytics"
-    case rewind = "Rewind"
     case swiftMesh = "SwiftMesh"
-    case sweep = "Sweep"
-    case gameTracker = "Game Tracker"
     case webInterface = "Web Interface"
     case integrations = "Integrations"
 
@@ -172,35 +160,13 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "square.grid.2x2"
         case .discord: return "bubble.left.and.bubble.right"
-        case .patchy: return "square.and.arrow.down.badge.checkmark"
-        case .welcomeFlow: return "person.crop.circle.badge.plus"
-        case .automations: return "bolt.badge.automatic"
-        case .moderation: return "shield"
-        case .commands: return "terminal"
         case .activity: return "list.bullet.clipboard"
-        case .wikiBridge: return "rectangle.and.text.magnifyingglass"
-        case .appleIntelligence: return "apple.intelligence"
-        case .voice: return "person.wave.2"
         case .recordings: return "video"
-        case .analytics: return "chart.line.uptrend.xyaxis"
-        case .rewind: return "arrow.counterclockwise.circle"
         case .swiftMesh: return "point.3.connected.trianglepath.dotted"
-        case .sweep: return "rectangle.stack.badge.minus"
-        case .gameTracker: return "gamecontroller"
         case .webInterface: return "globe"
         case .integrations: return "puzzlepiece.extension"
         }
     }
-
-    /// Feature pages managed only in the admin WebUI. Their native views are
-    /// kept until they're deleted, but the app no longer lists them; the
-    /// WebUI is where rules, commands and the like are changed.
-    /// `AdminWebCopyTests` proves each one still has a WebUI page.
-    static let webOnlyItems: Set<SidebarItem> = [
-        .commands, .welcomeFlow, .automations, .moderation,
-        .gameTracker, .patchy, .sweep, .wikiBridge, .voice,
-        .appleIntelligence, .analytics, .rewind
-    ]
 
     /// Host settings for this Mac that only the native app shows. The WebUI
     /// has no page for them by design (see the web secrets policy).
@@ -211,8 +177,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     /// The sidebar is driven by this list rather than hand-written rows so a new
     /// `SidebarItem` cannot be added to the enum, given a detail view, and then
     /// silently never appear in the app. `SidebarLayoutTests` asserts every case
-    /// is listed exactly once, apart from `webOnlyItems`. Every destination is
-    /// a direct row.
+    /// is listed exactly once. Every destination is a direct row. Feature
+    /// pages (rules, commands and the like) live only in the WebUI.
     ///
     /// The native app is the host console: the bot's status, its services'
     /// settings, and its log. One short, untitled group, as in SwiftMiner.

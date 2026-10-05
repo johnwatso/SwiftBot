@@ -1,0 +1,2090 @@
+import Foundation
+import SwiftUI
+
+// MARK: - Sweep Models
+//
+// Sweep is SwiftBot's native macOS utility for intelligently tidying Discord
+// channel clutter — compacting repetitive activity, condensing bot chatter,
+// summarising noisy channels. The first cut ships the full model surface, an
+// actor-backed service with JSON persistence and a scheduler tick, and a
+// SwiftMesh-styled dashboard. Discord side-effects are routed through
+// `SweepDispatcher` — by default the dispatcher is a dry-run shim so the UI
+// is fully exercisable without touching real channels.
+
+enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
+    case compact
+    case summarise
+    case keepLatest
+    case deduplicate
+    case archive
+    case quietChannel
+    case reduceNoise
+    case clearAll
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .compact: return "Compact"
+        case .summarise: return "Summarise"
+        case .keepLatest: return "Keep Latest"
+        case .deduplicate: return "Deduplicate"
+        case .archive: return "Archive"
+        case .quietChannel: return "Quiet Channel"
+        case .reduceNoise: return "Reduce Noise"
+        case .clearAll: return "Clear Channel"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .compact: return "rectangle.compress.vertical"
+        case .summarise: return "text.bubble"
+        case .keepLatest: return "1.circle"
+        case .deduplicate: return "square.on.square.dashed"
+        case .archive: return "archivebox"
+        case .quietChannel: return "bell.slash"
+        case .reduceNoise: return "waveform.path.ecg"
+        case .clearAll: return "rectangle.stack.slash.fill"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .compact:
+            return "Deletes messages older than the chosen age from Discord. Toggle “Bots only” to leave human messages untouched."
+        case .summarise:
+            return "Generates a plain-English digest of matching messages on-device (Apple Intelligence). The digest is attached to the run report — Discord is not touched."
+        case .keepLatest:
+            return "Keeps the most recent N posts in the channel. Every older message is deleted from Discord."
+        case .deduplicate:
+            return "Deletes duplicate messages from Discord, keeping the freshest copy of each."
+        case .archive:
+            return "Archives stale threads in the channel after the chosen quiet period (Discord thread archive — they stay visible but collapsed)."
+        case .quietChannel:
+            return "In-app only. Marks routine bot chatter as muted so SwiftBot’s UI can collapse it. Nothing is sent to Discord and no messages are deleted."
+        case .reduceNoise:
+            return "Composite pass: deletes duplicate messages, then deletes bot messages older than the chosen age. Best for high-traffic notification channels."
+        case .clearAll:
+            return "Deletes every message in the channel from Discord. Pinned and reacted messages are kept when the matching safety rails are on; the Swiftbot notice is always kept."
+        }
+    }
+
+    /// One-word summary of where the action lands. Shown next to the blurb so
+    /// users can tell at a glance which strategies actually touch Discord.
+    var destinationLabel: String {
+        switch self {
+        case .compact, .keepLatest, .deduplicate, .reduceNoise, .clearAll: return "Deletes from Discord"
+        case .archive: return "Archives Discord threads"
+        case .summarise: return "In-app digest only"
+        case .quietChannel: return "In-app only"
+        }
+    }
+
+    var destinationTone: Color {
+        switch self {
+        case .compact, .keepLatest, .deduplicate, .reduceNoise: return .orange
+        case .clearAll: return .red
+        case .archive: return .indigo
+        case .summarise, .quietChannel: return .blue
+        }
+    }
+}
+
+/// A configured strategy on a policy. Strategies are composed in order — for
+/// example, `summarise` followed by `delete` preserves a digest before pruning.
+struct SweepStrategy: Codable, Hashable, Identifiable, Validatable {
+    var id: UUID = UUID()
+    var kind: SweepStrategyKind
+    /// Strategy-specific parameter: age in hours used by `.delete`, `.archive`,
+    /// `.deduplicate`, `.compactVoiceSessions`, `.pinSummary`. Ignored for
+    /// `.keepLatest` and `.summarise`.
+    var ageHours: Int = 24
+    /// Used by `.keepLatest`.
+    var keepCount: Int = 1
+    /// When true, restrict matching to messages authored by bots.
+    var fromBotsOnly: Bool = false
+
+    func validate() throws {
+        if ageHours < 0 || ageHours > 8760 {
+            throw ValidationError.outOfRange("ageHours", min: 0, max: 8760)
+        }
+        if keepCount < 0 || keepCount > 1000 {
+            throw ValidationError.outOfRange("keepCount", min: 0, max: 1000)
+        }
+    }
+}
+
+enum SweepSchedule: Codable, Hashable {
+    case manual
+    case interval(minutes: Int)
+    case daily(hour: Int)
+
+    var displayName: String {
+        switch self {
+        case .manual: return "Manual"
+        case .interval(let m):
+            if m % 60 == 0 { return "Every \(m / 60)h" }
+            return "Every \(m)m"
+        case .daily(let h):
+            let pad = h < 10 ? "0\(h)" : "\(h)"
+            return "Daily at \(pad):00"
+        }
+    }
+
+    func nextFireDate(after date: Date) -> Date? {
+        switch self {
+        case .manual: return nil
+        case .interval(let m):
+            return date.addingTimeInterval(TimeInterval(max(1, m) * 60))
+        case .daily(let h):
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = .current
+            var comps = cal.dateComponents([.year, .month, .day], from: date)
+            comps.hour = max(0, min(23, h))
+            comps.minute = 0
+            comps.second = 0
+            guard var next = cal.date(from: comps) else { return nil }
+            if next <= date { next = cal.date(byAdding: .day, value: 1, to: next) ?? next }
+            return next
+        }
+    }
+
+    /// Human phrase for the `{time}` placeholder in a pinned notice — e.g.
+    /// "at 4 AM" for a daily schedule. Empty for interval/manual schedules
+    /// (those carry their cadence entirely in `noticeFrequencyPhrase`).
+    var noticeTimePhrase: String {
+        switch self {
+        case .daily(let h):
+            var comps = DateComponents()
+            comps.hour = max(0, min(23, h))
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = .current
+            guard let date = cal.date(from: comps) else { return "" }
+            let fmt = DateFormatter()
+            fmt.locale = .current
+            fmt.dateFormat = "h a"
+            return "at \(fmt.string(from: date))"
+        case .interval, .manual:
+            return ""
+        }
+    }
+
+    /// Human phrase for the `{frequency}` placeholder — e.g. "daily",
+    /// "every 2 hours", "when triggered manually".
+    var noticeFrequencyPhrase: String {
+        switch self {
+        case .manual:
+            return "when triggered manually"
+        case .daily:
+            return "daily"
+        case .interval(let m):
+            if m % 60 == 0 {
+                let hours = max(1, m / 60)
+                return hours == 1 ? "every hour" : "every \(hours) hours"
+            }
+            return "every \(max(1, m)) minutes"
+        }
+    }
+}
+
+/// Optional pinned "this channel is managed by Swiftbot" notice attached to a
+/// policy. When enabled, Sweep posts an embed after a live run and pins it,
+/// re-using `pinnedMessageID` to keep a single notice up to date.
+struct SweepNotice: Codable, Hashable {
+    var isEnabled: Bool = false
+    var template: String = ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}."
+    /// When true, the pinned embed includes a 7-day rolling voice leaderboard
+    /// sourced from SwiftBot's Analytics voice-session history.
+    var showVoiceAverages: Bool = false
+    /// Set after the notice is first posted + pinned, so subsequent runs edit
+    /// (or, if it was deleted, re-post) the same message instead of duplicating.
+    var pinnedMessageID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled, template, showVoiceAverages, pinnedMessageID
+    }
+
+    init(
+        isEnabled: Bool = false,
+        template: String = ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}.",
+        showVoiceAverages: Bool = false,
+        pinnedMessageID: String? = nil
+    ) {
+        self.isEnabled = isEnabled
+        self.template = template
+        self.showVoiceAverages = showVoiceAverages
+        self.pinnedMessageID = pinnedMessageID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        template = try container.decodeIfPresent(String.self, forKey: .template)
+            ?? ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}."
+        showVoiceAverages = try container.decodeIfPresent(Bool.self, forKey: .showVoiceAverages) ?? false
+        pinnedMessageID = try container.decodeIfPresent(String.self, forKey: .pinnedMessageID)
+    }
+
+    /// Substitute the `{time}` / `{frequency}` placeholders from the schedule
+    /// and collapse any double spaces left behind by an empty time phrase.
+    func rendered(for schedule: SweepSchedule) -> String {
+        var text = template
+            .replacingOccurrences(of: "{time}", with: schedule.noticeTimePhrase)
+            .replacingOccurrences(of: "{frequency}", with: schedule.noticeFrequencyPhrase)
+        while text.contains("  ") {
+            text = text.replacingOccurrences(of: "  ", with: " ")
+        }
+        return text.trimmingCharacters(in: .whitespaces)
+    }
+}
+
+/// An optional weekly announcement for the member with the most voice time in
+/// the rolling seven-day window. It belongs to a Sweep policy so the policy's
+/// existing channel, guild scope, persistence, and SwiftMesh replication are
+/// used without introducing a separate notification destination.
+struct SweepWeeklyMVPAnnouncement: Codable, Hashable {
+    var isEnabled: Bool = false
+    /// Calendar weekday, where 1 is Sunday and 7 is Saturday.
+    var weekday: Int = 2
+    /// Local 24-hour clock used by the Sweep scheduler.
+    var hour: Int = 20
+    var template: String = "🏆 This week's MVP is {winner} with {duration} this week!"
+    /// Week identifier written only after the pinned card is updated and the
+    /// winner notification is accepted by Discord.
+    var lastPostedWeekKey: String?
+    /// The durable, pinned MVP card. It is edited in place each week so the
+    /// channel does not accumulate leaderboard posts and normal Sweep runs can
+    /// protect it from cleanup.
+    var pinnedMessageID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled, weekday, hour, template, lastPostedWeekKey, pinnedMessageID
+    }
+
+    init(
+        isEnabled: Bool = false,
+        weekday: Int = 2,
+        hour: Int = 20,
+        template: String = "🏆 This week's MVP is {winner} with {duration} this week!",
+        lastPostedWeekKey: String? = nil,
+        pinnedMessageID: String? = nil
+    ) {
+        self.isEnabled = isEnabled
+        self.weekday = min(max(weekday, 1), 7)
+        self.hour = min(max(hour, 0), 23)
+        self.template = template
+        self.lastPostedWeekKey = lastPostedWeekKey
+        self.pinnedMessageID = pinnedMessageID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        weekday = min(max(try container.decodeIfPresent(Int.self, forKey: .weekday) ?? 2, 1), 7)
+        hour = min(max(try container.decodeIfPresent(Int.self, forKey: .hour) ?? 20, 0), 23)
+        template = try container.decodeIfPresent(String.self, forKey: .template)
+            ?? "🏆 This week's MVP is {winner} with {duration} this week!"
+        lastPostedWeekKey = try container.decodeIfPresent(String.self, forKey: .lastPostedWeekKey)
+        pinnedMessageID = try container.decodeIfPresent(String.self, forKey: .pinnedMessageID)
+    }
+
+    func isDue(at date: Date, calendar: Calendar = .current) -> Bool {
+        guard isEnabled,
+              calendar.component(.weekday, from: date) == weekday,
+              calendar.component(.hour, from: date) == hour else {
+            return false
+        }
+        return lastPostedWeekKey != weekKey(for: date, calendar: calendar)
+    }
+
+    func weekKey(for date: Date, calendar: Calendar = .current) -> String {
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return "\(components.yearForWeekOfYear ?? 0)-\(components.weekOfYear ?? 0)"
+    }
+
+    func rendered(winner: VoiceUserRollingAverage) -> String {
+        return template
+            .replacingOccurrences(of: "{winner}", with: winnerMention(winner))
+            .replacingOccurrences(of: "{duration}", with: Self.formatDuration(winner.totalSeconds))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Discord does not reliably issue a fresh push notification for a
+    /// message edit. This one-line companion announcement ensures every
+    /// weekly winner receives a real mention while the pinned card is updated
+    /// in place.
+    func notification(winner: VoiceUserRollingAverage) -> String {
+        "🏆 Congratulations \(winnerMention(winner)) — you’re this week’s Voice MVP!"
+    }
+
+    private func winnerMention(_ winner: VoiceUserRollingAverage) -> String {
+        let userID = winner.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return userID.isEmpty
+            ? winner.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            : "<@\(userID)>"
+    }
+
+    private static func formatDuration(_ seconds: Int) -> String {
+        let minutes = max(0, seconds) / 60
+        if minutes < 60 { return "\(max(1, minutes)) minutes" }
+        let hours = Double(minutes) / 60.0
+        if hours.rounded() == hours { return "\(Int(hours)) hours" }
+        return String(format: "%.1f hours", hours)
+    }
+}
+
+struct SweepSafetyRails: Codable, Hashable, Validatable {
+    var maxMessagesPerRun: Int = 200
+    /// Legacy flag retained for back-compat with persisted snapshots. New
+    /// rules default to armed; users sanity-check via the Try Run button on
+    /// the editor before saving. Set programmatically only.
+    var dryRunOnly: Bool = false
+    var minMessageAgeMinutes: Int = 5
+    var protectPinned: Bool = true
+    var protectReacted: Bool = true
+
+    func validate() throws {
+        if maxMessagesPerRun < 1 || maxMessagesPerRun > 1000 {
+            throw ValidationError.outOfRange("maxMessagesPerRun", min: 1, max: 1000)
+        }
+        if minMessageAgeMinutes < 0 || minMessageAgeMinutes > 43200 { // 30 days
+            throw ValidationError.outOfRange("minMessageAgeMinutes", min: 0, max: 43200)
+        }
+    }
+}
+
+struct SweepPolicy: Codable, Identifiable, Hashable, Validatable {
+    var id: UUID = UUID()
+    var name: String
+    var guildID: String
+    var guildName: String
+    var channelID: String
+    var channelName: String
+    var strategies: [SweepStrategy]
+    var schedule: SweepSchedule
+    var safety: SweepSafetyRails
+    /// Optional pinned management notice. Optional (not a defaulted value) so
+    /// snapshots written before this field existed still decode cleanly.
+    var notice: SweepNotice?
+    /// Optional weekly voice MVP message sent to this policy's channel.
+    var weeklyMVP: SweepWeeklyMVPAnnouncement?
+    var isEnabled: Bool = true
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var lastRunAt: Date?
+    var nextRunAt: Date?
+
+    var strategyChipSummary: String {
+        if strategies.isEmpty { return "No strategies" }
+        return strategies.map { $0.kind.displayName }.joined(separator: " · ")
+    }
+
+    /// A full-channel clear: ignores the per-run cap and fetches deep so a
+    /// single run can empty the channel.
+    var isClearAll: Bool {
+        strategies.contains { $0.kind == .clearAll }
+    }
+
+    func validate() throws {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError.invalidValue("Policy name cannot be empty")
+        }
+        for strategy in strategies {
+            try strategy.validate()
+        }
+        try safety.validate()
+    }
+}
+
+enum SweepActionKind: String, Codable {
+    case delete
+    case keep
+    case archive
+    case summarise
+    case pin
+    case quiet
+    case skip
+}
+
+/// How an action is realised. `virtual` actions stay inside SwiftBot (collapsed
+/// views, digests held in the app, muted notifications). `destructive` actions
+/// reach Discord through `ActionDispatcher` and only run on Primary nodes.
+enum SweepActionMode: String, Codable, Hashable {
+    case virtual
+    case destructive
+
+    var displayName: String {
+        switch self {
+        case .virtual: return "Virtual"
+        case .destructive: return "Live"
+        }
+    }
+}
+
+struct SweepAction: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    let kind: SweepActionKind
+    let mode: SweepActionMode
+    let messageID: String
+    let preview: String
+    let reason: String
+    var authorName: String?
+    var isBot: Bool?
+
+    init(
+        id: UUID = UUID(),
+        kind: SweepActionKind,
+        mode: SweepActionMode? = nil,
+        messageID: String,
+        preview: String,
+        reason: String,
+        authorName: String? = nil,
+        isBot: Bool? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.mode = mode ?? SweepAction.defaultMode(for: kind)
+        self.messageID = messageID
+        self.preview = preview
+        self.reason = reason
+        self.authorName = authorName
+        self.isBot = isBot
+    }
+
+    static func defaultMode(for kind: SweepActionKind) -> SweepActionMode {
+        switch kind {
+        case .delete, .archive, .pin: return .destructive
+        case .keep, .summarise, .quiet, .skip: return .virtual
+        }
+    }
+
+    static func from(
+        _ message: SweepFetchedMessage,
+        kind: SweepActionKind,
+        reason: String,
+        mode: SweepActionMode? = nil
+    ) -> SweepAction {
+        SweepAction(
+            kind: kind,
+            mode: mode,
+            messageID: message.id,
+            preview: message.content,
+            reason: reason,
+            authorName: message.authorName,
+            isBot: message.isBot
+        )
+    }
+}
+
+struct SweepRunReport: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    let policyID: UUID
+    let policyName: String
+    let startedAt: Date
+    let durationMS: Int
+    let scanned: Int
+    let matched: Int
+    let executed: Int
+    let suppressed: Int
+    let dryRun: Bool
+    let actions: [SweepAction]
+    let error: String?
+    var summary: String?
+    /// Every action of the run, counted by what happened and why. `actions`
+    /// is only a sample once a run gets large, so previews read this instead.
+    var groups: [SweepActionGroup]?
+}
+
+/// Actions that share a kind and reason ("Delete · Older than 48h"), with
+/// who posted them and a few examples, so a preview reads as a summary
+/// rather than a wall of individual messages.
+struct SweepActionGroup: Codable, Hashable {
+    struct Author: Codable, Hashable {
+        let name: String
+        let count: Int
+    }
+
+    let kind: SweepActionKind
+    let reason: String
+    var count: Int
+    var botCount: Int
+    var authors: [Author]
+    var examples: [String]
+
+    static let maxAuthors = 3
+    static let maxExamples = 3
+
+    static func summarise(_ actions: [SweepAction]) -> [SweepActionGroup] {
+        merge([], with: actions)
+    }
+
+    /// Adds another pass's actions; used by multi-pass clears.
+    static func merge(_ groups: [SweepActionGroup], with actions: [SweepAction]) -> [SweepActionGroup] {
+        struct Key: Hashable { let kind: SweepActionKind; let reason: String }
+        var order: [Key] = groups.map { Key(kind: $0.kind, reason: $0.reason) }
+        var byKey: [Key: SweepActionGroup] = Dictionary(uniqueKeysWithValues: groups.map { (Key(kind: $0.kind, reason: $0.reason), $0) })
+        var authorCounts: [Key: [String: Int]] = byKey.mapValues { Dictionary(uniqueKeysWithValues: $0.authors.map { ($0.name, $0.count) }) }
+
+        for action in actions {
+            let key = Key(kind: action.kind, reason: action.reason)
+            if byKey[key] == nil {
+                order.append(key)
+                byKey[key] = SweepActionGroup(kind: action.kind, reason: action.reason, count: 0, botCount: 0, authors: [], examples: [])
+            }
+            byKey[key]?.count += 1
+            if action.isBot == true { byKey[key]?.botCount += 1 }
+            if let name = action.authorName, !name.isEmpty {
+                authorCounts[key, default: [:]][name, default: 0] += 1
+            }
+            let preview = action.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !preview.isEmpty, (byKey[key]?.examples.count ?? 0) < maxExamples {
+                let line = String(preview.prefix(140))
+                byKey[key]?.examples.append(action.authorName.map { "\($0): \(line)" } ?? line)
+            }
+        }
+
+        return order.compactMap { key in
+            guard var group = byKey[key] else { return nil }
+            group.authors = (authorCounts[key] ?? [:])
+                .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                .prefix(maxAuthors)
+                .map { Author(name: $0.key, count: $0.value) }
+            return group
+        }
+        .sorted { $0.count > $1.count }
+    }
+}
+
+/// A retroactive proposal generated by `SweepSuggestionEngine` after scanning
+/// recent channel activity. Each suggestion carries a ready-to-apply strategy
+/// and schedule; tapping Apply turns it into a `SweepPolicy`.
+struct SweepSuggestion: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    let guildID: String
+    let guildName: String
+    let channelID: String
+    let channelName: String
+    let strategyKind: SweepStrategyKind
+    let title: String
+    let rationale: String
+    let evidenceCount: Int
+    let confidence: Double
+    let proposedStrategy: SweepStrategy
+    let proposedSchedule: SweepSchedule
+    var createdAt: Date = Date()
+    /// Dry-run report produced by running the proposed strategy against the
+    /// messages we already fetched during the scan. Lets the user preview
+    /// exactly what would happen before tapping Apply.
+    var projection: SweepRunReport?
+}
+
+enum SweepRuntimeState: String, Codable {
+    case idle
+    case scheduled
+    case running
+    case paused
+    case error
+
+    var displayName: String {
+        switch self {
+        case .idle: return "Idle"
+        case .scheduled: return "Scheduled"
+        case .running: return "Running"
+        case .paused: return "Paused"
+        case .error: return "Error"
+        }
+    }
+
+    var tone: Color {
+        switch self {
+        case .idle: return .gray
+        case .scheduled: return .blue
+        case .running: return .green
+        case .paused: return .orange
+        case .error: return .red
+        }
+    }
+}
+
+// MARK: - Persistence
+
+struct SweepSnapshot: Codable {
+    var schemaVersion: Int = 1
+    var policies: [SweepPolicy] = []
+    var globalPaused: Bool = false
+    var recentReports: [SweepRunReport] = []
+    var suggestions: [SweepSuggestion] = []
+    var lastSuggestionScanAt: Date?
+    /// "channelID|strategyKind" → when it was dismissed. Optional so older
+    /// snapshots still decode.
+    var dismissedSuggestions: [String: Date]?
+}
+
+actor SweepStore {
+    private let url: URL
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
+    init(filename: String = "sweep-policies.json") {
+        let folder = SwiftBotStorage.folderURL()
+            .appendingPathComponent("Sweep", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        self.url = folder.appendingPathComponent(filename)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        self.encoder = encoder
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        self.decoder = decoder
+    }
+
+    func load() -> SweepSnapshot {
+        guard let data = try? Data(contentsOf: url),
+              let snapshot = try? decoder.decode(SweepSnapshot.self, from: data) else {
+            return SweepSnapshot()
+        }
+        return snapshot
+    }
+
+    func save(_ snapshot: SweepSnapshot) {
+        guard let data = try? encoder.encode(snapshot) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
+// MARK: - Dispatcher (Discord transport boundary)
+
+/// `SweepDispatcher` is the seam between Sweep and the existing Discord REST
+/// runtime. The default implementation does nothing — runs are always dry-run
+/// previews. A future wiring pass can supply a real implementation that calls
+/// `DiscordMessageRESTClient` via `DiscordService` and respects cluster-role
+/// gating (only Primary/Standalone may execute).
+protocol SweepDispatcher: Sendable {
+    func canExecute() async -> Bool
+    func fetchRecentMessages(channelID: String, limit: Int) async throws -> [SweepFetchedMessage]
+    func deleteMessage(channelID: String, messageID: String) async throws
+    /// Delete many messages, returning how many were actually removed. The
+    /// live implementation batches via Discord bulk-delete with rate-limit
+    /// backoff; the default falls back to sequential single deletes.
+    func deleteMessages(channelID: String, messageIDs: [String]) async -> Int
+    /// Post a new embed notice and pin it; returns the new message ID. `guildID`
+    /// lets the live dispatcher resolve `:name:` custom-emoji shorthand.
+    func postPinnedNotice(
+        channelID: String,
+        guildID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws -> String
+    /// Edit an existing pinned notice so changes to the schedule, template, or
+    /// analytics field are reflected without posting a duplicate.
+    func editPinnedNotice(
+        channelID: String,
+        guildID: String,
+        messageID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws
+    /// Whether a previously-posted notice still exists in the channel, so the
+    /// caller can post once and only re-post if it was deleted.
+    func noticeExists(channelID: String, messageID: String) async -> Bool
+    /// Post and pin the durable MVP card. The companion notification is sent
+    /// separately so an edited card does not have to rely on edit-notification
+    /// behaviour in Discord clients.
+    func postPinnedWeeklyMVP(channelID: String, guildID: String, content: String) async throws -> String
+    func editPinnedWeeklyMVP(channelID: String, guildID: String, messageID: String, content: String) async throws
+    func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws
+}
+
+extension SweepDispatcher {
+    // Default no-op notice handling — only the live dispatcher touches Discord.
+    func postPinnedNotice(
+        channelID: String,
+        guildID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws -> String { "" }
+
+    func editPinnedNotice(
+        channelID: String,
+        guildID: String,
+        messageID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws {}
+
+    func noticeExists(channelID: String, messageID: String) async -> Bool { true }
+
+    func postPinnedWeeklyMVP(channelID: String, guildID: String, content: String) async throws -> String { "" }
+
+    func editPinnedWeeklyMVP(channelID: String, guildID: String, messageID: String, content: String) async throws {}
+
+    func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws {}
+
+    // Default sequential delete — preserves prior behaviour for dispatchers
+    // (e.g. the preview shim) that don't implement bulk deletion.
+    func deleteMessages(channelID: String, messageIDs: [String]) async -> Int {
+        var deleted = 0
+        for id in messageIDs {
+            if (try? await deleteMessage(channelID: channelID, messageID: id)) != nil { deleted += 1 }
+        }
+        return deleted
+    }
+}
+
+struct SweepFetchedMessage: Sendable, Hashable {
+    let id: String
+    let authorID: String
+    let authorName: String
+    let isBot: Bool
+    let content: String
+    let createdAt: Date
+    let isPinned: Bool
+    let hasReactions: Bool
+}
+
+/// Live dispatcher: routes Sweep through the real Discord REST runtime via
+/// `DiscordService`. Execution is gated by the cluster role — `canExecute`
+/// reports `true` only when the node is Primary (Standalone/Leader) and the
+/// bot token is loaded.
+struct LiveSweepDispatcher: SweepDispatcher {
+    let discord: DiscordService
+    let isPrimary: @Sendable () async -> Bool
+
+    func canExecute() async -> Bool {
+        guard await isPrimary() else { return false }
+        return await discord.outputAllowed
+    }
+
+    func fetchRecentMessages(channelID: String, limit: Int) async throws -> [SweepFetchedMessage] {
+        try await discord.sweepFetchRecentMessages(channelId: channelID, limit: limit)
+    }
+
+    func deleteMessage(channelID: String, messageID: String) async throws {
+        try await discord.sweepDeleteMessage(channelId: channelID, messageId: messageID)
+    }
+
+    func deleteMessages(channelID: String, messageIDs: [String]) async -> Int {
+        await discord.sweepDeleteMessages(channelId: channelID, messageIds: messageIDs)
+    }
+
+    func postPinnedNotice(
+        channelID: String,
+        guildID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws -> String {
+        let resolvedTitle = await discord.sweepResolveCustomEmoji(guildId: guildID, in: title)
+        let resolvedBody = await discord.sweepResolveCustomEmoji(guildId: guildID, in: body)
+        return try await discord.sweepPostPinnedNotice(
+            channelId: channelID,
+            embed: Self.embed(title: resolvedTitle, body: resolvedBody, voiceAverages: voiceAverages)
+        )
+    }
+
+    func editPinnedNotice(
+        channelID: String,
+        guildID: String,
+        messageID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws {
+        let resolvedTitle = await discord.sweepResolveCustomEmoji(guildId: guildID, in: title)
+        let resolvedBody = await discord.sweepResolveCustomEmoji(guildId: guildID, in: body)
+        try await discord.sweepEditPinnedNotice(
+            channelId: channelID,
+            messageId: messageID,
+            embed: Self.embed(title: resolvedTitle, body: resolvedBody, voiceAverages: voiceAverages)
+        )
+    }
+
+    func noticeExists(channelID: String, messageID: String) async -> Bool {
+        await discord.sweepMessageExists(channelId: channelID, messageId: messageID)
+    }
+
+    func postPinnedWeeklyMVP(channelID: String, guildID: String, content: String) async throws -> String {
+        let resolved = await discord.sweepResolveCustomEmoji(guildId: guildID, in: content)
+        return try await discord.sweepPostPinnedMessage(channelId: channelID, content: resolved)
+    }
+
+    func editPinnedWeeklyMVP(channelID: String, guildID: String, messageID: String, content: String) async throws {
+        let resolved = await discord.sweepResolveCustomEmoji(guildId: guildID, in: content)
+        try await discord.sweepEditPinnedMessage(channelId: channelID, messageId: messageID, content: resolved)
+    }
+
+    func postWeeklyMVP(channelID: String, guildID: String, content: String) async throws {
+        let resolved = await discord.sweepResolveCustomEmoji(guildId: guildID, in: content)
+        try await discord.sweepPostMessage(channelId: channelID, content: resolved)
+    }
+
+    /// Discord embed payload. Colour is SwiftBot's blurple accent (decimal int).
+    private static func embed(title: String, body: String, voiceAverages: [VoiceUserRollingAverage]) -> [String: Any] {
+        var embed: [String: Any] = ["title": title, "description": body, "color": 0x5B5BD6]
+        if !voiceAverages.isEmpty {
+            embed["fields"] = [[
+                "name": "7 Day Voice Leaderboard",
+                "value": voiceAverages.enumerated().map { index, average in
+                    "\(index + 1). \(mentionText(for: average)) @ \(formatDuration(average.totalSeconds))"
+                }.joined(separator: "\n"),
+                "inline": false
+            ]]
+        }
+        return embed
+    }
+
+    private static func mentionText(for average: VoiceUserRollingAverage) -> String {
+        let userId = average.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !userId.isEmpty else {
+            return sanitisedDiscordLine(average.username)
+        }
+        return "<@\(userId)>"
+    }
+
+    private static func sanitisedDiscordLine(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func formatDuration(_ seconds: Int) -> String {
+        let minutes = max(0, seconds) / 60
+        if minutes < 60 { return "\(max(1, minutes)) min" }
+        let hours = Double(minutes) / 60.0
+        if hours.rounded() == hours { return "\(Int(hours)) hours" }
+        return String(format: "%.1f hours", hours)
+    }
+}
+
+/// Default dispatcher: returns a small synthetic sample so the UI is fully
+/// exercisable, and refuses to execute anything (forces dry-run).
+struct PreviewSweepDispatcher: SweepDispatcher {
+    func canExecute() async -> Bool { false }
+
+    func fetchRecentMessages(channelID: String, limit: Int) async throws -> [SweepFetchedMessage] {
+        let now = Date()
+        let samples: [SweepFetchedMessage] = [
+            SweepFetchedMessage(id: "m1", authorID: "NVIDIA-News", authorName: "NVIDIA-News",
+                                isBot: true, content: "GeForce 555.42 driver released",
+                                createdAt: now.addingTimeInterval(-3_600 * 72),
+                                isPinned: false, hasReactions: false),
+            SweepFetchedMessage(id: "m2", authorID: "NVIDIA-News", authorName: "NVIDIA-News",
+                                isBot: true, content: "GeForce 555.85 driver released",
+                                createdAt: now.addingTimeInterval(-3_600 * 36),
+                                isPinned: false, hasReactions: false),
+            SweepFetchedMessage(id: "m3", authorID: "NVIDIA-News", authorName: "NVIDIA-News",
+                                isBot: true, content: "GeForce 556.10 driver released",
+                                createdAt: now.addingTimeInterval(-3_600 * 6),
+                                isPinned: false, hasReactions: false),
+            SweepFetchedMessage(id: "m4", authorID: "alice", authorName: "alice",
+                                isBot: false, content: "Pinned: server rules",
+                                createdAt: now.addingTimeInterval(-3_600 * 240),
+                                isPinned: true, hasReactions: true),
+            SweepFetchedMessage(id: "m5", authorID: "voice-log", authorName: "voice-log",
+                                isBot: true, content: "bob joined #lounge",
+                                createdAt: now.addingTimeInterval(-3_600 * 5 - 120),
+                                isPinned: false, hasReactions: false),
+            SweepFetchedMessage(id: "m6", authorID: "voice-log", authorName: "voice-log",
+                                isBot: true, content: "bob left #lounge",
+                                createdAt: now.addingTimeInterval(-3_600 * 5),
+                                isPinned: false, hasReactions: false)
+        ]
+        return Array(samples.prefix(max(1, limit)))
+    }
+
+    func deleteMessage(channelID: String, messageID: String) async throws {
+        // No-op — dry-run only.
+    }
+}
+
+// MARK: - Suggestion engine
+
+/// Pure-function analyser. Given recent messages from a channel, produce zero
+/// or more `SweepSuggestion`s. Heuristics intentionally err on the side of
+/// proposing few high-confidence suggestions — anything noisy gets dropped.
+enum SweepSuggestionEngine {
+    /// Messages shorter than this are ordinary chat ("lol", "gg") when they
+    /// repeat, not spam, so they don't count as duplicates.
+    static let minimumDuplicateLength = 15
+
+    /// Returns at most one suggestion: the strongest fit for the channel.
+    /// Busy servers have dozens of channels, and a card per pattern per
+    /// channel buried the useful ones.
+    static func analyse(
+        guildID: String,
+        guildName: String,
+        channelID: String,
+        channelName: String,
+        messages: [SweepFetchedMessage]
+    ) -> [SweepSuggestion] {
+        guard messages.count >= 10 else { return [] }
+        var out: [SweepSuggestion] = []
+
+        let botCount = messages.filter(\.isBot).count
+        let botRatio = Double(botCount) / Double(messages.count)
+        let nameHintsBot = channelHintsBot(channelName: channelName)
+
+        // 1. Reduce noise — mostly bot chatter, or a channel whose name (#notifications,
+        // #patchy, #github, etc.) screams "bot dumping ground" even with light volume.
+        let isHighVolumeBot = messages.count >= 30 && botRatio >= 0.6
+        let isPureBotChannel = botRatio >= 0.85 && messages.count >= 15
+        let isNameHintedBot = nameHintsBot && botRatio >= 0.6 && messages.count >= 10
+        if isHighVolumeBot || isPureBotChannel || isNameHintedBot {
+            out.append(SweepSuggestion(
+                guildID: guildID,
+                guildName: guildName,
+                channelID: channelID,
+                channelName: channelName,
+                strategyKind: .reduceNoise,
+                title: "Reduce noise in #\(channelName)",
+                rationale: "\(botCount) of the last \(messages.count) messages are from bots — Sweep can dedupe duplicates and compact older bot posts.",
+                evidenceCount: botCount,
+                confidence: min(1.0, max(0.6, botRatio)),
+                proposedStrategy: SweepStrategy(kind: .reduceNoise, ageHours: 48, fromBotsOnly: true),
+                proposedSchedule: .interval(minutes: 120)
+            ))
+        }
+
+        // 2. Deduplicate — the same substantial message posted again. Short
+        // human replies repeat naturally and aren't counted.
+        var contentCount: [String: Int] = [:]
+        for m in messages {
+            let key = m.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard key.count >= minimumDuplicateLength || (m.isBot && !key.isEmpty) else { continue }
+            contentCount[key, default: 0] += 1
+        }
+        let duplicateExtras = contentCount.values
+            .filter { $0 > 1 }
+            .map { $0 - 1 }
+            .reduce(0, +)
+        let duplicateShare = Double(duplicateExtras) / Double(messages.count)
+        if duplicateExtras >= 8 && duplicateShare >= 0.1 {
+            out.append(SweepSuggestion(
+                guildID: guildID,
+                guildName: guildName,
+                channelID: channelID,
+                channelName: channelName,
+                strategyKind: .deduplicate,
+                title: "Deduplicate #\(channelName)",
+                rationale: "Found \(duplicateExtras) duplicate messages in the last \(messages.count). Sweep can collapse repeats automatically.",
+                evidenceCount: duplicateExtras,
+                confidence: min(1.0, duplicateShare + 0.3),
+                proposedStrategy: SweepStrategy(kind: .deduplicate, ageHours: 24),
+                proposedSchedule: .interval(minutes: 60)
+            ))
+        }
+
+        // 3. Keep latest — repeating versioned posts from the same bot author
+        let byAuthor = Dictionary(grouping: messages.filter(\.isBot), by: { $0.authorID })
+        for (_, group) in byAuthor.sorted(by: { $0.value.count > $1.value.count }) where group.count >= 4 {
+            let prefix = commonPrefix(of: group.map(\.content))
+            if prefix.count >= 12 {
+                let author = group.first?.authorName ?? "this bot"
+                out.append(SweepSuggestion(
+                    guildID: guildID,
+                    guildName: guildName,
+                    channelID: channelID,
+                    channelName: channelName,
+                    strategyKind: .keepLatest,
+                    title: "Keep latest \(author) post in #\(channelName)",
+                    rationale: "\(group.count) similar posts from \(author) starting with “\(prefix.prefix(40))…”. Sweep can keep only the newest.",
+                    evidenceCount: group.count,
+                    confidence: 0.85,
+                    proposedStrategy: SweepStrategy(kind: .keepLatest, keepCount: 1),
+                    proposedSchedule: .interval(minutes: 180)
+                ))
+                break // one keep-latest suggestion per channel is enough
+            }
+        }
+
+        // Most specific first when tied: keep-latest and dedupe say exactly
+        // what goes; reduce-noise is the broad fallback.
+        return out.max { lhs, rhs in
+            lhs.confidence != rhs.confidence ? lhs.confidence < rhs.confidence : rhs.strategyKind == .keepLatest
+        }.map { [$0] } ?? []
+    }
+
+    private static let botChannelNameHints: [String] = [
+        "bot", "bots", "noti", "notif", "notification", "notifications",
+        "feed", "feeds", "alert", "alerts", "log", "logs", "activity",
+        "patchy", "github", "release", "releases", "ci", "deploy", "deploys",
+        "build", "builds", "voice-log", "audit", "spam"
+    ]
+
+    private static func channelHintsBot(channelName: String) -> Bool {
+        let lower = channelName.lowercased()
+        return botChannelNameHints.contains { lower.contains($0) }
+    }
+
+    private static func commonPrefix(of strings: [String]) -> String {
+        guard let first = strings.first else { return "" }
+        var prefix = first
+        for s in strings.dropFirst() {
+            while !s.hasPrefix(prefix) {
+                prefix = String(prefix.dropLast())
+                if prefix.isEmpty { return "" }
+            }
+        }
+        return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Service
+
+private enum SweepWeeklyMVPTestError: LocalizedError {
+    case missingChannel
+    case outputUnavailable
+    case noVoiceActivity
+    case emptyMessage
+
+    var errorDescription: String? {
+        switch self {
+        case .missingChannel:
+            return "Choose a server and channel before sending a test MVP."
+        case .outputUnavailable:
+            return "Test announcements can only be sent by the active Primary bot."
+        case .noVoiceActivity:
+            return "No voice activity was found for this server in the rolling seven-day window."
+        case .emptyMessage:
+            return "Enter an MVP message before sending a test."
+        }
+    }
+}
+
+@MainActor
+final class SweepService: ObservableObject {
+    @Published private(set) var policies: [SweepPolicy] = []
+    @Published private(set) var recentReports: [SweepRunReport] = []
+    @Published private(set) var state: SweepRuntimeState = .idle
+    @Published private(set) var lastError: String?
+    @Published var globalPaused: Bool = false {
+        didSet { if oldValue != globalPaused { Task { await persist() } } }
+    }
+    @Published private(set) var activePolicyID: UUID?
+    @Published private(set) var suggestions: [SweepSuggestion] = []
+    /// Rules that have had a successful Try Run this session (in-memory only).
+    @Published private(set) var previewedPolicyIDs: Set<UUID> = []
+    @Published private(set) var isScanningSuggestions: Bool = false
+    @Published private(set) var lastSuggestionScanAt: Date?
+    @Published private(set) var scanProgress: (done: Int, total: Int) = (0, 0)
+    /// Dismissed suggestions stay hidden this long, so every scan doesn't
+    /// bring back what someone already said no to.
+    static let dismissalLifetime: TimeInterval = 30 * 24 * 60 * 60
+    private var dismissedSuggestions: [String: Date] = [:]
+
+    private static func dismissalKey(channelID: String, kind: SweepStrategyKind) -> String {
+        "\(channelID)|\(kind.rawValue)"
+    }
+
+    private let store = SweepStore()
+    private var dispatcher: SweepDispatcher = PreviewSweepDispatcher()
+    private var summariser: (@Sendable (String, [String]) async -> String?)?
+    private var noticeAnalyticsProvider: (@Sendable (String) async -> [VoiceUserRollingAverage])?
+    private var activityLogger: ((SweepRunReport) -> Void)?
+    private var tickTask: Task<Void, Never>?
+
+    init() {
+        Task { await self.hydrate() }
+    }
+
+    func setDispatcher(_ dispatcher: SweepDispatcher) {
+        self.dispatcher = dispatcher
+    }
+
+    /// Inject an async function that turns a channel name + ordered message
+    /// lines into a digest string. Sweep calls this when a run produces
+    /// `.summarise` actions; the resulting text is stored on the run report.
+    func setSummariser(_ summariser: @escaping @Sendable (String, [String]) async -> String?) {
+        self.summariser = summariser
+    }
+
+    func setNoticeAnalyticsProvider(_ provider: @escaping @Sendable (String) async -> [VoiceUserRollingAverage]) {
+        self.noticeAnalyticsProvider = provider
+    }
+
+    /// Called once per completed run (manual or scheduled). AppModel uses this
+    /// to forward Sweep activity into the shared Activity log.
+    func setActivityLogger(_ logger: @escaping (SweepRunReport) -> Void) {
+        self.activityLogger = logger
+    }
+
+    private func hydrate() async {
+        let snapshot = await store.load()
+        self.policies = snapshot.policies
+        self.recentReports = snapshot.recentReports
+        self.globalPaused = snapshot.globalPaused
+        // Scans before 2026-10 could leave several cards per channel; keep
+        // each channel's first (best-ranked) one.
+        var seenChannels = Set<String>()
+        self.suggestions = snapshot.suggestions.filter { seenChannels.insert($0.channelID).inserted }
+        self.lastSuggestionScanAt = snapshot.lastSuggestionScanAt
+        self.dismissedSuggestions = snapshot.dismissedSuggestions ?? [:]
+        recomputeNextRuns()
+        startTickLoop()
+    }
+
+    private func persist() async {
+        let snapshot = SweepSnapshot(
+            schemaVersion: 1,
+            policies: policies,
+            globalPaused: globalPaused,
+            recentReports: recentReports,
+            suggestions: suggestions,
+            lastSuggestionScanAt: lastSuggestionScanAt,
+            dismissedSuggestions: dismissedSuggestions
+        )
+        await store.save(snapshot)
+    }
+
+    // MARK: Policy CRUD
+
+    func upsert(_ policy: SweepPolicy) {
+        var updated = policy
+        updated.updatedAt = Date()
+        if let i = policies.firstIndex(where: { $0.id == updated.id }) {
+            policies[i] = updated
+        } else {
+            policies.append(updated)
+        }
+        recomputeNextRuns()
+        Task { await persist() }
+    }
+
+    func delete(policyID: UUID) {
+        policies.removeAll { $0.id == policyID }
+        Task { await persist() }
+    }
+
+    func setEnabled(_ enabled: Bool, for policyID: UUID) {
+        guard let i = policies.firstIndex(where: { $0.id == policyID }) else { return }
+        policies[i].isEnabled = enabled
+        recomputeNextRuns()
+        Task { await persist() }
+    }
+
+    // MARK: Mesh sync (Failover ⇄ Primary)
+    // Sweep policies live in their own store (not the replicated BotSettings),
+    // so they ride a dedicated pull channel — see `pullSweepPoliciesFromLeader`.
+
+    /// Encode the replicated slice of state (policies + global pause) for a
+    /// Failover to pull. Run reports / suggestions stay node-local.
+    func exportSyncData() -> Data? {
+        let snapshot = SweepSnapshot(
+            schemaVersion: 1,
+            policies: policies,
+            globalPaused: globalPaused,
+            recentReports: [],
+            suggestions: [],
+            lastSuggestionScanAt: nil
+        )
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        return try? enc.encode(snapshot)
+    }
+
+    /// Adopt a Primary-authored snapshot on a Failover. Only policies and the
+    /// global-pause flag are replaced; local run history is preserved.
+    func importSyncData(_ data: Data) {
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        guard let snapshot = try? dec.decode(SweepSnapshot.self, from: data) else { return }
+        policies = snapshot.policies
+        if globalPaused != snapshot.globalPaused {
+            globalPaused = snapshot.globalPaused   // didSet persists
+        }
+        recomputeNextRuns()
+        Task { await persist() }
+    }
+
+    /// Await a persist so a Failover's immediate reconcile pull reads fresh
+    /// data right after the Primary applies a forwarded mutation.
+    func flushPersist() async {
+        await persist()
+    }
+
+    // MARK: Scheduling
+
+    private func recomputeNextRuns() {
+        let now = Date()
+        for i in policies.indices {
+            policies[i].nextRunAt = policies[i].isEnabled
+                ? policies[i].schedule.nextFireDate(after: now)
+                : nil
+        }
+        refreshAggregateState()
+    }
+
+    private func refreshAggregateState() {
+        if globalPaused { state = .paused; return }
+        if activePolicyID != nil { state = .running; return }
+        if lastError != nil { state = .error; return }
+        let hasScheduled = policies.contains { $0.isEnabled && $0.nextRunAt != nil }
+        state = hasScheduled ? .scheduled : .idle
+    }
+
+    var nextRunDescription: String {
+        guard !globalPaused else { return "Paused" }
+        let upcoming = policies.compactMap { $0.nextRunAt }.min()
+        guard let upcoming else { return "No schedule" }
+        let delta = upcoming.timeIntervalSince(Date())
+        if delta <= 0 { return "Due now" }
+        if delta < 60 { return "In <1m" }
+        if delta < 3_600 { return "In \(Int(delta / 60))m" }
+        if delta < 86_400 { return "In \(Int(delta / 3_600))h" }
+        return "In \(Int(delta / 86_400))d"
+    }
+
+    var enabledPolicyCount: Int { policies.filter { $0.isEnabled }.count }
+
+    var messagesTodayCount: Int {
+        let dayStart = Calendar.current.startOfDay(for: Date())
+        return recentReports
+            .filter { $0.startedAt >= dayStart }
+            .reduce(0) { $0 + $1.executed }
+    }
+
+    var suppressedTodayCount: Int {
+        let dayStart = Calendar.current.startOfDay(for: Date())
+        return recentReports
+            .filter { $0.startedAt >= dayStart }
+            .reduce(0) { $0 + $1.suppressed }
+    }
+
+    var summariesThisWeekCount: Int {
+        let weekStart = Date().addingTimeInterval(-7 * 86_400)
+        return recentReports
+            .filter { $0.startedAt >= weekStart }
+            .reduce(0) { acc, report in
+                acc + report.actions.filter { $0.kind == .summarise }.count
+            }
+    }
+
+    var lastReport: SweepRunReport? { recentReports.first }
+
+    // MARK: Tick loop
+
+    private func startTickLoop() {
+        tickTask?.cancel()
+        tickTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
+                await self?.tick()
+            }
+        }
+    }
+
+    private func tick() async {
+        guard !globalPaused else { return }
+        let now = Date()
+        let due = policies.filter { policy in
+            policy.isEnabled && (policy.nextRunAt.map { $0 <= now } ?? false)
+        }
+        for policy in due {
+            await run(policyID: policy.id, manual: false)
+        }
+        await announceWeeklyMVPs(now: now)
+    }
+
+    private func announceWeeklyMVPs(now: Date) async {
+        for index in policies.indices {
+            let policy = policies[index]
+            guard policy.isEnabled,
+                  let announcement = policy.weeklyMVP,
+                  announcement.isDue(at: now),
+                  await dispatcher.canExecute() else {
+                continue
+            }
+
+            guard let winner = (await noticeAnalyticsProvider?(policy.guildID))?.first else {
+                continue
+            }
+
+            let content = announcement.rendered(winner: winner)
+            guard !content.isEmpty else { continue }
+            do {
+                guard try await ensureWeeklyMVPCard(
+                    announcement,
+                    for: policy,
+                    content: String(content.prefix(1_900))
+                ) != nil else {
+                    continue
+                }
+                try await dispatcher.postWeeklyMVP(
+                    channelID: policy.channelID,
+                    guildID: policy.guildID,
+                    content: String(announcement.notification(winner: winner).prefix(1_900))
+                )
+                policies[index].weeklyMVP?.lastPostedWeekKey = announcement.weekKey(for: now)
+                await persist()
+            } catch {
+                lastError = "Weekly MVP for #\(policy.channelName): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Keep one pinned MVP card per policy. If a moderator deletes it, Sweep
+    /// recreates and pins a replacement at the next scheduled announcement.
+    private func ensureWeeklyMVPCard(
+        _ announcement: SweepWeeklyMVPAnnouncement,
+        for policy: SweepPolicy,
+        content: String
+    ) async throws -> String? {
+        if let existing = announcement.pinnedMessageID,
+           await dispatcher.noticeExists(channelID: policy.channelID, messageID: existing) {
+            try await dispatcher.editPinnedWeeklyMVP(
+                channelID: policy.channelID,
+                guildID: policy.guildID,
+                messageID: existing,
+                content: content
+            )
+            return existing
+        }
+
+        let newID = try await dispatcher.postPinnedWeeklyMVP(
+            channelID: policy.channelID,
+            guildID: policy.guildID,
+            content: content
+        )
+        guard !newID.isEmpty else { return nil }
+        if let index = policies.firstIndex(where: { $0.id == policy.id }) {
+            policies[index].weeklyMVP?.pinnedMessageID = newID
+            await persist()
+        }
+        return newID
+    }
+
+    /// Sends the configured MVP wording immediately without changing the
+    /// weekly delivery marker. This is deliberately separate from the
+    /// scheduler so operators can verify the channel, mention and template
+    /// before the real scheduled announcement.
+    func sendTestWeeklyMVP(for policy: SweepPolicy) async throws {
+        guard !policy.channelID.isEmpty, !policy.guildID.isEmpty else {
+            throw SweepWeeklyMVPTestError.missingChannel
+        }
+        guard await dispatcher.canExecute() else {
+            throw SweepWeeklyMVPTestError.outputUnavailable
+        }
+        guard let announcement = policy.weeklyMVP else {
+            throw SweepWeeklyMVPTestError.emptyMessage
+        }
+        guard let winner = (await noticeAnalyticsProvider?(policy.guildID))?.first else {
+            throw SweepWeeklyMVPTestError.noVoiceActivity
+        }
+
+        let content = announcement.rendered(winner: winner)
+        guard !content.isEmpty else {
+            throw SweepWeeklyMVPTestError.emptyMessage
+        }
+        try await dispatcher.postWeeklyMVP(
+            channelID: policy.channelID,
+            guildID: policy.guildID,
+            content: String(content.prefix(1_900))
+        )
+    }
+
+    // MARK: Run
+
+    @discardableResult
+    func run(policyID: UUID, manual: Bool) async -> SweepRunReport? {
+        guard var policy = policies.first(where: { $0.id == policyID }) else { return nil }
+        if globalPaused && !manual { return nil }
+
+        activePolicyID = policyID
+        refreshAggregateState()
+        defer {
+            activePolicyID = nil
+            refreshAggregateState()
+        }
+
+        let start = Date()
+        do {
+            let canExecute = await dispatcher.canExecute()
+            let effectivelyDryRun = policy.safety.dryRunOnly || !canExecute
+
+            // Pin the management notice BEFORE clearing — only on live runs —
+            // so it's in place during the run and protected from deletion by
+            // its ID (which we feed into the planner below).
+            if !effectivelyDryRun, let notice = policy.notice, notice.isEnabled {
+                if let id = await ensureNotice(notice, for: policy), !id.isEmpty {
+                    policy.notice?.pinnedMessageID = id
+                }
+            }
+
+            // A full-channel clear deletes in pages and repeats until the
+            // channel is empty (delete-until-empty); every other task makes a
+            // single bounded pass. The loop stops as soon as a pass deletes
+            // nothing — empty channel, only-protected messages left, dry run,
+            // or a non-clear task — so it can't spin.
+            let isClearLoop = policy.isClearAll
+            let pageLimit = isClearLoop
+                ? SweepService.clearPageSize
+                : max(10, policy.safety.maxMessagesPerRun)
+
+            var scanned = 0
+            var matched = 0
+            var executed = 0
+            var suppressed = 0
+            var representativePlan: [SweepAction] = []
+            var groups: [SweepActionGroup] = []
+            var pass = 0
+
+            while true {
+                pass += 1
+                let messages = try await dispatcher.fetchRecentMessages(
+                    channelID: policy.channelID,
+                    limit: pageLimit
+                )
+                let plan = planActions(for: policy, messages: messages)
+                let toExecute = plan.filter { $0.kind != .skip && $0.kind != .keep }
+                scanned += messages.count
+                matched += toExecute.count
+                suppressed += plan.filter { $0.kind == .skip }.count
+                if representativePlan.isEmpty { representativePlan = plan }
+                groups = SweepActionGroup.merge(groups, with: plan)
+
+                var deletedThisPass = 0
+                if !effectivelyDryRun {
+                    // Batch deletions through the dispatcher, which uses bulk
+                    // delete + rate-limit backoff under the hood.
+                    let deleteIDs = toExecute.filter { $0.kind == .delete }.map(\.messageID)
+                    deletedThisPass = await dispatcher.deleteMessages(
+                        channelID: policy.channelID, messageIDs: deleteIDs)
+                }
+                executed += deletedThisPass
+
+                let moreLikely = messages.count >= pageLimit
+                let shouldContinue = isClearLoop && !effectivelyDryRun
+                    && deletedThisPass > 0 && moreLikely && pass < SweepService.clearMaxPasses
+                if !shouldContinue { break }
+            }
+
+            // Build an on-device digest if any actions asked to be summarised.
+            var digest: String?
+            let summariseLines = representativePlan
+                .filter { $0.kind == .summarise }
+                .map(\.preview)
+            if !summariseLines.isEmpty, let summariser {
+                digest = await summariser(policy.channelName, summariseLines)
+            }
+
+            let report = SweepRunReport(
+                policyID: policy.id,
+                policyName: policy.name,
+                startedAt: start,
+                durationMS: Int(Date().timeIntervalSince(start) * 1000),
+                scanned: scanned,
+                matched: matched,
+                executed: executed,
+                suppressed: suppressed,
+                dryRun: effectivelyDryRun,
+                actions: SweepService.sampledActions(representativePlan),
+                error: nil,
+                summary: digest,
+                groups: groups
+            )
+            recordReport(report)
+            markRan(policyID: policy.id, at: start)
+            lastError = nil
+            return report
+        } catch {
+            let report = SweepRunReport(
+                policyID: policy.id,
+                policyName: policy.name,
+                startedAt: start,
+                durationMS: Int(Date().timeIntervalSince(start) * 1000),
+                scanned: 0,
+                matched: 0,
+                executed: 0,
+                suppressed: 0,
+                dryRun: true,
+                actions: [],
+                error: error.localizedDescription
+            )
+            recordReport(report)
+            lastError = error.localizedDescription
+            return report
+        }
+    }
+
+    /// Dry-run a policy that hasn't been saved yet — used by the editor's
+    /// "Try Run" button.
+    func previewDraft(_ policy: SweepPolicy) async -> SweepRunReport? {
+        await runPreview(of: policy)
+    }
+
+    func preview(policyID: UUID) async -> SweepRunReport? {
+        guard let policy = policies.first(where: { $0.id == policyID }) else { return nil }
+        let report = await runPreview(of: policy)
+        // A successful dry-run "verifies" the rule — used to warn before a live
+        // Run Now on a rule that's never been previewed.
+        if report.error == nil { previewedPolicyIDs.insert(policyID) }
+        return report
+    }
+
+    /// Whether the user has done a successful Try Run on this rule (this
+    /// session) or it has already run live — i.e. they've seen its effect.
+    func hasBeenVerified(_ policy: SweepPolicy) -> Bool {
+        previewedPolicyIDs.contains(policy.id) || policy.lastRunAt != nil
+    }
+
+    /// Always returns a `SweepRunReport`. On failure (no token, channel not
+    /// accessible, bot offline, etc.) the report carries `error` set and an
+    /// empty action list — so the calling UI can always present something
+    /// rather than appearing to do nothing.
+    private func runPreview(of policy: SweepPolicy) async -> SweepRunReport {
+        let start = Date()
+        let displayName = policy.name.isEmpty ? "Untitled rule" : policy.name
+        guard !policy.channelID.isEmpty else {
+            return SweepRunReport(
+                policyID: policy.id,
+                policyName: displayName,
+                startedAt: start,
+                durationMS: 0,
+                scanned: 0,
+                matched: 0,
+                executed: 0,
+                suppressed: 0,
+                dryRun: true,
+                actions: [],
+                error: "No channel selected for this rule yet.",
+                summary: nil
+            )
+        }
+        do {
+            // Dry-run preview fetches a bounded sample even for a full clear so
+            // Try Run stays responsive; the live run fetches the full depth.
+            let previewLimit = policy.isClearAll
+                ? SweepService.clearPageSize
+                : max(10, policy.safety.maxMessagesPerRun)
+            let messages = try await dispatcher.fetchRecentMessages(
+                channelID: policy.channelID,
+                limit: previewLimit
+            )
+            let plan = planActions(for: policy, messages: messages)
+            let matched = plan.filter { $0.kind != .skip && $0.kind != .keep }.count
+            let suppressed = plan.filter { $0.kind == .skip }.count
+            return SweepRunReport(
+                policyID: policy.id,
+                policyName: displayName,
+                startedAt: start,
+                durationMS: Int(Date().timeIntervalSince(start) * 1000),
+                scanned: messages.count,
+                matched: matched,
+                executed: 0,
+                suppressed: suppressed,
+                dryRun: true,
+                actions: plan,
+                error: nil,
+                summary: nil,
+                groups: SweepActionGroup.summarise(plan)
+            )
+        } catch {
+            return SweepRunReport(
+                policyID: policy.id,
+                policyName: displayName,
+                startedAt: start,
+                durationMS: Int(Date().timeIntervalSince(start) * 1000),
+                scanned: 0,
+                matched: 0,
+                executed: 0,
+                suppressed: 0,
+                dryRun: true,
+                actions: [],
+                error: SweepService.describeFetchError(error, channelName: policy.channelName),
+                summary: nil
+            )
+        }
+    }
+
+    /// Turn the generic `NSError` thrown by `DiscordMessageRESTClient` into a
+    /// message the user can actually act on.
+    static func describeFetchError(_ error: Error, channelName: String) -> String {
+        let channelLabel = channelName.isEmpty ? "this channel" : "#\(channelName)"
+        let ns = error as NSError
+        if ns.domain == "DiscordService" {
+            let body = (ns.userInfo["responseBody"] as? String) ?? ""
+            let snippet = String(body.prefix(180)).trimmingCharacters(in: .whitespacesAndNewlines)
+            switch ns.code {
+            case -2:
+                return "SwiftBot isn’t connected to Discord. Tap Start Bot in the sidebar and try again."
+            case 401:
+                return "Discord rejected the bot token (401). Reconnect SwiftBot in Discord preferences."
+            case 403:
+                return "The bot can’t read \(channelLabel) (403). Grant SwiftBot the Read Message History permission in this channel."
+            case 404:
+                return "Channel not found (404). \(channelLabel) may have been deleted or renamed."
+            case 429:
+                return "Rate-limited by Discord (429). Wait a few seconds and try again."
+            default:
+                if !snippet.isEmpty {
+                    return "Discord returned \(ns.code) for \(channelLabel): \(snippet)"
+                }
+                return "Discord returned \(ns.code) for \(channelLabel)."
+            }
+        }
+        return ns.localizedDescription
+    }
+
+    /// Ensure the policy's pinned notice exists, returning the effective pinned
+    /// message ID (so the run can protect it from the clear that follows).
+    /// Existing notices are edited in-place so schedule/template/analytics
+    /// changes show up without posting duplicates. Failures are swallowed — a
+    /// notice hiccup never fails the sweep — returning the last known ID.
+    @discardableResult
+    private func ensureNotice(_ notice: SweepNotice, for policy: SweepPolicy) async -> String? {
+        let title = ":swiftbird: Channel managed by Swiftbot"
+        let body = notice.rendered(for: policy.schedule)
+        let averages = notice.showVoiceAverages
+            ? (await noticeAnalyticsProvider?(policy.guildID) ?? [])
+            : []
+
+        // Already posted and still present → keep the same message, but refresh
+        // its embed so the rolling analytics stay current.
+        if let existing = notice.pinnedMessageID,
+           await dispatcher.noticeExists(channelID: policy.channelID, messageID: existing) {
+            do {
+                try await dispatcher.editPinnedNotice(
+                    channelID: policy.channelID,
+                    guildID: policy.guildID,
+                    messageID: existing,
+                    title: title,
+                    body: body,
+                    voiceAverages: averages
+                )
+            } catch {
+                lastError = "Sweep notice for #\(policy.channelName): \(error.localizedDescription)"
+            }
+            return existing
+        }
+        do {
+            let newID = try await dispatcher.postPinnedNotice(
+                channelID: policy.channelID,
+                guildID: policy.guildID,
+                title: title,
+                body: body,
+                voiceAverages: averages
+            )
+            if !newID.isEmpty, let i = policies.firstIndex(where: { $0.id == policy.id }) {
+                policies[i].notice?.pinnedMessageID = newID
+                await persist()
+            }
+            return newID.isEmpty ? notice.pinnedMessageID : newID
+        } catch {
+            lastError = "Sweep notice for #\(policy.channelName): \(error.localizedDescription)"
+            return notice.pinnedMessageID
+        }
+    }
+
+    private func markRan(policyID: UUID, at date: Date) {
+        guard let i = policies.firstIndex(where: { $0.id == policyID }) else { return }
+        policies[i].lastRunAt = date
+        policies[i].nextRunAt = policies[i].schedule.nextFireDate(after: date)
+        Task { await persist() }
+    }
+
+    private func recordReport(_ report: SweepRunReport) {
+        recentReports.insert(report, at: 0)
+        if recentReports.count > 50 { recentReports = Array(recentReports.prefix(50)) }
+        activityLogger?(report)
+        Task { await persist() }
+    }
+
+    // MARK: Suggestions
+
+    /// Scope of `scanForSuggestions` per call. The scan iterates over every
+    /// uncovered channel; the inter-channel stagger and per-channel message
+    /// cap keep the Discord API request rate low.
+    static let suggestionScanMessageLimit: Int = 300
+    /// Fewest messages a suggested rule must tidy to be shown at all.
+    static let suggestionMinimumImpact: Int = 10
+    static let suggestionScanInterChannelDelayNanos: UInt64 = 1_500_000_000
+
+    /// How many messages a full-channel clear fetches+deletes per pass before
+    /// looping again. Keeps each pass's memory footprint small while the loop
+    /// drains the channel completely.
+    static let clearPageSize: Int = 1_000
+
+    /// Safety bound on clear passes (≈ clearPageSize × this many messages) so a
+    /// pathological channel can never loop unbounded. Far above any real channel.
+    static let clearMaxPasses: Int = 500
+
+    /// A full clear can match thousands of messages; the real counts live on
+    /// the report's dedicated fields, so we persist only a sample of `actions`
+    /// (the activity view shows the first 12 anyway) to keep snapshots small.
+    static func sampledActions(_ actions: [SweepAction]) -> [SweepAction] {
+        actions.count > 60 ? Array(actions.prefix(60)) : actions
+    }
+
+    struct SweepScanTarget: Sendable, Hashable {
+        let guildID: String
+        let guildName: String
+        let channel: GuildTextChannel
+    }
+
+    @discardableResult
+    func scanForSuggestions(targets: [SweepScanTarget]) async -> [SweepSuggestion] {
+        guard !isScanningSuggestions else { return suggestions }
+        isScanningSuggestions = true
+        defer {
+            isScanningSuggestions = false
+            scanProgress = (0, 0)
+        }
+
+        // Don't re-propose for a channel that already has an enabled rule.
+        let covered = Set(policies.filter(\.isEnabled).map(\.channelID))
+        let work = targets.filter { !covered.contains($0.channel.id) }
+
+        scanProgress = (0, work.count)
+
+        var fresh: [SweepSuggestion] = []
+        for (index, target) in work.enumerated() {
+            // Inter-channel stagger — skip before the first fetch.
+            if index > 0 {
+                try? await Task.sleep(nanoseconds: Self.suggestionScanInterChannelDelayNanos)
+            }
+
+            let messages: [SweepFetchedMessage]
+            do {
+                // Dispatcher's fetchRecentMessages handles internal pagination
+                // when `limit` exceeds Discord's per-page cap of 100.
+                messages = try await dispatcher.fetchRecentMessages(
+                    channelID: target.channel.id,
+                    limit: Self.suggestionScanMessageLimit
+                )
+            } catch {
+                scanProgress = (index + 1, work.count)
+                continue
+            }
+            let proposals = SweepSuggestionEngine.analyse(
+                guildID: target.guildID,
+                guildName: target.guildName,
+                channelID: target.channel.id,
+                channelName: target.channel.name,
+                messages: messages
+            )
+            for var proposal in proposals {
+                let key = Self.dismissalKey(channelID: proposal.channelID, kind: proposal.strategyKind)
+                if let dismissedAt = dismissedSuggestions[key], Date().timeIntervalSince(dismissedAt) < Self.dismissalLifetime {
+                    continue
+                }
+                let projection = buildProjection(for: proposal, messages: messages)
+                // Only worth a card if the rule would actually tidy a fair
+                // amount today, after the default safety rails.
+                guard projection.matched >= max(Self.suggestionMinimumImpact, projection.scanned / 20) else { continue }
+                proposal.projection = projection
+                fresh.append(proposal)
+            }
+            scanProgress = (index + 1, work.count)
+        }
+
+        // Merge with existing — preserve any prior suggestions whose channel
+        // wasn't in this scan, replace anything that was.
+        let scannedChannelIDs = Set(work.map(\.channel.id))
+        var merged = suggestions.filter { !scannedChannelIDs.contains($0.channelID) }
+        merged.append(contentsOf: fresh)
+        // Biggest clean-up first; the scanner's confidence breaks ties.
+        suggestions = merged.sorted { lhs, rhs in
+            let lhsImpact = lhs.projection?.matched ?? lhs.evidenceCount
+            let rhsImpact = rhs.projection?.matched ?? rhs.evidenceCount
+            return lhsImpact != rhsImpact ? lhsImpact > rhsImpact : lhs.confidence > rhs.confidence
+        }
+        dismissedSuggestions = dismissedSuggestions.filter { Date().timeIntervalSince($0.value) < Self.dismissalLifetime }
+        lastSuggestionScanAt = Date()
+        Task { await persist() }
+        return suggestions
+    }
+
+    func applySuggestion(_ suggestion: SweepSuggestion) {
+        let name: String
+        switch suggestion.strategyKind {
+        case .reduceNoise: name = "Reduce noise · #\(suggestion.channelName)"
+        case .deduplicate: name = "Dedupe · #\(suggestion.channelName)"
+        case .keepLatest:  name = "Keep latest · #\(suggestion.channelName)"
+        case .compact:     name = "Compact · #\(suggestion.channelName)"
+        case .summarise:   name = "Summarise · #\(suggestion.channelName)"
+        case .archive:     name = "Archive · #\(suggestion.channelName)"
+        case .quietChannel: name = "Quiet · #\(suggestion.channelName)"
+        case .clearAll:    name = "Clear · #\(suggestion.channelName)"
+        }
+        let policy = SweepPolicy(
+            name: name,
+            guildID: suggestion.guildID,
+            guildName: suggestion.guildName,
+            channelID: suggestion.channelID,
+            channelName: suggestion.channelName,
+            strategies: [suggestion.proposedStrategy],
+            schedule: suggestion.proposedSchedule,
+            safety: SweepSafetyRails()
+        )
+        upsert(policy)
+        // A channel only needs one rule. Applying its best match should also
+        // clear the alternate proposals from this scan, rather than leaving
+        // a confusing set of competing actions behind.
+        suggestions.removeAll { $0.channelID == suggestion.channelID }
+        Task { await persist() }
+    }
+
+    /// Hides the suggestion, and keeps that channel/strategy out of scans for
+    /// `dismissalLifetime`.
+    func dismissSuggestion(_ suggestion: SweepSuggestion) {
+        suggestions.removeAll { $0.id == suggestion.id }
+        dismissedSuggestions[Self.dismissalKey(channelID: suggestion.channelID, kind: suggestion.strategyKind)] = Date()
+        Task { await persist() }
+    }
+
+    /// Run the proposed strategy against the messages we already fetched and
+    /// pack the result into a synthetic `SweepRunReport` (dry-run only).
+    private func buildProjection(
+        for suggestion: SweepSuggestion,
+        messages: [SweepFetchedMessage]
+    ) -> SweepRunReport {
+        let tempPolicy = SweepPolicy(
+            name: suggestion.title,
+            guildID: suggestion.guildID,
+            guildName: suggestion.guildName,
+            channelID: suggestion.channelID,
+            channelName: suggestion.channelName,
+            strategies: [suggestion.proposedStrategy],
+            schedule: suggestion.proposedSchedule,
+            safety: SweepSafetyRails()
+        )
+        let plan = planActions(for: tempPolicy, messages: messages)
+        let matched = plan.filter { $0.kind != .skip && $0.kind != .keep }.count
+        let suppressed = plan.filter { $0.kind == .skip }.count
+        return SweepRunReport(
+            policyID: tempPolicy.id,
+            policyName: tempPolicy.name,
+            startedAt: Date(),
+            durationMS: 0,
+            scanned: messages.count,
+            matched: matched,
+            executed: 0,
+            suppressed: suppressed,
+            dryRun: true,
+            actions: SweepService.sampledActions(plan),
+            error: nil,
+            summary: nil,
+            groups: SweepActionGroup.summarise(plan)
+        )
+    }
+
+    // MARK: Planner
+
+    private func planActions(for policy: SweepPolicy, messages: [SweepFetchedMessage]) -> [SweepAction] {
+        var actions: [SweepAction] = []
+        let now = Date()
+        let minAge = TimeInterval(policy.safety.minMessageAgeMinutes * 60)
+
+        // Safety pass — produce `.skip` entries for protected messages.
+        let protectedAnnouncementIDs = Set([
+            policy.notice?.pinnedMessageID,
+            policy.weeklyMVP?.pinnedMessageID
+        ].compactMap { $0 })
+        var candidates: [SweepFetchedMessage] = []
+        for message in messages {
+            if protectedAnnouncementIDs.contains(message.id) {
+                actions.append(.from(message, kind: .skip, reason: "SwiftBot pinned announcement — protected"))
+                continue
+            }
+            if policy.safety.protectPinned && message.isPinned {
+                actions.append(.from(message, kind: .skip, reason: "Pinned — protected"))
+                continue
+            }
+            if policy.safety.protectReacted && message.hasReactions {
+                actions.append(.from(message, kind: .skip, reason: "Has reactions — protected"))
+                continue
+            }
+            if now.timeIntervalSince(message.createdAt) < minAge {
+                actions.append(.from(message, kind: .skip, reason: "Younger than minimum age"))
+                continue
+            }
+            candidates.append(message)
+        }
+
+        // Strategy pass — order matters; each strategy works against the
+        // remaining candidates after prior strategies consumed messages.
+        var remaining = candidates
+        for strategy in policy.strategies {
+            let (consumed, newRemaining) = apply(strategy: strategy, to: remaining, policy: policy)
+            actions.append(contentsOf: consumed)
+            remaining = newRemaining
+        }
+        // Anything still remaining is implicitly "kept".
+        for message in remaining {
+            actions.append(.from(message, kind: .keep, reason: "No matching strategy"))
+        }
+
+        // Apply per-run cap — except for a full-channel clear, whose whole
+        // purpose is to empty the channel regardless of the cap.
+        let cap = max(1, policy.safety.maxMessagesPerRun)
+        let executable = actions.filter { $0.kind != .skip && $0.kind != .keep }
+        if !policy.isClearAll && executable.count > cap {
+            let trim = executable.count - cap
+            var trimmed = 0
+            var output: [SweepAction] = []
+            for action in actions.reversed() {
+                if trimmed < trim && action.kind != .skip && action.kind != .keep {
+                    output.append(SweepAction(
+                        kind: .skip,
+                        messageID: action.messageID,
+                        preview: action.preview,
+                        reason: "Exceeds per-run cap",
+                        authorName: action.authorName,
+                        isBot: action.isBot
+                    ))
+                    trimmed += 1
+                } else {
+                    output.append(action)
+                }
+            }
+            return output.reversed()
+        }
+        return actions
+    }
+
+    private func apply(
+        strategy: SweepStrategy,
+        to messages: [SweepFetchedMessage],
+        policy: SweepPolicy
+    ) -> (consumed: [SweepAction], remaining: [SweepFetchedMessage]) {
+        let now = Date()
+        let age = TimeInterval(strategy.ageHours * 3_600)
+
+        switch strategy.kind {
+        case .clearAll:
+            // Delete every remaining candidate. Protection (pinned/reacted/min
+            // age/notice) is handled in the safety pass before we get here.
+            let consumed = messages.map {
+                SweepAction.from($0, kind: .delete, reason: "Channel cleared")
+            }
+            return (consumed, [])
+
+        case .compact:
+            var consumed: [SweepAction] = []
+            var remaining: [SweepFetchedMessage] = []
+            for message in messages {
+                let matchesBots = !strategy.fromBotsOnly || message.isBot
+                if matchesBots && now.timeIntervalSince(message.createdAt) >= age {
+                    consumed.append(.from(message, kind: .delete, reason: "Older than \(strategy.ageHours)h"))
+                } else {
+                    remaining.append(message)
+                }
+            }
+            return (consumed, remaining)
+
+        case .keepLatest:
+            let sorted = messages.sorted { $0.createdAt > $1.createdAt }
+            let keepCount = max(1, strategy.keepCount)
+            let kept = Array(sorted.prefix(keepCount))
+            let dropped = sorted.dropFirst(keepCount)
+            var consumed: [SweepAction] = kept.map {
+                .from($0, kind: .keep, reason: "Latest \(keepCount) preserved")
+            }
+            consumed.append(contentsOf: dropped.map {
+                .from($0, kind: .delete, reason: "Superseded by newer post")
+            })
+            return (consumed, [])
+
+        case .deduplicate:
+            var seen: [String: SweepFetchedMessage] = [:]
+            var consumed: [SweepAction] = []
+            var remaining: [SweepFetchedMessage] = []
+            for message in messages.sorted(by: { $0.createdAt > $1.createdAt }) {
+                let key = message.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if seen[key] != nil {
+                    consumed.append(.from(message, kind: .delete, reason: "Duplicate of newer message"))
+                } else {
+                    seen[key] = message
+                    remaining.append(message)
+                }
+            }
+            return (consumed, remaining)
+
+        case .summarise:
+            let consumed = messages.map {
+                SweepAction.from($0, kind: .summarise, reason: "Captured in summary")
+            }
+            return (consumed, [])
+
+        case .archive:
+            var consumed: [SweepAction] = []
+            var remaining: [SweepFetchedMessage] = []
+            for message in messages {
+                if now.timeIntervalSince(message.createdAt) >= age {
+                    consumed.append(.from(message, kind: .archive, reason: "Archived after \(strategy.ageHours)h"))
+                } else {
+                    remaining.append(message)
+                }
+            }
+            return (consumed, remaining)
+
+        case .quietChannel:
+            // Virtual-only: mark routine bot chatter as quiet so the UI can
+            // collapse it. Discord is not touched.
+            var consumed: [SweepAction] = []
+            var remaining: [SweepFetchedMessage] = []
+            for message in messages {
+                if message.isBot {
+                    consumed.append(.from(message, kind: .quiet, reason: "Routine bot chatter — collapsed in-app"))
+                } else {
+                    remaining.append(message)
+                }
+            }
+            return (consumed, remaining)
+
+        case .reduceNoise:
+            // Composite: dedupe first, then compact stale bot chatter.
+            var seen: [String: SweepFetchedMessage] = [:]
+            var consumed: [SweepAction] = []
+            var afterDedupe: [SweepFetchedMessage] = []
+            for message in messages.sorted(by: { $0.createdAt > $1.createdAt }) {
+                let key = message.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if seen[key] != nil {
+                    consumed.append(.from(message, kind: .delete, reason: "Duplicate · reduced noise"))
+                } else {
+                    seen[key] = message
+                    afterDedupe.append(message)
+                }
+            }
+            var remaining: [SweepFetchedMessage] = []
+            for message in afterDedupe {
+                if message.isBot && now.timeIntervalSince(message.createdAt) >= age {
+                    consumed.append(.from(message, kind: .delete, reason: "Stale bot chatter · reduced noise"))
+                } else {
+                    remaining.append(message)
+                }
+            }
+            return (consumed, remaining)
+        }
+    }
+}
+
+// MARK: - View
+
+// MARK: - State badge
+
+// MARK: - Policy row
+
+// MARK: - Audit row
+
+// MARK: - Activity row
+
+// MARK: - Suggestion row
+
+// MARK: - Form section (macOS 26 / Liquid Glass styling)
+
+// MARK: - Policy editor sheet
+
+// MARK: - Preview sheet
+
+// MARK: - Preview summary (grouped, plain-English)
+
