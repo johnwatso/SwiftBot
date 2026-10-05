@@ -13,19 +13,6 @@ public protocol UpdateItem: Sendable {
     var version: String { get }
 }
 
-/// Generic update item for simple sources.
-public struct BasicUpdateItem: UpdateItem, Sendable, Codable, Hashable {
-    public let sourceKey: String
-    public let identifier: String
-    public let version: String
-
-    public init(sourceKey: String, identifier: String, version: String) {
-        self.sourceKey = sourceKey
-        self.identifier = identifier
-        self.version = version
-    }
-}
-
 /// Rich update item used by driver vendors.
 public struct DriverUpdateItem: UpdateItem, Sendable {
     public let sourceKey: String

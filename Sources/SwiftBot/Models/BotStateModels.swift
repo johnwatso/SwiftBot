@@ -117,65 +117,6 @@ struct CommandLogEntry: Identifiable, Hashable, Codable {
     }
 }
 
-enum BugStatus: String, Codable, Hashable {
-    case new = "New"
-    case workingOn = "Working On"
-    case inProgress = "In Progress"
-    case blocked = "Blocked"
-    case resolved = "Resolved"
-
-    var emoji: String {
-        switch self {
-        case .new:
-            return "🐞"
-        case .workingOn:
-            return "🔧"
-        case .inProgress:
-            return "🟡"
-        case .blocked:
-            return "⛔"
-        case .resolved:
-            return "✅"
-        }
-    }
-}
-
-struct BugEntry: Hashable, Codable {
-    let bugMessageID: String
-    let sourceMessageID: String
-    let channelID: String
-    let guildID: String
-    let reporterID: String
-    let createdBy: String
-    var status: BugStatus
-    var timestamp: Date
-}
-
-struct BugAutoFixPendingStart: Hashable, Codable {
-    let bugMessageID: String
-    let channelID: String
-    let guildID: String
-    let sourceRepoPath: String
-    let isolatedRepoPath: String
-    let branch: String
-    let updateChannelID: String
-    let version: String
-    let build: String
-    let requestedByUserID: String
-}
-
-struct BugAutoFixPendingApproval: Hashable, Codable {
-    let bugMessageID: String
-    let channelID: String
-    let guildID: String
-    let sourceRepoPath: String
-    let isolatedRepoPath: String
-    let branch: String
-    let updateChannelID: String
-    let version: String
-    let build: String
-}
-
 struct VoiceMemberPresence: Identifiable, Hashable, Codable {
     let id: String
     let userId: String

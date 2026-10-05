@@ -1522,29 +1522,6 @@ private struct VoiceWaveformMark: View {
     }
 }
 
-private struct LiveWaveformBars: View {
-    let color: Color
-    @State private var isAnimating = false
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<4, id: \.self) { index in
-                Capsule()
-                    .fill(color.opacity(0.78))
-                    .frame(width: 3, height: isAnimating ? CGFloat(7 + (index % 2) * 7) : CGFloat(13 - (index % 2) * 5))
-                    .animation(
-                        .easeInOut(duration: 0.55)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.08),
-                        value: isAnimating
-                    )
-            }
-        }
-        .frame(width: 22, height: 16)
-        .onAppear { isAnimating = true }
-    }
-}
-
 private extension String {
     func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
 }

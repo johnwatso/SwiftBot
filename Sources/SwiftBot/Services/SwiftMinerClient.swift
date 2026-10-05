@@ -63,14 +63,6 @@ struct SwiftMinerActivationSession: Codable, Sendable {
     let intervalSeconds: Int
 }
 
-struct SwiftMinerActivationStatus: Codable, Sendable {
-    let sessionId: String
-    let status: String
-    let linkedAccountId: String?
-    let twitchUsername: String?
-    let failureReason: String?
-}
-
 struct SwiftMinerControlResponse: Codable, Sendable {
     let ok: Bool
     let action: String

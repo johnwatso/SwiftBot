@@ -17,7 +17,7 @@ struct WikiLookupUsageSummary: Codable, Hashable, Sendable {
 /// Records each Discord lookup per source. Kept out of settings on purpose:
 /// it changes on every lookup, and editors save whole sources back, which
 /// would overwrite newer counts with the copy they opened.
-/// Follows the on-disk JSON actor pattern from AuditDismissalStore.
+/// An on-disk JSON actor store.
 actor WikiLookupUsageStore {
     struct Entry: Codable, Hashable {
         let query: String

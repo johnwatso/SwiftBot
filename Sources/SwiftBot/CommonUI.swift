@@ -373,54 +373,6 @@ struct DashboardMetricCard: View {
     }
 }
 
-struct StickySaveButton: View {
-    let label: String
-    let systemImage: String
-    var disabled: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(label, systemImage: systemImage)
-                .labelStyle(.titleAndIcon)
-        }
-        .buttonStyle(GlassActionButtonStyle())
-        .disabled(disabled)
-        .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
-    }
-}
-
-struct StatusPill: View {
-    let status: BotStatus
-
-    private var color: Color {
-        switch status {
-        case .running: return .green
-        case .connecting: return .orange
-        case .reconnecting: return .yellow
-        case .stopped: return .secondary
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            Text(status.rawValue.capitalized)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(color)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(color.opacity(0.14), in: Capsule())
-        .overlay(
-            Capsule()
-                .strokeBorder(color.opacity(0.35), lineWidth: 1)
-        )
-    }
-}
-
 struct ViewSectionHeader: View {
     let title: String
     let symbol: String
@@ -456,27 +408,6 @@ struct SettingsSectionHeader: View {
             }
         }
         .labelStyle(.titleAndIcon)
-    }
-}
-
-struct PreferencesTabContainer<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .padding(.bottom, 32)
-        }
-        .fadingEdges(top: 16, bottom: 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -546,83 +477,6 @@ struct PreferencesCard<Content: View>: View {
         }
         .padding(.vertical, density.padding * 0.4)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// Leading-label / trailing-control row. Use inside PreferencesCard for
-/// dense, scannable forms. The label column has a fixed width so adjacent
-/// rows align cleanly; pass `caption` for the small helper text that would
-/// otherwise sit underneath a stacked field.
-struct PreferencesFormRow<Control: View>: View {
-    let label: String
-    let caption: String?
-    let labelWidth: CGFloat
-    let control: Control
-
-    init(
-        _ label: String,
-        caption: String? = nil,
-        labelWidth: CGFloat = 160,
-        @ViewBuilder control: () -> Control
-    ) {
-        self.label = label
-        self.caption = caption
-        self.labelWidth = labelWidth
-        self.control = control()
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label)
-                .font(.subheadline.weight(.medium))
-                .frame(width: labelWidth, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                control
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let caption, !caption.isEmpty {
-                    Text(caption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-}
-
-/// Single-line toggle row: label left, switch trailing. Replaces the
-/// HStack { Text; Spacer; Toggle } pattern repeated across preferences.
-struct PreferencesInlineToggle: View {
-    let title: String
-    let caption: String?
-    @Binding var isOn: Bool
-
-    init(_ title: String, caption: String? = nil, isOn: Binding<Bool>) {
-        self.title = title
-        self.caption = caption
-        self._isOn = isOn
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                Toggle("", isOn: $isOn)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-            }
-            if let caption, !caption.isEmpty {
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 }
 
@@ -709,88 +563,6 @@ extension View {
 // SwiftMiner-style status surface, badges, inline actions, and a Form-friendly
 // container. Each preferences tab is moving toward a single status row at the
 // top + native grouped Form sections below.
-
-/// Compact status surface for the top of a preferences tab. Mirrors
-/// SwiftMiner's pattern: tinted icon · title + subtitle · trailing accessory.
-/// Drop the `accessory` slot to omit the trailing element.
-struct SettingsStatusRow<Accessory: View>: View {
-    let systemImage: String
-    let tint: Color
-    let title: String
-    let subtitle: String?
-    let accessory: Accessory
-
-    init(
-        systemImage: String,
-        tint: Color = .accentColor,
-        title: String,
-        subtitle: String? = nil,
-        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
-    ) {
-        self.systemImage = systemImage
-        self.tint = tint
-        self.title = title
-        self.subtitle = subtitle
-        self.accessory = accessory()
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.12))
-                    .frame(width: 30, height: 30)
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(tint)
-            }
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            accessory
-        }
-    }
-}
-
-/// Small inline status pill — e.g. "HTTPS · ON". Use multiple in an HStack to
-/// build a status strip ("HTTPS · Cloudflare · Public URL · Auth").
-struct SettingsStatusBadge: View {
-    let systemImage: String?
-    let label: String
-    let tint: Color
-
-    init(_ label: String, systemImage: String? = nil, tint: Color = .secondary) {
-        self.label = label
-        self.systemImage = systemImage
-        self.tint = tint
-    }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let systemImage {
-                Image(systemName: systemImage)
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(tint.opacity(0.12), in: Capsule(style: .continuous))
-    }
-}
 
 /// Utility action button — small, capsule-bordered, with optional icon.
 /// Replaces the giant "Open in Browser"-style CTAs.

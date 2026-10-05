@@ -65,23 +65,3 @@ public actor JSONVersionStore: VersionStore {
     }
 }
 
-/// In-memory identifier store for tests and ephemeral runs.
-public actor InMemoryVersionStore: VersionStore {
-    private var cache: [String: String]
-
-    public init(seed: [String: String] = [:]) {
-        self.cache = seed
-    }
-
-    public func lastIdentifier(for key: String) async throws -> String? {
-        cache[key]
-    }
-
-    public func save(identifier: String, for key: String) async throws {
-        cache[key] = identifier
-    }
-
-    public func clear() {
-        cache.removeAll()
-    }
-}

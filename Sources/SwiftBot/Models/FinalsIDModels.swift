@@ -179,30 +179,3 @@ struct FinalsIDRosterMember: Codable, Hashable, Sendable {
     let name: String
 }
 
-struct FinalsIDRoundItem: Codable, Hashable, Sendable {
-    let id: String?
-    let kind: String?
-    let name: String?
-    let slug: String?
-    let xp: Int?
-    let kills: Int?
-    let damage: Double?
-}
-
-struct FinalsIDScorecard: Codable, Hashable, Sendable {
-    let assists: Int?
-    let combatScore: Double?
-    let eliminationStreak: Int?
-    let eliminations: Int?
-    let killDeathRatio: Double?
-    let support: Double?
-
-    private enum CodingKeys: String, CodingKey {
-        case assists
-        case combatScore = "combat-score"
-        case eliminationStreak = "elimination-streak"
-        case eliminations
-        case killDeathRatio = "kill-death-ratio"
-        case support
-    }
-}

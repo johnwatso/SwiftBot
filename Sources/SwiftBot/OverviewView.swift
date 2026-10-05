@@ -865,116 +865,6 @@ struct OverviewClusterMapCard: View {
     }
 }
 
-struct DashboardPanel<Content: View>: View {
-    let title: String
-    var actionTitle: String?
-    @ViewBuilder let content: Content
-
-    init(title: String, actionTitle: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.actionTitle = actionTitle
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                if let actionTitle {
-                    Button(actionTitle) {}
-                        .buttonStyle(.link)
-                        .font(.caption)
-                }
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(14)
-        .dashboardSurface(cornerRadius: 18, fillOpacity: 0.038, strokeOpacity: 0.075, shadowOpacity: 0.02)
-    }
-}
-
-struct PanelLine: View {
-    let title: String
-    let subtitle: String
-    let tone: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .lineLimit(1)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tone.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-        )
-    }
-}
-
-struct VoicePresenceMemberRow: View {
-    let member: VoiceMemberPresence
-    let avatarURL: URL?
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Group {
-                if let avatarURL {
-                    AsyncImage(url: avatarURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        default:
-                            Image(systemName: "person.crop.circle.fill")
-                                .resizable()
-                                .scaledToFit()
-                                .foregroundStyle(.secondary)
-                                .padding(2)
-                        }
-                    }
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(.secondary)
-                        .padding(2)
-                }
-            }
-            .frame(width: 22, height: 22)
-            .clipShape(Circle())
-
-            Text(member.username)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-            Spacer()
-            Text("Joined \(member.joinedAt.formatted(date: .omitted, time: .shortened))")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.15), lineWidth: 1)
-        )
-    }
-}
-
 struct PlaceholderPanelLine: View {
     let text: String
 
@@ -993,22 +883,6 @@ struct PlaceholderPanelLine: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(.white.opacity(0.16), lineWidth: 1)
         )
-    }
-}
-
-struct InfoRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .fontWeight(.semibold)
-        }
-        .padding(.vertical, 4)
     }
 }
 
