@@ -16,10 +16,8 @@ import NIOPosix
 // Real-time events are handled internally via the Discord gateway WebSocket
 // inside DiscordService.swift (outbound connection to Discord only).
 //
-// Authentication supports both:
-// - Cookie-based: swiftbot_admin_session (for browser WebUI)
-// - Bearer token: Authorization: Bearer <session-id> (issued via Discord OAuth
-//   to the desktop Remote client; not a long-lived shared secret)
+// Authentication is the browser session cookie (swiftbot_admin_session),
+// issued by Discord OAuth, a passkey, or the local fallback password.
 
 struct AdminWebStatusPayload: Codable {
     let botStatus: String
@@ -104,6 +102,12 @@ struct AdminWebSwiftMeshPayload: Codable {
         let isThisNode: Bool
         let follower: Follower?
         var operatorID: String?
+        /// The SF Symbol chosen for this node, nil when auto-detected.
+        var iconOverride: String?
+    }
+    struct IconOption: Codable {
+        let symbol: String
+        let label: String
     }
     struct Handover: Codable {
         let isActive: Bool
@@ -125,6 +129,7 @@ struct AdminWebSwiftMeshPayload: Codable {
     let workerOffloadEnabled: Bool
     let offloadAIReplies: Bool
     let offloadWikiLookups: Bool
+    var automaticHandbackEnabled: Bool = true
     let autoReclaimAfterHours: Int
     let autoReclaimRemainingSeconds: Double?
     let server: Status
@@ -137,6 +142,7 @@ struct AdminWebSwiftMeshPayload: Codable {
     let localGatewayLatencyMs: Int?
     let handover: Handover
     let nodes: [Node]
+    var iconOptions: [IconOption] = []
 }
 
 /// GET /api/member/replay: a member's own Replay for one of their servers.
@@ -178,10 +184,12 @@ struct AdminWebOperatorsPatch: Codable {
 
 /// POST /api/swiftmesh/action.
 struct AdminWebSwiftMeshAction: Codable {
-    /// "handoverTest", "cancelHandoverTest", "promote" or "forget".
+    /// "handoverTest", "cancelHandoverTest", "promote", "forget" or "setIcon".
     let action: String
-    /// The node's display name, for "forget".
+    /// The node's display name, for "forget" and "setIcon".
     var node: String?
+    /// An SF Symbol from `iconOptions` for "setIcon"; nil returns to auto-detect.
+    var icon: String?
 }
 
 /// One-off things the Web UI asks the host to do right now: run the bot,
@@ -200,6 +208,33 @@ enum AdminWebHostOperation: Sendable {
     case installUpdate
     case setAutomaticUpdateChecks(Bool)
     case setUnattendedUpdates(Bool)
+    case clearCachedData
+    case clearActivity
+    /// Leave the server so it can be re-invited with fresh permissions.
+    case forceRejoin(guildID: String)
+}
+
+/// POST /api/bot/permissions/force-rejoin.
+struct AdminWebForceRejoinRequest: Codable {
+    let guildID: String
+}
+
+/// POST /api/automations/simulate. Missing input fields are filled from the
+/// rule itself, the same way the native editor pre-fills its simulator.
+struct AdminWebAutomationSimulationRequest: Codable {
+    struct Input: Codable {
+        var username: String?
+        var channelId: String?
+        var messageContent: String?
+        var voiceDurationSeconds: Int?
+    }
+    let rule: Automations.Rule
+    var input: Input?
+}
+
+struct AdminWebAutomationSimulationPayload: Codable {
+    let input: Automations.SimulationInput
+    let result: Automations.SimulationResult
 }
 
 struct AdminWebBotPermissionsPayload: Codable {
@@ -887,8 +922,6 @@ struct AdminWebConfigPayload: Codable {
         let enabled: Bool
         let prefixEnabled: Bool
         let slashEnabled: Bool
-        /// Retired feature; always false. Kept so older Remote clients still decode.
-        let bugTrackingEnabled: Bool
         let prefix: String
     }
 
@@ -979,6 +1012,7 @@ struct AdminWebConfigPatch: Codable {
     var clusterWorkerOffloadEnabled: Bool?
     var clusterOffloadAIReplies: Bool?
     var clusterOffloadWikiLookups: Bool?
+    var clusterAutomaticHandbackEnabled: Bool?
     var clusterAutoReclaimAfterHours: Int?
     var autoStart: Bool?
     var musicLinkWatchEnabled: Bool?
@@ -1390,6 +1424,25 @@ struct AdminWebMediaSourcePayload: Codable {
     var ownerID: String?
 }
 
+/// POST /api/media/game-match: Fix Match for a clip's game.
+struct AdminWebMediaGameMatchPatch: Codable {
+    /// One clip, by its library id; or, with `fromGame`, a whole game.
+    var itemID: String?
+    /// Every clip filed under this game, now and later.
+    var fromGame: String?
+    /// Empty returns the clip to the game its filename names.
+    let gameName: String
+    var steamAppID: String?
+    /// Also every clip detected as the same game, now and later.
+    var applyToDetected: Bool?
+}
+
+/// GET /api/media/game-search: titles to pick from in Fix Match.
+struct AdminWebGameSearchResult: Codable {
+    let name: String
+    let steamAppID: String
+}
+
 /// POST /api/media/source-owner.
 struct AdminWebMediaSourceOwnerPatch: Codable {
     let sourceID: String
@@ -1412,6 +1465,11 @@ struct AdminWebMediaItemPayload: Codable {
     var people: [AdminWebSimpleOption] = []
     /// The folder's "Recorded by" member, when one is set.
     var recordedByID: String?
+    /// The game its filename names, before any Fix Match.
+    var detectedGameName: String?
+    /// An admin's Fix Match: "clip" for this clip alone, "detected" for
+    /// every clip detected as its game; nil when the filename's game is used.
+    var gameMatch: String?
 }
 
 struct AdminWebMediaLibraryPayload: Codable {
@@ -1559,7 +1617,7 @@ actor AdminWebServer {
         let csrfToken: String
         let expiresAt: Date
         // Hex SHA256 of the User-Agent header captured at login. Empty if no UA was
-        // sent (e.g. native Remote clients) — in that case binding is not enforced.
+        // sent, in which case binding is not enforced.
         var userAgentHash: String? = nil
         var role: Role = .admin
         /// Members: the connected servers they belonged to at sign-in, which
@@ -1573,7 +1631,6 @@ actor AdminWebServer {
     private struct PendingState {
         let value: String
         let expiresAt: Date
-        let appRedirectURL: String?
         let codeVerifier: String?
         /// When set, this OAuth flow authenticates a companion app's user
         /// (e.g. SwiftMiner's web dashboard): on success we redirect here with
@@ -1648,12 +1705,6 @@ actor AdminWebServer {
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
     private var analyticsProvider: (@Sendable (AnalyticsPeriod, Bool) async -> AdminWebAnalyticsPayload)?
     private var rewindProvider: (@Sendable () async -> AdminWebRewindPayload)?
-    private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
-    private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
-    private var updateRemoteRule: (@Sendable (Rule) async -> Bool)?
-    private var remoteEventsProvider: (@Sendable () async -> RemoteEventsPayload)?
-    private var remoteSettingsProvider: (@Sendable () async -> AdminWebConfigPayload)?
-    private var updateRemoteSettings: (@Sendable (AdminWebConfigPatch) async -> Bool)?
     private var connectedGuildIDsProvider: (@Sendable () async -> Set<String>)?
     private var currentPrefixProvider: (@Sendable () async -> String)?
     private var updatePrefix: (@Sendable (String) async -> Bool)?
@@ -1717,6 +1768,9 @@ actor AdminWebServer {
     /// `GameProviderCredentialResult` raw value.
     private var gameProviderCredentialUpdater: (@Sendable (String, String?) async -> String)?
     private var hostOperationRunner: (@Sendable (AdminWebHostOperation) async -> String?)?
+    private var automationSimulator: (@Sendable (AdminWebAutomationSimulationRequest) async -> AdminWebAutomationSimulationPayload?)?
+    /// The same redacted diagnostic report as the native Activity › Export.
+    private var activityReportProvider: (@Sendable () async -> String)?
     private var botPermissionsProvider: (@Sendable () async -> AdminWebBotPermissionsPayload)?
     private var updatesProvider: (@Sendable () async -> AdminWebUpdatesPayload?)?
     /// Credential changes need a sign-in this recent, since sessions last a day.
@@ -1754,7 +1808,9 @@ actor AdminWebServer {
     private var updateOperators: (@Sendable (AdminWebOperatorsPatch) async -> Bool)?
     private var sendOperatorTest: (@Sendable () async -> String?)?
     private var setMediaSourceOwner: (@Sendable (String, String) async -> Bool)?
+    private var fixMediaGameMatch: (@Sendable (AdminWebMediaGameMatchPatch) async -> Bool)?
     private var runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)?
+    private var swiftMeshJoinCodeProvider: (@Sendable () async -> String?)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     /// Registers a companion-app hostname (e.g. SwiftMiner's dashboard) on the
     /// Cloudflare tunnel. HMAC-authenticated inside the handler; fail-closed.
@@ -1802,12 +1858,6 @@ actor AdminWebServer {
     func configure(
         config: Configuration,
         statusProvider: @escaping @Sendable () async -> AdminWebStatusPayload,
-        remoteStatusProvider: @escaping @Sendable () async -> RemoteStatusPayload,
-        remoteRulesProvider: @escaping @Sendable () async -> RemoteRulesPayload,
-        updateRemoteRule: @escaping @Sendable (Rule) async -> Bool,
-        remoteEventsProvider: @escaping @Sendable () async -> RemoteEventsPayload,
-        remoteSettingsProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
-        updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
         analyticsProvider: @escaping @Sendable (AnalyticsPeriod, Bool) async -> AdminWebAnalyticsPayload,
         rewindProvider: @escaping @Sendable () async -> AdminWebRewindPayload,
@@ -1899,7 +1949,9 @@ actor AdminWebServer {
         updateOperators: (@Sendable (AdminWebOperatorsPatch) async -> Bool)? = nil,
         sendOperatorTest: (@Sendable () async -> String?)? = nil,
         setMediaSourceOwner: (@Sendable (String, String) async -> Bool)? = nil,
+        fixMediaGameMatch: (@Sendable (AdminWebMediaGameMatchPatch) async -> Bool)? = nil,
         runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)? = nil,
+        swiftMeshJoinCodeProvider: (@Sendable () async -> String?)? = nil,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))? = nil,
         swiftMinerTunnelInfoProvider: (@Sendable () async -> (status: String, body: Data))? = nil,
@@ -1910,12 +1962,6 @@ actor AdminWebServer {
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
-        self.remoteStatusProvider = remoteStatusProvider
-        self.remoteRulesProvider = remoteRulesProvider
-        self.updateRemoteRule = updateRemoteRule
-        self.remoteEventsProvider = remoteEventsProvider
-        self.remoteSettingsProvider = remoteSettingsProvider
-        self.updateRemoteSettings = updateRemoteSettings
         self.overviewProvider = overviewProvider
         self.analyticsProvider = analyticsProvider
         self.rewindProvider = rewindProvider
@@ -2007,7 +2053,9 @@ actor AdminWebServer {
         self.updateOperators = updateOperators
         self.sendOperatorTest = sendOperatorTest
         self.setMediaSourceOwner = setMediaSourceOwner
+        self.fixMediaGameMatch = fixMediaGameMatch
         self.runSwiftMeshAction = runSwiftMeshAction
+        self.swiftMeshJoinCodeProvider = swiftMeshJoinCodeProvider
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.swiftMinerTunnelHostnameHandler = swiftMinerTunnelHostnameHandler
         self.swiftMinerTunnelInfoProvider = swiftMinerTunnelInfoProvider
@@ -2419,7 +2467,7 @@ actor AdminWebServer {
         if path.hasPrefix("/api/member/") { return true }
         if path.hasPrefix("/auth/") { return true }
         switch path {
-        case "/api/me", "/api/auth/options", "/api/auth/session":
+        case "/api/me", "/api/auth/options":
             return true
         default:
             // The page and its static files; never another API.
@@ -2432,11 +2480,23 @@ actor AdminWebServer {
         return session.role == role
     }
 
+    private var meshRequestHandler: (@Sendable (Data, String?) async -> Data)?
+
+    func setMeshRequestHandler(_ handler: @escaping @Sendable (Data, String?) async -> Data) {
+        meshRequestHandler = handler
+    }
+
     private func process(_ requestData: Data, peerIP: String? = nil) async -> Data {
         guard var request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data("Invalid request".utf8))
         }
         request.peerIP = peerIP
+        if request.path.hasPrefix("/v1/mesh/") || ["/cluster/status", "/cluster/register", "/cluster/ping"].contains(request.path) {
+            guard let handler = meshRequestHandler else {
+                return httpResponse(status: "404 Not Found", body: Data())
+            }
+            return await handler(requestData, peerIP)
+        }
 
         pruneExpiredState()
         pruneExpiredSessions()
@@ -2447,8 +2507,7 @@ actor AdminWebServer {
         // read-only on standby and worker nodes. Keep this at the router
         // boundary so new mutation endpoints cannot accidentally omit it.
         if request.method != "GET",
-           request.path.hasPrefix("/api/"),
-           !request.path.hasPrefix("/api/remote/") {
+           request.path.hasPrefix("/api/") {
             if let status = await statusProvider?(), status.isFailoverManagedNode {
                 return jsonResponse(
                     ["error": "failover_managed", "message": "This node is managed by the active Primary and is read-only in WebUI."],
@@ -2636,62 +2695,6 @@ actor AdminWebServer {
             }
             let result = await handler(request.headers, request.body)
             return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")
-        case ("GET", "/api/remote/status"):
-            guard isRemoteRequestAuthorized(request) else {
-                return unauthorizedResponse()
-            }
-            if let payload = await remoteStatusProvider?() {
-                return codableResponse(payload)
-            }
-            return jsonResponse(["error": "status_unavailable"], status: "503 Service Unavailable")
-        case ("GET", "/api/remote/rules"):
-            guard isRemoteRequestAuthorized(request) else {
-                return unauthorizedResponse()
-            }
-            if let payload = await remoteRulesProvider?() {
-                return codableResponse(payload)
-            }
-            return jsonResponse(["error": "rules_unavailable"], status: "503 Service Unavailable")
-        case ("POST", "/api/remote/rules/update"):
-            guard isRemoteRequestAuthorized(request) else {
-                return unauthorizedResponse()
-            }
-            guard let patch = try? decoder.decode(RemoteRuleUpsertRequest.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
-            }
-            guard await updateRemoteRule?(patch.rule) == true else {
-                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
-            }
-            await logger?("Remote API updated rule \(patch.rule.name)")
-            return jsonResponse(["ok": true])
-        case ("GET", "/api/remote/events"):
-            guard isRemoteRequestAuthorized(request) else {
-                return unauthorizedResponse()
-            }
-            if let payload = await remoteEventsProvider?() {
-                return codableResponse(payload)
-            }
-            return jsonResponse(["error": "events_unavailable"], status: "503 Service Unavailable")
-        case ("GET", "/api/remote/settings"):
-            guard isRemoteRequestAuthorized(request) else {
-                return unauthorizedResponse()
-            }
-            if let payload = await remoteSettingsProvider?() {
-                return codableResponse(payload)
-            }
-            return jsonResponse(["error": "settings_unavailable"], status: "503 Service Unavailable")
-        case ("POST", "/api/remote/settings/update"):
-            guard isRemoteRequestAuthorized(request) else {
-                return unauthorizedResponse()
-            }
-            guard let patch = try? decoder.decode(AdminWebConfigPatch.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
-            }
-            guard await updateRemoteSettings?(patch) == true else {
-                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
-            }
-            await logger?("Remote API updated settings")
-            return jsonResponse(["ok": true])
         case ("GET", "/api/status"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -2890,6 +2893,22 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "activity_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/activity/export"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard let report = await activityReportProvider?() else {
+                return jsonResponse(["error": "activity_unavailable"], status: "503 Service Unavailable")
+            }
+            let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate, .withTime])
+            return httpResponse(
+                status: "200 OK",
+                body: Data(report.utf8),
+                headers: ["Content-Disposition": "attachment; filename=\"SwiftBot-Diagnostics-\(stamp).txt\""]
+            )
         case ("GET", "/api/access"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -3078,6 +3097,24 @@ actor AdminWebServer {
                 return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+
+        case ("POST", "/api/automations/simulate"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let body = try? decoder.decode(AdminWebAutomationSimulationRequest.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard let payload = await automationSimulator?(body) else {
+                return jsonResponse(["error": "simulation_unavailable"], status: "503 Service Unavailable")
+            }
+            return codableResponse(payload)
 
         case ("POST", "/api/automations/draft"):
             guard let session = authenticatedSession(for: request) else {
@@ -4114,6 +4151,38 @@ actor AdminWebServer {
             }
             audit(source: "Web Config", actor: actorLabel(session), action: "Set who records a folder", detail: patch.userID.isEmpty ? "Cleared" : patch.userID)
             return jsonResponse(["ok": true])
+        case ("POST", "/api/media/game-match"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebMediaGameMatchPatch.self, from: request.body),
+                  await fixMediaGameMatch?(patch) == true else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            let scope = patch.fromGame.map { "all \($0) clips" }
+                ?? (patch.applyToDetected == true ? "all clips of its detected game" : "one clip")
+            audit(source: "Web Config", actor: actorLabel(session), action: "Fixed a recording's game",
+                  detail: patch.gameName.isEmpty ? "Reset \(scope)" : "\(patch.gameName) (\(scope))")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/media/game-search"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            let term = request.query["q"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !term.isEmpty, term.count <= 100 else {
+                return codableResponse([AdminWebGameSearchResult]())
+            }
+            let results = await RecordingSteamArtworkService.shared.searchGames(term: term)
+            return codableResponse(results.map { AdminWebGameSearchResult(name: $0.name, steamAppID: $0.id) })
         case ("GET", "/api/operators"):
             guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
             guard requireRole(.admin, session: session) else { return forbiddenResponse() }
@@ -4152,6 +4221,33 @@ actor AdminWebServer {
                 return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
             }
             return codableResponse(payload)
+        case ("POST", "/api/swiftmesh/pair"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            // The link carries the mesh's shared secret, so only a Discord
+            // admin (sign-in requires Discord 2FA) gets it. Local-password
+            // sessions have no second factor.
+            guard !session.userID.hasPrefix("local:") else {
+                return jsonResponse([
+                    "error": "discord_required",
+                    "message": "Sign in with Discord to pair a Mac. The local admin sign-in has no two-factor authentication."
+                ], status: "403 Forbidden")
+            }
+            if let refusal = sensitiveSecretRefusal(session: session, request: request, purpose: "pair a Mac") {
+                return refusal
+            }
+            guard let joinURL = await swiftMeshJoinCodeProvider?() else {
+                return jsonResponse(["error": "Pairing is available only on the active Primary."], status: "409 Conflict")
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: "SwiftMesh pairing link requested")
+            return jsonResponse(["joinURL": joinURL])
         case ("POST", "/api/swiftmesh/action"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -4174,20 +4270,12 @@ actor AdminWebServer {
 
         // MARK: - OAuth Authentication
         //
-        // The Discord OAuth routes are currently used for SwiftBot Remote
-        // and WebUI authentication.
+        // The Discord OAuth routes sign people in to the WebUI:
         //
-        // Flow:
-        //
-        // Remote Client → /auth/discord/login
-        //               → Discord OAuth
-        //               → /auth/discord/callback
-        //               → session created
-        //               → /api/auth/session returns token
-        //
-        // Remote clients then authenticate API requests using:
-        //
-        // Authorization: Bearer <session-id>
+        // Browser → /auth/discord/login
+        //         → Discord OAuth
+        //         → /auth/discord/callback
+        //         → session cookie set
         //
         // NOTE FOR FUTURE SWIFTMESH WORK:
         //
@@ -4211,8 +4299,6 @@ actor AdminWebServer {
             return handleLogout(request: request)
         case ("GET", "/api/auth/options"):
             return await handleAuthOptions()
-        case ("GET", "/api/auth/session"):
-            return handleSessionInfo(request: request)
         case ("GET", "/api/server/info"):
             return await handleServerInfo(request: request)
         default:
@@ -4273,8 +4359,13 @@ actor AdminWebServer {
         let components = URLComponents(string: "http://localhost\(rawTarget)")
         let path = components?.path.isEmpty == false ? components?.path ?? "/" : "/"
         var query: [String: String] = [:]
-        components?.queryItems?.forEach { item in
-            query[item.name] = item.value ?? ""
+        // Browsers' URLSearchParams send a space as "+", which URLComponents
+        // leaves alone; decode it as a form would ("Call+of+Duty" was being
+        // looked up literally). A real "+" arrives as %2B and stays one.
+        components?.percentEncodedQueryItems?.forEach { item in
+            let name = item.name.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? item.name
+            let value = item.value?.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? ""
+            query[name] = value
         }
 
         var headers: [String: String] = [:]
@@ -4414,19 +4505,27 @@ actor AdminWebServer {
             )
         }
 
+        let uri = redirectURI()
+
+        // Discord returns to the configured public address. Started from
+        // another address (the LAN or 127.0.0.1), the state cookie would sit
+        // on that host and the callback would reject the sign-in, so start
+        // over on the callback's own host first.
+        if let callbackOrigin = Self.origin(of: uri),
+           let requestHost = request.headers["host"]?.lowercased(),
+           callbackOrigin.host != requestHost {
+            return redirectResponse(to: callbackOrigin.url + "/auth/discord/login")
+        }
+
         let state = randomToken()
         let codeVerifier = randomToken() // High-entropy random string
         let codeChallenge = base64URLEncode(sha256(codeVerifier))
 
-        let appRedirectURL = validatedAppRedirectURL(from: request.query["return_to"])
         pendingStates[state] = PendingState(
             value: state,
             expiresAt: Date().addingTimeInterval(stateTTL),
-            appRedirectURL: appRedirectURL?.absoluteString,
             codeVerifier: codeVerifier
         )
-
-        let uri = redirectURI()
 
         var components = URLComponents(string: "https://discord.com/oauth2/authorize")
         components?.queryItems = [
@@ -4510,7 +4609,6 @@ actor AdminWebServer {
         pendingStates[state] = PendingState(
             value: state,
             expiresAt: Date().addingTimeInterval(stateTTL),
-            appRedirectURL: nil,
             codeVerifier: codeVerifier,
             companionReturnURL: returnURL.absoluteString
         )
@@ -4544,8 +4642,14 @@ actor AdminWebServer {
     }
 
     private func handleLocalLogin(request: HTTPRequest) -> Data {
-        guard config.localAuthEnabled else {
+        // Mirrors what the sign-in page offers: a developer feature, and only
+        // on this Mac or the local network, never through the public tunnel.
+        guard config.localAuthEnabled, config.devFeaturesEnabled else {
             return jsonResponse(["error": "local_auth_disabled"], status: "403 Forbidden")
+        }
+        guard !isPublicTunnelRequest(request) else {
+            audit(source: "Web Auth", actor: "local", action: "Login blocked", detail: "Password sign-in tried through the public address", level: "warning")
+            return jsonResponse(["error": "local_auth_local_only"], status: "403 Forbidden")
         }
 
         guard
@@ -4639,8 +4743,7 @@ actor AdminWebServer {
         // query parameter. This binds the OAuth flow to the originating browser
         // and prevents login-CSRF via a leaked `state` value.
         let stateCookieValue = cookie(named: "swiftbot_oauth_state", request: request) ?? ""
-        let isAppRedirect = pendingState.appRedirectURL != nil
-        if !isAppRedirect && !constantTimeEquals(stateCookieValue, state) {
+        if !constantTimeEquals(stateCookieValue, state) {
             return oauthErrorPageResponse(
                 status: "400 Bad Request",
                 title: "Sign-in didn't complete",
@@ -4725,12 +4828,8 @@ actor AdminWebServer {
             persistSessions()
             await logger?("Admin Web UI login for \(user.username) (\(user.id))")
             audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Logged in", detail: "Discord OAuth", level: "ok")
-            let redirectTarget = remoteAuthRedirectURL(
-                from: pendingState.appRedirectURL,
-                sessionID: session.id
-            ) ?? "/"
             return redirectResponse(
-                to: redirectTarget,
+                to: "/",
                 headers: ["Set-Cookie": sessionCookie(for: session.id, secure: isHTTPSRequest(request))]
             )
         } catch {
@@ -4851,23 +4950,6 @@ actor AdminWebServer {
         )
     }
 
-    private func handleSessionInfo(request: HTTPRequest) -> Data {
-        guard let session = authenticatedSession(for: request) else {
-            return unauthorizedResponse()
-        }
-
-        return jsonResponse([
-            "user": session.username,
-            "discordUserID": session.userID,
-            "globalName": session.globalName ?? "",
-            "discriminator": session.discriminator ?? "",
-            "avatar": session.avatar ?? "",
-            "permissions": [session.role.rawValue],
-            "sessionToken": session.id,
-            "expiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
-        ])
-    }
-
     private func forbiddenResponse() -> Data {
         jsonResponse(["error": "forbidden", "message": "You do not have permission to perform this action."], status: "403 Forbidden")
     }
@@ -4943,23 +5025,11 @@ actor AdminWebServer {
             return session
         }
 
-        // Then try Bearer token (Remote client)
-        if let authorization = request.headers["authorization"],
-           authorization.hasPrefix("Bearer ") {
-            let sessionID = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespaces)
-            if let session = sessions[sessionID],
-               session.expiresAt > Date(),
-               sessionUserAgentMatches(session, request: request) {
-                return session
-            }
-        }
-
         return nil
     }
 
-    /// Session was bound to a UA at login — reject if it changed. If the session has
-    /// no recorded UA (legacy or native client that sent none), binding is not
-    /// enforced so we don't break existing Remote app installs.
+    /// Session was bound to a UA at login — reject if it changed. A session with
+    /// no recorded UA (the browser sent none) isn't bound.
     private func sessionUserAgentMatches(_ session: Session, request: HTTPRequest) -> Bool {
         guard let bound = session.userAgentHash, !bound.isEmpty else { return true }
         return constantTimeEquals(bound, userAgentHash(for: request))
@@ -4974,34 +5044,6 @@ actor AdminWebServer {
             return false
         }
         return true
-    }
-
-    private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
-        authenticatedSession(for: request) != nil
-    }
-
-    private func validatedAppRedirectURL(from rawValue: String?) -> URL? {
-        guard let rawValue,
-              let url = URL(string: rawValue),
-              url.scheme?.lowercased() == "swiftbot",
-              url.host?.lowercased() == "auth" else {
-            return nil
-        }
-        return url
-    }
-
-    private func remoteAuthRedirectURL(from rawValue: String?, sessionID: String) -> String? {
-        guard let rawValue,
-              let url = URL(string: rawValue),
-              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-
-        var queryItems = components.queryItems ?? []
-        queryItems.removeAll { $0.name == "session" }
-        queryItems.append(URLQueryItem(name: "session", value: sessionID))
-        components.queryItems = queryItems
-        return components.url?.absoluteString
     }
 
     private func validateCSRF(session: Session, request: HTTPRequest) -> Bool {
@@ -5228,6 +5270,30 @@ actor AdminWebServer {
         return result
     }
 
+    /// Scheme, host and port of a URL: `url` for building links, `host` as a
+    /// browser sends it in the Host header (port included unless default).
+    static func origin(of rawURL: String) -> (url: String, host: String)? {
+        guard let components = URLComponents(string: rawURL),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        let isDefaultPort = components.port == nil
+            || (scheme == "https" && components.port == 443)
+            || (scheme == "http" && components.port == 80)
+        let hostHeader = isDefaultPort ? host : "\(host):\(components.port!)"
+        return ("\(scheme)://\(hostHeader)", hostHeader)
+    }
+
+    /// Whether a request arrived through the public Cloudflare tunnel rather
+    /// than from this Mac or the local network. Cloudflare adds these headers
+    /// to every tunnelled request and visitors can't remove them; someone on
+    /// the LAN adding them only locks themselves out.
+    private func isPublicTunnelRequest(_ request: HTTPRequest) -> Bool {
+        if request.headers["cf-connecting-ip"] != nil || request.headers["cf-ray"] != nil { return true }
+        guard let publicHost = passkeyOrigin().flatMap({ Self.origin(of: $0)?.host }),
+              let requestHost = request.headers["host"]?.lowercased() else { return false }
+        return requestHost == publicHost
+    }
+
     private func percentEncode(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
     }
@@ -5257,7 +5323,8 @@ actor AdminWebServer {
         "/api/announcer/test", "/api/announcer/reconnect",
         "/api/welcome-flow/test", "/api/welcome-flow/invites/refresh",
         "/api/sweep/draft/test-mvp",
-        "/api/updates/check", "/api/updates/install", "/api/updates/settings"
+        "/api/updates/check", "/api/updates/install", "/api/updates/settings",
+        "/api/cache/clear", "/api/activity/clear", "/api/bot/permissions/force-rejoin"
     ]
 
     /// `GET /api/bot/permissions` and `GET /api/updates`.
@@ -5311,6 +5378,14 @@ actor AdminWebServer {
                 let unattended = patch.unattended ?? false
                 (operation, auditAction) = (.setUnattendedUpdates(unattended), "\(unattended ? "Turned on" : "Turned off") unattended updates")
             }
+        case "/api/cache/clear": (operation, auditAction) = (.clearCachedData, "Cleared cached server data")
+        case "/api/activity/clear": (operation, auditAction) = (.clearActivity, "Cleared activity")
+        case "/api/bot/permissions/force-rejoin":
+            guard let body = try? apiDecoder.decode(AdminWebForceRejoinRequest.self, from: request.body),
+                  !body.guildID.isEmpty, body.guildID.allSatisfy(\.isNumber) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            (operation, auditAction) = (.forceRejoin(guildID: body.guildID), "Removed SwiftBot from server \(body.guildID) to re-invite it")
         default:
             return jsonResponse(["error": "not_found"], status: "404 Not Found")
         }
@@ -5329,8 +5404,36 @@ actor AdminWebServer {
 
     /// Installs (or replaces) the structured audit-log sink. Hooks AppModel's
     /// `recordAudit(...)` to the web server's auth/config events.
+    func setAutomationSimulator(_ simulator: @escaping @Sendable (AdminWebAutomationSimulationRequest) async -> AdminWebAutomationSimulationPayload?) {
+        automationSimulator = simulator
+    }
+
+    func setActivityReportProvider(_ provider: @escaping @Sendable () async -> String) {
+        activityReportProvider = provider
+    }
+
     func setGameProviderCredentialUpdater(_ updater: @escaping @Sendable (String, String?) async -> String) {
         self.gameProviderCredentialUpdater = updater
+    }
+
+    /// Extra checks for routes that write or hand out a secret: an encrypted
+    /// connection (or a loopback peer) and a sign-in within the last 15
+    /// minutes. Returns the refusal, or nil when the request may proceed.
+    private func sensitiveSecretRefusal(session: Session, request: HTTPRequest, purpose: String) -> Data? {
+        guard activeTransportUsesTLS || Self.isLoopbackPeer(request.peerIP) else {
+            return jsonResponse([
+                "error": "insecure_transport",
+                "message": "Open the WebUI over https to \(purpose). Over plain http the secret could be read by anyone on the network."
+            ], status: "400 Bad Request")
+        }
+        let signedInAt = session.expiresAt.addingTimeInterval(-sessionTTL)
+        guard Date().timeIntervalSince(signedInAt) <= credentialReauthWindow else {
+            return jsonResponse([
+                "error": "reauth_required",
+                "message": "For security, sign out and back in to \(purpose). You signed in more than 15 minutes ago."
+            ], status: "401 Unauthorized")
+        }
+        return nil
     }
 
     /// `POST /api/gametracker/credential`. Write-only: a stolen session can
@@ -5346,18 +5449,8 @@ actor AdminWebServer {
         guard validateCSRF(session: session, request: request) else {
             return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
         }
-        guard activeTransportUsesTLS || Self.isLoopbackPeer(request.peerIP) else {
-            return jsonResponse([
-                "error": "insecure_transport",
-                "message": "Open the WebUI over https to change API keys. Over plain http the key could be read by anyone on the network."
-            ], status: "400 Bad Request")
-        }
-        let signedInAt = session.expiresAt.addingTimeInterval(-sessionTTL)
-        guard Date().timeIntervalSince(signedInAt) <= credentialReauthWindow else {
-            return jsonResponse([
-                "error": "reauth_required",
-                "message": "For security, sign out and back in to change API keys. You signed in more than 15 minutes ago."
-            ], status: "401 Unauthorized")
+        if let refusal = sensitiveSecretRefusal(session: session, request: request, purpose: "change API keys") {
+            return refusal
         }
         guard let update = try? apiDecoder.decode(AdminWebGameProviderCredentialUpdate.self, from: request.body),
               let providerID = GameProviderID(rawValue: update.provider) else {
@@ -6248,18 +6341,23 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
 // tests drive real HTTP bytes through the real router and assert on real
 // responses, so they keep holding after a refactor of anything behind them.
 extension AdminWebServer {
+    func testSetSwiftMeshJoinCodeProvider(_ provider: @escaping @Sendable () async -> String?) {
+        swiftMeshJoinCodeProvider = provider
+    }
+
     /// Inserts a ready-made admin session and returns the values a client would
     /// need to use it. `userAgent` nil leaves the session unbound, matching a
-    /// native Remote client that sent no UA header.
+    /// client that sent no UA header.
     func testSeedSession(
         userAgent: String? = nil,
         expiresIn: TimeInterval = 3_600,
         viewerRole: Bool = false,
-        memberRole: Bool = false
+        memberRole: Bool = false,
+        userID: String = "1234567890"
     ) -> (id: String, csrf: String) {
         let session = Session(
             id: randomToken(),
-            userID: "1234567890",
+            userID: userID,
             username: "audit-fixture",
             globalName: "Audit Fixture",
             discriminator: nil,
@@ -6616,5 +6714,27 @@ extension AdminWebServer {
 extension AdminWebServer {
     func testSetPasskeyAllowList(_ ids: [String]) {
         config.allowedUserIDs = ids
+    }
+}
+
+extension AdminWebServer {
+    /// Sign-in settings for tests, kept out of the Keychain.
+    func testConfigureSignIn(
+        publicBaseURL: String = "",
+        discordClient: Bool = false,
+        localPassword: String? = nil,
+        devFeatures: Bool = false
+    ) {
+        persistAuthenticationState = false
+        config.publicBaseURL = publicBaseURL
+        if discordClient {
+            config.discordOAuth = OAuthProviderSettings(enabled: true, clientID: "123", clientSecret: "fixture-secret")
+        }
+        if let localPassword {
+            config.localAuthEnabled = true
+            config.localAuthUsername = "admin"
+            config.localAuthPassword = localPassword
+        }
+        config.devFeaturesEnabled = devFeatures
     }
 }

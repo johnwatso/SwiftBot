@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import RecordingsKit
 
 enum SwiftBotStorage {
@@ -111,13 +112,15 @@ actor ConfigStore {
     private var lastAdminWebPublicAccessTunnelToken: String?
     private var lastAdminWebLocalAuthPassword: String?
 
-    init(filename: String = SwiftBotStorage.settingsFileName) {
-        let folder = SwiftBotStorage.folderURL()
+    init(filename: String = SwiftBotStorage.settingsFileName, folderURL: URL? = nil) {
+        let folder = folderURL ?? SwiftBotStorage.folderURL()
         self.url = folder.appendingPathComponent(filename)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? MeshSnapshotDisk.recover(in: folder)
     }
 
     func load() -> BotSettings {
+        try? MeshSnapshotDisk.recover(in: url.deletingLastPathComponent())
         guard let data = try? Data(contentsOf: url),
               var settings = try? decoder.decode(BotSettings.self, from: data)
         else { return BotSettings() }
@@ -340,45 +343,440 @@ actor ConfigStore {
         try data.write(to: url, options: .atomic)
     }
 
-    func exportMeshSyncedFiles(excludingFileNames: Set<String>) -> Data? {
-        let folder = SwiftBotStorage.folderURL()
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: folder,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return nil }
-
-        var files: [MeshSyncedFile] = []
-        for fileURL in entries {
-            guard !excludingFileNames.contains(fileURL.lastPathComponent) else { continue }
-            let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
-            guard values?.isRegularFile == true else { continue }
-            guard let data = try? Data(contentsOf: fileURL) else { continue }
-            files.append(MeshSyncedFile(fileName: fileURL.lastPathComponent, base64Data: data.base64EncodedString()))
+    func exportMeshSyncedFiles(excludingFileNames: Set<String>, leaderTerm: Int = 0) -> Data? {
+        let folder = url.deletingLastPathComponent()
+        do {
+            try MeshSnapshotDisk.recover(in: folder)
+            let names = MeshSnapshotDisk.fileNames.subtracting(excludingFileNames)
+            guard names.contains(SwiftBotStorage.settingsFileName), leaderTerm >= 0 else { return nil }
+            var files: [MeshSyncedFile] = []
+            var deleted: [String] = []
+            for name in names.sorted() {
+                let fileURL = folder.appendingPathComponent(name)
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    guard name != SwiftBotStorage.settingsFileName else { return nil }
+                    deleted.append(name)
+                    continue
+                }
+                let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                guard values.isRegularFile == true, values.isSymbolicLink != true else { return nil }
+                var data = try Data(contentsOf: fileURL)
+                guard data.count <= MeshSnapshotDisk.maximumFileBytes else { return nil }
+                if name == SwiftBotStorage.settingsFileName {
+                    data = try MeshBotConfiguration.sharedData(from: data)
+                } else {
+                    try MeshSnapshotDisk.validateFile(data, named: name)
+                }
+                files.append(MeshSyncedFile(fileName: name, base64Data: data.base64EncodedString()))
+            }
+            let digest = try MeshSnapshotDisk.digest(files: files, deleted: deleted)
+            let previous = try MeshSnapshotDisk.loadStamp(in: folder)
+            guard previous.map({ leaderTerm >= $0.version.leaderTerm }) ?? true else { return nil }
+            let version: MeshSnapshotVersion
+            if let previous, previous.version.leaderTerm == leaderTerm {
+                guard previous.version.revision < Int64.max else { return nil }
+                version = MeshSnapshotVersion(
+                    leaderTerm: leaderTerm,
+                    revision: previous.digest == digest ? previous.version.revision : previous.version.revision + 1)
+            } else {
+                version = MeshSnapshotVersion(leaderTerm: leaderTerm, revision: 1)
+            }
+            let stamp = MeshSnapshotDisk.Stamp(version: version, digest: digest)
+            try MeshSnapshotDisk.saveStamp(stamp, in: folder)
+            let payload = MeshSyncedFilesPayload(
+                generatedAt: Date(), files: files,
+                leaderTerm: version.leaderTerm, revision: version.revision, deletedFileNames: deleted)
+            return try encoder.encode(payload)
+        } catch {
+            return nil
         }
-
-        let payload = MeshSyncedFilesPayload(generatedAt: Date(), files: files.sorted(by: { $0.fileName < $1.fileName }))
-        return try? encoder.encode(payload)
     }
 
     @discardableResult
-    func importMeshSyncedFiles(_ data: Data, excludingFileNames: Set<String>) -> Int {
-        guard let payload = try? decoder.decode(MeshSyncedFilesPayload.self, from: data) else { return 0 }
-        let folder = SwiftBotStorage.folderURL()
-        var imported = 0
-        for file in payload.files {
-            guard !excludingFileNames.contains(file.fileName) else { continue }
-            guard !file.fileName.contains("/"), !file.fileName.contains("..") else { continue }
-            guard let decoded = Data(base64Encoded: file.base64Data) else { continue }
-            let url = folder.appendingPathComponent(file.fileName)
-            do {
-                try decoded.write(to: url, options: .atomic)
-                imported += 1
-            } catch {
-                continue
-            }
+    func importMeshSyncedFiles(_ data: Data, excludingFileNames: Set<String>, minimumLeaderTerm: Int = 0) -> Int {
+        importMeshSnapshot(
+            data, excludingFileNames: excludingFileNames,
+            minimumLeaderTerm: minimumLeaderTerm).importedFileCount
+    }
+
+    /// Full snapshots carry deletions and a persisted (term, revision) stamp.
+    /// Validate every entry before staging; never accept partial or stale input.
+    func importMeshSnapshot(_ data: Data, excludingFileNames: Set<String> = [], minimumLeaderTerm: Int) -> MeshSnapshotImportResult {
+        let folder = url.deletingLastPathComponent()
+        func rejected(_ reason: String) -> MeshSnapshotImportResult {
+            MeshSnapshotImportResult(accepted: false, importedFileCount: 0, version: nil, rejectionReason: reason)
         }
-        return imported
+        do {
+            try MeshSnapshotDisk.recover(in: folder)
+            guard data.count <= MeshSnapshotDisk.maximumSnapshotBytes,
+                  let payload = try? decoder.decode(MeshSyncedFilesPayload.self, from: data),
+                  payload.schemaVersion == 2, let term = payload.leaderTerm,
+                  let revision = payload.revision, revision > 0, term >= minimumLeaderTerm,
+                  let deleted = payload.deletedFileNames else { return rejected("invalid_or_stale_snapshot") }
+            let version = MeshSnapshotVersion(leaderTerm: term, revision: revision)
+            let names = MeshSnapshotDisk.fileNames.subtracting(excludingFileNames)
+            let writtenNames = payload.files.map(\.fileName)
+            guard Set(writtenNames).count == writtenNames.count,
+                  Set(deleted).count == deleted.count,
+                  Set(writtenNames).isDisjoint(with: Set(deleted)),
+                  Set(writtenNames).union(deleted) == names,
+                  writtenNames.contains(SwiftBotStorage.settingsFileName) else { return rejected("invalid_manifest") }
+
+            var staged: [MeshSyncedFile] = []
+            for file in payload.files {
+                guard let decoded = Data(base64Encoded: file.base64Data),
+                      decoded.count <= MeshSnapshotDisk.maximumFileBytes else { return rejected("invalid_file") }
+                let destination = folder.appendingPathComponent(file.fileName)
+                if let values = try? destination.resourceValues(forKeys: [.isSymbolicLinkKey]), values.isSymbolicLink == true {
+                    return rejected("symlink_destination")
+                }
+                let merged: Data
+                if file.fileName == SwiftBotStorage.settingsFileName {
+                    let local = try (try? Data(contentsOf: url)) ?? encoder.encode(BotSettings())
+                    merged = try MeshBotConfiguration.mergingSharedData(decoded, into: local)
+                } else {
+                    try MeshSnapshotDisk.validateFile(decoded, named: file.fileName)
+                    merged = decoded
+                }
+                staged.append(MeshSyncedFile(fileName: file.fileName, base64Data: merged.base64EncodedString()))
+            }
+            let digest = try MeshSnapshotDisk.digest(files: payload.files, deleted: deleted)
+            if let previous = try MeshSnapshotDisk.loadStamp(in: folder) {
+                guard version >= previous.version else { return rejected("stale_revision") }
+                if version == previous.version {
+                    guard digest == previous.digest else { return rejected("conflicting_revision") }
+                    return MeshSnapshotImportResult(accepted: true, importedFileCount: 0, version: version, rejectionReason: nil)
+                }
+            }
+            let stamp = MeshSnapshotDisk.Stamp(version: version, digest: digest)
+            try MeshSnapshotDisk.commit(files: staged, deleted: deleted, stamp: stamp, in: folder)
+            return MeshSnapshotImportResult(
+                accepted: true,
+                importedFileCount: staged.count + deleted.count, version: version, rejectionReason: nil)
+        } catch {
+            return rejected("snapshot_storage_or_validation_failed")
+        }
+    }
+
+    func meshSnapshotVersion() -> MeshSnapshotVersion? {
+        (try? MeshSnapshotDisk.loadStamp(in: url.deletingLastPathComponent()))?.version
+    }
+}
+
+/// Explicit bot configuration projection. Transport, recovery credentials,
+/// startup preferences and mesh identity remain owned by the receiving Mac.
+enum MeshBotConfiguration {
+    static let sharedKeys: Set<String> = [
+        "prefix", "commandsEnabled", "prefixCommandsEnabled", "slashCommandsEnabled", "disabledCommandKeys",
+        "guildSettings", "clusterWorkerOffloadEnabled", "clusterOffloadAIReplies", "clusterOffloadWikiLookups",
+        "localAIDMReplyEnabled", "aiActivityAnswersEnabled", "recordingSourceOwners", "recordingGameOverrides",
+        "recordingGameAliases", "operators", "userTimezones", "aiMemoryNotes", "localAISystemPrompt",
+        "behavior", "welcomeFlow", "wikiBot", "patchy", "musicLinkWatch", "gameTracking",
+        "gameProviders", "cachedBotIdentity", "help", "voice", "rewind"
+    ]
+    static let sharedAuthKeys: Set<String> = [
+        "discordOAuth", "redirectPath", "restrictAccessToSpecificUsers", "allowedUserIDs", "memberAccessEnabled"
+    ]
+
+    static func withoutSecrets(_ value: BotSettings) -> BotSettings {
+        var copy = value
+        copy.token = ""
+        copy.clusterSharedSecret = ""
+        copy.adminWebUI.discordOAuth.clientSecret = ""
+        copy.adminWebUI.localAuthPassword = ""
+        copy.adminWebUI.cloudflareAPIToken = ""
+        copy.adminWebUI.publicAccessTunnelToken = ""
+        copy.gameProviders.clearTokens()
+        copy.swiftMiner.apiKey = ""
+        copy.swiftMiner.webhookSecret = ""
+        return copy
+    }
+
+    static func sharedData(from data: Data) throws -> Data {
+        let settings = try JSONDecoder().decode(BotSettings.self, from: data)
+        let object = try dictionary(from: JSONEncoder().encode(withoutSecrets(settings)))
+        var shared = object.filter { sharedKeys.contains($0.key) }
+        let web = (object["adminWebUI"] as? [String: Any]) ?? [:]
+        shared["adminWebUI"] = web.filter { sharedAuthKeys.contains($0.key) }
+        // Voice identifiers are installed on a particular Mac.
+        if var voice = shared["voice"] as? [String: Any] {
+            voice.removeValue(forKey: "preferredVoiceIdentifier")
+            shared["voice"] = voice
+        }
+        return try JSONSerialization.data(withJSONObject: shared, options: [.sortedKeys])
+    }
+
+    static func mergingSharedData(_ incoming: Data, into local: Data) throws -> Data {
+        let shared = try dictionary(from: sharedData(from: incoming))
+        let localSettings = try JSONDecoder().decode(BotSettings.self, from: local)
+        var merged = try dictionary(from: JSONEncoder().encode(withoutSecrets(localSettings)))
+        for key in sharedKeys {
+            if let value = shared[key] { merged[key] = value }
+        }
+        var web = (merged["adminWebUI"] as? [String: Any]) ?? [:]
+        for (key, value) in (shared["adminWebUI"] as? [String: Any]) ?? [:] { web[key] = value }
+        merged["adminWebUI"] = web
+        if var voice = merged["voice"] as? [String: Any] {
+            voice["preferredVoiceIdentifier"] = localSettings.voice.preferredVoiceIdentifier
+            merged["voice"] = voice
+        }
+        let result = try JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys])
+        _ = try JSONDecoder().decode(BotSettings.self, from: result)
+        return result
+    }
+
+    private static func dictionary(from data: Data) throws -> [String: Any] {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return object
+    }
+}
+
+/// The journal is written before touching any destination. A crash rolls the
+/// complete staged snapshot forward before ConfigStore reads it again; normal
+/// I/O failures restore the original files and stamp instead of acknowledging
+/// a partially imported snapshot. Ordering is always (term, revision).
+enum MeshSnapshotDisk {
+    static let fileNames: Set<String> = [
+        SwiftBotStorage.settingsFileName, SwiftBotStorage.rulesFileName, "automations.json",
+        "automation-executions.json", "bot-command-cooldowns.json",
+        SwiftBotStorage.voiceActiveSessionsFileName, SwiftBotStorage.voiceSessionHistoryFileName,
+        SwiftBotStorage.gameTrackingStateFileName, SwiftBotStorage.communityStatsFileName
+    ]
+    static let maximumFileBytes = 16 * 1024 * 1024
+    static let maximumSnapshotBytes = 96 * 1024 * 1024
+    private static let stampName = "mesh-config-revision.json"
+    private static let journalName = ".mesh-config-transaction.json"
+
+    struct Stamp: Codable {
+        let version: MeshSnapshotVersion
+        let digest: String
+    }
+    struct Transaction: Codable {
+        let files: [MeshSyncedFile]
+        let deleted: [String]
+        let stamp: Stamp
+    }
+
+    static func validateFile(_ data: Data, named name: String) throws {
+        try validateJSON(data)
+        switch name {
+        case "automations.json":
+            _ = try JSONDecoder().decode([Automations.Rule].self, from: data)
+        case AutomationExecutionJournal.fileName:
+            let records = try JSONDecoder().decode([AutomationExecutionCheckpoint].self, from: data)
+            guard records.count <= 1000, Set(records.map(\.id)).count == records.count,
+                  records.allSatisfy({ $0.nextStep >= 0 && $0.nextStep <= $0.rule.steps.count }) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+        case "bot-command-cooldowns.json":
+            _ = try JSONDecoder().decode([String: Date].self, from: data)
+        default: break
+        }
+    }
+
+    static func validateJSON(_ data: Data) throws {
+        _ = try JSONSerialization.jsonObject(with: data)
+    }
+
+    static func digest(files: [MeshSyncedFile], deleted: [String]) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let manifest = MeshSyncedFilesPayload(
+            generatedAt: Date(timeIntervalSince1970: 0),
+            files: files.sorted { $0.fileName < $1.fileName }, deletedFileNames: deleted.sorted())
+        return SHA256.hash(data: try encoder.encode(manifest)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func loadStamp(in folder: URL) throws -> Stamp? {
+        let url = folder.appendingPathComponent(stampName)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try JSONDecoder().decode(Stamp.self, from: Data(contentsOf: url))
+    }
+
+    static func saveStamp(_ stamp: Stamp, in folder: URL) throws {
+        try JSONEncoder().encode(stamp).write(to: folder.appendingPathComponent(stampName), options: .atomic)
+    }
+
+    static func recover(in folder: URL) throws {
+        let journal = folder.appendingPathComponent(journalName)
+        guard FileManager.default.fileExists(atPath: journal.path) else { return }
+        let transaction = try JSONDecoder().decode(Transaction.self, from: Data(contentsOf: journal))
+        guard Set(transaction.files.map(\.fileName)).union(transaction.deleted).isSubset(of: fileNames) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        try install(transaction, in: folder)
+        try FileManager.default.removeItem(at: journal)
+    }
+
+    static func commit(files: [MeshSyncedFile], deleted: [String], stamp: Stamp, in folder: URL) throws {
+        let manager = FileManager.default
+        let journal = folder.appendingPathComponent(journalName)
+        let transaction = Transaction(files: files, deleted: deleted, stamp: stamp)
+        let names = Set(files.map(\.fileName)).union(deleted)
+        var originalFiles: [MeshSyncedFile] = []
+        var originalMissing: [String] = []
+        for name in names {
+            let url = folder.appendingPathComponent(name)
+            if manager.fileExists(atPath: url.path) {
+                let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                originalFiles.append(MeshSyncedFile(
+                    fileName: name,
+                    base64Data: try Data(contentsOf: url).base64EncodedString()
+                ))
+            } else { originalMissing.append(name) }
+        }
+        let oldStamp = try loadStamp(in: folder)
+        try JSONEncoder().encode(transaction).write(to: journal, options: .atomic)
+        do {
+            try install(transaction, in: folder)
+            try manager.removeItem(at: journal)
+        } catch {
+            let originalError = error
+            // Keep the journal if rollback fails: startup recovery can still
+            // install the complete snapshot rather than trust mixed files.
+            for original in originalFiles {
+                guard let data = Data(base64Encoded: original.base64Data) else { continue }
+                try data.write(to: folder.appendingPathComponent(original.fileName), options: .atomic)
+            }
+            for name in originalMissing {
+                let url = folder.appendingPathComponent(name)
+                if manager.fileExists(atPath: url.path) { try manager.removeItem(at: url) }
+            }
+            if let oldStamp {
+                try saveStamp(oldStamp, in: folder)
+            } else {
+                let url = folder.appendingPathComponent(stampName)
+                if manager.fileExists(atPath: url.path) { try manager.removeItem(at: url) }
+            }
+            try manager.removeItem(at: journal)
+            throw originalError
+        }
+    }
+
+    private static func install(_ transaction: Transaction, in folder: URL) throws {
+        for file in transaction.files {
+            guard let data = Data(base64Encoded: file.base64Data) else { throw CocoaError(.fileReadCorruptFile) }
+            try data.write(to: folder.appendingPathComponent(file.fileName), options: .atomic)
+        }
+        for name in transaction.deleted {
+            let url = folder.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
+        try saveStamp(transaction.stamp, in: folder)
+    }
+}
+
+actor MeshCredentialEnrollmentStore {
+    private struct State: Codable {
+        var local: MeshCredentialEnrollment?
+        var grants: [MeshCredentialGrant] = []
+    }
+    private let account: String
+    private var loadedState: State?
+
+    /// Read from the Keychain on first use, on this actor. Reading in `init`
+    /// ran on the main thread while AppModel was created, so a Keychain
+    /// prompt froze launch before any window appeared.
+    private var state: State {
+        get {
+            if let loadedState { return loadedState }
+            var loaded = State()
+            if let stored = KeychainHelper.load(account: account), let data = stored.data(using: .utf8),
+               let decoded = try? JSONDecoder().decode(State.self, from: data) {
+                loaded = decoded
+            }
+            loadedState = loaded
+            return loaded
+        }
+        set { loadedState = newValue }
+    }
+
+    init(account: String = "swiftmesh-credential-enrollment") {
+        self.account = account
+    }
+
+    func loadOrCreateLocalEnrollment() throws -> MeshCredentialEnrollment {
+        if let local = state.local { return local }
+        let enrollment = Self.makeEnrollment()
+        try saveLocalEnrollment(enrollment)
+        return enrollment
+    }
+
+    func saveLocalEnrollment(_ enrollment: MeshCredentialEnrollment) throws {
+        guard !enrollment.nodeID.isEmpty, Self.privateKey(enrollment.token) != nil else {
+            throw CocoaError(.validationMissingMandatoryProperty)
+        }
+        var copy = state
+        copy.local = enrollment
+        try persist(copy)
+    }
+
+    func issueGrant(nodeName: String) throws -> MeshCredentialEnrollment {
+        let enrollment = Self.makeEnrollment()
+        try authorize(enrollment: enrollment, nodeName: nodeName)
+        return enrollment
+    }
+
+    func authorize(enrollment: MeshCredentialEnrollment, nodeName: String) throws {
+        guard !enrollment.nodeID.isEmpty, let key = Self.privateKey(enrollment.token) else {
+            throw CocoaError(.validationMissingMandatoryProperty)
+        }
+        let publicKey = key.publicKey.rawRepresentation.base64EncodedString()
+        let prior = state.grants.first { $0.nodeID == enrollment.nodeID }
+        if prior?.publicKey == publicKey { return }
+        var copy = state
+        copy.grants.removeAll { $0.nodeID == enrollment.nodeID }
+        copy.grants.append(MeshCredentialGrant(
+            nodeID: enrollment.nodeID, nodeName: nodeName,
+            publicKey: publicKey, revision: (prior?.revision ?? 0) + 1))
+        try persist(copy)
+    }
+
+    func authorizedPublicKey(nodeID: String) -> String? { state.grants.first { $0.nodeID == nodeID }?.publicKey }
+    func allGrants() -> [MeshCredentialGrant] { state.grants.sorted { $0.nodeID < $1.nodeID } }
+
+    /// Authoritative full replacement intentionally propagates revocations.
+    /// The caller must validate the leader term/config revision first.
+    func replaceGrants(_ grants: [MeshCredentialGrant]) throws {
+        guard Set(grants.map(\.nodeID)).count == grants.count,
+              grants.allSatisfy({ grant in
+                  guard !grant.nodeID.isEmpty, grant.revision > 0,
+                        let raw = Data(base64Encoded: grant.publicKey) else { return false }
+                  return (try? Curve25519.Signing.PublicKey(rawRepresentation: raw)) != nil
+              }) else {
+            throw CocoaError(.validationMissingMandatoryProperty)
+        }
+        var copy = state
+        copy.grants = grants
+        try persist(copy)
+    }
+
+    func revoke(nodeID: String) throws {
+        var copy = state
+        copy.grants.removeAll { $0.nodeID == nodeID }
+        try persist(copy)
+    }
+
+    private func persist(_ copy: State) throws {
+        let data = try JSONEncoder().encode(copy)
+        guard KeychainHelper.update(data, account: account) else { throw CocoaError(.fileWriteNoPermission) }
+        state = copy
+    }
+
+    private static func makeEnrollment() -> MeshCredentialEnrollment {
+        MeshCredentialEnrollment(
+            nodeID: UUID().uuidString,
+            token: Curve25519.Signing.PrivateKey().rawRepresentation.base64EncodedString())
+    }
+
+    private static func privateKey(_ encoded: String) -> Curve25519.Signing.PrivateKey? {
+        guard let raw = Data(base64Encoded: encoded) else { return nil }
+        return try? Curve25519.Signing.PrivateKey(rawRepresentation: raw)
     }
 }
 

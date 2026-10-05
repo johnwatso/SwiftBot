@@ -3,93 +3,101 @@ import SwiftUI
 
 struct DiscordPreferencesView: View {
     @EnvironmentObject var app: AppModel
-
-    @State private var showToken = false
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
+    @State private var isReplacingToken = false
     @State private var showingPermissionsCheck = false
+    @State private var showingTokenEditor = false
+    @State private var isVerifyingToken = false
+    @State private var tokenVerifyError: String?
 
     private var canGenerateInviteLink: Bool {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
-        PreferencesTabContainer {
-            if app.isFailoverManagedNode {
-                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
-            }
-
-            PreferencesCard("Discord Authentication", systemImage: "message", assetImage: "DiscordLogo") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Bot Token")
-                        .font(.subheadline.weight(.medium))
-
-                    HStack {
-                        if showToken {
-                            TextField("Token", text: $app.settings.token)
-                                .textFieldStyle(.roundedBorder)
-                        } else {
-                            SecureField("Token", text: $app.settings.token)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button {
-                            showToken.toggle()
-                        } label: {
-                            Image(systemName: showToken ? "eye.slash" : "eye")
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            showingPermissionsCheck = true
-                        } label: {
-                            Label("Check Permissions", systemImage: "checkmark.shield")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .buttonBorderShape(.capsule)
-                        .disabled(!canGenerateInviteLink)
-                        .help("Inspect what the bot can do in each connected server.")
+        SettingsForm(readOnlyBannerText: app.isFailoverManagedNode
+            ? "Discord settings are managed by the Primary node." : nil) {
+            Section {
+                ConsoleSettingRow(title: "Bot Token", symbol: "key") {
+                    HStack(spacing: 8) {
+                        Text(canGenerateInviteLink ? "Configured" : "Not configured")
+                            .foregroundStyle(.secondary)
+                        Button(canGenerateInviteLink ? "Manage…" : "Add…") { showingTokenEditor = true }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.capsule)
                     }
+                }
 
-                    Text("Obtain this from the Discord Developer Portal.")
+                ConsoleSettingRow(title: "Invite Bot", symbol: "person.badge.plus") {
+                    HStack(spacing: 6) {
+                        SettingsInlineAction("Copy Link", systemImage: "doc.on.doc") {
+                            Task { await copyInviteLink() }
+                        }
+                        .disabled(!canGenerateInviteLink || inviteActionInProgress)
+
+                        SettingsInlineAction("Open", systemImage: "arrow.up.right.square") {
+                            Task { await openInviteLink() }
+                        }
+                        .disabled(!canGenerateInviteLink || inviteActionInProgress)
+
+                        SettingsInlineAction("Check Permissions", systemImage: "checkmark.shield") {
+                            showingPermissionsCheck = true
+                        }
+                        .disabled(!canGenerateInviteLink)
+                    }
+                }
+
+                ConsoleSettingRow(
+                    title: "Connect at Launch",
+                    symbol: "power",
+                    subtitle: "Start the bot when SwiftBot opens."
+                ) {
+                    ConsoleRowSwitch(isOn: $app.settings.autoStart)
+                }
+            } header: {
+                Text("Bot")
+            } footer: {
+                if !canGenerateInviteLink {
+                    Text("Create a bot in the Discord Developer Portal and paste its token to enable these actions.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            .preferencesCardDisabled(when: app.isFailoverManagedNode)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Invite Bot")
-                        .font(.subheadline)
+        }
+        .sheet(isPresented: $showingTokenEditor, onDismiss: resetTokenEditor) {
+            VStack(alignment: .leading, spacing: 20) {
+                Label("Discord Bot Token", systemImage: "key.fill")
+                    .font(.title2.weight(.semibold))
+                Text("Stored securely in your macOS Keychain. Copy a bot token from the Discord Developer Portal to paste and verify it here.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                botTokenControl
+                if isReplacingToken {
+                    Label("The current token stays in use until Discord accepts the new one. SwiftBot then reconnects with it.", systemImage: "exclamationmark.triangle")
+                        .font(.callout)
                         .foregroundStyle(.secondary)
-
-                    HStack(spacing: 10) {
-                        Button {
-                            Task { await copyInviteLink() }
-                        } label: {
-                            Label("Copy Invite Link", systemImage: "doc.on.doc")
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            Task { await openInviteLink() }
-                        } label: {
-                            Label("Open Invite Link", systemImage: "arrow.up.forward.square")
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(!canGenerateInviteLink || inviteActionInProgress)
-
-                    if !canGenerateInviteLink {
-                        Text("Bot token required to generate invite link.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack {
+                    Spacer()
+                    if isReplacingToken {
+                        Button("Cancel", role: .cancel) { resetTokenEditor() }
+                            .keyboardShortcut(.cancelAction)
+                            .disabled(isVerifyingToken)
+                    } else {
+                        Button("Done") { showingTokenEditor = false }
+                            .keyboardShortcut(.cancelAction)
+                            .disabled(isVerifyingToken)
                     }
                 }
             }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+            .padding(24)
+            .frame(width: 520)
+            .interactiveDismissDisabled(isVerifyingToken)
         }
         .sheet(isPresented: $showingPermissionsCheck) {
             BotPermissionsCheckView(token: app.settings.token)
@@ -110,6 +118,91 @@ struct DiscordPreferencesView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+    }
+
+    @ViewBuilder
+    private var botTokenControl: some View {
+        if isReplacingToken || app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            HStack(spacing: 8) {
+                Button {
+                    Task { await pasteAndVerifyToken() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isVerifyingToken {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        Text(isVerifyingToken ? "Verifying…" : "Paste & Verify Token")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isVerifyingToken)
+
+                if let tokenVerifyError {
+                    Text(tokenVerifyError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(verifiedTokenLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 6)
+
+                Button("Replace…") {
+                    tokenVerifyError = nil
+                    isReplacingToken = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var verifiedTokenLabel: String {
+        let cached = app.settings.cachedBotIdentity.username
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cached.isEmpty ? "Token saved" : "Verified as @\(cached)"
+    }
+
+    private func pasteAndVerifyToken() async {
+        guard !isVerifyingToken else { return }
+        tokenVerifyError = nil
+
+        let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
+        let normalized = app.normalizedDiscordToken(from: clipboard)
+        guard !normalized.isEmpty else {
+            tokenVerifyError = "Clipboard is empty. Copy your bot token first."
+            return
+        }
+
+        isVerifyingToken = true
+        defer { isVerifyingToken = false }
+
+        // The saved token is only replaced once Discord accepts the new one.
+        if await app.replaceBotToken(with: normalized) {
+            isReplacingToken = false
+            showToast("Token verified")
+        } else {
+            tokenVerifyError = app.lastTokenValidationResult?.errorMessage
+                ?? "Discord rejected this token."
+        }
+    }
+
+    private func resetTokenEditor() {
+        isReplacingToken = false
+        tokenVerifyError = nil
     }
 
     private func copyInviteLink() async {

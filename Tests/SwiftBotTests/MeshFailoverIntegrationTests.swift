@@ -77,69 +77,14 @@ final class MeshFailoverIntegrationTests: XCTestCase {
         await primary.stopAll()
     }
 
-    func testRepairedStandbyAdoptsPrimaryTermBeforeSync() async {
-        let secret = "term-repair-secret"
-        let primaryPort = 39306
-        let standbyPort = 39307
-        let primaryURL = "http://127.0.0.1:\(primaryPort)"
-
+    func testRegistrationNeverLowersStandbyTerm() async {
         let primary = ClusterCoordinator()
-        await primary.applySettings(
-            mode: .leader,
-            nodeName: "TermPrimary",
-            leaderAddress: "",
-            listenPort: primaryPort,
-            sharedSecret: secret,
-            leaderTerm: 3
-        )
-
-        try? await Task.sleep(nanoseconds: 250_000_000)
-
+        await primary.applySettings(mode: .leader, nodeName: "TermPrimary", leaderAddress: "", listenPort: 39306, sharedSecret: "term-secret", leaderTerm: 3)
         let standby = ClusterCoordinator()
-        let syncExpectation = expectation(description: "Standby accepts Primary sync after adopting registered term")
-
-        await standby.configureHandlers(
-            aiHandler: { _, _, _, _ in nil },
-            wikiHandler: { _, _ in nil },
-            onSnapshot: { _ in },
-            onJobLog: { _ in },
-            onSync: { payload in
-                if payload.leaderTerm == 3 {
-                    syncExpectation.fulfill()
-                }
-            },
-            meshHandler: { _ in nil },
-            conversationFetcher: { _, _ in ([], false) }
-        )
-
-        await standby.applySettings(
-            mode: .standby,
-            nodeName: "TermStandby",
-            leaderAddress: primaryURL,
-            listenPort: standbyPort,
-            sharedSecret: secret,
-            leaderTerm: 9
-        )
-
-        var adoptedTerm: Int?
-        for _ in 0..<20 {
-            let term = await standby.testCurrentLeaderTerm()
-            if term == 3 {
-                adoptedTerm = term
-                break
-            }
-            try? await Task.sleep(nanoseconds: 150_000_000)
-        }
-
-        XCTAssertEqual(adoptedTerm, 3, "A re-paired Standby must adopt the registered Primary's term instead of keeping a stale higher local term")
-
-        let payload = MeshSyncPayload(conversations: [], leaderTerm: 3)
-        await primary.pushSyncPayloadToNodes(payload)
-        await fulfillment(of: [syncExpectation], timeout: 3.0)
-
-        let primaryMode = await primary.testCurrentMode()
-        XCTAssertEqual(primaryMode, .leader, "Primary must not demote just because a re-paired Standby previously held a stale higher term")
-
+        await standby.applySettings(mode: .standby, nodeName: "TermStandby", leaderAddress: "http://127.0.0.1:39306", listenPort: 39307, sharedSecret: "term-secret", leaderTerm: 9)
+        try? await Task.sleep(for: .milliseconds(600))
+        let term = await standby.currentLeaderTerm()
+        XCTAssertEqual(term, 9, "A registration response cannot roll back persisted leadership history")
         await standby.stopAll()
         await primary.stopAll()
     }

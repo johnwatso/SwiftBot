@@ -3,11 +3,7 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Overview view that works with any BotDataProvider (local or remote).
-/// Uses the provider protocol to access bot data, enabling a unified UI shell.
 struct OverviewView: View {
-    /// The bot data provider (injected via environment from unified shell)
-    @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
 
     var onOpenSwiftMesh: (() -> Void)?
@@ -45,17 +41,16 @@ struct OverviewView: View {
 
     // MARK: - Data Access via Provider
 
-    private var settings: BotSettings { provider.settings }
-    private var status: BotStatus { provider.status }
-    private var stats: StatCounter { provider.stats }
-    private var voiceLog: [VoiceEventLogEntry] { provider.voiceLog }
-    private var commandLog: [CommandLogEntry] { provider.commandLog }
-    private var activeVoice: [VoiceMemberPresence] { provider.activeVoice }
-    private var uptime: UptimeInfo? { provider.uptime }
-    private var connectedServers: [String: String] { provider.connectedServers }
-    private var clusterSnapshot: ClusterSnapshot { provider.clusterSnapshot }
-    private var clusterNodes: [ClusterNodeStatus] { provider.clusterNodes }
-    private var rules: [Rule] { provider.rules }
+    private var settings: BotSettings { app.settings }
+    private var status: BotStatus { app.status }
+    private var stats: StatCounter { app.stats }
+    private var voiceLog: [VoiceEventLogEntry] { app.voiceLog }
+    private var commandLog: [CommandLogEntry] { app.commandLog }
+    private var activeVoice: [VoiceMemberPresence] { app.activeVoice }
+    private var uptime: UptimeInfo? { app.uptime }
+    private var connectedServers: [String: String] { app.connectedServers }
+    private var clusterSnapshot: ClusterSnapshot { app.clusterSnapshot }
+    private var clusterNodes: [ClusterNodeStatus] { app.clusterNodes }
 
     private var recentVoice: [VoiceEventLogEntry] {
         Array(voiceLog.prefix(5))
@@ -94,9 +89,8 @@ struct OverviewView: View {
         OverviewHealthReport(.init(
             status: status,
             settings: settings,
-            events: provider.events,
+            events: app.events,
             commandLog: commandLog,
-            rules: rules,
             enabledAutomationCount: app.automationStore.rules.filter(\.enabled).count,
             clusterNodes: clusterNodes,
             clusterSnapshot: clusterSnapshot,
@@ -105,8 +99,8 @@ struct OverviewView: View {
             intentsAccepted: app.intentsAccepted,
             lastVoiceStateAt: app.lastVoiceStateAt,
             lastClusterStatusSuccessAt: app.lastClusterStatusSuccessAt,
-            patchyLastCycleAt: provider.patchyLastCycleAt,
-            patchyIsCycleRunning: provider.patchyIsCycleRunning,
+            patchyLastCycleAt: app.patchyLastCycleAt,
+            patchyIsCycleRunning: app.patchyIsCycleRunning,
             memoryText: OverviewHealthReport.memoryText(samples: memorySamples)
         ))
     }
@@ -816,7 +810,6 @@ private struct OverviewMetricDropDelegate: DropDelegate {
 }
 
 struct OverviewClusterMapCard: View {
-    @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
     let nodes: [ClusterNodeStatus]
     var onOpenSwiftMesh: (() -> Void)?
@@ -865,8 +858,8 @@ struct OverviewClusterMapCard: View {
             strokeOpacity: 0.08,
             shadowOpacity: 0.025
         )
-        .task(id: provider.settings.clusterMode) {
-            guard provider.settings.clusterMode == .leader || provider.settings.clusterMode == .standby else { return }
+        .task(id: app.settings.clusterMode) {
+            guard app.settings.clusterMode == .leader || app.settings.clusterMode == .standby else { return }
             await app.pollClusterStatus()
         }
     }

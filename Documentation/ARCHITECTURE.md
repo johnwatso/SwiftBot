@@ -33,7 +33,7 @@ This document provides a high-level overview of the SwiftBot application archite
   - Discord metadata caching for offline configuration
 - **Key Properties:**
   - `eventBus: EventBus` - Event system for plugins
-  - `ruleStore: RuleStore` - Notification rules
+  - `automationStore: AutomationStore` - Automations and Moderation rules
   - `service: DiscordService` - Discord API service
   - `pluginManager: PluginManager` - Plugin lifecycle
 
@@ -56,7 +56,6 @@ This document provides a high-level overview of the SwiftBot application archite
   - `BotSettings.swift` — Core system and user preferences (non-sensitive preferences persist to `settings.json`).
   - `ClusterModels.swift` — Core data transfer objects, heartbeats, and cluster states for SwiftMesh.
   - `EventBus.swift` — Event protocol, type-safe Pub/Sub event bus, and tokens.
-  - `RuleEngineModels.swift` — Core rule matching and evaluation states.
   - `AppSharedTypes.swift` / `BotStateModels.swift` / `GatewayModels.swift` — Platform diagnostic, logging, and gateway payloads.
 
 ### 5. Persistence
@@ -187,35 +186,6 @@ Update voiceDurations dictionary
 
 ## Important Implementation Details
 
-### Binding Architecture in Server Notifier
-**Critical Pattern (Fixed 2026-03-02):**
-```swift
-// selectedRuleBinding must always look up CURRENT selectedRuleID
-// Not capture it at creation time
-private var selectedRuleBinding: Binding<Rule>? {
-    return Binding(
-        get: {
-            guard let currentSelectedID = app.ruleStore.selectedRuleID,
-                  let idx = app.ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
-                return Rule(id: selectedRuleID)
-            }
-            return app.ruleStore.rules[idx]
-        },
-        set: { updatedRule in
-            guard let currentSelectedID = app.ruleStore.selectedRuleID,
-                  let idx = app.ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
-                return
-            }
-            app.ruleStore.rules[idx] = updatedRule
-        }
-    )
-}
-
-// RuleEditorView MUST have .id() for proper recreation
-RuleEditorView(rule: selectedRuleBinding)
-    .id(app.ruleStore.selectedRuleID)
-```
-
 ### Discord Gateway Opcodes
 - **0** - Dispatch (events like VOICE_STATE_UPDATE, MESSAGE_CREATE)
 - **1** - Heartbeat request from server
@@ -335,8 +305,7 @@ SwiftBot.xcodeproj
     │   │   ├── Automations.swift (IFTTT step-based rules and variables models)
     │   │   ├── BotSettings.swift (non-sensitive preferences)
     │   │   ├── ClusterModels.swift (mesh data types)
-    │   │   ├── EventBus.swift (event hub engine)
-    │   │   └── RuleEngineModels.swift (matching models)
+    │   │   └── EventBus.swift (event hub engine)
     │   ├── Services/
     │   │   ├── CommandProcessor.swift (bot slash and manual commands processing)
     │   │   ├── DiscordIdentityRESTClient.swift (identities parsing)

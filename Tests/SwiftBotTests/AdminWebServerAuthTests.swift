@@ -51,6 +51,103 @@ final class AdminWebServerAuthTests: XCTestCase {
 
     // MARK: - Session authentication
 
+    func testSwiftMeshPairingRequiresAdminAndCSRF() async {
+        let server = AdminWebServer()
+        let path = "/api/swiftmesh/pair"
+        let anonymous = await server.testProcessRequest(makeRequest(method: "POST", path: path))
+        XCTAssertEqual(statusCode(from: anonymous), 401)
+
+        let viewer = await server.testSeedSession(viewerRole: true)
+        let forbidden = await server.testProcessRequest(
+            makeRequest(method: "POST", path: path, cookie: viewer.id, csrf: viewer.csrf)
+        )
+        XCTAssertEqual(statusCode(from: forbidden), 403)
+
+        let member = await server.testSeedSession(memberRole: true)
+        let memberResponse = await server.testProcessRequest(
+            makeRequest(method: "POST", path: path, cookie: member.id, csrf: member.csrf)
+        )
+        XCTAssertEqual(statusCode(from: memberResponse), 403)
+
+        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
+        let noCSRF = await server.testProcessRequest(
+            makeRequest(method: "POST", path: path, cookie: admin.id),
+            peerIP: "127.0.0.1"
+        )
+        XCTAssertEqual(statusCode(from: noCSRF), 403)
+
+        // An authenticated admin reaches the provider, which is absent here.
+        let unavailable = await server.testProcessRequest(
+            makeRequest(method: "POST", path: path, cookie: admin.id, csrf: admin.csrf),
+            peerIP: "127.0.0.1"
+        )
+        XCTAssertEqual(statusCode(from: unavailable), 409)
+        XCTAssertFalse(bodyString(from: unavailable).contains("swiftmesh://"))
+        XCTAssertTrue(String(decoding: unavailable, as: UTF8.self).contains("Cache-Control: no-store"))
+    }
+
+    func testSwiftMeshPairingReturnsLinkOnlyToAuthorizedAdmin() async {
+        let server = AdminWebServer()
+        let joinURL = "swiftmesh://join?b=fixture"
+        await server.testSetSwiftMeshJoinCodeProvider { joinURL }
+        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
+        let response = await server.testProcessRequest(
+            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: admin.id, csrf: admin.csrf),
+            peerIP: "127.0.0.1"
+        )
+        XCTAssertEqual(statusCode(from: response), 200)
+        let payload = try? JSONDecoder().decode([String: String].self, from: Data(bodyString(from: response).utf8))
+        XCTAssertEqual(payload?["joinURL"], joinURL)
+        XCTAssertTrue(String(decoding: response, as: UTF8.self).contains("Cache-Control: no-store"))
+
+        let viewer = await server.testSeedSession(viewerRole: true)
+        let forbidden = await server.testProcessRequest(
+            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: viewer.id, csrf: viewer.csrf)
+        )
+        XCTAssertEqual(statusCode(from: forbidden), 403)
+        XCTAssertFalse(bodyString(from: forbidden).contains(joinURL))
+    }
+
+    func testSwiftMeshPairingRefusesLocalPasswordSessions() async {
+        let server = AdminWebServer()
+        await server.testSetSwiftMeshJoinCodeProvider { "swiftmesh://join?b=fixture" }
+        let local = await server.testSeedSession(expiresIn: 24 * 60 * 60, userID: "local:admin")
+        let response = await server.testProcessRequest(
+            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: local.id, csrf: local.csrf),
+            peerIP: "127.0.0.1"
+        )
+        XCTAssertEqual(statusCode(from: response), 403)
+        XCTAssertTrue(bodyString(from: response).contains("discord_required"))
+        XCTAssertFalse(bodyString(from: response).contains("swiftmesh://"))
+    }
+
+    func testSwiftMeshPairingRefusesPlainHTTPFromTheNetwork() async {
+        let server = AdminWebServer()
+        await server.testSetSwiftMeshJoinCodeProvider { "swiftmesh://join?b=fixture" }
+        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
+        let response = await server.testProcessRequest(
+            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: admin.id, csrf: admin.csrf),
+            peerIP: "192.168.1.20"
+        )
+        XCTAssertEqual(statusCode(from: response), 400)
+        XCTAssertTrue(bodyString(from: response).contains("insecure_transport"))
+        XCTAssertFalse(bodyString(from: response).contains("swiftmesh://"))
+    }
+
+    func testSwiftMeshPairingNeedsARecentSignIn() async {
+        let server = AdminWebServer()
+        await server.testSetSwiftMeshJoinCodeProvider { "swiftmesh://join?b=fixture" }
+        // Signed in about 23 hours ago.
+        let admin = await server.testSeedSession(expiresIn: 3_600)
+        let response = await server.testProcessRequest(
+            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: admin.id, csrf: admin.csrf),
+            peerIP: "127.0.0.1"
+        )
+        XCTAssertEqual(statusCode(from: response), 401)
+        XCTAssertTrue(bodyString(from: response).contains("reauth_required"))
+        XCTAssertFalse(bodyString(from: response).contains("swiftmesh://"))
+    }
+
     func testUnauthenticatedRequestIsRejected() async {
         let server = AdminWebServer()
         let response = await server.testProcessRequest(makeRequest(path: "/api/me"))
@@ -75,13 +172,26 @@ final class AdminWebServerAuthTests: XCTestCase {
         XCTAssertTrue(bodyString(from: response).contains(session.csrf), "/api/me should hand back the session CSRF token")
     }
 
-    func testBearerTokenAuthenticates() async {
+    func testBearerTokenIsRejected() async {
+        // Bearer sessions existed only for the removed Remote Control app.
         let server = AdminWebServer()
         let session = await server.testSeedSession()
         let response = await server.testProcessRequest(
             makeRequest(path: "/api/me", bearer: session.id)
         )
-        XCTAssertEqual(statusCode(from: response), 200, "The Remote client's bearer path must authenticate too")
+        XCTAssertEqual(statusCode(from: response), 401, "Only the session cookie may authenticate")
+    }
+
+    func testSessionTokenIsNotHandedOutOverTheAPI() async {
+        // /api/auth/session used to return the session ID for the Remote app,
+        // which defeats the HttpOnly cookie.
+        let server = AdminWebServer()
+        let session = await server.testSeedSession()
+        let response = await server.testProcessRequest(
+            makeRequest(path: "/api/auth/session", cookie: session.id)
+        )
+        XCTAssertNotEqual(statusCode(from: response), 200)
+        XCTAssertFalse(bodyString(from: response).contains(session.id))
     }
 
     func testExpiredSessionIsRejected() async {
@@ -101,6 +211,77 @@ final class AdminWebServerAuthTests: XCTestCase {
             makeRequest(path: "/api/me", cookie: session.id)
         )
         XCTAssertEqual(statusCode(from: response), 401, "A revoked session must stop working immediately")
+    }
+
+    // MARK: - Sign-in handoff
+
+    private func rawRequest(_ method: String, _ path: String, host: String, extraHeaders: [String] = [], body: Data = Data()) -> Data {
+        var head = "\(method) \(path) HTTP/1.1\r\nHost: \(host)\r\nUser-Agent: \(browserUA)\r\n"
+        for header in extraHeaders { head += header + "\r\n" }
+        if !body.isEmpty { head += "Content-Type: application/json\r\nContent-Length: \(body.count)\r\n" }
+        var data = Data((head + "\r\n").utf8)
+        data.append(body)
+        return data
+    }
+
+    private func location(from response: Data) -> String? {
+        let text = String(decoding: response.prefix(2048), as: UTF8.self)
+        return text.components(separatedBy: "\r\n")
+            .first { $0.lowercased().hasPrefix("location:") }
+            .map { String($0.dropFirst("location:".count)).trimmingCharacters(in: .whitespaces) }
+    }
+
+    func testDiscordSignInStartedOnAnotherHostMovesToTheCallbackHost() async {
+        // The state cookie must be set on the host Discord returns to.
+        let server = AdminWebServer()
+        await server.testConfigureSignIn(publicBaseURL: "https://bot.example.com", discordClient: true)
+        let response = await server.testProcessRequest(rawRequest("GET", "/auth/discord/login", host: "192.168.1.5:38888"))
+        XCTAssertEqual(statusCode(from: response), 302)
+        XCTAssertEqual(location(from: response), "https://bot.example.com/auth/discord/login")
+        XCTAssertFalse(String(decoding: response, as: UTF8.self).contains("swiftbot_oauth_state"))
+    }
+
+    func testDiscordSignInOnTheCallbackHostGoesToDiscord() async {
+        let server = AdminWebServer()
+        await server.testConfigureSignIn(publicBaseURL: "https://bot.example.com", discordClient: true)
+        let response = await server.testProcessRequest(rawRequest("GET", "/auth/discord/login", host: "bot.example.com"))
+        XCTAssertEqual(statusCode(from: response), 302)
+        XCTAssertTrue(location(from: response)?.hasPrefix("https://discord.com/oauth2/authorize") == true)
+        XCTAssertTrue(String(decoding: response, as: UTF8.self).contains("swiftbot_oauth_state="))
+    }
+
+    private var passwordBody: Data { Data(#"{"username":"admin","password":"fixture-pass"}"#.utf8) }
+
+    func testPasswordSignInWorksOnTheLocalNetwork() async {
+        let server = AdminWebServer()
+        await server.testConfigureSignIn(localPassword: "fixture-pass", devFeatures: true)
+        let response = await server.testProcessRequest(
+            rawRequest("POST", "/auth/local/login", host: "192.168.1.5:38888", body: passwordBody), peerIP: "192.168.1.20")
+        XCTAssertEqual(statusCode(from: response), 200)
+    }
+
+    func testPasswordSignInIsRefusedThroughTheTunnel() async {
+        // The sign-in page hides it there; the server must refuse it too.
+        let server = AdminWebServer()
+        await server.testConfigureSignIn(publicBaseURL: "https://bot.example.com", localPassword: "fixture-pass", devFeatures: true)
+        let viaCloudflare = await server.testProcessRequest(
+            rawRequest("POST", "/auth/local/login", host: "bot.example.com", extraHeaders: ["CF-Connecting-IP: 203.0.113.9", "CF-Ray: 8abc"], body: passwordBody),
+            peerIP: "127.0.0.1")
+        XCTAssertEqual(statusCode(from: viaCloudflare), 403)
+        XCTAssertTrue(bodyString(from: viaCloudflare).contains("local_auth_local_only"))
+
+        let publicHostOnly = await server.testProcessRequest(
+            rawRequest("POST", "/auth/local/login", host: "bot.example.com", body: passwordBody), peerIP: "127.0.0.1")
+        XCTAssertEqual(statusCode(from: publicHostOnly), 403)
+    }
+
+    func testPasswordSignInIsRefusedWithoutDeveloperFeatures() async {
+        let server = AdminWebServer()
+        await server.testConfigureSignIn(localPassword: "fixture-pass", devFeatures: false)
+        let response = await server.testProcessRequest(
+            rawRequest("POST", "/auth/local/login", host: "localhost", body: passwordBody), peerIP: "127.0.0.1")
+        XCTAssertEqual(statusCode(from: response), 403)
+        XCTAssertTrue(bodyString(from: response).contains("local_auth_disabled"))
     }
 
     // MARK: - User-agent binding
@@ -124,12 +305,11 @@ final class AdminWebServerAuthTests: XCTestCase {
     }
 
     func testSessionWithoutBoundUserAgentIsNotEnforced() async {
-        // Native Remote clients send no UA. Binding must stay opt-in, or those
-        // installs break.
+        // A browser that sent no UA at sign-in gets an unbound session.
         let server = AdminWebServer()
         let session = await server.testSeedSession(userAgent: nil)
         let response = await server.testProcessRequest(
-            makeRequest(path: "/api/me", bearer: session.id, userAgent: "SwiftBot-Remote/1.0")
+            makeRequest(path: "/api/me", cookie: session.id, userAgent: "curl/8.4.0")
         )
         XCTAssertEqual(statusCode(from: response), 200, "An unbound session must not start enforcing binding")
     }

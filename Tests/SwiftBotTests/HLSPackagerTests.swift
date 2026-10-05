@@ -1,12 +1,66 @@
 import AVFoundation
 import XCTest
 @testable import RecordingsKit
+@testable import SwiftBot
 
 /// Proves the HLS packaging path end-to-end on a real (synthesized) H.264 clip:
 /// `AVAssetReader` → segmented `AVAssetWriter` → on-disk init + media segments
 /// and a valid VOD playlist. There are no sample recordings in the repo, so the
 /// test generates its own source clip first.
 final class HLSPackagerTests: XCTestCase {
+
+    @MainActor
+    func testLibraryHidesManagedExportsWithoutRemovingSavedSources() async {
+        let app = AppModel()
+        let exportID = UUID()
+        let managed = MediaLibrarySource(id: exportID, name: "Exports", rootPath: "")
+        let custom = MediaLibrarySource(name: "Exports", rootPath: "")
+        app.mediaLibrarySettings = MediaLibrarySettings(sources: [managed, custom], exportSourceID: exportID)
+        let before = app.mediaLibrarySettings
+
+        let library = await app.localMediaLibrarySnapshot()
+
+        XCTAssertEqual(library.sources.map(\.id), [custom.id])
+        XCTAssertEqual(app.localRecordingSources.map(\.id), [custom.id])
+        XCTAssertEqual(app.mediaLibrarySettings, before)
+    }
+
+    @MainActor
+    func testLibraryDoesNotAutomaticallyAddAnExportsFolder() async {
+        let app = AppModel()
+        app.mediaLibrarySettings = MediaLibrarySettings()
+
+        let library = await app.localMediaLibrarySnapshot()
+
+        XCTAssertTrue(library.sources.isEmpty)
+        XCTAssertTrue(app.mediaLibrarySettings.sources.isEmpty)
+        XCTAssertNil(app.mediaLibrarySettings.exportSourceID)
+    }
+
+    @MainActor
+    func testFixMatchPrefersTheClipThenItsDetectedGameThenTheFilename() {
+        let app = AppModel()
+        app.settings.recordingGameAliases = ["the finals": "Splitgate 2"]
+        app.settings.recordingGameOverrides = ["Mac|a|clip.mp4": "Black Ops 6"]
+
+        XCTAssertEqual(app.resolvedMediaGameName(itemKey: "Mac|a|clip.mp4", detected: "THE FINALS"), "Black Ops 6")
+        XCTAssertEqual(app.resolvedMediaGameName(itemKey: "Mac|a|other.mp4", detected: "THE FINALS"), "Splitgate 2")
+        XCTAssertEqual(app.resolvedMediaGameName(itemKey: "Mac|a|other.mp4", detected: "Minecraft"), "Minecraft")
+    }
+
+    @MainActor
+    func testTrademarkMarksDoNotSplitAGame() {
+        XCTAssertEqual(AppModel.canonicalMediaGameName("Call of Duty® Modern Warfare® II Warzone™ 2.0"), "Call of Duty Modern Warfare II")
+        XCTAssertEqual(AppModel.tidiedMediaGameName("Call of Duty®: Black Ops 6"), "Call of Duty: Black Ops 6")
+        XCTAssertEqual(AppModel.canonicalMediaGameName("Call of Duty Modern Warfare 4 - Beta"), "Call of Duty Modern Warfare 4")
+        XCTAssertEqual(AppModel.canonicalMediaGameName("Marvel Rivals (Open Beta)"), "Marvel Rivals")
+    }
+
+    func testArtworkMatchNeedsTheSameWordsInOrder() {
+        XCTAssertFalse(RecordingSteamArtworkService.containsInOrder("Call of Duty Modern Warfare 4", within: "Call of Duty® 4: Modern Warfare®"))
+        XCTAssertTrue(RecordingSteamArtworkService.containsInOrder("Call of Duty Modern Warfare 4", within: "Call of Duty®: Modern Warfare® 4"))
+        XCTAssertTrue(RecordingSteamArtworkService.containsInOrder("Elder Scrolls Online", within: "The Elder Scrolls Online"))
+    }
 
     func testPackagesH264ClipIntoPlayableHLS() async throws {
         let workDir = FileManager.default.temporaryDirectory

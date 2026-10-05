@@ -286,7 +286,6 @@ extension AppModel {
             settings: settings,
             events: events,
             commandLog: commandLog,
-            rules: ruleStore.rules,
             enabledAutomationCount: automationStore.rules.filter(\.enabled).count,
             clusterNodes: clusterNodes,
             clusterSnapshot: clusterSnapshot,
@@ -806,69 +805,6 @@ extension AppModel {
         return ByteCountFormatter.string(fromByteCount: Int64(info.resident_size), countStyle: .memory)
     }
 
-    func remoteStatusSnapshot() -> RemoteStatusPayload {
-        let leaderName = clusterNodes.first(where: { $0.role == .leader })?.displayName
-            ?? clusterNodes.first?.displayName
-            ?? (settings.clusterMode == .standalone ? "Standalone" : "Unavailable")
-
-        return RemoteStatusPayload(
-            botStatus: status.rawValue,
-            botUsername: botUsername,
-            connectedServerCount: connectedServers.count,
-            gatewayEventCount: gatewayEventCount,
-            uptimeText: uptime?.text,
-            webUIBaseURL: adminWebBaseURL(),
-            clusterMode: settings.clusterMode.rawValue,
-            nodeRole: clusterSnapshot.mode.rawValue,
-            leaderName: leaderName,
-            generatedAt: Date()
-        )
-    }
-
-    func remoteRulesSnapshot() -> RemoteRulesPayload {
-        let serverIDs = connectedServers.keys.sorted {
-            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
-        }
-        let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) }
-        let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
-            let channels = (availableTextChannelsByServer[serverID] ?? [])
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
-            return (serverID, channels)
-        })
-        let voiceChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
-            let channels = (availableVoiceChannelsByServer[serverID] ?? [])
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
-            return (serverID, channels)
-        })
-
-        return RemoteRulesPayload(
-            rules: ruleStore.rules,
-            servers: servers,
-            textChannelsByServer: textChannelsByServer,
-            voiceChannelsByServer: voiceChannelsByServer,
-            fetchedAt: Date()
-        )
-    }
-
-    func remoteEventsSnapshot() -> RemoteEventsPayload {
-        let recentActivity = Array(events.suffix(40).reversed()).map { event in
-            RemoteActivityEventPayload(
-                id: event.id,
-                timestamp: event.timestamp,
-                kind: event.kind.rawValue,
-                message: event.message
-            )
-        }
-
-        return RemoteEventsPayload(
-            activity: recentActivity,
-            logs: Array(logs.lines.suffix(120).reversed()),
-            fetchedAt: Date()
-        )
-    }
-
     func adminWebBaseURL() -> String {
         if adminWebPublicAccessStatus.isEnabled, !adminWebPublicAccessStatus.publicURL.isEmpty {
             return adminWebPublicAccessStatus.publicURL
@@ -927,7 +863,6 @@ extension AppModel {
                 enabled: settings.commandsEnabled,
                 prefixEnabled: false,
                 slashEnabled: settings.slashCommandsEnabled,
-                bugTrackingEnabled: false,
                 prefix: "/"
             ),
             appleIntelligence: .init(
@@ -1007,6 +942,7 @@ extension AppModel {
         if let value = patch.clusterWorkerOffloadEnabled { settings.clusterWorkerOffloadEnabled = value }
         if let value = patch.clusterOffloadAIReplies { settings.clusterOffloadAIReplies = value }
         if let value = patch.clusterOffloadWikiLookups { settings.clusterOffloadWikiLookups = value }
+        if let value = patch.clusterAutomaticHandbackEnabled { settings.clusterAutomaticHandbackEnabled = value }
         if let value = patch.clusterAutoReclaimAfterHours {
             settings.clusterAutoReclaimAfterHours = min(72, max(0, value))
         }
@@ -1080,7 +1016,7 @@ extension AppModel {
         // Clips per game from this Mac's library only, so a refresh never
         // waits on other mesh nodes.
         let library = await localMediaLibrarySnapshot()
-        let clips = Dictionary(grouping: library.items.filter { window.contains($0.modifiedAt) }, by: { mediaGameName(for: $0.fileName) })
+        let clips = Dictionary(grouping: library.items.filter { window.contains($0.modifiedAt) }, by: { resolvedMediaGameName(for: $0, nodeName: library.nodeName) })
             .mapValues(\.count)
 
         return AdminWebAnalyticsPeriodPayload(
@@ -1773,6 +1709,13 @@ extension AppModel {
     }
 
     func configureAdminWebServer() async {
+        await adminWebServer.setMeshRequestHandler { [weak self] request, peer in
+            guard let self, await self.cluster.currentSnapshot().mode != .standalone else {
+                return Data("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+            }
+            return await self.cluster.processHTTPRequest(request, remoteHost: peer)
+        }
+        await cluster.setPublicMeshAddress(localMeshPublicAddress)
         guard !Self.isRunningUnderXCTest else {
             await adminWebServer.stop()
             adminWebResolvedBaseURL = ""
@@ -1781,7 +1724,7 @@ extension AppModel {
             return
         }
 
-        let httpsConfiguration = usesLocalRuntime ? await resolveAdminWebHTTPSConfiguration() : nil
+        let httpsConfiguration = await resolveAdminWebHTTPSConfiguration()
         // Cloudflare Internet Access terminates TLS at the edge and forwards to
         // SwiftBot's loopback-only HTTP origin. In that mode, HTTPS is still
         // required for public traffic, but the local listener must be allowed
@@ -1789,7 +1732,7 @@ extension AppModel {
         let requireLocalHTTPS = settings.adminWebUI.requireHTTPS
             && !settings.adminWebUI.internetAccessEnabled
         let config = AdminWebServer.Configuration(
-            enabled: usesLocalRuntime && settings.adminWebUI.enabled,
+            enabled: settings.adminWebUI.enabled,
             bindHost: settings.adminWebUI.bindHost,
             port: settings.adminWebUI.port,
             publicBaseURL: adminWebOAuthBaseURL(),
@@ -1833,64 +1776,6 @@ extension AppModel {
                 }
                 return await MainActor.run { model.adminWebStatusSnapshot() }
             },
-            remoteStatusProvider: { [weak self] in
-                guard let model = self else {
-                    return RemoteStatusPayload(
-                        botStatus: "stopped",
-                        botUsername: "SwiftBot",
-                        connectedServerCount: 0,
-                        gatewayEventCount: 0,
-                        uptimeText: nil,
-                        webUIBaseURL: "",
-                        clusterMode: ClusterMode.standalone.rawValue,
-                        nodeRole: ClusterMode.standalone.rawValue,
-                        leaderName: "Unavailable",
-                        generatedAt: Date()
-                    )
-                }
-                return await MainActor.run { model.remoteStatusSnapshot() }
-            },
-            remoteRulesProvider: { [weak self] in
-                guard let model = self else {
-                    return RemoteRulesPayload(
-                        rules: [],
-                        servers: [],
-                        textChannelsByServer: [:],
-                        voiceChannelsByServer: [:],
-                        fetchedAt: Date()
-                    )
-                }
-                return await MainActor.run { model.remoteRulesSnapshot() }
-            },
-            updateRemoteRule: { _ in
-                // Remote rule sync is offline pending a port to AutomationStore.
-                return false
-            },
-            remoteEventsProvider: { [weak self] in
-                guard let model = self else {
-                    return RemoteEventsPayload(activity: [], logs: [], fetchedAt: Date())
-                }
-                return await MainActor.run { model.remoteEventsSnapshot() }
-            },
-            remoteSettingsProvider: { [weak self] in
-                guard let model = self else {
-                    return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: false, prefix: "/"),
-                        appleIntelligence: .init(localAIDMReplyEnabled: false, useAIInGuildChannels: false, allowDMs: false, localAISystemPrompt: ""),
-                        wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
-                        patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
-                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", leaderPort: 38787, listenPort: 38787, workerOffloadEnabled: false, offloadAIReplies: false, offloadWikiLookups: false, autoReclaimAfterHours: 0),
-                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: ""),
-                        userTimezones: .init(mappings: [:]),
-                        swiftMiner: .init(enabled: false, paired: false)
-                    )
-                }
-                return await MainActor.run { model.adminWebConfigSnapshot() }
-            },
-            updateRemoteSettings: { [weak self] patch in
-                guard let model = self else { return false }
-                return await MainActor.run { model.applyAdminWebConfigPatch(patch) }
-            },
             overviewProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebOverviewPayload(
@@ -1933,7 +1818,7 @@ extension AppModel {
             configProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: false, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, prefix: "/"),
                         appleIntelligence: .init(localAIDMReplyEnabled: false, useAIInGuildChannels: false, allowDMs: false, localAISystemPrompt: ""),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -2565,9 +2450,25 @@ extension AppModel {
                 guard let model = self else { return false }
                 return await MainActor.run { model.setRecordingSourceOwner(sourceKey: sourceID, userID: userID) }
             },
+            fixMediaGameMatch: { [weak self] patch in
+                guard let model = self else { return false }
+                if let fromGame = patch.fromGame {
+                    return await model.renameMediaGame(from: fromGame, to: patch.gameName, steamAppID: patch.steamAppID)
+                }
+                return await model.fixMediaGameMatch(
+                    itemKey: patch.itemID ?? "",
+                    gameName: patch.gameName,
+                    steamAppID: patch.steamAppID,
+                    applyToDetected: patch.applyToDetected == true
+                )
+            },
             runSwiftMeshAction: { [weak self] action in
                 guard let model = self else { return "unavailable" }
                 return await model.runAdminWebSwiftMeshAction(action)
+            },
+            swiftMeshJoinCodeProvider: { [weak self] in
+                guard let model = self else { return nil }
+                return await model.adminWebSwiftMeshJoinCode()
             },
             swiftMinerWebhookHandler: { [weak self] headers, body in
                 guard let model = self else {
@@ -2634,6 +2535,14 @@ extension AppModel {
                 return await model.adminWebUpdatesSnapshot()
             }
         )
+        await adminWebServer.setAutomationSimulator { [weak self] request in
+            guard let model = self else { return nil }
+            return await model.simulateAdminWebAutomation(request)
+        }
+        await adminWebServer.setActivityReportProvider { [weak self] in
+            guard let model = self else { return "SwiftBot is shutting down." }
+            return await LogExporter.buildReport(from: model)
+        }
         await adminWebServer.setGameProviderCredentialUpdater { [weak self] providerRaw, token in
             guard let model = self, let providerID = GameProviderID(rawValue: providerRaw) else {
                 return GameProviderCredentialResult.unsupported.rawValue
@@ -3471,6 +3380,10 @@ extension AppModel {
         }
         let statusHandler: @MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void = { [weak self] status in
             self?.adminWebPublicAccessStatus = status
+            Task { [weak self] in
+                guard let self else { return }
+                await self.cluster.setPublicMeshAddress(self.localMeshPublicAddress)
+            }
         }
 
         guard settings.adminWebUI.enabled,
@@ -4064,7 +3977,6 @@ extension AppModel {
     func runAdminWebHostOperation(_ operation: AdminWebHostOperation) async -> String? {
         switch operation {
         case .startBot, .restartBot:
-            if isRemoteLaunchMode { return "This Mac is in Remote Control mode, so it doesn’t run a bot." }
             if settings.clusterMode == .worker { return "Worker mode is temporarily unavailable. Choose Standalone or Primary in the SwiftBot app on the Mac." }
             if normalizedDiscordToken(from: settings.token).isEmpty { return "No bot token is set. Add it in the SwiftBot app on the Mac." }
             if case .startBot = operation, status != .stopped { return "The bot is already running." }
@@ -4103,7 +4015,40 @@ extension AppModel {
             }
         case .checkForUpdates, .installUpdate, .setAutomaticUpdateChecks, .setUnattendedUpdates:
             return runAdminWebUpdateOperation(operation)
+        case .clearCachedData:
+            await clearCachedData()
+            return nil
+        case .clearActivity:
+            // Same as the native Activity › Clear.
+            logs.clear()
+            commandLog.removeAll()
+            auditLog.removeAll()
+            return nil
+        case .forceRejoin(let guildID):
+            let token = normalizedDiscordToken(from: settings.token)
+            guard !token.isEmpty else { return "No bot token is set. Add it in the SwiftBot app on the Mac." }
+            do {
+                try await BotPermissionsProbe.leaveGuild(token: token, guildID: guildID)
+                return nil
+            } catch {
+                return "Couldn’t remove SwiftBot from the server: \(error.localizedDescription)"
+            }
         }
+    }
+
+    /// Dry-runs a rule from the WebUI against a sample event. Nothing is sent.
+    func simulateAdminWebAutomation(_ request: AdminWebAutomationSimulationRequest) async -> AdminWebAutomationSimulationPayload {
+        let suggested = Automations.SimulationInput.suggested(for: request.rule)
+        let given = request.input
+        let nonEmpty = { (value: String?) in value.flatMap { $0.isEmpty ? nil : $0 } }
+        let input = Automations.SimulationInput(
+            username: nonEmpty(given?.username) ?? suggested.username,
+            channelId: nonEmpty(given?.channelId) ?? suggested.channelId,
+            messageContent: nonEmpty(given?.messageContent) ?? suggested.messageContent,
+            voiceDurationSeconds: given?.voiceDurationSeconds.map { max(0, $0) } ?? suggested.voiceDurationSeconds
+        )
+        let result = await automationService.simulate(rule: request.rule, event: input.event(for: request.rule.trigger.kind))
+        return AdminWebAutomationSimulationPayload(input: input, result: result)
     }
 
     private func runAdminWebUpdateOperation(_ operation: AdminWebHostOperation) -> String? {

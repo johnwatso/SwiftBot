@@ -88,7 +88,7 @@ extension AppModel {
                 return .init(name: series.displayName, game: series.game, from: first.score, to: last.score, rankName: last.rankName)
             }.sorted { ($0.to - $0.from) > ($1.to - $1.from) }
             let library = await localMediaLibrarySnapshot()
-            let clips = Dictionary(grouping: library.items.filter { interval.contains($0.modifiedAt) }) { mediaGameName(for: $0.fileName) }
+            let clips = Dictionary(grouping: library.items.filter { interval.contains($0.modifiedAt) }) { resolvedMediaGameName(for: $0, nodeName: library.nodeName) }
             replay.clipsByGame = clips.map { .init(title: $0.key, count: $0.value.count) }.sorted { $0.count > $1.count }.prefix(5).map { $0 }
         }
         return replay
@@ -469,7 +469,7 @@ extension AppModel {
         replayDropTask?.cancel()
         replayDropTask = nil
         configureRewindCatchUp()
-        guard usesLocalRuntime, settings.rewind.isEnabled,
+        guard settings.rewind.isEnabled,
               settings.rewind.recapDrops.values.contains(where: \.isScheduled) else { return }
         replayDropTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -519,7 +519,7 @@ extension AppModel {
     func configureRewindCatchUp() {
         rewindCatchUpTask?.cancel()
         rewindCatchUpTask = nil
-        guard usesLocalRuntime, settings.rewind.isEnabled, settings.rewind.retainMessageContent else { return }
+        guard settings.rewind.isEnabled, settings.rewind.retainMessageContent else { return }
         rewindCatchUpTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 120 * 1_000_000_000)
             while !Task.isCancelled {

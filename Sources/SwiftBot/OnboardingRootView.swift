@@ -5,7 +5,6 @@ import SwiftUI
 enum SetupMode: String, CaseIterable, Identifiable {
     case standalone
     case mesh
-    case remote
 
     var id: String { rawValue }
 
@@ -13,7 +12,6 @@ enum SetupMode: String, CaseIterable, Identifiable {
         switch self {
         case .standalone: return "Set Up Standalone Bot"
         case .mesh: return "Set Up SwiftMesh"
-        case .remote: return "Connect to SwiftBot Remote"
         }
     }
 
@@ -21,7 +19,6 @@ enum SetupMode: String, CaseIterable, Identifiable {
         switch self {
         case .standalone: return "Run SwiftBot locally on this Mac."
         case .mesh: return "Join a SwiftMesh cluster."
-        case .remote: return "Control an existing SwiftBot node remotely. Beta feature."
         }
     }
 
@@ -29,7 +26,6 @@ enum SetupMode: String, CaseIterable, Identifiable {
         switch self {
         case .standalone: return "server.rack"
         case .mesh: return "point.3.connected.trianglepath.dotted"
-        case .remote: return "dot.radiowaves.left.and.right"
         }
     }
 }
@@ -89,9 +85,6 @@ struct OnboardingRootView: View {
                 case .mesh:
                     SwiftMeshSetupView(onBack: { navigateTo(nil) })
                         .id("mesh")
-                case .remote:
-                    RemoteSetupView(onBack: { navigateTo(nil) })
-                        .id("remote")
                 case nil:
                     ModeSelectionView(mode: Binding(
                         get: { mode },
@@ -151,7 +144,8 @@ struct OnboardingRootView: View {
             .frame(width: 102, height: 92)
 
             Text("Welcome to SwiftBot")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.largeTitle.weight(.bold))
+                .accessibilityAddTraits(.isHeader)
                 .multilineTextAlignment(.center)
 
             Text(stepSubtitle)
@@ -203,8 +197,6 @@ struct OnboardingRootView: View {
             return "Enter your Discord bot token to get started."
         case .mesh:
             return "Enter your SwiftMesh connection details."
-        case .remote:
-            return "Connect to a primary SwiftBot node over HTTPS."
         }
     }
 }

@@ -5,7 +5,6 @@ struct GameTrackingMonitoringSnapshot: Equatable {
     let connections: GameProviderConnections
     let clusterMode: ClusterMode
     let botStatus: BotStatus
-    let usesLocalRuntime: Bool
 }
 
 private struct GameAnnouncementGroupKey: Hashable {
@@ -20,8 +19,7 @@ extension AppModel {
             tracking: settings.gameTracking,
             connections: settings.gameProviders,
             clusterMode: runtimeClusterMode,
-            botStatus: status,
-            usesLocalRuntime: usesLocalRuntime
+            botStatus: status
         )
         guard snapshot != lastGameTrackingMonitoringSnapshot else { return }
         lastGameTrackingMonitoringSnapshot = snapshot
@@ -32,14 +30,10 @@ extension AppModel {
 
         // Presence-driven sessions are configured independently of the daily
         // poll, so reset the sweeper whenever the tracking config changes.
-        if !settings.gameTracking.sessionTrackingEnabled || !usesLocalRuntime {
+        if !settings.gameTracking.sessionTrackingEnabled {
             cancelGameSessionSweeper()
         }
 
-        guard usesLocalRuntime else {
-            gameTrackingStatusText = "Unavailable in Remote Control Mode"
-            return
-        }
         guard settings.gameTracking.enabled else {
             gameTrackingStatusText = "Not running"
             return
@@ -101,10 +95,6 @@ extension AppModel {
 
     func runGameTrackingCheck(trigger: String = "Manual") async {
         guard !gameTrackingCheckInProgress else { return }
-        guard usesLocalRuntime else {
-            gameTrackingStatusText = "Unavailable in Remote Control Mode"
-            return
-        }
         guard settings.gameTracking.isReady(connections: settings.gameProviders) else {
             gameTrackingStatusText = settings.gameTracking.configurationIssue(connections: settings.gameProviders)
                 ?? "Not configured"

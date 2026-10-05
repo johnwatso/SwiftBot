@@ -38,7 +38,7 @@ final class AdminWebCopyTests: XCTestCase {
             .gameTracker: "gametracker"
         ]
 
-        // Native-only host pages (this Mac's Web Interface and Integrations
+        // Native-only host pages (this Mac's Discord, Web Interface and Integrations
         // settings) have no WebUI page by design.
         for item in SidebarItem.allCases where !SidebarItem.nativeOnlyItems.contains(item) {
             let webView = try XCTUnwrap(webViewsBySidebarItem[item], "Missing WebUI mapping for \(item.rawValue)")

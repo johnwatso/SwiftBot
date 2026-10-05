@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import SwiftBot
 
@@ -30,6 +31,9 @@ final class MeshSealedResponseTests: XCTestCase {
             conversationFetcher: { _, _ in ([], false) },
             onPromotion: {}
         )
+        let key = try! Curve25519.Signing.PrivateKey(rawRepresentation: Data(repeating: 7, count: 32))
+        let publicKey = key.publicKey.rawRepresentation.base64EncodedString()
+        await c.setCredentialAuthorization(provider: { $0 == "approved" ? publicKey : nil }, localNodeID: "", localToken: "")
         await c.setDiscordTokenProvider { "bot-token-do-not-leak" }
         await c.setCredentialsProvider {
             MeshCredentialsResponse(
@@ -42,7 +46,11 @@ final class MeshSealedResponseTests: XCTestCase {
     }
 
     private func signedGET(_ c: ClusterCoordinator, path: String) async -> Data {
-        let headers = await c.testMakeHMACHeaders(method: "GET", path: path)
+        var headers = await c.testMakeHMACHeaders(method: "GET", path: path)
+        let proof = "SwiftMesh-credential-v1:approved:GET:\(path):\(headers["X-Mesh-Nonce"]!):\(headers["X-Mesh-Timestamp"]!)"
+        headers["X-Mesh-Credential-Node-ID"] = "approved"
+        let key = try! Curve25519.Signing.PrivateKey(rawRepresentation: Data(repeating: 7, count: 32))
+        headers["X-Mesh-Credential-Signature"] = try! key.signature(for: Data(proof.utf8)).base64EncodedString()
         var raw = "GET \(path) HTTP/1.1\r\nHost: localhost\r\n"
         for (k, v) in headers { raw += "\(k): \(v)\r\n" }
         raw += "Content-Length: 0\r\n\r\n"

@@ -585,7 +585,14 @@
     .clip-when span { display: inline-flex; align-items: center; gap: 5px; }
     .clip-when svg { width: 14px; height: 14px; }
     .clip-length.hidden { display: none !important; }
-    .clip-people { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--ub-stroke, var(--glass-stroke)); background: var(--ub-fill, var(--glass-bottom)); }
+    .media-game-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .clip-match { grid-column: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; color: var(--muted); }
+    .clip-match .secondary-action { padding: 5px 12px; font-size: 13px; }
+    .fix-match-results { max-height: 340px; overflow-y: auto; margin-top: 12px; padding: 0 2px; }
+    .fix-match-results .ub-item-main[aria-pressed="true"] { background: color-mix(in srgb, var(--accent, #0a84ff) 16%, transparent); }
+    .fix-match-results .ub-item-icon { width: 30px; height: 30px; border-radius: 8px; color: #fff; font-size: 11px; font-weight: 800; }
+    .fix-match-scope { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+    .clip-people { grid-column: 2; grid-row: 1 / span 3; display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--ub-stroke, var(--glass-stroke)); background: var(--ub-fill, var(--glass-bottom)); }
     .clip-people-list { display: flex; flex-wrap: wrap; gap: 8px; }
     .clip-person { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--glass-top, rgba(255,255,255,0.08)); border: 1px solid var(--ub-stroke, var(--glass-stroke)); font-size: 13px; font-weight: 600; }
     .clip-person-avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: #fff; background: linear-gradient(145deg, #5865f2, #8e44ff); }
@@ -4951,6 +4958,10 @@
       flex-wrap: wrap;
     }
     #modalOverlay .secondary-action.is-destructive, #appShell .secondary-action.is-destructive { color: #ff453a; }
+    #modalOverlay .primary-action.is-destructive, #modalOverlay .primary-action.is-destructive:hover {
+      background: linear-gradient(180deg, color-mix(in srgb, #ff453a 88%, #fff), #ff453a);
+      box-shadow: 0 10px 20px -8px color-mix(in srgb, #ff453a 45%, transparent);
+    }
     #modalOverlay .secondary-action svg { width: 15px; height: 15px; }
 
     /* ---- Shared list page: status bar, grouped rows, editor status (Patchy, Lookup) ---- */
@@ -6187,9 +6198,11 @@
     .overview-activity-filters button[aria-pressed="true"] { background:var(--cv-sidebar-active-bg, var(--home-tile-bg)); border-color:var(--accent); }
     #appShell #overviewLiveRow { align-items:stretch; margin-bottom:16px; }
     #appShell #overviewLiveRow .diagnostics-panel { min-width:0; }
-    #activeVoiceList { max-height:360px; overflow:auto; }
+    /* The panel stretches to match Recent Activity; keep the content at its
+       natural height instead of letting grid rows absorb the extra space. */
+    #activeVoiceList { max-height:360px; overflow:auto; align-content:start; }
     /* Currently In Voice: one block per channel, a tile per member. */
-    .vc-channel { display: grid; gap: 10px; }
+    .vc-channel { display: grid; gap: 10px; align-content: start; }
     .vc-channel + .vc-channel { margin-top: 6px; }
     .vc-channel-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 600; }
     .vc-channel-head svg { width: 15px; height: 15px; flex: none; color: #30d158; }
@@ -6637,6 +6650,8 @@
               <div class="section-actions">
                 <label class="cmd-search"><i class="lucide" data-lucide="search"></i><input id="activitySearch" type="search" placeholder="Search activity" aria-label="Search activity" autocomplete="off" spellcheck="false"></label>
                 <button id="activityCopy" class="secondary-action" type="button" title="Copy the visible entries"><i class="lucide" data-lucide="copy"></i> Copy</button>
+                <a id="activityExport" class="secondary-action" href="/api/activity/export" download title="Download a diagnostic report with secrets removed" style="text-decoration:none;"><i class="lucide" data-lucide="download"></i> Export</a>
+                <button id="activityClear" class="secondary-action" type="button" title="Remove all activity"><i class="lucide" data-lucide="trash-2"></i> Clear</button>
               </div>
             </div>
           </div>
@@ -7062,9 +7077,49 @@
         if (!document.body.contains(body)) return;
         body.innerHTML = botPermissionsHTML(data);
         refreshIcons();
+        body.querySelectorAll('[data-force-rejoin]').forEach(button => button.addEventListener('click', () => {
+          const guild = data.guilds.find(g => g.id === button.dataset.forceRejoin);
+          if (guild) confirmForceRejoin(button.parentElement, guild, run);
+        }));
       };
       recheck.addEventListener('click', run);
       run();
+    }
+
+    // Inline, because the permissions list is already a dialog. Mirrors the
+    // native Kick & re-invite: leave the server, then open Discord to add
+    // SwiftBot back with a fresh role.
+    function confirmForceRejoin(actions, guild, recheck) {
+      const original = actions.innerHTML;
+      actions.innerHTML = `
+        <p class="ub-help" style="margin:0 0 8px;">SwiftBot will leave ${escapeHTML(guild.name)} and lose its role there. Discord then opens so you can add it back with the right permissions.</p>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button class="secondary-action" type="button" data-rejoin-cancel>Cancel</button>
+          <button class="primary-action is-destructive" type="button" data-rejoin-confirm>Kick &amp; re-invite</button>
+        </div>`;
+      actions.querySelector('[data-rejoin-cancel]').addEventListener('click', () => {
+        actions.innerHTML = original;
+        refreshIcons();
+        actions.querySelector('[data-force-rejoin]')?.addEventListener('click', () => confirmForceRejoin(actions, guild, recheck));
+      });
+      actions.querySelector('[data-rejoin-confirm]').addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        button.disabled = true;
+        // Open the tab during the click so pop-up blockers allow it, then
+        // point it at Discord once SwiftBot has left.
+        const tab = window.open('', '_blank');
+        try {
+          await postJSON('/api/bot/permissions/force-rejoin', { guildID: guild.id });
+          if (tab) tab.location.href = guild.reinviteURL;
+          else window.location.assign(guild.reinviteURL);
+          setMessage(`SwiftBot left ${guild.name}. Add it back in Discord, then check again.`, 'success');
+          recheck();
+        } catch (error) {
+          tab?.close();
+          button.disabled = false;
+          setMessage(requestErrorText(error, `Couldn’t remove SwiftBot from ${guild.name}.`), 'error');
+        }
+      });
     }
 
     function botPermissionsHTML(data) {
@@ -7092,6 +7147,7 @@
                 ${flagList('Optional', g.missingOptional)}
                 ${g.hasAdministrator ? '' : `<div class="section-actions" style="margin-top:12px;">
                   ${problems && g.reinviteURL ? `<a class="primary-action" style="text-decoration:none;" href="${escapeHTML(g.reinviteURL)}" target="_blank" rel="noopener noreferrer"><i class="lucide" data-lucide="external-link"></i> Re-invite</a>` : ''}
+                  ${problems && g.reinviteURL ? `<button class="secondary-action is-destructive" type="button" data-force-rejoin="${escapeHTML(g.id)}" title="Discord can keep the old role’s permissions on a plain re-invite. This removes SwiftBot first."><i class="lucide" data-lucide="refresh-ccw"></i> Kick &amp; re-invite</button>` : ''}
                   ${g.adminReinviteURL ? `<a class="secondary-action" style="text-decoration:none;" href="${escapeHTML(g.adminReinviteURL)}" target="_blank" rel="noopener noreferrer" title="Lets SwiftBot read every channel without adding its role to private ones"><i class="lucide" data-lucide="crown"></i> Re-invite as Admin</a>` : ''}
                 </div>`}
               </div>
@@ -7678,6 +7734,37 @@
       onDismiss?.();
     }
 
+    // The server's explanation from a failed postJSON, or a fallback.
+    function requestErrorText(error, fallback = 'That didn’t work.') {
+      try {
+        const body = JSON.parse(error.message);
+        return body.message || body.error || fallback;
+      } catch {
+        return fallback;
+      }
+    }
+
+    // A destructive confirmation dialog. `onConfirm` runs the action; a
+    // thrown error keeps the dialog open with the server's explanation.
+    function confirmDestructive(title, bodyHTML, label, onConfirm) {
+      showModal(title, `<p class="ub-help" style="margin-top:0;">${bodyHTML}</p>`, `
+        <span id="confirmHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="confirmDestructive" class="primary-action is-destructive" type="button">${escapeHTML(label)}</button>
+      `);
+      document.getElementById('confirmDestructive').addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        button.disabled = true;
+        try {
+          await onConfirm();
+          hideModal();
+        } catch (error) {
+          document.getElementById('confirmHint').textContent = requestErrorText(error);
+          button.disabled = false;
+        }
+      });
+    }
+
     function setMessage(text, kind) {
       const node = document.getElementById('message');
       node.textContent = text || '';
@@ -8030,6 +8117,11 @@
             </span>
             <i class="lucide clip-game-chevron" data-lucide="chevron-right"></i>
           </button>
+          ${forMember ? '' : `
+            <div class="clip-match">
+              ${item.gameMatch ? `<span>Fixed · the filename says ${escapeHTML(item.detectedGameName || 'nothing')}</span>` : ''}
+              <button class="secondary-action" type="button" data-clip-fix-match><i class="lucide" data-lucide="wand-sparkles"></i> Fix Match</button>
+            </div>`}
           <div class="clip-when">
             <span><i class="lucide" data-lucide="calendar"></i>${escapeHTML(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</span>
             <span><i class="lucide" data-lucide="clock"></i>${escapeHTML(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
@@ -8047,7 +8139,8 @@
     // genres if they aren't cached yet.
     function bindClipDetails(container, video, item, onOpenGame) {
       if (!container) return;
-      video?.addEventListener('loadedmetadata', () => {
+      container._clipBinding = { video, onOpenGame };
+      const showLength = () => {
         const seconds = video.duration;
         if (!Number.isFinite(seconds) || seconds <= 0) return;
         const m = Math.floor(seconds / 60);
@@ -8057,9 +8150,159 @@
           node.textContent = m ? `${m}m ${String(sec).padStart(2, '0')}s` : `${sec}s`;
           node.closest('.clip-length')?.classList.remove('hidden');
         }
-      }, { once: true });
+      };
+      // Already loaded when the details are redrawn under a playing video.
+      if (video?.readyState >= 1) showLength();
+      else video?.addEventListener('loadedmetadata', showLength, { once: true });
       container.querySelector('[data-clip-open-game]')?.addEventListener('click', () => onOpenGame(item.gameName));
+      container.querySelector('[data-clip-fix-match]')?.addEventListener('click', () => openFixMatch(item));
       loadMediaGameDetails(item.gameName);
+    }
+
+    // Fix Match: file a clip under the right game when its filename names
+    // the wrong one. Picks from the library's games, Steam, or a typed name;
+    // optionally for every clip detected as the same game, new ones included.
+    //
+    // With `wholeGame`, `item` is just { gameName } and the fix moves every
+    // clip filed under that game, and future ones detected the same way.
+    function openFixMatch(item, { wholeGame = false } = {}) {
+      const detected = item.detectedGameName || item.gameName;
+      const canApplyToAll = !wholeGame && detected && detected !== 'Unlabeled';
+      const libraryGames = (mediaLibraryData?.gameSummaries?.map(g => g.name) || mediaLibraryData?.games || [])
+        .filter(g => g && g !== 'Unlabeled' && g !== item.gameName);
+      let selection = null;
+      let searchTimer = null;
+      let searchSeq = 0;
+
+      const row = (game, sub) => `
+        <div class="ub-item">
+          <button class="ub-item-main" type="button" aria-pressed="false" data-fix-name="${escapeHTML(game.name)}" data-fix-app="${escapeHTML(game.steamAppID || '')}">
+            <span class="ub-item-icon" style="background:${gameColor(game.name)};">${escapeHTML(gameInitials(game.name))}</span>
+            <span class="ub-item-text">
+              <span class="ub-item-title">${escapeHTML(game.name)}</span>
+              ${sub ? `<span class="ub-item-sub">${escapeHTML(sub)}</span>` : ''}
+            </span>
+          </button>
+        </div>`;
+
+      showModal('Fix Match', `
+        <p class="ub-help" style="margin-top:0;">${wholeGame
+          ? `Move every clip filed under <strong>${escapeHTML(item.gameName)}</strong> to the right game. New clips detected the same way follow.`
+          : `Filed under <strong>${escapeHTML(item.gameName || 'Unknown game')}</strong>${item.gameMatch ? ` · the filename says <strong>${escapeHTML(detected)}</strong>` : ''}.`} Search for the right game, or type its name.</p>
+        <input id="fixMatchSearch" class="field-input" type="search" placeholder="Search games" autocomplete="off" spellcheck="false" aria-label="Search games">
+        <div id="fixMatchResults" class="ub-list fix-match-results" role="listbox" aria-label="Games"></div>
+        ${canApplyToAll ? `
+          <label class="fix-match-scope">
+            <input id="fixMatchAll" type="checkbox" ${item.gameMatch === 'detected' ? 'checked' : ''}>
+            <span>Use for every clip detected as <strong>${escapeHTML(detected)}</strong>, including new ones</span>
+          </label>` : ''}`,
+        `${!wholeGame && item.gameMatch ? '<button id="fixMatchReset" class="secondary-action" type="button">Use Detected Game</button>' : ''}
+         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+         <button id="fixMatchSave" class="primary-action" type="button" disabled>Save</button>`);
+
+      const input = document.getElementById('fixMatchSearch');
+      const results = document.getElementById('fixMatchResults');
+      const save = document.getElementById('fixMatchSave');
+
+      const bindRows = () => {
+        results.querySelectorAll('[data-fix-name]').forEach(button => button.addEventListener('click', () => {
+          results.querySelectorAll('[aria-pressed="true"]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+          button.setAttribute('aria-pressed', 'true');
+          selection = { name: button.dataset.fixName, steamAppID: button.dataset.fixApp || null };
+          save.disabled = false;
+        }));
+      };
+
+      const render = (steamGames, searching) => {
+        const term = input.value.trim();
+        const lower = term.toLowerCase();
+        const fromLibrary = libraryGames.filter(g => !lower || g.toLowerCase().includes(lower)).slice(0, 8);
+        const steam = (steamGames || []).filter(g => !fromLibrary.some(name => name.toLowerCase() === g.name.toLowerCase()));
+        let html = '';
+        if (term && !fromLibrary.some(g => g.toLowerCase() === lower)) {
+          html += row({ name: term }, 'Use this name');
+        }
+        if (fromLibrary.length) {
+          html += '<div class="ub-group-label">In your recordings</div>' + fromLibrary.map(name => row({ name })).join('');
+        }
+        if (steam.length) {
+          html += '<div class="ub-group-label">Steam</div>' + steam.map(g => row(g)).join('');
+        } else if (searching) {
+          html += '<div class="ub-group-label">Searching Steam…</div>';
+        }
+        results.innerHTML = html || '<div class="ub-help">Type a game’s name to search.</div>';
+        selection = null;
+        save.disabled = true;
+        bindRows();
+      };
+
+      input.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        const term = input.value.trim();
+        render([], term.length >= 2);
+        if (term.length < 2) return;
+        const seq = ++searchSeq;
+        searchTimer = setTimeout(async () => {
+          let games = [];
+          try {
+            const response = await fetch(`/api/media/game-search?q=${encodeURIComponent(term)}`);
+            if (response.ok) {
+              const data = await response.json();
+              if (Array.isArray(data)) games = data;
+            }
+          } catch {}
+          if (seq === searchSeq) render(games, false);
+        }, 300);
+      });
+
+      const submit = async (gameName, steamAppID) => {
+        save.disabled = true;
+        try {
+          await postJSON('/api/media/game-match', wholeGame ? {
+            fromGame: item.gameName,
+            gameName,
+            steamAppID
+          } : {
+            itemID: item.id,
+            gameName,
+            steamAppID,
+            applyToDetected: gameName
+              ? !!document.getElementById('fixMatchAll')?.checked
+              : item.gameMatch === 'detected'
+          });
+          hideModal();
+          if (wholeGame) {
+            // Follow the clips to their new game page; the server drops
+            // trademark marks the same way.
+            mediaFilterState.game = gameName.replace(/[®™©]/g, '').split(/\s+/).filter(Boolean).join(' ');
+            mediaFilterState.page = 1;
+          }
+          await loadMediaData();
+          if (currentView !== 'recordings') return;
+          // The player keeps playing through library refreshes, so redraw
+          // just its details and title rather than the whole page.
+          const details = document.querySelector('#mediaPanels .clip-details');
+          const updated = (mediaLibraryData?.items || []).find(i => i.id === item.id);
+          if (mediaViewMode === 'player' && details && updated) {
+            const { video, onOpenGame } = details._clipBinding || {};
+            details.outerHTML = clipDetailsHTML(updated);
+            bindClipDetails(document.querySelector('#mediaPanels .clip-details'), video, updated, onOpenGame);
+            const title = document.querySelector('#mediaHeader .section-mini-title');
+            if (title) title.textContent = updated.gameName || 'Recording';
+            refreshIcons();
+          } else {
+            renderRecordingsView();
+          }
+        } catch {
+          setMessage('Couldn’t fix that recording’s game.', 'error');
+          save.disabled = !selection;
+        }
+      };
+
+      save.addEventListener('click', () => selection && submit(selection.name, selection.steamAppID));
+      document.getElementById('fixMatchReset')?.addEventListener('click', () => submit('', null));
+      render([], false);
+      input.focus();
     }
 
     // "Recorded by" for each folder: whose voice channel decides who's in its
@@ -8332,7 +8575,7 @@
       let message = '';
       if (!discord && !localAllowed) {
         message = 'Sign-in isn’t available from here. Open SwiftBot on its Mac to set it up.';
-      } else if (last && !last.signedOut && last.expiresAt && new Date(last.expiresAt) < new Date()) {
+      } else if (sessionEndedMidUse || (last && !last.signedOut && last.expiresAt && new Date(last.expiresAt) < new Date())) {
         message = 'Your session ended. Sign in again to pick up where you left off.';
       }
       if (notice) {
@@ -8348,6 +8591,7 @@
     });
     document.getElementById('discordAuthButton')?.addEventListener('click', (e) => {
       const button = e.currentTarget;
+      try { if (viewFromHash()) sessionStorage.setItem(returnViewKey, viewFromHash()); } catch {}
       button.classList.add('is-loading');
       button.querySelector('span').textContent = 'Opening Discord…';
       // Coming back with the browser's back button shouldn't leave it stuck.
@@ -8503,14 +8747,13 @@
       const node = document.getElementById('activeVoiceList');
       if (!node) return;
       if (!list || list.length === 0) {
-        node.innerHTML = `
+        setHTMLIfChanged(node, `
           <div class="cv-empty-voice">
             <div class="cv-empty-voice-icon" aria-hidden="true">😴</div>
             <div class="cv-empty-voice-title">All quiet</div>
             <div class="cv-empty-voice-sub">No one is in voice right now.</div>
           </div>
-        `;
-        try { lucide.createIcons(); } catch (_) {}
+        `);
         return;
       }
 
@@ -8551,8 +8794,7 @@
           </div>
         `);
       }
-      node.innerHTML = blocks.join('');
-      refreshIcons();
+      if (setHTMLIfChanged(node, blocks.join(''), JSON.stringify(list))) refreshIcons();
     }
 
     function commandBadge(label, extraClass = '') {
@@ -9828,10 +10070,50 @@
       }
     }
 
+    // A session that ends mid-use (they last a day, or one was revoked) turns
+    // every API call into a 401. Go back to sign-in once, with a note, rather
+    // than leaving a trail of "couldn't save" errors. Only the plain
+    // `unauthorized` error counts: `reauth_required` asks for a fresh sign-in
+    // before one sensitive change and keeps the session.
+    let sessionEndedMidUse = false;
+    const pageFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const response = await pageFetch(input, init);
+      if (response.status === 401 && currentUser && !sessionEndedMidUse) {
+        const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+        if (url.origin === location.origin && url.pathname.startsWith('/api/')) {
+          const body = await response.clone().json().catch(() => ({}));
+          if (body.error === 'unauthorized') handleSessionEnded();
+        }
+      }
+      return response;
+    };
+
+    function handleSessionEnded() {
+      sessionEndedMidUse = true;
+      csrfToken = null;
+      currentUser = null;
+      mediaAccessToken = null;
+      mediaAccessTokenExpiresAt = 0;
+      hideModal();
+      showAuthScreen();
+    }
+
+    // Discord sign-in comes back to "/", so remember the page to reopen.
+    const returnViewKey = 'swiftbot.returnView';
+    function takeReturnView() {
+      try {
+        const view = sessionStorage.getItem(returnViewKey) || '';
+        sessionStorage.removeItem(returnViewKey);
+        return view;
+      } catch { return ''; }
+    }
+
     async function loadMe() {
       const response = await fetch('/api/me');
       if (!response.ok) return null;
       const data = await response.json();
+      sessionEndedMidUse = false;
       csrfToken = data.csrfToken;
       currentUser = data;
       rememberSignedInUser(data);
@@ -9997,6 +10279,9 @@
           }
           if (response.status === 403 && payload.error === 'local_auth_disabled') {
             throw new Error('Password sign-in is turned off.');
+          }
+          if (response.status === 403 && payload.error === 'local_auth_local_only') {
+            throw new Error('Password sign-in only works on this Mac’s network. Continue with Discord instead.');
           }
           throw new Error('Local sign-in failed.');
         }
@@ -10414,9 +10699,12 @@
       automationEditorState = { rule, category, isNew };
       const titleText = (category === 'moderation' ? 'Moderation Rule' : 'Automation');
       const title = (isNew ? 'New ' : 'Edit ') + titleText;
-      showModal(title, '<div id="automationEditorBody"></div>', `
+      // The simulator sits outside the editor body, which re-renders on every
+      // edit, so its sample values survive changes to the rule.
+      showModal(title, '<div id="automationEditorBody"></div><div id="automationSimulator"></div>', `
         <div class="modal-footer-start">
           <button id="automationEditorValidate" class="secondary-action" type="button"><i class="lucide" data-lucide="check-circle-2"></i> Check</button>
+          <button id="automationEditorSimulate" class="secondary-action" type="button"><i class="lucide" data-lucide="play"></i> Simulate</button>
           ${isNew ? '' : '<button id="automationEditorDelete" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>'}
           <span id="automationValidationFeedback" class="auto-validation"></span>
         </div>
@@ -10425,6 +10713,7 @@
       `, { wide: true });
       renderAutomationEditorBody();
       document.getElementById('automationEditorSave')?.addEventListener('click', saveAutomationFromEditor);
+      document.getElementById('automationEditorSimulate')?.addEventListener('click', openAutomationSimulator);
       document.getElementById('automationEditorDelete')?.addEventListener('click', async () => {
         if (!confirm(`Delete "${rule.name || 'this rule'}"?`)) return;
         await postJSON('/api/automations/delete', { id: rule.id });
@@ -10455,6 +10744,91 @@
           if (btn) btn.disabled = false;
         }
       });
+    }
+
+    // Dry run: the Mac checks the rule against a sample event and reports
+    // what each condition and step would do. Nothing is sent to Discord.
+    function openAutomationSimulator() {
+      const host = document.getElementById('automationSimulator');
+      if (!host) return;
+      if (host.childElementCount) {
+        host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      const ctx = automationData[automationEditorState.category]?.serverContext || { textChannels: [], voiceChannels: [] };
+      host.innerHTML = `
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="play-circle"></i> Simulate</h3>
+          <p class="ub-help" style="margin-top:0;">Tests the rule as it is now, saved or not, against a sample event. Nothing is sent to Discord. Leave a field blank to use a value that suits the rule.</p>
+          <div class="automation-editor-row"><label>Username</label><input id="simUsername" class="field-input" placeholder="From the rule"></div>
+          <div class="automation-editor-row"><label>Channel</label><select id="simChannel" class="field-select">
+            <option value="">From the rule</option>
+            ${ctx.textChannels.map(c => `<option value="${escapeHTML(c.id)}">#${escapeHTML(c.name)}</option>`).join('')}
+            ${(ctx.voiceChannels || []).map(c => `<option value="${escapeHTML(c.id)}">🔊 ${escapeHTML(c.name)}</option>`).join('')}
+          </select></div>
+          <div class="automation-editor-row"><label>Message</label><textarea id="simMessage" class="field-input" rows="2" placeholder="From the rule (message triggers)"></textarea></div>
+          <div class="automation-editor-row"><label>Time in voice (seconds)</label><input id="simDuration" type="number" min="0" class="field-input" placeholder="From the rule (leave and move triggers)"></div>
+          <div class="section-actions" style="margin-top:10px;">
+            <button id="simRun" class="primary-action" type="button"><i class="lucide" data-lucide="play"></i> Run simulation</button>
+          </div>
+          <div id="simResult" aria-live="polite" style="margin-top:12px;"></div>
+        </div>`;
+      refreshIcons();
+      host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('simRun').addEventListener('click', runAutomationSimulation);
+    }
+
+    async function runAutomationSimulation() {
+      const button = document.getElementById('simRun');
+      const out = document.getElementById('simResult');
+      if (!button || !out) return;
+      button.disabled = true;
+      out.innerHTML = '<div class="placeholder">Simulating…</div>';
+      const duration = document.getElementById('simDuration').value;
+      const rule = { ...automationEditorState.rule, category: automationEditorState.category };
+      try {
+        const payload = await postJSON('/api/automations/simulate', {
+          rule,
+          input: {
+            username: document.getElementById('simUsername').value.trim(),
+            channelId: document.getElementById('simChannel').value,
+            messageContent: document.getElementById('simMessage').value,
+            ...(duration === '' ? {} : { voiceDurationSeconds: Number(duration) })
+          }
+        });
+        out.innerHTML = automationSimulationHTML(payload, rule);
+      } catch (error) {
+        out.innerHTML = `<div class="ac-note"><i class="lucide" data-lucide="triangle-alert"></i> ${escapeHTML(requestErrorText(error, 'Couldn’t run the simulation.'))}</div>`;
+      } finally {
+        button.disabled = false;
+        refreshIcons();
+      }
+    }
+
+    function automationSimulationHTML(payload, rule) {
+      const r = payload.result;
+      const ran = r.triggerMatched && r.filtersMatched;
+      const line = (ok, title, detail) => `
+        <div class="ub-row">
+          <span class="ub-item-icon" style="--brand:${ok ? '#22c55e' : 'var(--muted)'};"><i class="lucide" data-lucide="${ok ? 'check' : 'x'}"></i></span>
+          <div class="ub-row-text"><div class="ub-row-title">${escapeHTML(title)}</div>${detail ? `<div class="ub-row-desc" style="white-space:pre-wrap;">${escapeHTML(detail)}</div>` : ''}</div>
+        </div>`;
+      const summary = !r.triggerMatched ? 'The trigger didn’t match this sample event, so nothing would run.'
+        : (!r.filtersMatched ? 'The conditions didn’t match, so no steps would run.' : 'The rule would run.');
+      const input = payload.input;
+      const ctx = automationData[automationEditorState.category]?.serverContext || {};
+      const channel = [...(ctx.textChannels || []), ...(ctx.voiceChannels || [])].find(c => c.id === input.channelId);
+      const where = channel ? channel.name : (input.channelId === 'chan-123' ? 'a sample channel' : input.channelId);
+      const saying = ['messageCreated', 'reactionAdded', 'slashCommand'].includes(rule.trigger.kind) && input.messageContent
+        ? ` saying “${escapeHTML(input.messageContent)}”` : '';
+      return `
+        ${ubStatusCell(escapeHTML(ran ? 'Would run' : 'Wouldn’t run'), escapeHTML(summary), ran ? 'healthy' : 'warning')}
+        <p class="ub-help">Tested as ${escapeHTML(input.username)} in ${escapeHTML(where)}${saying}.</p>
+        <div class="ub-group-card glass">
+          ${line(r.triggerMatched, `When: ${AUTO_TRIGGER_LABELS[rule.trigger.kind] || rule.trigger.kind}`, r.triggerMatched ? 'Matched' : 'Didn’t match')}
+          ${r.filterTraces.map(f => line(f.matched, `If: ${AUTO_FILTER_LABELS[f.kind] || f.kind}`, f.detail)).join('')}
+          ${r.stepTraces.map((t, i) => line(t.executed, `${i + 1}. ${AUTO_STEP_LABELS[t.kind] || t.kind}`, t.detail)).join('')}
+        </div>`;
     }
 
     async function saveAutomationFromEditor() {
@@ -13581,7 +13955,7 @@
         }
       });
 
-      if (window.lucide?.createIcons) window.lucide.createIcons();
+      refreshIcons();
     }
 
     function getTintHex(tint) {
@@ -14102,7 +14476,7 @@
         renderAnnouncerEditor(config);
       });
 
-      if (window.lucide?.createIcons) window.lucide.createIcons();
+      refreshIcons();
     }
 
     // A status-bar cell: optional coloured dot, a title and a muted line.
@@ -15431,6 +15805,15 @@
           ${accessGroupHTML(group)}
           ${operatorGroupHTML(group, switchRow)}
           ${updatesGroupHTML(group, switchRow)}
+          ${group('Maintenance', `
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Cached server data</div>
+                <div class="ub-row-desc">Forget saved channels, roles, members and invites, for example after moving SwiftBot to another server. They come back from Discord the next time the bot connects.</div>
+              </div>
+              <button id="setClearCache" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="trash-2"></i> Clear…</button>
+            </div>
+          `)}
           ${group('About this server', `
             ${infoRow('Version', general.appVersion ? `${general.appVersion}${general.appBuild ? ` (${general.appBuild})` : ''}` : '')}
             ${infoRow('Running on', [general.hostName, general.osVersion ? `macOS ${general.osVersion.replace(/^Version\s*/, '')}` : ''].filter(Boolean).join(' · '))}
@@ -15458,6 +15841,12 @@
         setTimeout(() => { button.innerHTML = '<i class="lucide" data-lucide="copy"></i> Copy'; refreshIcons(); }, 1500);
       });
       panels.querySelector('#setEditTimezones')?.addEventListener('click', () => openTimezoneEditor(timezones, tzMembers));
+      panels.querySelector('#setClearCache')?.addEventListener('click', () => confirmDestructive('Clear cached server data?',
+        'Saved channels, roles, members and invites are removed. Live data comes back from Discord the next time the bot connects.',
+        'Clear Cache', async () => {
+          await postJSON('/api/cache/clear');
+          setMessage('Cached server data cleared.', 'success');
+        }));
       panels.querySelector('#setEditAccess')?.addEventListener('click', openAccessEditor);
       panels.querySelector('#setMemberAccess')?.addEventListener('change', async (e) => {
         const toggle = e.target;
@@ -16053,6 +16442,18 @@
           setTimeout(() => { copy.innerHTML = '<i class="lucide" data-lucide="copy"></i> Copy'; refreshIcons(); }, 1500);
         });
       }
+      const clear = document.getElementById('activityClear');
+      if (clear && !clear.dataset.bound) {
+        clear.dataset.bound = 'true';
+        clear.addEventListener('click', () => confirmDestructive('Clear all activity?',
+          'Commands, system logs and audit entries will be removed. This can’t be undone.',
+          'Clear', async () => {
+            await postJSON('/api/activity/clear');
+            try { await loadActivity(); } catch {}
+            renderActivityView();
+            setMessage('Activity cleared.', 'success');
+          }));
+      }
       refreshIcons();
     }
 
@@ -16302,8 +16703,9 @@
       if (mediaLibraryLayout === 'games' && mediaFilterState.game) loadMediaGameDetails(mediaFilterState.game);
       const onGamePage = mediaLibraryLayout === 'games' && mediaFilterState.game;
       const gameHero = onGamePage ? `
-        <div>
+        <div class="media-game-actions">
           <button id="mediaBackToGames" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> All games</button>
+          ${mediaFilterState.game !== 'Unlabeled' ? '<button id="mediaFixGameMatch" class="secondary-action" type="button"><i class="lucide" data-lucide="wand-sparkles"></i> Fix Match</button>' : ''}
         </div>
         ${gameHeroHTML(mediaFilterState.game, {
           clipCount: mediaLibraryData.totalItems || 0,
@@ -16377,6 +16779,7 @@
       };
       panels.querySelectorAll('[data-game-open]').forEach(btn => btn.addEventListener('click', () => openGame(btn.dataset.gameOpen)));
       panels.querySelector('#mediaBackToGames')?.addEventListener('click', () => openGame(''));
+      panels.querySelector('#mediaFixGameMatch')?.addEventListener('click', () => openFixMatch({ gameName: mediaFilterState.game }, { wholeGame: true }));
       const playItem = (item) => {
         if (!item) return;
         selectedMediaItemID = item.id;
@@ -16464,6 +16867,22 @@
       return '#ff7171';
     }
 
+    // The SF Symbols the Mac app offers for nodes, drawn with the nearest
+    // Lucide icon. An unknown symbol falls back to auto-detect.
+    const MESH_ICON_SYMBOLS = {
+      laptopcomputer: 'laptop',
+      macbook: 'laptop',
+      desktopcomputer: 'monitor',
+      macmini: 'hard-drive',
+      macstudio: 'box',
+      'macpro.gen3': 'pc-case',
+      'server.rack': 'server'
+    };
+
+    function meshNodeIcon(node) {
+      return MESH_ICON_SYMBOLS[node.iconOverride] || meshHardwareIcon(node.hardwareModel);
+    }
+
     function meshHardwareIcon(hardwareModel) {
       const value = String(hardwareModel || '').toLowerCase();
       if (value.startsWith('macbook')) return 'laptop';
@@ -16489,7 +16908,7 @@
         return `
           <article class="mesh-node${isLeader ? ' leader' : ''}${status === 'disconnected' ? ' is-off' : ''}" data-node-id="${escapeHTML(node.id)}" style="--role:${meshRoleColor(node.role)};">
             <div class="mesh-node-header">
-              <span class="mesh-node-icon"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
+              <span class="mesh-node-icon"><i class="lucide" data-lucide="${meshNodeIcon(node)}"></i></span>
               <span class="mesh-node-name">${escapeHTML(node.displayName || node.hostname || 'Node')}</span>
               <span class="mesh-node-role">${escapeHTML(meshNodeRoleLabel(node.role))}</span>
             </div>
@@ -16831,13 +17250,14 @@
         const operatorLine = `<span class="ub-item-sub mesh-operator"><i class="lucide" data-lucide="user-cog"></i>${node.operatorID ? `Operator: ${escapeHTML(operatorName(node.operatorID))}` : 'No operator'}</span>`;
         return `
           <div class="ub-item mesh-item${node.status === 'disconnected' ? ' is-off' : ''}">
-            <span class="ub-item-icon" style="--brand:${node.status === 'disconnected' ? 'var(--muted)' : meshRoleColor(node.role)};"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
+            <span class="ub-item-icon" style="--brand:${node.status === 'disconnected' ? 'var(--muted)' : meshRoleColor(node.role)};"><i class="lucide" data-lucide="${meshNodeIcon(node)}"></i></span>
             <span class="ub-item-text">
               <span class="ub-item-title">${escapeHTML(node.displayName || node.hostname || 'Node')}${node.isThisNode ? ' <span class="badge">This Mac</span>' : ''} <span class="mesh-role-chip">${escapeHTML(meshNodeRoleLabel(node.role))}</span></span>
               <span class="ub-item-sub mesh-facts">${facts.join('<span class="mesh-sep">·</span>')}</span>
               ${followerFacts.length ? `<span class="ub-item-sub">${escapeHTML(followerFacts.join(' · '))}</span>` : ''}
               ${operatorLine}
             </span>
+            <button class="icon-btn mesh-operator-btn" type="button" data-mesh-icon="${escapeHTML(node.displayName)}" aria-label="Set icon for ${escapeHTML(node.displayName)}" title="Set icon"><i class="lucide" data-lucide="image"></i></button>
             <button class="icon-btn mesh-operator-btn" type="button" data-mesh-operator="${escapeHTML(node.displayName)}" aria-label="Set operator for ${escapeHTML(node.displayName)}" title="Set operator"><i class="lucide" data-lucide="user-cog"></i></button>
             ${node.status === 'disconnected' && !node.isThisNode
               ? `<button class="secondary-action" type="button" data-mesh-forget="${escapeHTML(node.displayName)}">Forget</button>`
@@ -16878,23 +17298,26 @@
         <section class="ub-group">
           <div class="ub-group-head">
             <h2>Nodes · ${nodes.length}</h2>
-            <button id="meshRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
+            <div class="mesh-join-actions">
+              ${isLeader && mesh.runtimeMode === 'Leader' && currentUser?.role === 'admin' && currentUser?.signInMethod !== 'password' ? '<button id="meshPair" class="primary-action" type="button"><i class="lucide" data-lucide="link"></i> Pair this Mac</button>' : ''}
+              <button id="meshRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
+            </div>
           </div>
           ${nodes.length ? `<div class="ub-list glass">${nodeRows}</div>` : `
-            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Copy the join code from SwiftMesh in the SwiftBot app on this Mac and paste it into SwiftMesh on the other Mac.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
+            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Open this page on the Mac you want to add, then click Pair this Mac.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
         </section>
         ${isLeader ? group('Work sharing', `
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
           ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
         `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
-        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> To add a node, copy the join code from SwiftMesh in the SwiftBot app on this Mac. It contains the mesh’s shared secret, so it never leaves the Mac through the web.</p>' : ''}
+        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Pair this Mac opens SwiftBot on the Mac where you are browsing. Confirm joining in the app to connect it to this Primary. The pairing link holds the mesh secret, so it needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
         ${group('Configuration', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
             <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
             <div class="ub-row-text">
               <div class="ub-row-title">${escapeHTML(configuredLabel)} · ${escapeHTML(mesh.nodeName || 'This Mac')}</div>
-              <div class="ub-row-desc">${escapeHTML([isStandby ? `Primary ${mesh.leaderAddress || '—'}:${mesh.leaderPort}` : '', `listens on port ${mesh.listenPort}`, isStandby ? (mesh.autoReclaimAfterHours ? `hands back after ${mesh.autoReclaimAfterHours} h` : 'never hands back') : ''].filter(Boolean).join(' · '))}</div>
+              <div class="ub-row-desc">${escapeHTML([isStandby ? `Primary ${mesh.leaderAddress || '—'}:${mesh.leaderPort}` : '', `listens on port ${mesh.listenPort}`, isStandby ? (mesh.automaticHandbackEnabled ? 'returns after the preferred Primary catches up' : 'manual handback') : ''].filter(Boolean).join(' · '))}</div>
             </div>
             <span class="ub-row-value">Edit</span>
             <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
@@ -16952,6 +17375,41 @@
         await loadSwiftMesh().catch(() => {});
         renderSwiftMeshView();
       });
+      panels.querySelector('#meshPair')?.addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        button.disabled = true;
+        try {
+          const result = await postJSON('/api/swiftmesh/pair', {});
+          if (typeof result.joinURL !== 'string' || !result.joinURL.startsWith('swiftmesh://join?')) {
+            throw new Error('Invalid pairing response');
+          }
+          showModal('Pair this Mac with SwiftMesh', `
+            <p class="ub-help">Open SwiftBot on this Mac, then confirm joining this Primary in the app. SwiftBot must be installed.</p>
+            <p class="ub-help">If the browser cannot open SwiftBot, copy the Join Code and paste it into SwiftMesh in the app.</p>`, `
+            <button class="secondary-action" type="button" data-action="hideModal">Close</button>
+            <button id="meshCopyPairCode" class="secondary-action" type="button">Copy Join Code</button>
+            <a id="meshOpenPair" class="primary-action" rel="noreferrer">Open SwiftBot</a>`);
+          document.getElementById('meshOpenPair').href = result.joinURL;
+          modalDismissHandler = () => {
+            document.getElementById('modalFooter').innerHTML = '';
+          };
+          document.getElementById('meshCopyPairCode').addEventListener('click', async (event) => {
+            const copyButton = event.currentTarget;
+            try {
+              await navigator.clipboard.writeText(result.joinURL);
+              copyButton.textContent = 'Copied';
+            } catch {
+              setMessage('Clipboard access failed. Use Open SwiftBot to pair this Mac.', 'error');
+            }
+          });
+        } catch (error) {
+          // Refusals carry a readable `message`, e.g. sign in again or use https.
+          const info = gtCredentialError(error);
+          setMessage(info.message || 'Could not prepare pairing. Check that this server is the active Primary.', 'error');
+        } finally {
+          button.disabled = false;
+        }
+      });
       [['meshWorkerOffload', 'clusterWorkerOffloadEnabled'], ['meshOffloadAI', 'clusterOffloadAIReplies'], ['meshOffloadWiki', 'clusterOffloadWikiLookups']].forEach(([id, key]) => {
         panels.querySelector(`#${id}`)?.addEventListener('change', async (e) => {
           await saveConfigPatch({ [key]: e.target.checked });
@@ -16960,6 +17418,10 @@
         });
       });
       panels.querySelector('#meshEdit')?.addEventListener('click', () => openSwiftMeshEditor(configured));
+      panels.querySelectorAll('[data-mesh-icon]').forEach(btn => btn.addEventListener('click', () => {
+        const node = nodes.find(n => n.displayName === btn.dataset.meshIcon);
+        if (node) openNodeIcon(node, mesh.iconOptions || []);
+      }));
       panels.querySelectorAll('[data-mesh-operator]').forEach(btn => btn.addEventListener('click', () => openNodeOperator(btn.dataset.meshOperator, nodes.find(n => n.displayName === btn.dataset.meshOperator)?.operatorID)));
       if (!operatorsData) loadOperators().then(() => { if (currentView === 'swiftmesh') renderSwiftMeshView(); }).catch(() => {});
       panels.querySelectorAll('[data-mesh-setup]').forEach(btn => btn.addEventListener('click', () => openSwiftMeshEditor(btn.dataset.meshSetup)));
@@ -16968,6 +17430,32 @@
     }
 
     // Pick who gets alerts for one SwiftMesh node.
+    function openNodeIcon(node, options) {
+      showModal(`Icon for ${node.displayName}`, `
+        <p class="ub-help" style="margin-top:0;">Shown for this node here and in the SwiftBot app. Auto-detect picks one from the Mac’s model.</p>
+        <select id="nodeIconSelect" class="field-select" aria-label="Icon">
+          <option value="">Auto-detect</option>
+          ${options.map(o => `<option value="${escapeHTML(o.symbol)}" ${o.symbol === node.iconOverride ? 'selected' : ''}>${escapeHTML(o.label)}</option>`).join('')}
+        </select>`, `
+        <span id="nodeIconHint" class="modal-hint"></span>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="nodeIconSave" class="primary-action" type="button">Save</button>`);
+      document.getElementById('nodeIconSave').addEventListener('click', async (e) => {
+        const button = e.currentTarget;
+        button.disabled = true;
+        const icon = document.getElementById('nodeIconSelect').value;
+        try {
+          await postJSON('/api/swiftmesh/action', icon ? { action: 'setIcon', node: node.displayName, icon } : { action: 'setIcon', node: node.displayName });
+          await loadSwiftMesh();
+          hideModal();
+          renderSwiftMeshView();
+        } catch (error) {
+          button.disabled = false;
+          document.getElementById('nodeIconHint').textContent = requestErrorText(error, 'Couldn’t save the icon.');
+        }
+      });
+    }
+
     function openNodeOperator(nodeName, currentID) {
       const members = (operatorsData?.members || []).slice().sort((a, b) => a.name.localeCompare(b.name));
       showModal(`Operator for ${nodeName}`, `
@@ -17001,6 +17489,7 @@
         leaderAddress: mesh.leaderAddress || '',
         leaderPort: mesh.leaderPort || 38787,
         listenPort: mesh.listenPort || 38787,
+        automaticHandback: mesh.automaticHandbackEnabled !== false,
         autoReclaim: mesh.autoReclaimAfterHours || 0
       };
       showModal('SwiftMesh', '<div id="meshEditorBody"></div>', `
@@ -17044,9 +17533,16 @@
             <div class="mesh-fields">
               ${field('meshEdLeader', 'Address', draft.leaderAddress, 'spellcheck="false" placeholder="192.168.1.20 or primary.local"')}
               ${field('meshEdLeaderPort', 'Port', draft.leaderPort, 'type="number" min="1" max="65535"')}
-              ${field('meshEdReclaim', 'Hand back after (hours)', draft.autoReclaim, 'type="number" min="0" max="72"')}
+
             </div>
-            <div class="ub-help">After this Mac takes over, the original Primary gets control back after this many hours. 0 never hands back. The easiest way to fill these in is to open a join code from the Primary.</div>
+            <div class="ub-help">The preferred Primary returns after its stability window and a successful state transfer. The easiest way to fill these in is to open a join code from the Primary.</div>
+          </div>` : ''}
+          ${draft.mode === 'Leader' ? `
+          <div class="automation-editor-section">
+            <h3>Preferred Primary recovery</h3>
+            <label><input id="meshEdAutomatic" type="checkbox" ${draft.automaticHandback ? 'checked' : ''}> Return to this Primary automatically after catchup</label>
+            ${field('meshEdReclaim', 'Additional stability window (hours)', draft.autoReclaim, 'type="number" min="0" max="72"')}
+            <div class="ub-help">0 uses 60 seconds of stable health. Handback freezes the current owner and copies the latest shared state before this Mac starts sending.</div>
           </div>` : ''}
         `;
         const hint = issue();
@@ -17064,6 +17560,7 @@
         bind('meshEdLeader', 'leaderAddress');
         bind('meshEdLeaderPort', 'leaderPort', true);
         bind('meshEdReclaim', 'autoReclaim', true);
+        document.getElementById('meshEdAutomatic')?.addEventListener('change', e => { draft.automaticHandback = e.target.checked; });
         refreshIcons();
       };
       render();
@@ -17077,6 +17574,7 @@
             clusterLeaderAddress: draft.leaderAddress.trim(),
             clusterLeaderPort: Number(draft.leaderPort),
             clusterListenPort: Number(draft.listenPort),
+            clusterAutomaticHandbackEnabled: draft.automaticHandback,
             clusterAutoReclaimAfterHours: Number(draft.autoReclaim)
           });
           hideModal();
@@ -17926,9 +18424,27 @@
       refreshIcons();
     }
 
+    // The Overview re-renders every 15 seconds. Rewriting identical markup
+    // reloads avatars and redraws icons, which flickers, so skip the write
+    // when nothing changed. `key` covers markup with ticking time labels.
+    function setHTMLIfChanged(node, html, key = html) {
+      if (!node || node.renderKey === key) return false;
+      node.renderKey = key;
+      node.innerHTML = html;
+      return true;
+    }
+
+    // lucide.createIcons() matches every [data-lucide] node, including SVGs it
+    // already drew, so each call redrew every icon on the page. Render only
+    // the <i> placeholders that are still waiting.
     function refreshIcons() {
       if (window.lucide) {
-        lucide.createIcons();
+        const pending = document.querySelectorAll('i[data-lucide]');
+        if (pending.length) {
+          pending.forEach(node => node.setAttribute('data-lucide-pending', node.getAttribute('data-lucide')));
+          lucide.createIcons({ nameAttr: 'data-lucide-pending' });
+          document.querySelectorAll('[data-lucide-pending]').forEach(node => node.removeAttribute('data-lucide-pending'));
+        }
       }
       window.tabler?.createIcons();
     }
@@ -18140,7 +18656,7 @@
       const errors = Number(data.botInfo?.errors) || 0;
       if (errors) chips.push(chip({ value: String(errors), label: errors === 1 ? 'error' : 'errors', state: 'warning', view: 'activity' }));
 
-      host.innerHTML = chips.join('');
+      setHTMLIfChanged(host, chips.join(''));
     }
 
     document.getElementById('homeVitals')?.addEventListener('click', (event) => {
@@ -18276,14 +18792,14 @@
         </div>`;
       const essentialIDs = ['discord', 'gateway-latency', 'cluster-role', 'throughput'];
       const tiles = health.tiles || [];
-      document.getElementById('opsTiles').innerHTML = essentialIDs.map(id => tiles.find(t => t.id === id)).filter(Boolean).map(tile => readableOverviewStatus(tile, dashboardOverview)).map(tileHTML).join('');
+      setHTMLIfChanged(document.getElementById('opsTiles'), essentialIDs.map(id => tiles.find(t => t.id === id)).filter(Boolean).map(tile => readableOverviewStatus(tile, dashboardOverview)).map(tileHTML).join(''));
       const extraTiles = tiles; // Exact measurements remain available in Details.
-      document.getElementById('opsExtraTiles').innerHTML = extraTiles.map(tileHTML).join('');
+      setHTMLIfChanged(document.getElementById('opsExtraTiles'), extraTiles.map(tileHTML).join(''));
       document.getElementById('opsDiagnostics').classList.toggle('hidden', !extraTiles.length);
 
       const attention = health.attention || [];
       document.getElementById('opsAttentionCount').textContent = `${attention.length} item${attention.length === 1 ? '' : 's'}`;
-      document.getElementById('opsAttention').innerHTML = attention.length
+      setHTMLIfChanged(document.getElementById('opsAttention'), attention.length
         ? attention.map(item => {
           const destination = overviewAttentionDestination(item.id);
           return `
@@ -18294,7 +18810,7 @@
               <div class="ops-attention-detail">${escapeHTML(item.detail)}</div>
             </div>
             <button type="button" class="ops-review" data-review-view="${destination.view}" ${destination.filter ? `data-review-filter="${destination.filter}"` : ''}>${destination.label} →</button>
-          </div>`; }).join('') : '';
+          </div>`; }).join('') : '');
 
       refreshIcons();
     }
@@ -18330,12 +18846,14 @@
         || overviewActivityFilter === 'commands' && ['command', 'commandFailed'].includes(item.tone)
         || overviewActivityFilter === 'errors' && ['commandFailed', 'error', 'warning'].includes(item.tone));
       matches.sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0));
-      document.getElementById('opsActivity').innerHTML = matches.length ? matches.slice(0, 6).map(item => `
+      const shown = matches.slice(0, 6);
+      if (!setHTMLIfChanged(document.getElementById('opsActivity'), shown.length ? shown.map(item => `
         <div class="ops-activity" data-state="${opsActivityTones[item.tone] || 'neutral'}">
           <span class="ops-chip"><i class="lucide" data-lucide="${escapeHTML(item.icon)}"></i></span>
           <div class="ops-activity-text"><div class="ops-activity-title">${escapeHTML(item.title)}</div><div class="ops-activity-detail">${escapeHTML(item.detail)}</div></div>
           <span class="ops-activity-time" ${item.timestamp ? `data-ops-time="${escapeHTML(item.timestamp)}"` : ''}>${item.timestamp ? relativeTime(item.timestamp) : escapeHTML(item.timeText || '')}</span>
-        </div>`).join('') : '<div class="ops-empty"><strong>No matching activity</strong>New events will appear here.</div>';
+        </div>`).join('') : '<div class="ops-empty"><strong>No matching activity</strong>New events will appear here.</div>',
+        JSON.stringify(shown))) return;
       refreshIcons();
     }
     document.getElementById('overviewActivityFilters').addEventListener('click', event => {
@@ -18513,8 +19031,10 @@
           : userPrefs.startPage;
       } catch {}
       const allowed = navigableViews();
-      const linked = viewFromHash();
-      // A #page in the address bar (refresh, bookmark) wins over the start page.
+      const returnView = takeReturnView();
+      const linked = viewFromHash() || returnView;
+      // A #page in the address bar (refresh, bookmark), or the page open when
+      // Discord sign-in started, wins over the start page.
       selectView(allowed.has(linked) ? linked : allowed.has(remembered) ? remembered : 'overview', { history: 'replace' });
       
       // Load auth options in background for the "logout" logic/labels
@@ -18828,15 +19348,15 @@
       document.getElementById('weeklyPeriod').textContent = `${range} · across connected servers${stale ? ' · cached data' : ''}`;
       if (!period) {
         metrics.style.setProperty('--weekly-columns', '1');
-        metrics.innerHTML = `<div class="weekly-detail">${report ? 'Weekly breakdown unavailable on this server.' : 'Weekly activity unavailable. Retrying automatically.'}</div>`;
+        setHTMLIfChanged(metrics, `<div class="weekly-detail">${report ? 'Weekly breakdown unavailable on this server.' : 'Weekly activity unavailable. Retrying automatically.'}</div>`);
         insights.innerHTML = '';
         return;
       }
       const highlights = overviewWeeklyHighlights(period);
       metrics.style.setProperty('--weekly-columns', String(Math.max(1, highlights.length)));
-      metrics.innerHTML = highlights.length ? highlights.map(item => `<button type="button" class="weekly-metric" ${item.view ? `data-weekly-view="${item.view}"` : `data-weekly-series="${item.series}"`}>
+      setHTMLIfChanged(metrics, highlights.length ? highlights.map(item => `<button type="button" class="weekly-metric" ${item.view ? `data-weekly-view="${item.view}"` : `data-weekly-series="${item.series}"`}>
         <span class="weekly-label">${escapeHTML(item.label)} ↗</span><strong class="weekly-value">${escapeHTML(item.value)}</strong><span class="weekly-detail">${escapeHTML(item.detail)}</span></button>`).join('')
-        : `<div class="weekly-steady"><strong>No activity recorded this week</strong><span class="weekly-detail">Highlights appear here as features are used.</span></div>`;
+        : `<div class="weekly-steady"><strong>No activity recorded this week</strong><span class="weekly-detail">Highlights appear here as features are used.</span></div>`);
       insights.innerHTML = '';
 
     }

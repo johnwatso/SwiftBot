@@ -322,7 +322,7 @@ extension AppModel {
         let currentMode = runtimeClusterMode
         let isAuthorized = currentMode == .leader || currentMode == .standalone
 
-        guard usesLocalRuntime, settings.patchy.monitoringEnabled, status == .running, isAuthorized else {
+        guard settings.patchy.monitoringEnabled, status == .running, isAuthorized else {
             appendPatchyLog("Patchy monitoring paused.")
             return
         }

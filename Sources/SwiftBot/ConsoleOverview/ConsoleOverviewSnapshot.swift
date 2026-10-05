@@ -96,7 +96,7 @@ struct ConsoleOverviewSnapshot: Equatable {
         let make = { ConsoleServiceStatus(kind: .discord, health: $0, summary: $1, detail: $2) }
 
         guard inputs.hasToken else {
-            return make(.warning, "Not Set Up", "Add a bot token in Settings")
+            return make(.warning, "Not Set Up", "Add a bot token on the Discord page")
         }
         if let code = inputs.lastGatewayCloseCode,
            ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(code) {

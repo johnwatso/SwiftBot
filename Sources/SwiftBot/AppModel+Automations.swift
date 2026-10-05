@@ -2,18 +2,19 @@ import Foundation
 
 extension AppModel {
 
-    /// Enabled rules across the legacy rule engine and the Automations store,
-    /// so every surface that reports "active automations" agrees.
+    /// Enabled Automations and Moderation rules, so every surface that
+    /// reports "active automations" agrees.
     var enabledAutomationRuleCount: Int {
-        ruleStore.rules.filter(\.isEnabled).count + automationStore.rules.filter(\.enabled).count
+        automationStore.rules.filter(\.enabled).count
     }
 
     var totalAutomationRuleCount: Int {
-        ruleStore.rules.count + automationStore.rules.count
+        automationStore.rules.count
     }
 
     /// Evaluate the live rule set against `event` and execute each match.
     func fireAutomations(for event: SwiftBotEvent) async {
+        guard shouldProcessPrimaryGatewayActions, await service.outputAllowed else { return }
         let snapshot = automationStore.rules
         let tok = settings.token
         let token: String? = tok.isEmpty ? nil : tok
@@ -84,6 +85,12 @@ extension AppModel {
     /// Build the engine. Called once via the lazy property on AppModel.
     func buildAutomationService() -> AutomationService {
         let deps = AutomationService.Dependencies(
+            canExecute: { [weak self] in
+                guard let self else { return false }
+                let owns = await self.cluster.hasActiveOwnership()
+                let allows = await self.service.outputAllowed
+                return owns && allows
+            },
             sendMessage: { [weak self] c, m, t in
                 try await self?.service.sendMessage(channelId: c, content: m, token: t)
             },
@@ -169,6 +176,6 @@ extension AppModel {
                 )
             }
         )
-        return AutomationService(aiService: aiService, dependencies: deps)
+        return AutomationService(aiService: aiService, dependencies: deps, journalURL: SwiftBotStorage.folderURL().appendingPathComponent(AutomationExecutionJournal.fileName))
     }
 }

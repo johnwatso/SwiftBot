@@ -45,7 +45,7 @@ final class ClusterSecurityTests: XCTestCase {
 
         XCTAssertEqual(privateURL, "http://192.168.1.50:38787")
         XCTAssertEqual(localhostURL, "http://localhost:8080")
-        XCTAssertEqual(publicURL, "https://evil.com:38787")
+        XCTAssertEqual(publicURL, "https://evil.com:443")
         XCTAssertEqual(publicMeshPortURL, "http://evil.com:38787")
         XCTAssertNil(metadataURL)
     }
@@ -64,7 +64,7 @@ final class ClusterSecurityTests: XCTestCase {
         let httpsHostOnly = await coordinator.testNormalizedBaseURL("https://10.0.0.6")
 
         XCTAssertEqual(hostOnly, "http://10.0.0.5:39055")
-        XCTAssertEqual(httpsHostOnly, "https://10.0.0.6:39055")
+        XCTAssertEqual(httpsHostOnly, "https://10.0.0.6:443")
     }
 
     func testClusterSecretAuthRoutes() async {
@@ -123,6 +123,36 @@ final class ClusterSecurityTests: XCTestCase {
             makeRequest(method: "GET", path: "/cluster/status", headers: [:], body: Data())
         )
         XCTAssertEqual(statusCode(from: noSecret), 200)
+    }
+
+    func testClusterWithoutSecretKeepsRejectingRequests() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .leader,
+            nodeName: "MissingSecretTest",
+            leaderAddress: "",
+            listenPort: 39059,
+            sharedSecret: " \n "
+        )
+
+        // Warning throttling must never allow subsequent requests through.
+        for _ in 0..<3 {
+            let response = await coordinator.testProcessHTTPRequest(
+                makeRequest(method: "GET", path: "/cluster/status", headers: [:], body: Data())
+            )
+            XCTAssertEqual(statusCode(from: response), 401)
+        }
+        let health = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "GET", path: "/health", headers: [:], body: Data())
+        )
+        XCTAssertEqual(statusCode(from: health), 200)
+        await coordinator.applySettings(
+            mode: .standalone,
+            nodeName: "MissingSecretTest",
+            leaderAddress: "",
+            listenPort: 39059,
+            sharedSecret: ""
+        )
     }
 
     func testBodySizeCapThreshold() async {

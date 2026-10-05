@@ -15,39 +15,31 @@ struct WebUIPreferencesView: View {
     var body: some View {
         SettingsForm(
             readOnlyBannerText: app.isFailoverManagedNode
-                ? "Read-only on Failover nodes. These settings sync from Primary."
+                ? "This Mac keeps its own WebUI and tunnel. Discord sign-in settings sync from the active Primary."
                 : nil
         ) {
             Section {
                 AdminWebServerConfigurationSection()
             } header: {
-                ConsoleSectionHeader(title: "Admin Web UI", symbol: "macwindow")
+                ConsoleSectionHeader(title: "Admin Web UI")
                     .id(WebUISectionID.adminWebUI)
             }
 
             Section {
                 InternetAccessConfigurationSection()
             } header: {
-                ConsoleSectionHeader(
-                    title: "Internet Access",
-                    symbol: "network",
-                    subtitle: "Cloudflare Tunnel and the public address for your Web Interface."
-                )
+                ConsoleSectionHeader(title: "Internet Access")
                 .id(WebUISectionID.internetAccess)
             }
 
             Section {
                 AdminWebAuthenticationSection()
+                    .disabled(app.isFailoverManagedNode)
             } header: {
-                ConsoleSectionHeader(
-                    title: "Authentication",
-                    symbol: "person.badge.key",
-                    subtitle: "Who can sign in to the Web Interface."
-                )
+                ConsoleSectionHeader(title: "Authentication")
                 .id(WebUISectionID.authentication)
             }
         }
-        .preferencesCardDisabled(when: app.isFailoverManagedNode)
     }
 }
 
@@ -201,6 +193,22 @@ struct TrailingIconLabelStyle: LabelStyle {
     }
 }
 
+/// The last Cloudflare token this session verified, and its zones.
+@MainActor
+private enum CloudflareTokenCheckCache {
+    private static var token: String?
+    private static var cachedZones: [CloudflareDNSProvider.ZoneSummary] = []
+
+    static func zones(for token: String) -> [CloudflareDNSProvider.ZoneSummary]? {
+        token == self.token ? cachedZones : nil
+    }
+
+    static func store(_ zones: [CloudflareDNSProvider.ZoneSummary], for token: String) {
+        self.token = token
+        cachedZones = zones
+    }
+}
+
 struct InternetAccessConfigurationSection: View {
     @EnvironmentObject var app: AppModel
     @State private var isEnabling = false
@@ -226,6 +234,8 @@ struct InternetAccessConfigurationSection: View {
     // derives its public hostname from these settings.
     @State private var draftSubdomain = ""
     @State private var draftZoneID = ""
+    @State private var isEditingSubdomain = false
+    @State private var subdomainEditorDraft = ""
 
     // MARK: Derived state
 
@@ -239,10 +249,6 @@ struct InternetAccessConfigurationSection: View {
 
     private var hasSavedToken: Bool {
         !settings.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var showsTokenEntry: Bool {
-        !hasSavedToken || isReplacingToken
     }
 
     private var draftZoneName: String {
@@ -362,7 +368,15 @@ struct InternetAccessConfigurationSection: View {
             .onAppear {
                 syncDraftsFromSettings()
                 if hasSavedToken && !hasVerifiedToken {
-                    verifySavedToken()
+                    // Reuse this session's result so revisiting the page
+                    // doesn't re-check the token with Cloudflare each time.
+                    let token = CloudflareDNSProvider.normalizedAPIToken(from: settings.cloudflareAPIToken)
+                    if let zones = CloudflareTokenCheckCache.zones(for: token) {
+                        availableZones = zones
+                        hasVerifiedToken = true
+                    } else {
+                        verifySavedToken()
+                    }
                 }
             }
             .onDisappear {
@@ -385,12 +399,21 @@ struct InternetAccessConfigurationSection: View {
         }
 
         ConsoleSettingRow(title: "Subdomain", symbol: "character.cursor.ibeam") {
-            TextField("Subdomain", text: subdomainBinding, prompt: Text(AdminWebUISettings.defaultSubdomain))
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 220)
+            HStack(spacing: 8) {
+                Text(draftSubdomain.isEmpty ? "Not configured" : draftSubdomain)
+                    .foregroundStyle(.secondary)
+                Button(draftSubdomain.isEmpty ? "Add…" : "Edit…") {
+                    subdomainEditorDraft = draftSubdomain
+                    isEditingSubdomain = true
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .accessibilityLabel("Edit subdomain")
                 .disabled(isBusy)
+            }
+        }
+        .sheet(isPresented: $isEditingSubdomain) {
+            subdomainEditorSheet
         }
 
         ConsoleSettingRow(title: "Public Address", symbol: "link") {
@@ -412,6 +435,45 @@ struct InternetAccessConfigurationSection: View {
     }
 
     // MARK: Rows
+
+    private var subdomainEditorSheet: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Label("Edit Subdomain", systemImage: "globe")
+                .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            Text("Choose the name used for your public Web Interface address.")
+                .foregroundStyle(.secondary)
+            TextField("Subdomain", text: subdomainEditorBinding, prompt: Text(AdminWebUISettings.defaultSubdomain))
+                .textFieldStyle(.roundedBorder)
+            if !draftZoneName.isEmpty {
+                Text("https://\(subdomainEditorDraft.isEmpty ? AdminWebUISettings.defaultSubdomain : subdomainEditorDraft).\(draftZoneName)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if settings.internetAccessEnabled {
+                Text("After saving, choose Apply Changes to update the tunnel and public address.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { isEditingSubdomain = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    draftSubdomain = subdomainEditorDraft
+                    lastError = nil
+                    if !settings.internetAccessEnabled { commitDrafts() }
+                    isEditingSubdomain = false
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(subdomainEditorDraft.isEmpty || subdomainEditorDraft == draftSubdomain)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
 
     private var domainPicker: some View {
         Picker("Domain", selection: zoneSelection) {
@@ -491,69 +553,79 @@ struct InternetAccessConfigurationSection: View {
         return .disabled
     }
 
-    @ViewBuilder
     private var tokenRow: some View {
-        if showsTokenEntry {
-            ConsoleSettingRow(
-                title: "Cloudflare API Token",
-                symbol: "key",
-                subtitle: tokenError == nil
-                    ? "Needs Zone › DNS › Edit and Account › Cloudflare Tunnel › Edit. [Create a token…](https://dash.cloudflare.com/profile/api-tokens)"
-                    : nil,
-                status: tokenError.map { ($0, .error) }
-            ) {
-                HStack(spacing: 8) {
-                    SecureField("API Token", text: $tokenDraft, prompt: Text("Paste token"))
-                        .labelsHidden()
-                        .frame(maxWidth: 220)
-                        .onSubmit(verifyDraftToken)
-                        .disabled(isVerifyingToken)
-
-                    if isVerifyingToken {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button("Verify", action: verifyDraftToken)
-                            .disabled(tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-
-                    if isReplacingToken {
-                        Button("Cancel") {
-                            tokenVerificationTask?.cancel()
-                            isVerifyingToken = false
-                            isReplacingToken = false
-                            tokenDraft = ""
-                            tokenError = nil
-                        }
-                    }
+        ConsoleSettingRow(
+            title: "Cloudflare API Token",
+            symbol: "key",
+            subtitle: hasSavedToken ? "Stored in your Keychain." : "Add a token to set up Internet Access.",
+            status: !isReplacingToken ? tokenError.map { ($0, .error) } : nil
+        ) {
+            HStack(spacing: 8) {
+                if isVerifyingToken && !isReplacingToken {
+                    ProgressView().controlSize(.small)
+                    Text("Verifying…").foregroundStyle(.secondary)
+                } else if hasVerifiedToken {
+                    Label("Verified", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else if hasSavedToken && tokenError != nil && !isReplacingToken {
+                    Button("Retry", action: verifySavedToken)
                 }
-            }
-        } else {
-            ConsoleSettingRow(
-                title: "Cloudflare API Token",
-                symbol: "key",
-                subtitle: tokenError == nil ? "Stored in your Keychain." : nil,
-                status: tokenError.map { ($0, .error) }
-            ) {
-                HStack(spacing: 8) {
-                    if isVerifyingToken {
-                        ProgressView().controlSize(.small)
-                        Text("Verifying…").foregroundStyle(.secondary)
-                    } else if hasVerifiedToken {
-                        Label("Verified", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else if tokenError != nil {
-                        Button("Retry", action: verifySavedToken)
-                    }
-
-                    Button("Replace…") {
-                        tokenDraft = ""
-                        tokenError = nil
-                        isReplacingToken = true
-                    }
-                    .disabled(isVerifyingToken || isBusy)
+                Button(hasSavedToken ? "Replace…" : "Add…") {
+                    tokenDraft = ""
+                    tokenError = nil
+                    isReplacingToken = true
                 }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .disabled(isVerifyingToken || isBusy)
             }
         }
+        .sheet(isPresented: $isReplacingToken, onDismiss: cancelTokenEntry) {
+            tokenEntrySheet
+        }
+    }
+
+    private var tokenEntrySheet: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Label(hasSavedToken ? "Replace Cloudflare API Token" : "Add Cloudflare API Token", systemImage: "key.fill")
+                .font(.title2.weight(.semibold))
+            Text("Needs Zone › DNS › Edit and Account › Cloudflare Tunnel › Edit. [Create a token…](https://dash.cloudflare.com/profile/api-tokens)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            RevealableSecretField(text: $tokenDraft, placeholder: "Cloudflare API Token")
+                .disabled(isVerifyingToken)
+            Text("SwiftBot verifies the token before saving it to your macOS Keychain.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if let tokenError {
+                Label(tokenError, systemImage: "exclamationmark.circle")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                if isVerifyingToken { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    cancelTokenEntry()
+                    isReplacingToken = false
+                }
+                .keyboardShortcut(.cancelAction)
+                Button(isVerifyingToken ? "Verifying…" : "Verify & Save", action: verifyDraftToken)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isVerifyingToken || tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+
+    private func cancelTokenEntry() {
+        tokenVerificationTask?.cancel()
+        isVerifyingToken = false
+        tokenDraft = ""
+        tokenError = nil
     }
 
     private var actionRowContent: AnyView? {
@@ -628,13 +700,11 @@ struct InternetAccessConfigurationSection: View {
         )
     }
 
-    private var subdomainBinding: Binding<String> {
+    private var subdomainEditorBinding: Binding<String> {
         Binding(
-            get: { draftSubdomain },
+            get: { subdomainEditorDraft },
             set: { newValue in
-                draftSubdomain = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
-                lastError = nil
-                if !settings.internetAccessEnabled { commitDrafts() }
+                subdomainEditorDraft = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
             }
         )
     }
@@ -685,6 +755,7 @@ struct InternetAccessConfigurationSection: View {
                 availableZones = zones
                 hasVerifiedToken = true
                 isVerifyingToken = false
+                CloudflareTokenCheckCache.store(zones, for: token)
 
                 if !zones.contains(where: { $0.id == draftZoneID }) {
                     draftZoneID = zones.count == 1 ? zones[0].id : ""
@@ -702,11 +773,7 @@ struct InternetAccessConfigurationSection: View {
     // MARK: Actions
 
     private func requestEnable(forceReplaceDNS: Bool = false) {
-        if app.isFailoverManagedNode {
-            showingNonPrimaryWarning = true
-        } else {
-            enable(forceReplaceDNS: forceReplaceDNS)
-        }
+        enable(forceReplaceDNS: forceReplaceDNS)
     }
 
     private func enable(forceReplaceDNS: Bool = false) {
@@ -1139,19 +1206,17 @@ struct AdminWebAuthenticationSection: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Password")
                             .font(.caption.weight(.medium))
-                        SecureField("Enter local fallback password", text: $app.settings.adminWebUI.localAuthPassword)
-                            .textFieldStyle(.roundedBorder)
+                        SecretSettingsControl(
+                            secret: $app.settings.adminWebUI.localAuthPassword,
+                            title: "Local Fallback Password",
+                            onSave: { app.saveSettings() }
+                        )
                     }
-
-                    Text("Stored securely in your macOS Keychain.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
                 }
             }
             .padding(14)
             .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             #endif // DEBUG (Local Fallback)
-
 
             Divider()
                 .padding(.vertical, 4)

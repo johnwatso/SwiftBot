@@ -152,6 +152,16 @@ struct PipelineContext {
 - **Promotion side-effects:** `promoteToLeader()` preserves `replicationCursors` and advances their term so promotion does not force a full replay.
 - **Standby must run HTTP server:** Standby nodes must have their HTTP server active to receive sync pushes.
 
+### WebUI-era recovery (2026-10-05)
+
+- Runtime ownership, rather than the configured role, gates bot output and shared writes. Ordinary settings saves preserve the elected role.
+- Each Mac owns its WebUI address and tunnel. Shared configuration uses an allowlist; Cloudflare credentials, companion apps, sessions, and passkeys remain local.
+- Credential fetches require an approved node's Ed25519 signature as well as mesh authentication. Replicated approvals contain only public verification keys; private signing keys remain in Keychain and their own Join Codes.
+- Credential endpoints require a node enrollment proof in addition to mesh HMAC. Treat a Failover Join Code as a secret.
+- Handback freezes/drains the current owner, catches up state, then closes the old owner before promotion. The optional independent witness expires output with a monotonic deadline.
+- Automation checkpoints hold ambiguous actions for review; compute jobs use durable IDs and outbound polling. No exactly-once Discord or lossless Gateway claim.
+- See `SWIFTMESH_RELIABILITY.md` for setup, protocol boundaries, and rollout limits.
+
 ### Mesh Phases (All Complete ✅)
 Phase 1: failover + term safety · Phase 2: conversation sync + pagination + cursors · Phase 2.1: nodeName cursor keying · Phase 3: wiki cache replication
 
@@ -159,7 +169,7 @@ Phase 1: failover + term safety · Phase 2: conversation sync + pagination + cur
 
 ## 5. UI Design Rules
 
-Read `DESIGN.md` before making UI changes. It captures the SwiftMesh visual baseline that should guide SwiftBot styling going forward.
+Read `Documentation/DESIGN.md` before making UI changes. The native console Overview is the user-approved visual baseline (2026-10-05); use its shared headers, glass surfaces, section spacing, and service cards for new console styling. Older SwiftMesh density examples are historical.
 
 All UI in SwiftBot **must** follow:
 
@@ -167,12 +177,12 @@ All UI in SwiftBot **must** follow:
 2. **SwiftUI only** — no AppKit views unless unavoidable (use `NSViewRepresentable`)
 3. **System Settings layout style** — sidebar navigation, split-pane layouts where appropriate, material backgrounds
 4. **Liquid Glass / modern macOS design language** — `.ultraThinMaterial`, `.thinMaterial`, semantic system colors
-5. **No web-style patterns** — no CSS-like layouts, no custom scrollbars, no card grids
+5. **Native console patterns** — no CSS-like layouts or custom scrollbars. Overview’s service cards are approved; reuse them rather than introducing unrelated decorative grids.
 6. **No external UI frameworks** — zero SwiftPM UI dependencies
 
 **Typography:** System fonts only (`.headline`, `.subheadline`, `.caption`, `.title2`, `.title3`)
 **Color:** Semantic system colors (`.primary`, `.secondary`, `.accentColor`) — avoid hard-coded hex
-**Spacing:** 16–20pt horizontal padding, 8–16pt vertical, generous 16–24pt between sections
+**Console spacing:** Match Overview: 36pt page gutters, 32pt top / 40pt bottom insets, 24–32pt between major sections, and a 1120pt maximum content width. Retain denser metrics inside diagnostic controls where useful.
 
 ---
 

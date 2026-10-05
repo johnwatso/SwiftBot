@@ -1,6 +1,104 @@
 import SwiftUI
+import AppKit
 import RecordingsKit
 import UniformTypeIdentifiers
+
+/// Host-side folder management; browsing and playback stay in the Web Interface.
+struct RecordingsPage: View {
+    @EnvironmentObject private var app: AppModel
+    @State private var library: MediaLibraryPayload?
+    @State private var isScanning = false
+    @State private var scanGeneration = 0
+    @State private var folderStatuses: [UUID: String] = [:]
+
+    var body: some View {
+        ConsoleSettingsPage(title: "Recordings", subtitle: "Recording folders and playback copies on this Mac.") {
+            HStack(spacing: 12) {
+                Button(isScanning ? "Scanning…" : "Refresh", systemImage: "arrow.clockwise") {
+                    Task { await refresh(force: true) }
+                }
+                .buttonStyle(.glass)
+                .disabled(isScanning)
+                Button("Open Web Interface", systemImage: "arrow.up.forward.app") { app.launchAdminWebUI() }
+                    .buttonStyle(.glassProminent)
+                    .disabled(!app.settings.adminWebUI.enabled)
+            }
+        } summary: {
+            ServiceSummaryCard(
+                title: "Local Library",
+                symbol: "video.fill",
+                health: libraryHealth.health,
+                summary: libraryHealth.summary,
+                detail: libraryHealth.detail,
+                facts: [
+                    ("Folders", String(app.localRecordingSources.count)),
+                    ("Enabled", String(app.localRecordingSources.filter(\.isEnabled).count)),
+                    ("Indexed Recordings", library.map { String($0.items.count) } ?? "—"),
+                    ("Last Scan", library?.generatedAt.formatted(date: .omitted, time: .shortened) ?? "—")
+                ]
+            )
+        } content: {
+            SettingsForm {
+                LocalRecordingsPreferencesSection(folderStatuses: folderStatuses)
+            }
+        }
+        .task(id: app.localRecordingSources) {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await refresh()
+        }
+    }
+
+    private var libraryHealth: (health: ServiceHealth, summary: String, detail: String) {
+        let enabled = app.localRecordingSources.filter(\.isEnabled)
+        if app.localRecordingSources.isEmpty {
+            return (.disabled, "No Folders", "Add a recording folder below. Browse and play recordings in the Web Interface.")
+        }
+        if enabled.isEmpty {
+            return (.disabled, "Off", "Every folder is turned off.")
+        }
+        let unavailable = enabled.filter { folderStatuses[$0.id]?.hasPrefix("Unavailable") == true }
+        if !unavailable.isEmpty {
+            let names = unavailable.map { $0.name.isEmpty ? $0.normalizedRootPath : $0.name }
+            return (.warning, "Folder Unavailable", "Check the path, volume, or access for: \(names.joined(separator: ", ")).")
+        }
+        if isScanning && library == nil {
+            return (.pending, "Scanning", "Indexing recording folders on this Mac.")
+        }
+        return (.healthy, "Ready", "Browse and play recordings in the Web Interface.")
+    }
+
+    private func refresh(force: Bool = false) async {
+        // A cancelled scan must not clear the spinner of the scan replacing it.
+        scanGeneration += 1
+        let generation = scanGeneration
+        isScanning = true
+        defer { if generation == scanGeneration { isScanning = false } }
+        let sources = app.localRecordingSources
+        let statuses = await Task.detached(priority: .utility) {
+            var result: [UUID: String] = [:]
+            for source in sources {
+                if !source.isEnabled {
+                    result[source.id] = "Disabled"
+                } else if source.normalizedRootPath.isEmpty {
+                    result[source.id] = "Choose a folder"
+                } else {
+                    let url = URL(fileURLWithPath: source.normalizedRootPath, isDirectory: true)
+                    let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                    result[source.id] = isDirectory && FileManager.default.isReadableFile(atPath: url.path)
+                        ? "Available" : "Unavailable — check the path, volume, or access permissions"
+                }
+            }
+            return result
+        }.value
+        guard !Task.isCancelled else { return }
+        folderStatuses = statuses
+        if force { await app.mediaLibraryIndexer.invalidate() }
+        let snapshot = await app.localMediaLibrarySnapshot()
+        guard !Task.isCancelled else { return }
+        library = snapshot
+    }
+}
 
 struct RecordingsView: View {
     @EnvironmentObject private var app: AppModel
@@ -563,7 +661,9 @@ private struct RecordingGameArtwork: View {
 actor RecordingSteamArtworkService {
     static let shared = RecordingSteamArtworkService()
 
-    private let defaultsKey = "swiftbot.recordings.steamArtworkAppIDs"
+    /// v2: matches saved before the word-order check could be a different
+    /// game ("Modern Warfare 4" → 2007's "Call of Duty 4: Modern Warfare").
+    private let defaultsKey = "swiftbot.recordings.steamArtworkAppIDs.v2"
     private let manualDefaultsKey = "swiftbot.recordings.steamArtworkManualOverrides"
     private let steamSearchURL = "https://store.steampowered.com/api/storesearch/"
     private let steamCDNBaseURL = "https://cdn.cloudflare.steamstatic.com/steam/apps/"
@@ -667,6 +767,22 @@ actor RecordingSteamArtworkService {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
+    /// Steam titles matching `term`, for Fix Match. Not cached: it's typed.
+    func searchGames(term: String) async -> [(id: String, name: String)] {
+        guard var components = URLComponents(string: steamSearchURL) else { return [] }
+        components.queryItems = [
+            URLQueryItem(name: "term", value: term),
+            URLQueryItem(name: "cc", value: "US"),
+            URLQueryItem(name: "l", value: "en")
+        ]
+        guard let address = components.url?.absoluteString,
+              let items = await steamJSON(address)?["items"] as? [[String: Any]] else { return [] }
+        return items.prefix(10).compactMap { item in
+            guard let id = item["id"] as? Int, let name = item["name"] as? String else { return nil }
+            return (String(id), name)
+        }
+    }
+
     private func lookupAppID(for gameName: String, normalized: String) async -> String? {
         guard var components = URLComponents(string: steamSearchURL) else { return nil }
         components.queryItems = [
@@ -698,7 +814,10 @@ actor RecordingSteamArtworkService {
                 return exact.id
             }
 
-            for candidate in candidates {
+            // Otherwise only a title with the same words in the same order:
+            // Steam ranks "Call of Duty 4: Modern Warfare" first for "Modern
+            // Warfare 4", and a wrong poster is worse than Twitch's or none.
+            for candidate in candidates where Self.containsInOrder(gameName, within: candidate.name) {
                 if await portraitExists(appID: candidate.id) {
                     return candidate.id
                 }
@@ -763,6 +882,19 @@ actor RecordingSteamArtworkService {
         } catch {
             return false
         }
+    }
+
+    /// Whether every word of `name` appears in `title`, in the same order.
+    static func containsInOrder(_ name: String, within title: String) -> Bool {
+        let words = { (text: String) in
+            text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        }
+        var remaining = words(title)[...]
+        for word in words(name) {
+            guard let index = remaining.firstIndex(of: word) else { return false }
+            remaining = remaining[remaining.index(after: index)...]
+        }
+        return true
     }
 
     private static func normalized(_ value: String) -> String {
@@ -980,5 +1112,170 @@ enum RecordingGameArtworkResponder {
             return nil
         }
         return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: headers, body: data)
+    }
+}
+
+struct LocalRecordingsPreferencesSection: View {
+    @EnvironmentObject private var app: AppModel
+    var folderStatuses: [UUID: String] = [:]
+
+    /// Asks for the folder first, so a new row never starts out blank.
+    private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add Folder"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        app.mediaLibrarySettings.sources.append(
+            MediaLibrarySource(name: url.lastPathComponent, rootPath: url.path)
+        )
+    }
+
+    private func sourceBinding(for source: MediaLibrarySource) -> Binding<MediaLibrarySource> {
+        Binding(
+            get: { app.mediaLibrarySettings.sources.first { $0.id == source.id } ?? source },
+            set: { newValue in
+                guard let index = app.mediaLibrarySettings.sources.firstIndex(where: { $0.id == source.id }) else { return }
+                app.mediaLibrarySettings.sources[index] = newValue
+            }
+        )
+    }
+
+    var body: some View {
+        Section {
+            if app.localRecordingSources.isEmpty {
+                ConsoleSettingRow(title: "No folders yet", symbol: "folder", subtitle: "Add the folder your recordings are saved to.")
+            }
+
+            // Bind rows by ID, not array position, so removing a folder can't
+            // leave another row pointing at a stale index.
+            ForEach(app.localRecordingSources) { source in
+                RecordingSourceRow(source: sourceBinding(for: source), status: folderStatuses[source.id]) {
+                    app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Add Folder…", systemImage: "plus") { addFolder() }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+            }
+        } header: {
+            Text("Folders")
+        }
+        Section {
+            Toggle(isOn: $app.mediaLibrarySettings.fastStartOptimizationEnabled) {
+                Text("Fast Start Copies")
+                Text("Create optimized MP4 copies for smoother playback. Original recordings are kept.")
+            }
+            if app.mediaLibrarySettings.fastStartOptimizationEnabled {
+                RecordingFastStartFolderRow(path: $app.mediaLibrarySettings.fastStartOutputPath)
+            }
+        } header: {
+            Text("Playback Copies")
+        }
+    }
+}
+
+private struct RecordingFastStartFolderRow: View {
+    @Binding var path: String
+
+    var body: some View {
+        ConsoleSettingRow(title: "Fast Start Folder", symbol: "folder") {
+            HStack(spacing: 8) {
+                TextField("~/Movies/SwiftBot Fast Start", text: $path)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+
+                Button {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.canCreateDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.prompt = "Choose"
+                    if panel.runModal() == .OK, let url = panel.url {
+                        path = url.path
+                    }
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .help("Choose folder")
+                .accessibilityLabel("Choose Fast Start output folder")
+            }
+        }
+    }
+}
+
+private struct RecordingSourceRow: View {
+    @Binding var source: MediaLibrarySource
+    var status: String?
+    let onDelete: () -> Void
+
+    private var isUnavailable: Bool { status?.hasPrefix("Unavailable") == true }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: isUnavailable ? "exclamationmark.triangle" : "folder")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isUnavailable ? Color.orange : Color.secondary)
+                .frame(width: 30, height: 30)
+                .background(.primary.opacity(0.05), in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Folder name", text: $source.name)
+                    .textFieldStyle(.plain)
+                    .font(.body.weight(.medium))
+                Text(source.normalizedRootPath.isEmpty ? "No folder chosen" : source.normalizedRootPath)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(source.normalizedRootPath)
+                    .textSelection(.enabled)
+                if let status, status != "Available", status != "Disabled" {
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(isUnavailable ? Color.orange : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 16)
+
+            Button("Change…") { chooseFolder() }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .accessibilityLabel("Choose folder for \(source.name)")
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove folder")
+            .accessibilityLabel("Remove folder \(source.name)")
+
+            ConsoleRowSwitch(isOn: $source.isEnabled)
+                .accessibilityLabel("Enable recording folder \(source.name)")
+        }
+        .frame(minHeight: 32)
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        if !source.normalizedRootPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: source.normalizedRootPath, isDirectory: true)
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            source.rootPath = url.path
+        }
     }
 }

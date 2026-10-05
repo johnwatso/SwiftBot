@@ -145,6 +145,7 @@ struct SidebarItemGroup: Identifiable {
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
+    case discord = "Discord"
     case patchy = "Patchy"
     case welcomeFlow = "Welcome Flow"
     case automations = "Automations"
@@ -170,6 +171,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2"
+        case .discord: return "bubble.left.and.bubble.right"
         case .patchy: return "square.and.arrow.down.badge.checkmark"
         case .welcomeFlow: return "person.crop.circle.badge.plus"
         case .automations: return "bolt.badge.automatic"
@@ -196,13 +198,13 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     /// `AdminWebCopyTests` proves each one still has a WebUI page.
     static let webOnlyItems: Set<SidebarItem> = [
         .commands, .welcomeFlow, .automations, .moderation,
-        .gameTracker, .patchy, .sweep, .wikiBridge, .voice, .recordings,
+        .gameTracker, .patchy, .sweep, .wikiBridge, .voice,
         .appleIntelligence, .analytics, .rewind
     ]
 
     /// Host settings for this Mac that only the native app shows. The WebUI
     /// has no page for them by design (see the web secrets policy).
-    static let nativeOnlyItems: Set<SidebarItem> = [.webInterface, .integrations]
+    static let nativeOnlyItems: Set<SidebarItem> = [.discord, .webInterface, .integrations]
 
     /// The order and grouping the dashboard sidebar renders.
     ///
@@ -215,7 +217,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     /// The native app is the host console: the bot's status, its services'
     /// settings, and its log. One short, untitled group, as in SwiftMiner.
     static let sidebarSections: [SidebarItemGroup] = [
-        SidebarItemGroup(title: nil, items: [.overview, .webInterface, .swiftMesh, .integrations, .activity])
+        SidebarItemGroup(title: nil, items: [.overview, .discord, .webInterface, .swiftMesh, .integrations, .recordings, .activity])
     ]
 }
 

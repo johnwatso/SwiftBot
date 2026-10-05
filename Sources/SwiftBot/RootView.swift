@@ -2,9 +2,7 @@ import AppKit
 import Charts
 import SwiftUI
 
-/// Unified root view that works with both local and remote providers.
-/// The provider-based shell allows the same UI components to be used
-/// regardless of whether the bot is running locally or remotely.
+/// The window's root: onboarding until set up, then the dashboard.
 struct RootView: View {
     @EnvironmentObject var app: AppModel
     @State private var selection: SidebarItem = .overview
@@ -30,14 +28,9 @@ struct RootView: View {
             OnboardingRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
-        } else if shouldShowRemoteDashboard {
-            RemoteModeRootView()
-                .frame(minWidth: 1200, minHeight: 760)
-                .toggleStyle(.switch)
-        } else if let provider = app.provider {
+        } else if app.hasLoadedSettings {
             UnifiedRootView(selection: $selection)
-                .environmentObject(provider)
-                .frame(minWidth: 1200, minHeight: 760)
+                .frame(minWidth: 1040, minHeight: 700)
                 .toggleStyle(.switch)
         } else {
             fallbackView
@@ -50,19 +43,13 @@ struct RootView: View {
             .frame(minWidth: 1200, minHeight: 760)
             .toggleStyle(.switch)
     }
-
-    private var shouldShowRemoteDashboard: Bool {
-        app.isRemoteLaunchMode || (app.canOpenRemoteDashboardFromLocalApp && app.viewMode == .remote)
-    }
 }
 
 // MARK: - Unified Shell
 
-/// Unified shell that uses BotDataProvider for both local and remote modes.
-/// This view receives the provider via environment and renders the appropriate UI.
+/// The dashboard shell: sidebar and the selected page.
 struct UnifiedRootView: View {
     @Binding var selection: SidebarItem
-    @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("overview.layout") private var overviewLayout: OverviewLayout = .console
@@ -86,13 +73,22 @@ struct UnifiedRootView: View {
                 // Fixed width, as in SwiftMiner: the sidebar is chrome, not content.
                 .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 220)
         } detail: {
-            detailView
-                .padding(.top, isSidebarCollapsed ? Self.collapsedSidebarTopInset : 0)
-                .animation(.easeInOut(duration: 0.2), value: isSidebarCollapsed)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(.container, edges: .top)
-                .background(SwiftBotGlassBackground())
-                .dashboardMetricGlowLayer()
+            // Bound every destination to the actual detail viewport. A page's
+            // ideal content height must not resize or shift the split view and
+            // its sidebar when navigation replaces the current destination.
+            GeometryReader { geometry in
+                detailView
+                    // The sidebar animates its selection; the page itself
+                    // swaps instantly rather than cross-fading two pages.
+                    .animation(nil, value: selection)
+                    .padding(.top, isSidebarCollapsed ? Self.collapsedSidebarTopInset : 0)
+                    .animation(.easeInOut(duration: 0.2), value: isSidebarCollapsed)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                    .background(SwiftBotGlassBackground())
+                    .dashboardMetricGlowLayer()
+                    .clipped()
+            }
+            .ignoresSafeArea(.container, edges: .top)
         }
         // The window has no toolbar and the View menu omits the sidebar
         // commands, matching the remote dashboard's split view.
@@ -122,10 +118,12 @@ struct UnifiedRootView: View {
                     onShowConsole: { overviewLayout = .console }
                 )
             }
+        case .discord: DiscordPage()
         case .webInterface: WebInterfacePage()
         case .integrations: IntegrationsPage()
         case .swiftMesh: SwiftMeshPage()
         case .activity: ActivityLogView()
+        case .recordings: RecordingsPage()
         // WebUI-only feature pages (`SidebarItem.webOnlyItems`). Not listed in
         // the sidebar; their native views stay until they're deleted.
         case .patchy: PatchyView()
@@ -136,7 +134,6 @@ struct UnifiedRootView: View {
         case .wikiBridge: WikiBridgeView()
         case .appleIntelligence: AppleIntelligenceView()
         case .voice: VoiceView()
-        case .recordings: RecordingsView()
         case .analytics: AnalyticsView()
         case .rewind: RewindView()
         case .sweep: SweepView()
@@ -248,7 +245,8 @@ struct DashboardSidebar: View {
             systemImage: item.icon,
             isSelected: selection == item,
             selectionNamespace: selectionNamespace,
-            badgeCount: badgeCount(for: item)
+            badgeCount: badgeCount(for: item),
+            brandAsset: item == .discord ? "DiscordLogo" : nil
         ) {
             select(item)
         }
@@ -374,14 +372,14 @@ struct SwiftMeshJoinConfirmationSheet: View {
     private func apply() {
         isApplying = true
         feedback = nil
-        let result = app.applySwiftMeshJoinCode(pending.rawCode)
+        Task {
+        let result = await app.applySwiftMeshJoinCode(pending.rawCode)
         if !result.ok {
             feedback = result.message
             feedbackIsError = true
             isApplying = false
             return
         }
-        Task {
             let ok = await app.testWorkerJoinCodeConnection(
                 addresses: pending.bundle.leaderAddresses,
                 port: pending.bundle.leaderPort

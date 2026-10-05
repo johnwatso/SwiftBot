@@ -14,6 +14,7 @@ actor AutomationService {
     /// constructed in tests with stubs. Mirrors the surface of the old
     /// RuleExecutionService.Dependencies.
     struct Dependencies: Sendable {
+        var canExecute: @Sendable () async -> Bool = { true }
         let sendMessage: @Sendable (_ channelId: String, _ content: String, _ token: String) async throws -> Void
         let sendPayloadMessage: @Sendable (_ channelId: String, _ payload: [String: Any], _ token: String) async throws -> Void
         let sendDM: @Sendable (_ userId: String, _ content: String) async throws -> Void
@@ -34,11 +35,17 @@ actor AutomationService {
     private let aiService: DiscordAIService
     private let dependencies: Dependencies
     private var handledMessageIds: Set<String> = []
+    private var journal: AutomationExecutionJournal
+    private var paused = false
+    private var executionGeneration = 0
+    private var activeExecutions: Set<String> = []
+    private var activeEffects = 0
     private let logger = Logger(subsystem: "com.swiftbot", category: "automations")
 
-    init(aiService: DiscordAIService, dependencies: Dependencies) {
+    init(aiService: DiscordAIService, dependencies: Dependencies, journalURL: URL? = nil) {
         self.aiService = aiService
         self.dependencies = dependencies
+        self.journal = AutomationExecutionJournal(fileURL: journalURL)
     }
 
     // MARK: - Dedup
@@ -242,34 +249,112 @@ actor AutomationService {
     // MARK: - Execution
 
     /// Runs every Step in `rule.steps` in order against `event`.
-    func execute(rule: Automations.Rule, event: SwiftBotEvent, token: String?) async {
-        guard let token else { return }
-        var ctx = ExecutionContext(event: event)
-
-        for step in rule.steps {
-            await runStep(step, ctx: &ctx, token: token)
+    /// Returns only after already-started effects have settled. Delays and
+    /// computation cannot pass their next step boundary once generation changes.
+    func pauseAndDrain() async -> Bool {
+        paused = true
+        executionGeneration += 1
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while activeEffects > 0, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
         }
+        return activeEffects == 0
+    }
 
-        if ctx.eventHandled, let msgId = event.triggerMessageId {
-            markHandled(msgId)
-        }
+    func resume() {
+        paused = false
+        journal.reload()
+    }
 
-        let statusString: String = {
-            if ctx.errors.isEmpty {
-                return "Success"
-            } else {
-                return "Failed: " + ctx.errors.joined(separator: " | ")
+    func resumePendingExecutions(token: String?, rules: [Automations.Rule]) {
+        let enabled = Set(rules.filter(\.enabled).map(\.id))
+        for record in journal.records.values where !record.completed {
+            if record.needsReview {
+                dependencies.recordAutomationRun(
+                    record.rule.id, record.rule.name, record.event.kind.rawValue,
+                    record.event.username, record.nextStep, "Needs review: an action was not acknowledged before recovery"
+                )
+            } else if enabled.contains(record.rule.id) {
+                Task {
+                    while self.activeExecutions.contains(record.id) {
+                        guard !self.paused, !Task.isCancelled else { return }
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    guard let latest = self.journal.records[record.id] else { return }
+                    await self.executeCheckpoint(latest, token: token)
+                }
             }
-        }()
+        }
+    }
 
-        dependencies.recordAutomationRun(
-            rule.id,
-            rule.name,
-            event.kind.rawValue,
-            event.username,
-            rule.steps.count,
-            statusString
-        )
+    func execute(rule: Automations.Rule, event: SwiftBotEvent, token: String?) async {
+        let id = rule.id + ":" + (event.triggerMessageId ?? UUID().uuidString)
+        let checkpoint = journal.records[id] ?? AutomationExecutionCheckpoint(id: id, rule: rule, event: event)
+        await executeCheckpoint(checkpoint, token: token)
+    }
+
+    private func executeCheckpoint(_ initial: AutomationExecutionCheckpoint, token: String?) async {
+        guard let token, !paused, !initial.completed, !initial.needsReview,
+              !activeExecutions.contains(initial.id), await dependencies.canExecute() else { return }
+        let generation = executionGeneration
+        activeExecutions.insert(initial.id)
+        defer { activeExecutions.remove(initial.id) }
+        var checkpoint = initial
+        var ctx = ExecutionContext(event: checkpoint.event)
+        ctx.eventHandled = checkpoint.eventHandled
+        ctx.aiOutput = checkpoint.aiOutput
+        ctx.errors = checkpoint.errors
+        do {
+            try journal.save(checkpoint)
+            while checkpoint.nextStep < checkpoint.rule.steps.count {
+                guard !paused, executionGeneration == generation, !Task.isCancelled,
+                      await dependencies.canExecute() else { return }
+                if let wake = checkpoint.wakeAt, wake > Date() {
+                    try? await Task.sleep(for: .seconds(min(1, wake.timeIntervalSinceNow)))
+                    continue
+                }
+                checkpoint.wakeAt = nil
+                let index = checkpoint.nextStep
+                let step = checkpoint.rule.steps[index]
+                if step.kind == .delay {
+                    checkpoint.nextStep += 1
+                    checkpoint.wakeAt = Date().addingTimeInterval(Double(max(0, step.delaySeconds ?? 0)))
+                    try journal.save(checkpoint)
+                    continue
+                }
+                let isEffect = [.sendMessage, .modifyMember, .modifyMessage, .webhook].contains(step.kind)
+                checkpoint.inFlightStep = isEffect ? index : nil
+                try journal.save(checkpoint)
+                if isEffect { activeEffects += 1 }
+                await runStep(step, ctx: &ctx, token: token)
+                if isEffect { activeEffects -= 1 }
+                // A superseded generation can finish its currently admitted
+                // effect, but cannot begin another one or overwrite imported state.
+                guard executionGeneration == generation || (paused && isEffect) else { return }
+                checkpoint.nextStep += 1
+                checkpoint.inFlightStep = nil
+                checkpoint.eventHandled = ctx.eventHandled
+                checkpoint.aiOutput = ctx.aiOutput
+                checkpoint.errors = ctx.errors
+                try journal.save(checkpoint)
+            }
+            // The final delay still has a due time even when it is the last step.
+            while let wake = checkpoint.wakeAt, wake > Date() {
+                guard !paused, generation == executionGeneration, !Task.isCancelled else { return }
+                try? await Task.sleep(for: .seconds(min(1, wake.timeIntervalSinceNow)))
+            }
+            checkpoint.completed = true
+            checkpoint.wakeAt = nil
+            try journal.save(checkpoint)
+            if ctx.eventHandled, let id = checkpoint.event.triggerMessageId { markHandled(id) }
+            dependencies.recordAutomationRun(
+                checkpoint.rule.id, checkpoint.rule.name,
+                checkpoint.event.kind.rawValue, checkpoint.event.username, checkpoint.rule.steps.count,
+                ctx.errors.isEmpty ? "Success" : "Failed: " + ctx.errors.joined(separator: " | ")
+            )
+        } catch {
+            dependencies.log("Automation paused: checkpoint could not be saved (" + error.localizedDescription + ")")
+        }
     }
 
     private struct ExecutionContext {
@@ -656,14 +741,9 @@ actor AutomationService {
                 recordAutomationRun: { _, _, _, _, _, _ in }
             )
             
+            // A separate in-memory service: no journal file, no real waits.
             let simService = AutomationService(aiService: self.aiService, dependencies: dryRunDeps)
-            await simService.execute(rule: rule, event: event, token: "sim-token")
-            
-            let ranSteps = accumulator.steps
-            for (index, step) in rule.steps.enumerated() {
-                let detail = index < ranSteps.count ? ranSteps[index].detail : "Step skipped or failed"
-                stepTraces.append(Automations.StepTrace(stepId: step.id, kind: step.kind, executed: index < ranSteps.count, detail: detail))
-            }
+            stepTraces = await simService.traceSteps(of: rule, event: event, recorder: accumulator)
         } else {
             for step in rule.steps {
                 stepTraces.append(Automations.StepTrace(stepId: step.id, kind: step.kind, executed: false, detail: "Step bypassed (filters/trigger did not match)"))
@@ -676,6 +756,50 @@ actor AutomationService {
             filterTraces: filterTraces,
             stepTraces: stepTraces
         )
+    }
+}
+
+extension AutomationService {
+    /// Runs each step once against dry-run dependencies and reports what it
+    /// would have done. Steps are traced one at a time, so a step that
+    /// records nothing (log, delay, aiTransform, or a step with no target)
+    /// can't shift later steps' details onto the wrong row. Delays are
+    /// reported, not waited out.
+    fileprivate func traceSteps(of rule: Automations.Rule, event: SwiftBotEvent, recorder: SimTraceAccumulator) async -> [Automations.StepTrace] {
+        var ctx = ExecutionContext(event: event)
+        var traces: [Automations.StepTrace] = []
+        for step in rule.steps {
+            let actionsBefore = recorder.steps.count
+            let errorsBefore = ctx.errors.count
+            var executed = true
+            var detail: String
+            switch step.kind {
+            case .delay:
+                detail = "Would wait \(formatDuration(max(0, step.delaySeconds ?? 0)))"
+            case .log:
+                let text = await render(step.logText ?? "", event: event, aiOutput: ctx.aiOutput)
+                executed = !text.isEmpty
+                detail = text.isEmpty ? "Nothing to log" : "Would log: \"\(text)\""
+            default:
+                await runStep(step, ctx: &ctx, token: "sim-token")
+                let actions = recorder.steps.dropFirst(actionsBefore).map(\.detail)
+                if step.kind == .aiTransform, let output = ctx.aiOutput {
+                    detail = "AI output: \"\(output)\""
+                } else if actions.isEmpty {
+                    executed = false
+                    detail = "Nothing to do. Check the step's target and content."
+                } else {
+                    detail = actions.joined(separator: "\n")
+                }
+            }
+            let errors = ctx.errors.dropFirst(errorsBefore)
+            if !errors.isEmpty {
+                executed = false
+                detail = errors.joined(separator: "\n")
+            }
+            traces.append(Automations.StepTrace(stepId: step.id, kind: step.kind, executed: executed, detail: detail))
+        }
+        return traces
     }
 }
 
@@ -693,5 +817,82 @@ private final class SimTraceAccumulator: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         _steps.append(Automations.StepTrace(stepId: UUID().uuidString, kind: kind, executed: true, detail: detail))
+    }
+}
+
+// MARK: - Simulation input
+
+extension Automations {
+    /// The sample event a dry run is tested against. Shared by the native rule
+    /// editor and the WebUI so both simulate the same thing.
+    struct SimulationInput: Codable, Sendable, Hashable {
+        var username: String
+        var channelId: String
+        var messageContent: String
+        var voiceDurationSeconds: Int
+
+        /// Values that should satisfy the rule's own trigger and filters.
+        static func suggested(for rule: Rule) -> SimulationInput {
+            var channelId = "chan-123"
+            if let tc = rule.trigger.channelId, !tc.isEmpty {
+                channelId = tc
+            } else if let first = rule.filters.first(where: { $0.kind == .inChannel })?.channelIds?.first, !first.isEmpty {
+                channelId = first
+            }
+
+            var duration = 300
+            if let threshold = rule.trigger.voiceDurationThreshold {
+                duration = threshold
+            } else if let minSeconds = rule.filters.first(where: { $0.kind == .minVoiceDurationSeconds })?.intValue {
+                duration = minSeconds
+            }
+
+            var content = "Hello world!"
+            if rule.filters.contains(where: { $0.kind == .messageContainsSpamLink }) {
+                content = "FREE-DISCORD-NITRO PHISHING LINK HERE: HTTPS://GIFT-NITRO.COM"
+            } else if rule.filters.contains(where: { $0.kind == .messageCapsPercentage }) {
+                content = "HELLO WORLD THIS IS A LOUD SHOUTING MESSAGE"
+            } else if let mentions = rule.filters.first(where: { $0.kind == .messageMentionsCount }) {
+                let count = mentions.intValue ?? 5
+                content = (1...max(1, count + 1)).map { "<@user\($0)>" }.joined(separator: " ") + " wake up!"
+            } else if let t = rule.filters.first(where: { $0.kind == .messageEquals })?.text, !t.isEmpty {
+                content = t
+            } else if let t = rule.filters.first(where: { $0.kind == .messageContains })?.text, !t.isEmpty {
+                content = t
+            } else if let t = rule.filters.first(where: { $0.kind == .messageContainsAny })?.textValues?.first, !t.isEmpty {
+                content = t
+            } else if let t = rule.filters.first(where: { $0.kind == .messageMatchesRegex })?.text, !t.isEmpty {
+                content = "Sample matching string for regex: \(t)"
+            }
+
+            return SimulationInput(username: "john_doe", channelId: channelId, messageContent: content, voiceDurationSeconds: duration)
+        }
+
+        /// The event this input describes for a trigger kind.
+        func event(for trigger: TriggerKind) -> SwiftBotEvent {
+            switch trigger {
+            case .userJoinedVoice:
+                return .join(guildId: "guild-123", userId: "user-123", username: username, channelId: channelId)
+            case .userLeftVoice:
+                return .leave(guildId: "guild-123", userId: "user-123", username: username, channelId: channelId, durationSeconds: voiceDurationSeconds)
+            case .userMovedVoice:
+                return .move(guildId: "guild-123", userId: "user-123", username: username, channelId: channelId,
+                             fromChannelId: "voice-old", toChannelId: channelId, durationSeconds: voiceDurationSeconds)
+            case .memberJoined:
+                return .memberJoin(guildId: "guild-123", userId: "user-123", username: username, joinedAt: Date())
+            case .memberLeft:
+                return .memberLeave(guildId: "guild-123", userId: "user-123", username: username)
+            case .mediaAdded:
+                return .mediaAdded(SwiftBotEvent.MediaPayload(
+                    guildId: "guild-123", userId: "user-123", username: username, fileName: "audio.mp3",
+                    relativePath: nil, sourceName: "Local", nodeName: "node-1"
+                ))
+            default:
+                return .message(SwiftBotEvent.MessagePayload(
+                    guildId: "guild-123", userId: "user-123", username: username, channelId: channelId,
+                    messageId: "msg-123", content: messageContent, isDirectMessage: false, authorIsBot: false
+                ))
+            }
+        }
     }
 }

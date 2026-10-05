@@ -96,8 +96,8 @@ struct ServiceStatusCard: View {
                     Text(service.detail)
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                        .lineLimit(service.health.needsAttention ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .help(service.detail)
                 }
             }

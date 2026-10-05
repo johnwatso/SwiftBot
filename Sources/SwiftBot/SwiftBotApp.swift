@@ -141,7 +141,6 @@ struct SwiftBotApp: App {
                 RootView()
                     .environmentObject(appModel)
                     .environmentObject(updater)
-                    .frame(minWidth: 1200, minHeight: 760)
                     .onAppear {
                         applyAppIconIfAvailable()
                         applyPresenceMode(appModel.settings.presenceMode)
@@ -179,21 +178,6 @@ struct SwiftBotApp: App {
 
                 Button("Acknowledgements…") {
                     openWindow(id: "acknowledgements")
-                }
-            }
-            if appModel.canOpenRemoteDashboardFromLocalApp {
-                CommandMenu("View") {
-                    Button("Local Dashboard") {
-                        appModel.viewMode = .local
-                    }
-                    .keyboardShortcut("1", modifiers: [.command, .option])
-                    .disabled(appModel.viewMode == .local)
-
-                    Button("Remote Dashboard") {
-                        appModel.viewMode = .remote
-                    }
-                    .keyboardShortcut("2", modifiers: [.command, .option])
-                    .disabled(appModel.viewMode == .remote)
                 }
             }
             // Mirrors SwiftMiner's Help menu: a single entry to save a fully
@@ -238,8 +222,6 @@ struct SwiftBotApp: App {
         switch url.scheme {
         case "swiftbot":
             switch url.host {
-            case "auth":
-                handleAuthDeepLink(url)
             case "swiftminer-pair":
                 handleSwiftMinerPairingDeepLink(url)
             default:
@@ -289,18 +271,6 @@ struct SwiftBotApp: App {
 
     private func applyPresenceMode(_ mode: AppPresenceMode) {
         NSApp.setActivationPolicy(mode.showsDockIcon ? .regular : .accessory)
-    }
-
-    private func handleAuthDeepLink(_ url: URL) {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let queryItems = components.queryItems else { return }
-
-        // Extract session token from deep link: swiftbot://auth?session=<token>
-        if let sessionToken = queryItems.first(where: { $0.name == "session" })?.value,
-           !sessionToken.isEmpty {
-            // Store session token for remote authentication
-            appModel.handleRemoteAuthSession(sessionToken)
-        }
     }
 
     private func handleSwiftMinerPairingDeepLink(_ url: URL) {

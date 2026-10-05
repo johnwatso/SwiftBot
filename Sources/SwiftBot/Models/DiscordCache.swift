@@ -3,6 +3,7 @@ import Foundation
 struct DiscordCacheSnapshot: Codable, Hashable {
     var updatedAt = Date()
     var connectedServers: [String: String] = [:]
+    var guildIconHashes: [String: String] = [:]
     var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
     var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
     var availableRolesByServer: [String: [GuildRole]] = [:]
@@ -15,6 +16,7 @@ struct DiscordCacheSnapshot: Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case updatedAt
         case connectedServers
+        case guildIconHashes
         case availableVoiceChannelsByServer
         case availableTextChannelsByServer
         case availableRolesByServer
@@ -31,6 +33,7 @@ struct DiscordCacheSnapshot: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
         connectedServers = try container.decodeIfPresent([String: String].self, forKey: .connectedServers) ?? [:]
+        guildIconHashes = try container.decodeIfPresent([String: String].self, forKey: .guildIconHashes) ?? [:]
         availableVoiceChannelsByServer = try container.decodeIfPresent([String: [GuildVoiceChannel]].self, forKey: .availableVoiceChannelsByServer) ?? [:]
         availableTextChannelsByServer = try container.decodeIfPresent([String: [GuildTextChannel]].self, forKey: .availableTextChannelsByServer) ?? [:]
         availableRolesByServer = try container.decodeIfPresent([String: [GuildRole]].self, forKey: .availableRolesByServer) ?? [:]
@@ -221,6 +224,12 @@ actor DiscordCache {
         }
     }
 
+    func setGuildIcon(guildID: String, hash: String?) {
+        guard snapshot.guildIconHashes[guildID] != hash else { return }
+        snapshot.guildIconHashes[guildID] = hash
+        emitUpdate()
+    }
+
     func removeGuild(id guildID: String) {
         let textChannels = snapshot.availableTextChannelsByServer[guildID] ?? []
         let voiceChannels = snapshot.availableVoiceChannelsByServer[guildID] ?? []
@@ -231,6 +240,7 @@ actor DiscordCache {
             snapshot.channelTypesById[channel.id] = nil
         }
         snapshot.connectedServers[guildID] = nil
+        snapshot.guildIconHashes[guildID] = nil
         snapshot.availableVoiceChannelsByServer[guildID] = nil
         snapshot.availableTextChannelsByServer[guildID] = nil
         snapshot.availableRolesByServer[guildID] = nil

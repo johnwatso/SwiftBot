@@ -114,7 +114,7 @@ actor DiscordGatewayConnection {
         sequence = nil
         sessionId = nil
         resumeOnHelloGeneration = nil
-        Self.logger.info("Gateway connect initiated")
+        Self.logger.info("Gateway connect initiated (pid \(ProcessInfo.processInfo.processIdentifier))")
         await openGatewayConnection(token: normalizedToken, isReconnect: false)
     }
 

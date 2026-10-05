@@ -234,7 +234,9 @@ actor ConversationStore {
         }
 
         guard let cursorIndex = all.firstIndex(where: { $0.id == fromRecordID }) else {
-            return ([], false)
+            // The peer may have restarted or trimmed its old cursor. Replay a
+            // bounded page; importing records is idempotent.
+            return (Array(all.prefix(limit)), all.count > limit)
         }
 
         let startIndex = all.index(after: cursorIndex)
@@ -243,6 +245,23 @@ actor ConversationStore {
         }
         let remaining = Array(all[startIndex...])
         return (Array(remaining.prefix(limit)), remaining.count > limit)
+    }
+
+    func appendMeshRecordIfAbsent(_ record: MemoryRecord) {
+        let existing = messagesByScope[record.scope] ?? []
+        guard !existing.contains(where: { $0.id == record.id }) else { return }
+        messagesByScope[record.scope, default: []].append(record)
+        emitUpdate()
+    }
+
+    /// UUIDs and Discord IDs are opaque cursor identities. Progress follows
+    /// chronological record order, with the ID as a tie breaker.
+    func cursorIsAfter(_ candidate: String, previous: String?) -> Bool {
+        guard let previous else { return true }
+        let records = allMessages()
+        guard let newer = records.first(where: { $0.id == candidate }) else { return false }
+        guard let older = records.first(where: { $0.id == previous }) else { return true }
+        return newer.timestamp > older.timestamp || (newer.timestamp == older.timestamp && newer.id > older.id)
     }
 
     func appendIfNotExists(_ message: Message) {

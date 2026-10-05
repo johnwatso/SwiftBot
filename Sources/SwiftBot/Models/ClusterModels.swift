@@ -383,6 +383,46 @@ struct AppPreferencesSnapshot: Equatable {
 struct MeshSyncedFilesPayload: Codable, Hashable {
     let generatedAt: Date
     let files: [MeshSyncedFile]
+    /// Version 2 snapshots are complete manifests. Missing allowlisted files
+    /// are explicit deletions; generatedAt is diagnostic, never an ordering key.
+    var schemaVersion: Int = 2
+    var leaderTerm: Int? = nil
+    var revision: Int64? = nil
+    var deletedFileNames: [String]? = nil
+}
+
+struct MeshSnapshotVersion: Codable, Hashable, Comparable, Sendable {
+    let leaderTerm: Int
+    let revision: Int64
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.leaderTerm == rhs.leaderTerm
+            ? lhs.revision < rhs.revision
+            : lhs.leaderTerm < rhs.leaderTerm
+    }
+}
+
+struct MeshSnapshotImportResult: Sendable {
+    let accepted: Bool
+    let importedFileCount: Int
+    let version: MeshSnapshotVersion?
+    let rejectionReason: String?
+}
+
+/// Issued by the owner in a trusted Failover join code. A shared mesh secret
+/// authenticates transport; this separate per-node identity authorizes secrets.
+/// The private signing key is Keychain-only and travels only in its own join code.
+/// Replicated grants contain public verification keys, never another node's private key.
+struct MeshCredentialEnrollment: Codable, Hashable, Sendable {
+    let nodeID: String
+    let token: String
+}
+
+struct MeshCredentialGrant: Codable, Hashable, Sendable {
+    let nodeID: String
+    let nodeName: String
+    let publicKey: String
+    let revision: Int
 }
 
 // MARK: - Cluster Mode
@@ -548,6 +588,7 @@ struct MeshLiveSnapshot: Codable, Sendable, Hashable {
     /// Transient runtime state on the Primary at snapshot time. Mirrored on
     /// the Standby so its dashboard can show "Primary is promoting…" / etc.
     let runtimeState: String?
+    var guildIconHashes: [String: String]? = nil
 }
 
 /// Incremental conversation sync payload sent leader → standby.
@@ -653,6 +694,13 @@ struct MeshCredentialsResponse: Codable, Sendable {
     var gameProviderTokens: [String: String] = [:]
     var swiftMinerAPIKey: String = ""
     var swiftMinerWebhookSecret: String = ""
+    /// Optional for rollout compatibility. nil means no credential information,
+    /// whereas an empty string intentionally revokes a previously copied key.
+    var discordOAuthClientSecret: String? = nil
+    var discordToken: String? = nil
+    var authorizedCredentialGrants: [MeshCredentialGrant]? = nil
+    var leaderTerm: Int? = nil
+    var configRevision: Int64? = nil
 }
 
 /// Coordinated handover test payload. Sent by the current Primary to its
@@ -787,6 +835,7 @@ struct ReplicationCursor: Codable, Sendable {
     var leaderTerm: Int
     /// ID of the last record successfully delivered to this node.
     var lastSentRecordID: String?
+    var lastSentRecordTimestamp: Date? = nil
     /// When this cursor was last advanced.
     var updatedAt: Date
 }
@@ -1060,4 +1109,13 @@ struct ClusterSnapshot: Hashable {
     /// Phase 3: per-follower state polled by the primary. Keyed by node baseURL.
     /// Empty on followers and on standalone nodes.
     var followerStates: [String: FollowerStateSummary] = [:]
+}
+
+struct MeshNodeHealth: Codable, Sendable {
+    let nodeName: String
+    let mode: String
+    let leaderTerm: Int
+    let desiredBotRunning: Bool
+    let gatewayConnected: Bool
+    let advertisedAddress: String
 }

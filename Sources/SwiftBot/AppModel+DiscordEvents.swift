@@ -169,6 +169,7 @@ extension AppModel {
         }
 
         await discordCache.upsertGuild(id: event.guildID, name: event.guildName)
+        await updateGuildIcon(from: event)
         await discordCache.setGuildVoiceChannels(guildID: event.guildID, channels: parseVoiceChannels(from: event.rawMap))
         await discordCache.setGuildTextChannels(guildID: event.guildID, channels: parseTextChannels(from: event.rawMap))
         await discordCache.setGuildRoles(guildID: event.guildID, roles: parseRoles(from: event.rawMap))
@@ -182,6 +183,24 @@ extension AppModel {
         // Failover dashboards rely on the mesh snapshot for connectedServers.
         // Push immediately rather than waiting up to ~60 s for the next tick.
         await pushLiveSnapshotEagerly(reason: "GUILD_CREATE \(event.guildName ?? event.guildID)")
+    }
+
+    private func updateGuildIcon(from event: GatewayGuildCreateEvent) async {
+        // Missing metadata preserves the cached icon; an explicit null removes it.
+        guard let icon = event.rawMap["icon"] else { return }
+        if case let .string(hash) = icon {
+            await discordCache.setGuildIcon(guildID: event.guildID, hash: hash.isEmpty ? nil : hash)
+        } else if icon == .null {
+            await discordCache.setGuildIcon(guildID: event.guildID, hash: nil)
+        }
+    }
+
+    func handleGuildUpdate(_ event: GatewayGuildCreateEvent) async {
+        await discordCache.upsertGuild(id: event.guildID, name: event.guildName)
+        await updateGuildIcon(from: event)
+        await syncPublishedDiscordCacheFromService()
+        scheduleDiscordCacheSave()
+        await pushLiveSnapshotEagerly(reason: "GUILD_UPDATE \(event.guildID)")
     }
 
     func handleChannelCreate(_ event: GatewayChannelCreateEvent) async {
@@ -323,6 +342,7 @@ extension AppModel {
     func syncPublishedDiscordCacheFromService() async {
         let snapshot = await discordCache.currentSnapshot()
         connectedServers = snapshot.connectedServers
+        guildIconHashes = snapshot.guildIconHashes
         availableVoiceChannelsByServer = snapshot.availableVoiceChannelsByServer
         availableTextChannelsByServer = snapshot.availableTextChannelsByServer
         availableRolesByServer = snapshot.availableRolesByServer

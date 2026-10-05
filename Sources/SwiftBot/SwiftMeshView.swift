@@ -7,9 +7,13 @@ struct SwiftMeshView: View {
     @State private var showHandoverTestConfirm = false
     @State private var isCopyingJoinCode = false
     @State private var justCopiedJoinCode = false
+    @State private var healthAndWorkWidth: CGFloat = 0
 
     /// Off when the page around it (`SwiftMeshPage`) draws its own header.
     var showsHeader = true
+    /// The console page owns scrolling and its header; never nest a second
+    /// dashboard viewport inside the navigation split view's detail column.
+    var embeddedInConsole = false
 
     /// 10s polling interval for the SwiftMesh UI. The old 3s interval caused
     /// excessive standby-to-primary HTTP load (up to 40 req/min) and overlapping
@@ -17,110 +21,25 @@ struct SwiftMeshView: View {
     private let pollingIntervalNanoseconds: UInt64 = 10_000_000_000
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if showsHeader {
-                header
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                // Handover Test panel — Configured Primary only, requires at least
-                // one registered worker or an active test.
-                if app.settings.clusterMode == .leader && (app.registeredWorkersDebugCount > 0 || app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil) {
-                    HandoverTestPanel(
-                        lastRunAt: app.settings.clusterLastHandoverTestAt,
-                        lastRunOK: app.settings.clusterLastHandoverTestOK,
-                        onRun: { showHandoverTestConfirm = true }
-                    )
+        Group {
+            if embeddedInConsole {
+                statusContent
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    if showsHeader {
+                        header
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                    }
+                    ScrollView {
+                        statusContent
+                            .padding(16)
+                    }
+                    .fadingEdges(top: 16, bottom: 20)
                 }
-
-                // Phase 4: manual promote + auto-reclaim countdown.
-                if app.settings.clusterMode == .standby {
-                    PromoteToPrimaryPanel(
-                        snapshot: app.clusterSnapshot,
-                        countdownSeconds: app.autoReclaimRemainingSeconds,
-                        onPromote: { showPromoteConfirm = true }
-                    )
-                }
-
-                // Failover-side banner: surfaces when the Primary has either
-                // scheduled or started a Handover Test. State is mirrored over
-                // the mesh sync so this works even when Primary→Standby
-                // callbacks fail (NAT).
-                if app.settings.clusterMode == .standby,
-                   app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
-                    HandoverTestStandbyBanner(
-                        isActive: app.clusterSnapshot.isHandoverTestActive,
-                        scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
-                        endsAt: app.clusterSnapshot.handoverTestEndsAt
-                    )
-                }
-
-                metricTileRow
-
-                if app.settings.clusterMode == .standalone {
-                    SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
-                        PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Fail Over mode to use SwiftMesh.")
-                    }
-                } else {
-                    SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
-                        if app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
-                            ClusterMapHandoverNotice(
-                                isActive: app.clusterSnapshot.isHandoverTestActive,
-                                scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
-                                endsAt: app.clusterSnapshot.handoverTestEndsAt
-                            )
-                        }
-                        if topologyNodes.isEmpty {
-                            PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
-                        } else {
-                            ClusterMapView(nodes: topologyNodes)
-                        }
-                    }
-
-                    diagnosticsAndJobsRow
-
-                    SwiftMeshSection(title: "Nodes", symbol: "cpu") {
-                        if app.clusterNodes.isEmpty {
-                            PlaceholderPanelLine(text: "No nodes available")
-                        } else {
-                            VStack(spacing: 8) {
-                                ForEach(app.clusterNodes) { node in
-                                    ClusterNodeRow(node: node)
-                                }
-                            }
-                        }
-                    }
-
-                    // Phase 3: follower activity surfaced from primary's poll.
-                    if !app.clusterSnapshot.followerStates.isEmpty {
-                        SwiftMeshSection(title: "Follower Activity", symbol: "dot.radiowaves.left.and.right") {
-                            VStack(spacing: 8) {
-                                ForEach(
-                                    app.clusterSnapshot.followerStates
-                                        .sorted(by: { $0.value.nodeName < $1.value.nodeName }),
-                                    id: \.key
-                                ) { _, state in
-                                    FollowerActivityRow(state: state)
-                                }
-                            }
-                        }
-                    }
-
-                    SwiftMeshSection(title: "Configuration & Replication", symbol: "gearshape.2") {
-                        configurationGrid
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            .padding(.top, 16)
-            .fadingEdges(top: 16, bottom: 20)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .confirmationDialog(
             "Promote this node to Primary?",
             isPresented: $showPromoteConfirm,
@@ -154,6 +73,98 @@ struct SwiftMeshView: View {
             while !Task.isCancelled {
                 await app.pollClusterStatus()
                 try? await Task.sleep(nanoseconds: pollingIntervalNanoseconds)
+            }
+        }
+    }
+
+    private var statusContent: some View {
+        VStack(alignment: .leading, spacing: 32) {
+            // Handover Test panel — Configured Primary only, requires at least
+            // one registered worker or an active test.
+            if app.settings.clusterMode == .leader && (app.registeredWorkersDebugCount > 0 || app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil) {
+                HandoverTestPanel(
+                    lastRunAt: app.settings.clusterLastHandoverTestAt,
+                    lastRunOK: app.settings.clusterLastHandoverTestOK,
+                    onRun: { showHandoverTestConfirm = true }
+                )
+            }
+
+            // Phase 4: manual promote + auto-reclaim countdown.
+            if app.settings.clusterMode == .standby {
+                PromoteToPrimaryPanel(
+                    snapshot: app.clusterSnapshot,
+                    countdownSeconds: app.autoReclaimRemainingSeconds,
+                    onPromote: { showPromoteConfirm = true }
+                )
+            }
+
+            // Failover-side banner: surfaces when the Primary has either
+            // scheduled or started a Handover Test. State is mirrored over
+            // the mesh sync so this works even when Primary→Standby
+            // callbacks fail (NAT).
+            if app.settings.clusterMode == .standby,
+               app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
+                HandoverTestStandbyBanner(
+                    isActive: app.clusterSnapshot.isHandoverTestActive,
+                    scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
+                    endsAt: app.clusterSnapshot.handoverTestEndsAt
+                )
+            }
+
+            healthAndWorkSection
+
+            if app.settings.clusterMode == .standalone {
+                SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
+                    PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Fail Over mode to use SwiftMesh.")
+                }
+            } else {
+                SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
+                    if app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
+                        ClusterMapHandoverNotice(
+                            isActive: app.clusterSnapshot.isHandoverTestActive,
+                            scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
+                            endsAt: app.clusterSnapshot.handoverTestEndsAt
+                        )
+                    }
+                    if topologyNodes.isEmpty {
+                        PlaceholderPanelLine(text: "Waiting for cluster status…")
+                    } else {
+                        ClusterMapView(nodes: topologyNodes)
+                    }
+                }
+
+                diagnosticsAndJobsRow
+
+                SwiftMeshSection(title: "Nodes", symbol: "cpu") {
+                    if app.clusterNodes.isEmpty {
+                        PlaceholderPanelLine(text: "No nodes have reported their status yet.")
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(app.clusterNodes) { node in
+                                ClusterNodeRow(node: node)
+                            }
+                        }
+                    }
+                }
+
+                // Phase 3: follower activity surfaced from primary's poll.
+                if !app.clusterSnapshot.followerStates.isEmpty {
+                    SwiftMeshSection(title: "Follower Activity", symbol: "dot.radiowaves.left.and.right") {
+                        VStack(spacing: 8) {
+                            ForEach(
+                                app.clusterSnapshot.followerStates
+                                    .sorted(by: { $0.value.nodeName < $1.value.nodeName }),
+                                id: \.key
+                            ) { _, state in
+                                FollowerActivityRow(state: state)
+                            }
+                        }
+                    }
+                }
+
+                SwiftMeshSection(title: "Configuration & Replication", symbol: "gearshape.2") {
+                    configurationGrid
+                }
             }
         }
     }
@@ -206,12 +217,69 @@ struct SwiftMeshView: View {
         }
     }
 
-    private var metricTileRow: some View {
-        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
-            ForEach(SwiftMeshDashboardSummary.metrics(app: app)) { metric in
-                DashboardMetricCard(metric: metric)
+    private var healthAndWorkMetrics: [DashboardMetricDescriptor] {
+        // Identity, role, term, and membership live in the summary.
+        SwiftMeshDashboardSummary.metrics(app: app).filter {
+            $0.id != "meshMode" && $0.id != "mesh-leader-term" && $0.id != "mesh-connected"
+        }
+    }
+
+    private var healthAndWorkSection: some View {
+        let metrics = healthAndWorkMetrics
+        // Match Overview's four service cards and its two-column fallback.
+        let requiredWidth = CGFloat(metrics.count) * 168 + CGFloat(max(0, metrics.count - 1)) * 14
+        return ConsoleSection("Health & Work") {
+            Group {
+                if healthAndWorkWidth == 0 || healthAndWorkWidth >= requiredWidth {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(metrics) { healthAndWorkCard($0) }
+                    }
+                } else {
+                    Grid(horizontalSpacing: 14, verticalSpacing: 14) {
+                        GridRow { ForEach(metrics.prefix(2)) { healthAndWorkCard($0) } }
+                        GridRow { ForEach(metrics.dropFirst(2)) { healthAndWorkCard($0) } }
+                    }
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { healthAndWorkWidth = $0 }
+        }
+    }
+
+    private func healthAndWorkCard(_ metric: DashboardMetricDescriptor) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ConsoleIconTile(
+                symbol: metric.symbol,
+                isActive: metric.value != "Off" && metric.value != "-" && metric.value != "Solo",
+                size: 42
+            )
+            VStack(alignment: .leading, spacing: 5) {
+                Text(metric.id == "mesh-gateway-delta" ? "Gateway Drift" : metric.title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Text(metric.value)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Text(metric.subtitle)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(metric.subtitle)
             }
         }
+        .padding(18)
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Gateway delta
@@ -255,28 +323,41 @@ struct SwiftMeshView: View {
     }
 
     private var diagnosticsAndJobsRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            SwiftMeshSection(title: "Diagnostics", symbol: "stethoscope") {
-                VStack(alignment: .leading, spacing: 6) {
-                    DiagnosticsLine(label: "Server", value: app.clusterSnapshot.serverStatusText, tone: tone(for: app.clusterSnapshot.serverState))
-                    DiagnosticsLine(label: "Worker", value: app.clusterSnapshot.workerStatusText, tone: tone(for: app.clusterSnapshot.workerState))
-                    DiagnosticsLine(label: "Status", value: app.clusterSnapshot.diagnostics, tone: .secondary, multiline: true)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 28) {
+                diagnosticsSection.frame(minWidth: 300)
+                lastJobSection.frame(minWidth: 300)
             }
+            VStack(alignment: .leading, spacing: 32) {
+                diagnosticsSection
+                lastJobSection
+            }
+        }
+    }
 
-            SwiftMeshSection(title: "Last Job", symbol: "shippingbox") {
-                VStack(alignment: .leading, spacing: 6) {
-                    DiagnosticsLine(label: "Route", value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized, tone: .primary)
-                    DiagnosticsLine(label: "Node", value: app.clusterSnapshot.lastJobNode, tone: .primary)
-                    DiagnosticsLine(label: "Summary", value: app.clusterSnapshot.lastJobSummary, tone: .secondary, multiline: true)
-                }
+    private var diagnosticsSection: some View {
+        SwiftMeshSection(title: "Diagnostics", symbol: "stethoscope") {
+            VStack(alignment: .leading, spacing: 10) {
+                DiagnosticsLine(label: "Server", value: app.clusterSnapshot.serverStatusText, tone: tone(for: app.clusterSnapshot.serverState))
+                DiagnosticsLine(label: "Worker", value: app.clusterSnapshot.workerStatusText, tone: tone(for: app.clusterSnapshot.workerState))
+                DiagnosticsLine(label: "Status", value: app.clusterSnapshot.diagnostics, tone: .secondary, multiline: true)
+            }
+        }
+    }
+
+    private var lastJobSection: some View {
+        SwiftMeshSection(title: "Last Job", symbol: "shippingbox") {
+            VStack(alignment: .leading, spacing: 10) {
+                DiagnosticsLine(label: "Route", value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized, tone: .primary)
+                DiagnosticsLine(label: "Node", value: app.clusterSnapshot.lastJobNode, tone: .primary)
+                DiagnosticsLine(label: "Summary", value: app.clusterSnapshot.lastJobSummary, tone: .secondary, multiline: true)
             }
         }
     }
 
     private var configurationGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), alignment: .leading)], alignment: .leading, spacing: 10) {
                 DiagnosticsLine(label: "Node Name", value: app.settings.clusterNodeName, tone: .primary)
                 DiagnosticsLine(label: "Listen Port", value: "\(app.settings.clusterListenPort)", tone: .primary)
                 DiagnosticsLine(label: "Primary Host", value: primaryHostDisplay, tone: .primary)
@@ -655,27 +736,12 @@ struct SwiftMeshSection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                Image(systemName: symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.headline.weight(.semibold))
-            }
-
+        ConsoleSection(title: title, accessory: {
+            Image(systemName: symbol)
+                .accessibilityHidden(true)
+        }, content: {
             content
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
+        })
     }
 }
 
@@ -878,7 +944,9 @@ struct ClusterMapView: View {
         }
 
         let workerCount = workers.count
-        if workerCount <= 2 { return 280 }
+        if workerCount == 0 { return 118 }
+        if workerCount == 1 { return 160 }
+        if workerCount == 2 { return 220 }
         if workerCount <= 4 { return 340 }
         if workerCount <= 6 { return 400 }
         return 470

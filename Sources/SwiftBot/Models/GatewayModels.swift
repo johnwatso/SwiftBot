@@ -60,8 +60,8 @@ enum DiscordJSON: Codable, Equatable, Sendable {
 
 // MARK: - SwiftBot Event
 
-enum SwiftBotEvent: Sendable {
-    struct MessagePayload: Sendable {
+enum SwiftBotEvent: Codable, Sendable {
+    struct MessagePayload: Codable, Sendable {
         let guildId: String
         let userId: String
         let username: String
@@ -95,7 +95,7 @@ enum SwiftBotEvent: Sendable {
         }
     }
 
-    struct MediaPayload: Sendable {
+    struct MediaPayload: Codable, Sendable {
         let guildId: String
         let userId: String
         let username: String

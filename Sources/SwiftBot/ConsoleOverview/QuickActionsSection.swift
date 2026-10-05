@@ -47,8 +47,7 @@ private struct QuickActionRow: View {
                     Text(action.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 8)
@@ -71,6 +70,7 @@ private struct QuickActionRow: View {
         }
         .buttonStyle(.plain)
         .disabled(!action.isEnabled || action.isBusy)
+        .help(action.subtitle)
         .opacity(action.isEnabled ? 1 : 0.45)
         .onHover { isHovering = $0 }
     }

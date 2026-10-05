@@ -78,16 +78,7 @@ struct StandaloneSetupView: View {
 
     private var entryView: some View {
         VStack(spacing: 24) {
-            // Glowing clipboard/token icon
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: "doc.on.clipboard.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(Color.accentColor)
-            }
+            ConsoleIconTile(symbol: "doc.on.clipboard.fill", size: 64)
             
             VStack(spacing: 8) {
                 Text("Connect Your Bot")

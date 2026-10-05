@@ -91,28 +91,7 @@ struct BinaryHTTPResponse: Sendable {
     var body: Data
 }
 
-// MARK: - View Mode
 
-enum ViewMode: String, Codable, CaseIterable, Identifiable {
-    case local
-    case remote
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .local: return "Local Dashboard"
-        case .remote: return "Remote Dashboard"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .local: return "desktopcomputer"
-        case .remote: return "dot.radiowaves.left.and.right"
-        }
-    }
-}
 
 struct AdminWebCertificateRenewalConfiguration: Equatable {
     let enabled: Bool

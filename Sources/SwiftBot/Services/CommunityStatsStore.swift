@@ -109,6 +109,14 @@ actor CommunityStatsStore {
         isLoaded = true
     }
 
+    func reloadFromDisk() {
+        saveTask?.cancel()
+        saveTask = nil
+        isLoaded = false
+        contents = FileContents()
+        load()
+    }
+
     /// Folds the existing command log into the day totals the first time the
     /// store runs, so history from before this store existed still counts.
     func backfillIfNeeded(from commandLog: [CommandLogEntry]) {

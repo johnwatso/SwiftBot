@@ -9,6 +9,116 @@
 
 ## Recent Engineering Log
 
+### 2026-10-06 — Sign-in handoff review
+
+- [x] Discord sign-in started from any address other than the OAuth callback's (the LAN, `127.0.0.1`) always failed with "browser session no longer matches", because the state cookie was set on the wrong host. `/auth/discord/login` now moves the browser to the callback's host before starting.
+- [x] Password sign-in was refused only by the page: the server accepted it through the public tunnel and with developer features off. It now refuses both (`local_auth_local_only`, audited), recognising tunnel requests by Cloudflare's headers or the public hostname.
+- [x] A session that ended mid-use left the WebUI showing scattered errors; any `unauthorized` API response now returns to sign-in with "Your session ended" (a `reauth_required` response doesn't). Discord sign-in returns to the page that was open.
+- [x] Reviewed and unchanged: the Mac app opens the public address; session cookies are HttpOnly and SameSite=Lax, Secure over HTTPS; sessions last 24 hours with no silent renewal; passkeys stay tied to the public origin; companion sign-in only returns to registered HTTPS hosts. Remote Control's app-redirect path was already removed.
+- [x] Debug test build passed with five new auth tests; tests were not run, to avoid interrupting the running bot. Admin JavaScript parses. Working tree changes, not committed.
+
+### 2026-10-06 — Remove the legacy rule store
+
+- [x] Removed the hollow `RuleStore` and the old block-builder rule types (`RuleEngineModels.swift`); `Automations.Rule` in `automationStore` is the only rule model. Overview health, the WebUI overview, Analytics insights and the automation counts now read `automationStore` only. Fixed a bug this exposed: the media scan that fires "Media is added" automations checked the always-empty legacy store, so those automations never ran; it now checks enabled Automations. Debug build and test build passed; not exercised live. Working tree changes, not committed.
+
+### 2026-10-06 — Remove the bot data provider layer
+
+- [x] Removed `BotDataProvider`, `AnyBotDataProvider` and `LocalBotProvider`, which existed so views could show local or remote data. The classic Overview reads `AppModel` directly, and the dashboard now waits on `hasLoadedSettings` instead of the provider being set. Debug build and test build passed. Working tree changes, not committed.
+
+### 2026-10-06 — Remove Remote Control mode
+
+- [x] Removed the legacy Remote Control mode (the native app managing another Mac's bot), which the WebUI replaces: its dashboard, onboarding path, View menu, `swiftbot://auth` deep link, client services and models, the `/api/remote/*` routes, bearer-token sign-in, and `/api/auth/session`. The Discord sign-in no longer has an app-redirect path that skipped the OAuth state-cookie check and put the session token in a URL. Settings saved in Remote mode load as a standalone bot (setup appears if no token is set) and the old connection is no longer written back. Also deleted the unused `OnboardingGateView`.
+- [x] Debug build and test build passed; new tests cover bearer rejection, `/api/auth/session` no longer returning the session, and loading old Remote-mode settings. Tests were not run, to avoid killing the live Debug bot. Working tree changes, not committed.
+
+### 2026-10-06 — WebUI parity for 2.0
+
+- [x] Added the remaining native-only host actions to the WebUI: automation simulation, Clear Cached Data, Activity export/clear, Kick & re-invite, and SwiftMesh node icons. All writes are admin + CSRF and fall under the router's failover read-only guard; destructive actions confirm first and are audited. The export is the same redacted report as native Activity › Export.
+- [x] Rewrote the simulator's step trace (`AutomationService.traceSteps`): each step is traced on its own row, delay steps are reported rather than waited out, and log/AI steps show their output. Native and web build sample events from the shared `Automations.SimulationInput`. `SimulationResult` is now Codable.
+- [x] Debug build passed; tests compile (embedded test-bundle signing still fails as noted 2026-10-05). Two new simulator tests were not run, to avoid killing the live Debug bot. All five flows checked in AdminPreview, which got fixtures for the new endpoints. Not exercised against a real Discord server. Working tree changes, not committed.
+
+### 2026-10-05 — Readable witness owner names
+
+- [x] SwiftBot now includes its configured SwiftMesh node name as optional witness request metadata. Name edits preserve the stable node ID, active term and monotonic permission deadline; older witnesses remain compatible. The separate witness shows readable names in Overview and Activity, keeps IDs in Bot Details, and supports local nicknames for already-installed bots without restarting the authority or tunnel.
+- [x] Debug Xcode app/test build and all 16 MeshReliabilityTests passed, including name transmission, deadline preservation through rename, release, and invalid-name omission. The witness's 43 tests passed, including old requests/settings, identity and conflict checks, restart quarantine, schema upgrade, and saved nicknames. Existing unrelated SwiftBot warnings remain; changed Swift files produced no new warnings. Working tree changes, not committed; SwiftBot version/release metadata unchanged. Live bot installation and native visual checks remain pending.
+
+### 2026-10-05 — Witness Cloudflare Internet Access
+
+- [x] Adapted SwiftBot's Cloudflare API/DNS setup and connector supervision into the separate `~/Documents/SwiftMeshWitness` app. Added native setup with Keychain credentials, a dedicated witness tunnel, safe DNS conflict handling, a bundled Intel/Apple silicon connector, pause/resume, and startup/quit cleanup. The witness no longer needs an externally configured reverse proxy. SwiftBot's code and live Cloudflare configuration were not changed; validation is recorded in the witness repository. Working tree changes, not committed.
+
+### 2026-10-05 — Separate native SwiftMesh Witness repository
+
+- [x] Created the independent Xcode/Git repository at `~/Documents/SwiftMeshWitness`, targeting macOS 15.0 with a universal Intel/Apple silicon Release app for the planned Invercargill 2012 Mac mini. Ported the existing lease API into a UI-free native framework with monotonic expiry, commit-before-grant, restart quarantine, and a lifetime database lock; added SwiftUI status/menu bar controls and Keychain-only connection credentials. SwiftBot's wire client remains compatible.
+- [x] Updated the reliability guide to use the separate native witness as the preferred authority. It requires a logged-in user session and external HTTPS forwarding in this initial version. Builds/tests were run in the witness repository; no SwiftBot code, live configuration, remote Mac, login registration, power settings, or tunnel was changed. Deployment and actual Sequoia/OpenCore UI checks remain pending.
+
+### 2026-10-05 — SwiftMesh recovery with the WebUI as the main interface
+
+- [x] Kept configured placement separate from elected ownership, persisted peer addresses and monotonic terms, and added authenticated health plus coordinated failover/return. The active owner freezes mutations and drains automation effects; the returning Primary catches up before the old owner closes Discord and acknowledges transfer. Automatic return defaults to 60 seconds of stable health. Each Mac keeps its own WebUI hostname, tunnel credentials, companion apps, browser sessions, and passkeys.
+- [x] Added revisioned, allowlisted shared-state snapshots with atomic recovery, per-node Ed25519 approval for encrypted credential fetches, chronological conversation cursors, command cooldown replication, and durable automation checkpoints. Delays resume after promotion; unacknowledged actions are held for review. Replicated approvals contain public keys only. Added bounded, durable outbound polling for typed AI, Wiki, and playlist computation, with term/deadline checks, deduplication, and local fallback.
+- [x] Added an optional independent ownership witness, local monotonic output/write deadlines, native witness/pairing controls, and the [setup and rollout guide](SWIFTMESH_RELIABILITY.md). The Python witness uses SQLite, exclusive lease transactions, monotonic expiry, and a full lease quarantine after restart. No witness, tunnel, OAuth callback, or live second Mac was configured or deployed.
+- [x] Debug Xcode app/test build and 143 focused tests passed across recovery, sync, security, automations, output guards, DM handling, and WebUI suites. Seven witness tests, admin JavaScript parsing, and `git diff --check` passed. New Swift files lint clean; existing repository/configuration warnings remain. Live two-Mac failure/return and visual UI checks remain unexercised. A sudden outage can still lose unsynced events/checkpoints, and Discord effects are not exactly once. Working tree changes, not committed; version/release metadata unchanged.
+
+### 2026-10-05 — Admin web SwiftMesh pairing
+
+- [x] Added “Pair this Mac” on the active Primary’s web SwiftMesh page for admins. An authenticated, CSRF-protected POST issues the existing native Join Code, generating the Primary’s shared secret if absent and otherwise reusing it. The dialog opens SwiftBot locally through its existing join deep link and offers a clipboard fallback; native confirmation/onboarding remains in place. Links are excluded from snapshots and audit messages, returned with no-store headers, and removed from the dialog on dismissal. Standby/worker web mutation guards remain intact.
+- [x] Debug app build and all 41 AdminWebServerAuthTests/AdminWebCopyTests passed. JavaScript parsing and mocked pairing-link, clipboard, and dismissal checks passed; no live second Mac was paired. Existing unrelated warnings remain. Working tree changes, not committed.
+
+### 2026-10-05 — Startup log diagnostics
+
+- [x] Removed the duplicate gateway-connect message and added the process ID to the connection-layer log. SwiftMesh settings now explain when an empty shared secret blocks mesh requests; repeated missing-secret authentication warnings are limited to once per minute, with HTTP 401 enforcement preserved.
+- [x] Debug app build and ClusterSecurityTests passed, including repeated rejection without a secret and the open health endpoint. Existing unrelated warnings remain. Only one SwiftBot process was running when inspected; no live configuration or secrets changed. Working tree changes, not committed.
+
+### 2026-10-05 — Discord server icons
+
+- [x] Discord’s Servers rows now show circular server icons from Discord’s CDN, with the existing server symbol while loading, on failure, or when no icon exists. Cached icon hashes survive relaunches, older caches decode without icons, guild updates refresh/remove icons without rerunning guild-create work, and guild removal/cache clearing discard references. SwiftMesh live snapshots include optional icon hashes for standby consoles while preserving compatibility with older nodes.
+- [x] Debug Xcode app build and `git diff --check` passed. Existing unrelated build/lint warnings remain. No live relaunch or visual verification performed; icons populate when the updated app receives guild metadata. Working tree changes, not committed.
+
+### 2026-10-05 — Recording folder controls and hidden exports
+
+- [x] Moved folder enable switches to the trailing edge, matching the other settings controls. Temporarily excluded the automatically managed Exports source from native folder controls, counts, scanning, the shared media library, and folder health monitoring. Stopped automatic Exports source insertion. Saved configuration and files are preserved; manually configured folders named Exports stay visible.
+- [x] Debug build and eight media/HLS tests passed, including regressions for managed-source exclusion, saved-configuration preservation, and preventing automatic Exports creation. The test run needed a refreshed test bundle and recursive signing after Xcode's embedded-bundle signing failed; no project signing settings changed. `git diff --check` passed. Updated controls have not been relaunched for visual QA. Working tree changes, not committed.
+
+### 2026-10-05 — Recordings host page
+
+- [x] Added Recordings after Integrations and before Activity, using the shared console header and surfaces. Moved local recording folders and Fast Start controls out of General, with an indexed-library summary, background folder availability checks, scan feedback, and Refresh. Browsing/playback remain in the Web Interface; local folders remain editable on Fail Over/Worker nodes and in remote-mode preferences.
+- [x] Debug build, seven focused sidebar/WebUI mapping tests, and `git diff --check` passed. No folder settings changed during verification. Deferred live relaunch because the app had an active folder-editing session; the new page still needs visual QA. Working tree changes, not committed.
+
+### 2026-10-05 — Discord service page
+
+- [x] Added Discord directly below Overview in the native sidebar, using the shared console header, summary, sections, and viewport. Moved auto-connect, bot token management, invites, and permissions out of General; tokens are managed in a sheet with existing verification/replacement safeguards. Added known servers and gateway/test diagnostics, plus Start/Stop/Restart controls with the existing cluster-aware confirmations. Overview's Discord card and token quick action open the page.
+- [x] Debug build and 18 focused sidebar, console snapshot, and WebUI mapping tests passed. General retains Dock/menu bar appearance, app startup, recordings, setup, and cache preferences. Discord is classified as native-only for host credential management; cluster output gates and failover read-only settings are preserved. Working tree changes, not committed.
+- [x] Relaunched the development app and verified Overview's Discord card opens the new page, sidebar placement stays stable, and token management opens in a sheet. Confirmed all services healthy after reconnect; no credentials or settings changed. Replaced action-bearing LabeledContent rows with ConsoleSettingRow after the live check exposed missing token/invite buttons in the accessibility tree. Dark mode, narrow-window, and final accessibility interaction checks remain unexercised.
+- [x] Used the existing Discord SVG for its sidebar row, with the same semantic primary/accent tint as other navigation icons. General's Discord shortcut opens the main window.
+
+### 2026-10-05 — Subdomain editor sheet
+
+- [x] Replaced the inline subdomain field with a read-only value and Add/Edit action. The native sheet holds a separate draft, previews the full hostname, and preserves the saved and pending address on Cancel. Save retains existing lowercase/filter behavior and the active tunnel's Apply Changes/Revert workflow.
+- [x] Debug build and `git diff --check` passed with no new warnings. Live modal interaction was not exercised; no public address or tunnel configuration was changed. Working tree changes, not committed.
+
+### 2026-10-05 — Credential editor sheets
+
+- [x] Replaced inline Cloudflare API token, SwiftMesh shared secret, and local fallback password fields with compact status rows and Add/Manage/Replace actions. Credential drafts live in native sheets; Cancel leaves saved values unchanged. Cloudflare still verifies tokens before saving, and mesh secret replacement retains a warning and confirmation. Existing integration credential sheets remain intact.
+- [x] Debug build and `git diff --check` passed; existing unrelated lint warnings remain. Relaunched the development app and confirmed the compact Cloudflare status row. Further live sheet checks stopped when the user began navigating the app; no credentials were edited. Working tree changes, not committed.
+
+### 2026-10-05 — SwiftMesh Health & Work cards
+
+- [x] Matched Overview’s Services layout: four equal-width cards, 42pt icon tiles, stacked titles/values/details, 18pt padding, 16pt corner radii, and the same quiet surfaces. Narrow widths use a 2 × 2 layout. Diagnostics stay read-only. Debug build and `git diff --check` passed; updated cards have not been relaunched for visual QA. Working tree changes, not committed.
+
+### 2026-10-05 — SwiftMesh console and sidebar layout fix
+
+- [x] Reproduced SwiftMesh navigation shifting the sidebar upward and hiding the detail header. Bound the split-view detail to its actual viewport and moved SwiftMesh Status/Settings into the same single scrolling console page, removing the competing dashboard viewport. Removed the app window’s redundant 1200 × 760 minimum so RootView’s per-mode sizing takes effect.
+- [x] Added the Overview-style service summary for node identity, configured/runtime roles, leader term, and membership. Grouped work/latency/reclaim/gateway diagnostics, shortened single-node maps, and made diagnostic/configuration columns adaptive. Existing polling, pairing, promotion, handover confirmations, and cluster output gates are preserved.
+- [x] Debug build passed with no warnings in the changed Swift files; `git diff --check` passed. Relaunched the development app and visually verified Overview ↔ SwiftMesh, Status ↔ Settings, and scrolling to lower diagnostics: sidebar and headers remain correctly positioned. Confirmed the bot reconnected and all four services reported healthy. Multi-node/failover and dark/accessibility modes were not exercised. Working tree changes, not committed.
+
+### 2026-10-05 — Web Interface website address
+
+- [x] The summary shows Website with the public hostname when Internet Access is configured, retaining the configured hostname while its tunnel reconnects. Local Address appears only without a configured tunnel hostname. Debug build and `git diff --check` passed. Working tree changes, not committed.
+
+### 2026-10-05 — Overview styling across the native console
+
+- [x] Adopted the existing Overview as the approved styling baseline. Activity now shares its page header, glass surface, spacing, export action, accessible filters, and actionable empty state; SwiftMesh sections use the same console surfaces. Shared headers, summary facts, and Overview diagnostic sections adapt to narrower windows, with a 1040 × 700 local-console minimum.
+- [x] Replaced ambiguous HTTPS status with separate local transport, public tunnel access, and HTTPS policy. Service issue details wrap and Review actions name their service for accessibility. Connection-test availability reflects the existing cooldown and explains missing-token/cooldown states.
+- [x] Updated DESIGN.md, AI_CONTEXT.md, and the obsolete console proposal to reflect the approved baseline and actual implementation. Debug `xcodebuild` passed; no warnings in changed Swift files and `git diff --check` passed. Existing unrelated repository warnings remain. Updated screens have not been launched for visual QA; hosted XCTest was not run against the live bot. Working tree changes, not committed.
+
 ### 2026-10-04 — Recording discovery and playback stability
 
 - [x] Fixed open-ended/suffix byte ranges and invalid-range responses; pinned each playback to its chosen original, completed fast-start remux or hardware copy, so newly prepared files cannot change byte offsets midstream. Fast-start remuxes publish atomically. Authenticated mesh playback choice lets remote nodes select their completed copies; old nodes fall back to originals. Stream requests now use a bounded 30-second timeout.
@@ -23,7 +133,7 @@
 ### 2026-10-04 — ShipHook publishing blocker
 
 - [x] Diagnosed the supplied release log: archive, signing, notarization and stapling succeeded, then ShipHook aborted while copying `docs/release-notes/1.27.1.html` onto itself. Fixed the publisher in the sibling ShipHook checkout using a same-file guard; 14 isolated stable/beta publishing checks pass, including symlinks, hard links, external/replacement notes, missing notes and no notes. Added an upstream-compatible patch and deployment instructions in `Documentation/SHIPHOOK_RELEASE_FIX.md`. Refreshed SwiftBot's timestamp build to `2026100415` and regenerated the project without unrelated drift; marketing version remains 1.27.1. Local and live signed stable feeds remain 1.27.0 (2026100220), deliberately preserved until real publication. Working tree changes, not committed.
-- [ ] Deploy the corrected bundled ShipHook publisher on the release Mac (or stage the notes outside `docs/release-notes` and change its configured notes source), then retry publication. No build trigger, push or publication performed.
+- [x] ~~Deploy the corrected bundled ShipHook publisher and retry publication~~ — resolved: ShipHook published 1.27.1, 1.27.2 and 1.27.3 on 2026-10-04 (`docs/appcast.xml` at 1.27.3 / 2026100422).
 - [x] SwiftBot Release build passed with local signing disabled; verified built Info.plist version/build and preserved Sparkle URL/key. ShipHook Debug build passed and its embedded publisher matches the corrected script. Sparkle pipeline validation passed; upstream patch applies cleanly. Existing app/dependency warnings remain.
 
 ### 2026-10-04 — Rewind DM activity filter
@@ -35,7 +145,7 @@
 - [x] User selected all pending checkout changes for this patch release. Updated marketing version to 1.27.1 and timestamp build to 2026100414; regenerated the Xcode project with only the expected version changes relative to its prior generated state. Prepared `docs/release-notes/1.27.1.html` covering the WebUI, passkeys, Game Tracker, Sweep, Rewind, update controls and credential storage changes. Dependency notices, JavaScript syntax/highlight checks and whitespace validation passed.
 - [x] Verified the published and local stable feeds both advertise signed 1.27.0 (2026100220), with a reachable download and an empty beta channel. Preserved ShipHook's published feed until it creates the real 1.27.1 archive/signature; the repository validator explicitly permits this pre-publish mismatch, despite AGENTS.md's general match requirement.
 - [x] Release build passed; verified the built Info.plist advertises 1.27.1 (2026100414) and preserves the stable feed URL and Sparkle public key. All pending changes prepared as a local release commit; no push or publication.
-- [ ] ShipHook handoff: web/API currently require sign-in. No push, build trigger or publication performed. Real HTTPS passkey enrollment/sign-in and unattended update installation remain manual checks; the hosted test suite has not been relaunched during this prep to avoid interrupting the running bot.
+- [x] ~~ShipHook handoff~~ — 1.27.1 shipped. Real HTTPS passkey enrollment/sign-in and unattended update installation remain manual checks (tracked under **SwiftBot 2.0 Milestone**); the hosted test suite has not been relaunched during this prep to avoid interrupting the running bot.
 
 ### 2026-10-04 — Quieter passkey login action
 
@@ -62,7 +172,7 @@
 
 - [x] Web Settings gained a Bot group (start, stop, restart; a permissions check that matches the native sheet, with re-invite links) and Software updates (check now, automatic/unattended toggles, install and restart). Announcer gained Test and Reconnect, Welcome Flow gained Send test plus a refreshable invite picker for invite-role rules, and the Sweep editor gained Send test MVP. All go through `POST /api/bot/*`, `/api/updates/*` and siblings (admin + CSRF; the failover read-only gate at the router still applies), audit-logged. Permission REST calls moved into `BotPermissionsProbe`, shared with the native sheet.
 - [x] `AppUpdater` now takes over Sparkle's install-on-quit for unattended downloads (`willInstallUpdateOnQuit` returns true) and keeps the install handler, so a long-running bot can be updated without quitting by hand; native Settings › Updates shows Install and Relaunch when one is waiting. Sparkle still installs on quit if nobody does, but its later "impatient" reminder no longer appears. Debug build, admin JS syntax check and AdminPreview walkthroughs passed; Xcode tests not run (they stop the live bot). Working tree changes, not committed.
-- [ ] Verify an actual unattended download → web Install against a real appcast. Remaining web gaps: SwiftMiner event toggles, node icon overrides, recording folders, Clear Cached Data, Activity clear/export, Kick & re-invite, automation simulation.
+- [ ] Verify an actual unattended download → web Install against a real appcast. The web gaps listed here were closed on 2026-10-06 (see that entry). SwiftMiner's single relay toggle was already on the web; recording folders are native-only by design.
 
 ### 2026-10-03 — Optional Web UI passkeys
 
@@ -93,7 +203,7 @@
 - [x] Moved the finals.id latest-round path into `FinalsIDAPIClient` so the player identifier is percent-encoded by the same rule as the rank endpoint. The call site had been interpolating it raw, so an identifier with a space or `#` silently reduced session summaries to duration alone.
 - [x] Charged the read-aloud thread's per-author cooldown only after a message clears the self/webhook/bot filters, instead of at the channel check. A post the announcer never read was spending the author's budget and silencing the message that followed.
 - [x] Pointed `scripts/validate_sparkle.sh` at `docs/appcast.xml` — the file the deploy workflow rsyncs over `Website/public/` and therefore actually serves — and made it fail when the checkout's build number is already published in the feed. It had been validating a `Website/public/appcast.xml` stale at 1.22.10 while 1.23 was live.
-- [ ] `Website/public/appcast.xml` remains stale at 1.22.10. It is overlaid by `docs/` at deploy time so it never reaches users, but it is still a trap for anyone reading it as the current feed.
+- [x] ~~`Website/public/appcast.xml` remains stale at 1.22.10~~ — file removed; `docs/appcast.xml` is the only stable feed.
 
 ### 2026-08-27 — Multi-provider Game Tracker, admin web parity, and presence sessions
 
@@ -102,14 +212,14 @@
 - [x] Wired Game Tracker into the admin web UI (nav entry, view, `/api/gametracker` snapshot and manual check), closing the native-sidebar parity test that blocked the branch.
 - [x] Added presence-driven play-session tracking: `PRESENCE_UPDATE` is now dispatched (the `GUILD_PRESENCES` intent was already in the identify bitmask), sessions debounce client restarts behind a grace window, short sessions are discarded, and a session summary is posted from real match data — or duration alone for games with no stats provider.
 - [x] Corrected the latest-round decoder against a real finals.id payload: the queue field is `mode`, not `node`, which previously decoded to nil against live data while a self-matching fixture passed. Collections now decode defensively and `partyMembers` accepts an object or an array.
-- [ ] (blocked: finals.id public API contract) Confirm authentication, the ranked-score endpoint, the latest-round listing path, and whether `mode` distinguishes rated queues, then validate against live accounts.
+- [x] ~~Confirm finals.id authentication, ranked-score endpoint, rounds listing and queue mode~~ — done 2026-10-01: the public API shipped at <https://api.finals.id/>; the provider was rebuilt against it and verified with a personal key. See `FINALS_ID_API_CONTRACT.md`.
 
 ### 2026-08-27 — Game Tracker service and finals.id provider preparation
 
 - [x] Added Game Tracker as a first-class sidebar service with provider-neutral game profiles, per-player Discord destinations, current ranked-score baselines, scheduling controls, recent activity, and reusable provider capability metadata.
 - [x] Added finals.id as the first provider with a compact Integrations connection card, Keychain-backed credentials, Primary-only daily scheduling at 9 AM local time, durable per-season SR baselines, and change-only Discord embeds.
 - [x] Modelled the proposed latest-played-round response for future session features while keeping combat score and generic score fields ineligible for SR announcements.
-- [ ] (blocked: finals.id public API contract) Confirm the authentication scheme, ranked-score endpoint template, stable player identifier, and explicit SR response field documented in `FINALS_ID_API_CONTRACT.md`, then validate against live accounts before enabling the integration.
+- [x] ~~Confirm finals.id authentication, endpoint template, player identifier and SR field~~ — done 2026-10-01; see `FINALS_ID_API_CONTRACT.md`.
 
 ### 2026-08-26 — Announcer participant departures
 
@@ -177,6 +287,44 @@
 - [x] Bound queued DAVE/media recovery: if the announcer remains paused in recovery for 60 seconds, its existing health watchdog now initiates the normal clean voice rejoin instead of leaving it silently connected forever.
 - [x] Added voice pipeline state, latest 50 voice events, UDP keepalive history, live transport ownership, voice-resume state, and DAVE/MLS transition diagnostics to exported diagnostics, so voice failures are no longer hidden by noisy main-gateway reconnect logs.
 - [x] Ported SwiftMiner's window-attached export progress sheet, so diagnostics visibly prepare before the save sheet appears.
+
+---
+
+## SwiftBot 2.0 Milestone
+
+> Added 2026-10-05. Theme: the WebUI is the main interface, the native app is a host console, and SwiftMesh has failover/recovery. Most of it is built; what remains is landing, verifying and closing parity gaps.
+
+### Land the work
+- [ ] Commit the uncommitted working tree in reviewable pieces (SwiftMesh recovery + witness client + journal, native console pages, Discord/Recordings/credential sheets, Rewind/Lookup changes).
+- [ ] Run the full hosted XCTest suite once, deliberately, with the live bot off this Mac (see `tests-kill-live-bot`).
+
+### Verify live
+- [ ] SwiftMesh failover and return across two real Macs, with the native `SwiftMeshWitness` deployed. Decide whether the known limits (unsynced events lost on sudden outage; Discord effects not exactly once) are acceptable and state them in release notes.
+- [ ] Native console visual pass: light/dark, Increase Contrast, Reduce Transparency, VoiceOver, 1040 × 700 minimum. Includes Recordings, Discord, credential/subdomain sheets and SwiftMesh Health cards.
+- [ ] Real Safari/Chrome passkey sign-in against the Cloudflare hostname.
+- [ ] Real unattended update download → WebUI Install against a published appcast.
+- [ ] Recording playback on live gameplay streams and across Macs after a node failure.
+
+### WebUI parity
+- [x] Automation simulation — Simulate in the web rule editor (`POST /api/automations/simulate`), sharing `Automations.SimulationInput` with the native editor.
+- [x] Clear Cached Data — Settings › Maintenance (`POST /api/cache/clear`).
+- [x] Activity export and clear — redacted diagnostic report download (`GET /api/activity/export`) and Clear (`POST /api/activity/clear`).
+- [x] Kick & re-invite — in the web Bot permissions dialog (`POST /api/bot/permissions/force-rejoin`).
+- [x] SwiftMesh node icon overrides — Set icon on each node (`setIcon` SwiftMesh action).
+- [ ] Verify end-to-end web workflows before removing native feature views: variable insertion, permissions, user timezones, game-provider setup, SwiftMiner pairing.
+- [ ] Remove the native feature views the WebUI replaces once parity is verified.
+
+### Polish
+- [x] ~~Remote mode on the Overview styling~~ — Remote Control mode removed instead (2026-10-06); the WebUI replaces it.
+- [ ] Onboarding on the Overview styling — code done (shared icon tiles, system title type, console surfaces); needs a visual check.
+- [ ] Review the remaining native features for other legacy pieces the WebUI has replaced (John to decide each).
+- [x] Recording exports: decided 2026-10-06 to ship 2.0 with the Exports source hidden; finish exports in a 2.x update. Mention it in the 2.0 release notes.
+- [x] Review browser handoff URLs and sign-in continuity — done 2026-10-06 (see log).
+- [x] Fix the rule simulator's step trace — steps are now traced one at a time, delays are reported instead of waited out (they used to block the dry run through the checkpoint loop), and log/AI steps show their output.
+
+### Not in 2.0
+- SwiftMiner campaign-blocked / opportunity-resolved DMs and activation retry/progress/snooze (blocked on the SwiftMiner backend).
+- Benchmarks, structured event tracing, AI latency tracing.
 
 ---
 
@@ -315,12 +463,8 @@ Status of each — no per-item work needed:
 
 ### Standardisation
 
-- [ ] Corner radius
-- [ ] Materials
-- [ ] Typography
-- [ ] Padding
-- [ ] Status indicators
-- [ ] Empty states
+- [x] ~~Corner radius, materials, typography, padding~~ — defined as tokens in `DESIGN.md`, with the native Overview as the approved baseline (2026-10-05).
+- [ ] Status indicators and empty states — Activity has the baseline empty state; apply it across the remaining console pages during the 2.0 visual pass.
 
 ---
 

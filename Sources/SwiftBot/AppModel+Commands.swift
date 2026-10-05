@@ -1850,7 +1850,7 @@ extension AppModel {
         if !hadExplicitScheme, url.port == nil, defaultPort == nil {
             return nil
         }
-        let resolvedPort = url.port ?? defaultPort ?? (scheme.lowercased() == "https" ? 443 : 80)
+        let resolvedPort = url.port ?? (hadExplicitScheme ? nil : defaultPort) ?? (scheme.lowercased() == "https" ? 443 : 80)
 
         var components = URLComponents()
         components.scheme = scheme

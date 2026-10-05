@@ -326,7 +326,6 @@ struct AdminWebUISettings: Codable, Hashable {
 struct BotSettings: Codable, Hashable {
     var token: String = ""
     var launchMode: AppLaunchMode = .standaloneBot
-    var remoteMode = RemoteModeSettings()
     var prefix: String = "/"
     var commandsEnabled: Bool = true
     var prefixCommandsEnabled: Bool = true
@@ -345,15 +344,9 @@ struct BotSettings: Codable, Hashable {
     var clusterWorkerOffloadEnabled: Bool = false
     var clusterOffloadAIReplies: Bool = false
     var clusterOffloadWikiLookups: Bool = false
-    /// Hours of continuous healthy standby state required before the
-    /// originally-configured primary (i.e. `clusterMode == .leader` that has
-    /// been runtime-demoted to standby) will automatically reclaim leadership.
-    /// `0` disables auto-reclaim. Manual promote always works regardless.
-    ///
-    /// Defaults to **off** (0). Auto-reclaim assumes the originally-configured
-    /// Primary should always be the canonical one — risky in production where
-    /// the cluster swinging back automatically may not be desired. Opt-in via
-    /// SwiftMesh preferences.
+    /// The preferred Primary returns through coordinated catchup and handback.
+    var clusterAutomaticHandbackEnabled: Bool = true
+    /// 0 uses a 60-second stability window; positive values extend that window.
     var clusterAutoReclaimAfterHours: Int = 0
     /// Persisted "last Handover Test" outcome shown in the SwiftMesh GUI tile.
     /// nil = never run on this node.
@@ -377,6 +370,12 @@ struct BotSettings: Codable, Hashable {
     /// Who records into each recording folder, keyed "node|sourceUUID", so a
     /// clip's people are the ones in that person's voice channel.
     var recordingSourceOwners: [String: String] = [:]
+    /// Fix Match: the game a clip is really from, keyed "node|itemID", when
+    /// its filename names the wrong one.
+    var recordingGameOverrides: [String: String] = [:]
+    /// Fix Match for every clip whose filename names a game, keyed by the
+    /// lowercased detected name ("call of duty hq" → "Black Ops 6").
+    var recordingGameAliases: [String: String] = [:]
     /// Who runs each Mac and which problems they're DMed about.
     var operators = OperatorSettings()
     /// Per-Discord-user IANA timezone identifier (e.g. "America/New_York")
@@ -428,7 +427,6 @@ struct BotSettings: Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case token
         case launchMode
-        case remoteMode
         case prefix
         case commandsEnabled
         case prefixCommandsEnabled
@@ -448,6 +446,7 @@ struct BotSettings: Codable, Hashable {
         case clusterWorkerOffloadEnabled
         case clusterOffloadAIReplies
         case clusterOffloadWikiLookups
+        case clusterAutomaticHandbackEnabled
         case clusterAutoReclaimAfterHours
         case clusterLastHandoverTestAt
         case clusterLastHandoverTestOK
@@ -455,6 +454,8 @@ struct BotSettings: Codable, Hashable {
         case localAIDMReplyEnabled
         case aiActivityAnswersEnabled
         case recordingSourceOwners
+        case recordingGameOverrides
+        case recordingGameAliases
         case operators
         case userTimezones
         case aiMemoryNotes
@@ -480,8 +481,10 @@ struct BotSettings: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
-        launchMode = try container.decodeIfPresent(AppLaunchMode.self, forKey: .launchMode) ?? .standaloneBot
-        remoteMode = try container.decodeIfPresent(RemoteModeSettings.self, forKey: .remoteMode) ?? RemoteModeSettings()
+        // Decoded leniently: the removed Remote Control mode ("remoteControl")
+        // falls back to a standalone bot, which shows setup if no token is set.
+        let rawLaunchMode = try container.decodeIfPresent(String.self, forKey: .launchMode)
+        launchMode = rawLaunchMode.flatMap(AppLaunchMode.init(rawValue:)) ?? .standaloneBot
         prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? "/"
         commandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .commandsEnabled) ?? true
         prefixCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .prefixCommandsEnabled) ?? true
@@ -506,6 +509,7 @@ struct BotSettings: Codable, Hashable {
         clusterOffloadWikiLookups = decodedOffloadWikiLookups
         // Default 0 (off) for fresh installs. Existing users who explicitly
         // saved a non-zero value keep theirs — decodeIfPresent handles that.
+        clusterAutomaticHandbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .clusterAutomaticHandbackEnabled) ?? true
         clusterAutoReclaimAfterHours = try container.decodeIfPresent(Int.self, forKey: .clusterAutoReclaimAfterHours) ?? 0
         clusterLastHandoverTestAt = try container.decodeIfPresent(Date.self, forKey: .clusterLastHandoverTestAt)
         clusterLastHandoverTestOK = try container.decodeIfPresent(Bool.self, forKey: .clusterLastHandoverTestOK) ?? false
@@ -513,6 +517,8 @@ struct BotSettings: Codable, Hashable {
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         aiActivityAnswersEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiActivityAnswersEnabled) ?? true
         recordingSourceOwners = try container.decodeIfPresent([String: String].self, forKey: .recordingSourceOwners) ?? [:]
+        recordingGameOverrides = try container.decodeIfPresent([String: String].self, forKey: .recordingGameOverrides) ?? [:]
+        recordingGameAliases = try container.decodeIfPresent([String: String].self, forKey: .recordingGameAliases) ?? [:]
         operators = try container.decodeIfPresent(OperatorSettings.self, forKey: .operators) ?? OperatorSettings()
         userTimezones = try container.decodeIfPresent([String: String].self, forKey: .userTimezones) ?? [:]
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
@@ -540,14 +546,12 @@ struct BotSettings: Codable, Hashable {
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
         voice = try container.decodeIfPresent(VoiceSettings.self, forKey: .voice) ?? VoiceSettings()
         rewind = try container.decodeIfPresent(RewindSettings.self, forKey: .rewind) ?? RewindSettings()
-        remoteMode.normalize()
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(token, forKey: .token)
         try container.encode(launchMode, forKey: .launchMode)
-        try container.encode(remoteMode, forKey: .remoteMode)
         try container.encode(prefix, forKey: .prefix)
         try container.encode(commandsEnabled, forKey: .commandsEnabled)
         try container.encode(prefixCommandsEnabled, forKey: .prefixCommandsEnabled)
@@ -565,6 +569,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterWorkerOffloadEnabled, forKey: .clusterWorkerOffloadEnabled)
         try container.encode(clusterOffloadAIReplies, forKey: .clusterOffloadAIReplies)
         try container.encode(clusterOffloadWikiLookups, forKey: .clusterOffloadWikiLookups)
+        try container.encode(clusterAutomaticHandbackEnabled, forKey: .clusterAutomaticHandbackEnabled)
         try container.encode(clusterAutoReclaimAfterHours, forKey: .clusterAutoReclaimAfterHours)
         try container.encodeIfPresent(clusterLastHandoverTestAt, forKey: .clusterLastHandoverTestAt)
         try container.encode(clusterLastHandoverTestOK, forKey: .clusterLastHandoverTestOK)
@@ -572,6 +577,8 @@ struct BotSettings: Codable, Hashable {
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
         try container.encode(aiActivityAnswersEnabled, forKey: .aiActivityAnswersEnabled)
         try container.encode(recordingSourceOwners, forKey: .recordingSourceOwners)
+        try container.encode(recordingGameOverrides, forKey: .recordingGameOverrides)
+        try container.encode(recordingGameAliases, forKey: .recordingGameAliases)
         try container.encode(operators, forKey: .operators)
         try container.encode(userTimezones, forKey: .userTimezones)
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
@@ -1561,4 +1568,12 @@ private extension String {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+}
+
+/// How this Mac runs SwiftBot.
+enum AppLaunchMode: String, Codable, CaseIterable, Identifiable, Hashable {
+    case standaloneBot
+    case swiftMeshClusterNode
+
+    var id: String { rawValue }
 }

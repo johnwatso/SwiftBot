@@ -35,6 +35,37 @@ struct HardwareInfo: Sendable, Hashable {
 }
 
 actor ClusterCoordinator {
+    private struct RecoveryState: Codable {
+        let term: Int
+        let leaderAddress: String
+        let knownPeers: [String: String]
+    }
+    private let recoveryURL: URL?
+    private var recoveredLeaderAddress = ""
+    private var knownPeerAddresses: [String: String] = [:]
+
+    init(recoveryURL: URL? = nil) {
+        let isTest = NSClassFromString("XCTestCase") != nil
+            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        self.recoveryURL = recoveryURL ?? (isTest ? nil : SwiftBotStorage.folderURL().appendingPathComponent(SwiftBotStorage.clusterStateFileName))
+        if let url = self.recoveryURL, let data = try? Data(contentsOf: url),
+           let saved = try? JSONDecoder().decode(RecoveryState.self, from: data) {
+            leaderTerm = max(0, saved.term)
+            recoveredLeaderAddress = saved.leaderAddress
+            knownPeerAddresses = saved.knownPeers
+        }
+    }
+
+    @discardableResult
+    private func persistRecoveryState() -> Bool {
+        guard let recoveryURL else { return true }
+        do {
+            let saved = RecoveryState(term: leaderTerm, leaderAddress: leaderAddress, knownPeers: knownPeerAddresses)
+            try encoder.encode(saved).write(to: recoveryURL, options: .atomic)
+            return true
+        } catch { return false }
+    }
+
     private let meshLogger = Logger(subsystem: "com.swiftbot", category: "mesh")
 
     typealias AIHandler = @Sendable ([Message], String?, String?, String?) async -> String?
@@ -88,17 +119,26 @@ actor ClusterCoordinator {
     static let maxSyncBatchSize: Int = 500
 
     var mode: ClusterMode = .standalone
+    /// Placement is a preference. Election and handback own `mode` until the
+    /// user explicitly changes that preference; an ordinary save cannot undo it.
+    private var configuredMode: ClusterMode?
+    private var configuredLeaderAddress: String = ""
+    private var desiredBotRunning = true
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var leaderAddress: String = ""
     var leaderPort: Int = 38787
     var listenPort: Int = 38787
     var sharedSecret: String = ""
+    private var lastMissingSecretWarning: ContinuousClock.Instant?
     var offloadAIReplies: Bool = true
     var offloadWikiLookups: Bool = true
     var offloadPlaylistImports: Bool = true
     /// Nonce replay cache: maps nonce → expiry time. Swept opportunistically on each auth check.
     private var usedNonces: [String: Date] = [:]
     private var activeJobs = 0
+    private let jobLedger = MeshJobLedger(storageURL: SwiftBotStorage.folderURL().appendingPathComponent(MeshJobLedger.fileName))
+    private let outboundJobs = MeshOutboundJobQueue(storageURL: SwiftBotStorage.folderURL().appendingPathComponent(MeshOutboundJobQueue.fileName))
+    private var outboundPollTask: Task<Void, Never>?
     private var registeredWorkers: [String: RegisteredWorker] = [:]
     /// Sticky cache of every worker we have ever seen this session. Never
     /// pruned. Used to keep previously-known nodes visible in the SwiftMesh
@@ -221,7 +261,290 @@ actor ClusterCoordinator {
     private var followerStatePollTask: Task<Void, Never>?
     private let followerStatePollIntervalNanoseconds: UInt64 = 4_000_000_000
     private var initialSyncCompletedLeaderBaseURL: String?
+    private var promotionReadinessHandler: (@Sendable () async -> String?)?
+    private var handbackCatchupHandler: (@Sendable (String, Int) async -> Bool)?
+    private var handbackDrainHandler: (@Sendable () async -> Bool)?
+    private var handbackResumeHandler: (@Sendable () async -> Void)?
+    private var ownershipAcquire: (@Sendable (Int) async -> Int?)?
+    private var ownershipRenew: (@Sendable (Int) async -> Bool)?
+    private var ownershipRelease: (@Sendable (Int) async -> Void)?
+    private var ownershipTask: Task<Void, Never>?
+    private var ownershipGranted = false
+    private var promotionInProgress = false
+    private var handbackInProgress = false
+    private var handbackTimeoutTask: Task<Void, Never>?
+    private var pendingHandback: HandbackTransfer?
+    private var committedHandbacks: [UUID: HandbackTransfer] = [:]
+    private var credentialPublicKeyProvider: (@Sendable (String) async -> String?)?
+    private var credentialNodeID = ""
+    private var credentialEnrollmentToken = ""
+    private var publicMeshAddress = ""
+    private var serviceHealthProvider: (@Sendable () async -> Bool)?
     var snapshot = ClusterSnapshot()
+
+    private struct HandbackTransfer: Codable, Sendable {
+        let transferID: UUID
+        let targetNodeName: String
+        let targetAddress: String
+        let leaderTerm: Int
+        let expiresAt: Date
+    }
+
+    func setPromotionReadinessHandler(_ handler: @escaping @Sendable () async -> String?) {
+        promotionReadinessHandler = handler
+    }
+
+    func setHandbackCatchupHandler(_ handler: @escaping @Sendable (String, Int) async -> Bool) {
+        handbackCatchupHandler = handler
+    }
+
+    func setHandbackDrainHandler(_ handler: @escaping @Sendable () async -> Bool) {
+        handbackDrainHandler = handler
+    }
+
+    func setHandbackResumeHandler(_ handler: @escaping @Sendable () async -> Void) {
+        handbackResumeHandler = handler
+    }
+
+    func setDesiredBotRunning(_ running: Bool) {
+        desiredBotRunning = running
+    }
+
+    func setServiceHealthProvider(_ provider: @escaping @Sendable () async -> Bool) {
+        serviceHealthProvider = provider
+    }
+
+    func setPublicMeshAddress(_ address: String) {
+        publicMeshAddress = normalizedBaseURL(address) ?? ""
+    }
+
+    /// Install all three closures only when an independent witness is configured.
+    /// A rejected renewal closes output immediately, without assuming a network
+    /// partition means the other Mac failed.
+    func setOwnershipHandlers(
+        acquire: (@Sendable (Int) async -> Int?)?,
+        renew: (@Sendable (Int) async -> Bool)?,
+        release: (@Sendable (Int) async -> Void)?
+    ) async {
+        ownershipAcquire = acquire
+        ownershipRenew = renew
+        ownershipRelease = release
+        if acquire == nil {
+            ownershipTask?.cancel()
+            ownershipTask = nil
+            ownershipGranted = mode == .leader
+        } else if mode == .leader {
+            ownershipGranted = false
+            if await acquireOwnership(minimumTerm: leaderTerm) {
+                startOwnershipRenewal()
+            } else {
+                await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: nil)
+            }
+        }
+    }
+
+    func setCredentialAuthorization(
+        provider: @escaping @Sendable (String) async -> String?,
+        localNodeID: String,
+        localToken: String
+    ) {
+        credentialPublicKeyProvider = provider
+        credentialNodeID = localNodeID
+        credentialEnrollmentToken = localToken
+    }
+
+    func hasActiveOwnership() -> Bool {
+        mode == .standalone || (mode == .leader && ownershipGranted && pendingHandback == nil)
+    }
+
+    func acceptsClusterWrites() -> Bool {
+        hasActiveOwnership() && snapshot.runtimeState != .demoting
+    }
+
+    private func acquireOwnership(minimumTerm: Int) async -> Bool {
+        let grantedTerm: Int
+        if let acquire = ownershipAcquire {
+            guard let granted = await acquire(minimumTerm), granted >= minimumTerm,
+                  granted >= leaderTerm else { return false }
+            grantedTerm = granted
+        } else {
+            grantedTerm = max(leaderTerm, minimumTerm)
+        }
+        leaderTerm = grantedTerm
+        snapshot.leaderTerm = grantedTerm
+        guard persistRecoveryState() else { return false }
+        ownershipGranted = true
+        return true
+    }
+
+    private func startOwnershipRenewal() {
+        ownershipTask?.cancel()
+        ownershipTask = nil
+        guard ownershipRenew != nil, mode == .leader, ownershipGranted else { return }
+        ownershipTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self else { return }
+                await self.renewOwnership()
+            }
+        }
+    }
+
+    private func renewOwnership() async {
+        guard mode == .leader, ownershipGranted, let renew = ownershipRenew else { return }
+        let expectedTerm = leaderTerm
+        let renewed = await renew(expectedTerm)
+        guard mode == .leader, leaderTerm == expectedTerm else { return }
+        if !renewed {
+            await demoteToStandby(observedTerm: expectedTerm, newLeaderAddress: nil)
+            snapshot.diagnostics = "Ownership renewal failed; bot output and writes paused"
+            await publishSnapshot()
+        }
+    }
+
+    /// Read-only catchup precedes a transfer. The active owner stays frozen until
+    /// it either explicitly aborts or acknowledges that it has closed output.
+    @discardableResult
+    func requestCoordinatedHandback() async -> Bool {
+        guard mode == .standby, !handbackInProgress, !promotionInProgress,
+              desiredBotRunning, let catchup = handbackCatchupHandler,
+              let baseURL = normalizedBaseURL(leaderAddress), !baseURL.isEmpty else { return false }
+        handbackInProgress = true
+        defer { handbackInProgress = false }
+        let request = HandbackTransfer(
+            transferID: UUID(), targetNodeName: nodeName,
+            targetAddress: localWorkerAdvertisedBaseURL(), leaderTerm: leaderTerm,
+            expiresAt: Date().addingTimeInterval(90)
+        )
+        guard let prepared = await postHandback(request, phase: "prepare", baseURL: baseURL),
+              prepared.transferID == request.transferID,
+              prepared.leaderTerm >= leaderTerm,
+              prepared.expiresAt > Date() else { return false }
+        await updateLeaderTerm(prepared.leaderTerm)
+        guard await catchup(baseURL, prepared.leaderTerm), mode == .standby,
+              leaderTerm == prepared.leaderTerm, prepared.expiresAt > Date(),
+              await promotionReadinessHandler?() == nil else {
+            _ = await postHandback(prepared, phase: "abort", baseURL: baseURL)
+            snapshot.diagnostics = "Handback deferred: catchup or readiness failed; current Primary retained"
+            await publishSnapshot()
+            return false
+        }
+        // Retry commit with the same transaction ID. A lost HTTP response must
+        // never make the old owner resume after it has already relinquished.
+        var committed: HandbackTransfer?
+        for _ in 0..<3 {
+            if let ack = await postHandback(prepared, phase: "commit", baseURL: baseURL),
+               ack.transferID == prepared.transferID, ack.leaderTerm > prepared.leaderTerm {
+                committed = ack
+                break
+            }
+        }
+        guard let committed, mode == .standby else {
+            snapshot.diagnostics = "Handback commit not confirmed; remaining passive"
+            await publishSnapshot()
+            return false
+        }
+        handbackInProgress = false
+        await promoteToLeader(grantedTerm: committed.leaderTerm)
+        return mode == .leader && ownershipGranted
+    }
+
+    private func postHandback(_ transfer: HandbackTransfer, phase: String, baseURL: String) async -> HandbackTransfer? {
+        let path = "/v1/mesh/handback/\(phase)"
+        guard let url = URL(string: baseURL + path), let body = try? encoder.encode(transfer) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyMeshAuth(to: &request, path: path)
+        request.timeoutInterval = 25
+        do {
+            let (data, response) = try await meshSession.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try? decoder.decode(HandbackTransfer.self, from: openSealedResponse(data) ?? Data())
+        } catch {
+            return nil
+        }
+    }
+
+    private func handleHandback(_ body: Data, phase: String) async -> Data {
+        guard let transfer = try? decoder.decode(HandbackTransfer.self, from: body),
+              let target = normalizedBaseURL(transfer.targetAddress),
+              !isSelfClusterEndpoint(target) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_transfer"}"#.utf8))
+        }
+        if phase == "commit", let committed = committedHandbacks[transfer.transferID],
+           committed.targetNodeName == transfer.targetNodeName, committed.targetAddress == target {
+            return sealedResponse((try? encoder.encode(committed)) ?? Data())
+        }
+        guard mode == .leader, ownershipGranted, transfer.leaderTerm == leaderTerm else {
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "current_owner_required"))
+        }
+        if phase == "prepare" {
+            guard pendingHandback == nil, let drain = handbackDrainHandler,
+                  registeredWorkers.values.contains(where: {
+                      $0.nodeName == transfer.targetNodeName && ($0.baseURL.lowercased() == target.lowercased()
+                          || $0.advertisedBaseURL?.lowercased() == target.lowercased())
+                  }) else {
+                return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "target_not_ready"))
+            }
+            let prepared = HandbackTransfer(
+                transferID: transfer.transferID, targetNodeName: transfer.targetNodeName,
+                targetAddress: target, leaderTerm: leaderTerm, expiresAt: Date().addingTimeInterval(90)
+            )
+            pendingHandback = prepared
+            snapshot.runtimeState = .demoting
+            // Publish the freeze before draining so the web write gate closes.
+            await publishSnapshot()
+            guard await drain(), pendingHandback?.transferID == prepared.transferID,
+                  mode == .leader, leaderTerm == prepared.leaderTerm else {
+                await abortPendingHandback(prepared.transferID)
+                return httpResponse(status: "503 Service Unavailable", body: Data(#"{"error":"drain_failed"}"#.utf8))
+            }
+            handbackTimeoutTask?.cancel()
+            handbackTimeoutTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(90))
+                guard !Task.isCancelled else { return }
+                await self?.abortPendingHandback(prepared.transferID)
+            }
+            return sealedResponse((try? encoder.encode(prepared)) ?? Data())
+        }
+        guard let pending = pendingHandback, pending.transferID == transfer.transferID,
+              pending.targetAddress == target, pending.targetNodeName == transfer.targetNodeName,
+              pending.expiresAt > Date() else {
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "transfer_expired"))
+        }
+        if phase == "abort" {
+            await abortPendingHandback(transfer.transferID)
+            return sealedResponse((try? encoder.encode(pending)) ?? Data())
+        }
+        guard phase == "commit" else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_phase"}"#.utf8))
+        }
+        let committed = HandbackTransfer(
+            transferID: pending.transferID, targetNodeName: pending.targetNodeName,
+            targetAddress: target, leaderTerm: leaderTerm + 1, expiresAt: pending.expiresAt
+        )
+        // onDemotion closes output synchronously before the commit response can
+        // authorise the returning Mac to open its Discord gateway.
+        await demoteToStandby(observedTerm: committed.leaderTerm, newLeaderAddress: target)
+        committedHandbacks = committedHandbacks.filter { $0.value.expiresAt > Date() }
+        committedHandbacks[committed.transferID] = committed
+        return sealedResponse((try? encoder.encode(committed)) ?? Data())
+    }
+
+    private func abortPendingHandback(_ transferID: UUID) async {
+        guard pendingHandback?.transferID == transferID, mode == .leader else { return }
+        pendingHandback = nil
+        handbackTimeoutTask?.cancel()
+        handbackTimeoutTask = nil
+        snapshot.runtimeState = .idle
+        if ownershipGranted {
+            await handbackResumeHandler?()
+        }
+        snapshot.diagnostics = "Handback deferred; current Primary continues"
+        await publishSnapshot()
+    }
 
     func configureHandlers(
         aiHandler: @escaping AIHandler,
@@ -337,9 +660,11 @@ actor ClusterCoordinator {
     /// Phase 4: tells the coordinator whether THIS node was configured as the
     /// original Primary (from settings, not the runtime role) and how long
     /// it must be healthy as a standby before auto-reclaiming. `0` disables.
-    func setAutoReclaimPolicy(isConfiguredPrimary: Bool, afterHours: Int) {
+    func setAutoReclaimPolicy(isConfiguredPrimary: Bool, afterHours: Int, automaticHandbackEnabled: Bool? = nil) {
+        let nextSeconds = automaticHandbackEnabled == false ? 0 : (afterHours > 0 ? TimeInterval(afterHours) * 3600 : (automaticHandbackEnabled == true ? 60 : 0))
+        guard self.isConfiguredPrimary != isConfiguredPrimary || autoReclaimAfterSeconds != nextSeconds else { return }
         self.isConfiguredPrimary = isConfiguredPrimary
-        self.autoReclaimAfterSeconds = TimeInterval(max(0, afterHours)) * 3600
+        self.autoReclaimAfterSeconds = nextSeconds
         // Any policy change resets the healthy clock — start clean.
         self.standbyHealthySince = nil
     }
@@ -369,7 +694,11 @@ actor ClusterCoordinator {
         localHandoverArmedFor = nil
         snapshot.scheduledHandoverTestAt = nil
         snapshot.scheduledHandoverTargetNodeName = nil
-        await promoteToLeader()
+        if await isWorkerReachable(leaderAddress) {
+            _ = await requestCoordinatedHandback()
+        } else {
+            await promoteToLeader()
+        }
     }
 
     // MARK: - Handover Test (Primary ⇄ Failover round-trip)
@@ -679,11 +1008,9 @@ actor ClusterCoordinator {
         await emitHandoverStep(3, of: 4, "Test window elapsed; signalling \(originNodeName) to reclaim")
         await broadcastHandoverTestEnd(originPrimaryNodeName: originNodeName, originPrimaryBaseURL: originBaseURL, duration: durationSeconds)
 
-        meshLogger.notice("Handover test window elapsed; demoting back to Standby")
         snapshot.isHandoverTestActive = false
         snapshot.handoverTestEndsAt = nil
-        await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: originBaseURL)
-        await emitHandoverStep(4, of: 4, "Demoted back to Standby")
+        await emitHandoverStep(4, of: 4, mode == .standby ? "Handback completed" : "Handback deferred; temporary Primary continues")
         localHandoverArmedFor = nil
         handoverTestTask = nil
     }
@@ -741,11 +1068,9 @@ actor ClusterCoordinator {
 
             // Fix split-brain: temporary primary must demote self back to standby
             // now that its window has elapsed.
-            meshLogger.notice("Handover test window elapsed; demoting back to Standby")
             snapshot.isHandoverTestActive = false
             snapshot.handoverTestEndsAt = nil
-            await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: originBaseURL)
-            await emitHandoverStep(4, of: 4, "Demoted back to Standby")
+            await emitHandoverStep(4, of: 4, mode == .standby ? "Handback completed" : "Handback deferred; temporary Primary continues")
 
             handoverTestTask = nil
         }
@@ -809,7 +1134,9 @@ actor ClusterCoordinator {
         snapshot.handoverTestEndsAt = nil
         await publishSnapshot()
         await emitHandoverStep(4, of: 5, "End signal received from Failover — reclaiming Primary")
-        await promoteToLeader()
+        guard await requestCoordinatedHandback() else {
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "handback_not_ready"))
+        }
         await emitHandoverStep(5, of: 5, "Reclaim complete — handover test passed end-to-end")
         handoverTestTask?.cancel()
         handoverTestTask = nil
@@ -854,6 +1181,7 @@ actor ClusterCoordinator {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyMeshAuth(to: &request, path: "/v1/mesh/discord-token")
+        applyCredentialAuth(to: &request, path: "/v1/mesh/discord-token")
         request.timeoutInterval = 5
         do {
             let (data, response) = try await meshSession.data(for: request)
@@ -877,7 +1205,7 @@ actor ClusterCoordinator {
     /// the standard stale-term body so the caller knows to retarget. Applied
     /// mutation IDs are remembered briefly so a retried POST is a no-op.
     private func handleConfigMutation(_ body: Data) async -> Data {
-        guard mode == .leader else {
+        guard acceptsClusterWrites() else {
             return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
         }
         guard let request = try? decoder.decode(MeshConfigMutationRequest.self, from: body) else {
@@ -1017,7 +1345,7 @@ actor ClusterCoordinator {
 
     func registeredWorkersDebugInfo() -> (count: Int, summary: String) {
         pruneStaleRegistrations()
-        let workers = sortedRegisteredWorkers()
+        let workers = sortedRegisteredWorkers().filter { $0.outboundJobsVersion == 0 }
         guard !workers.isEmpty else { return (0, "none") }
         let now = Date()
         let summary = workers.map { worker in
@@ -1031,7 +1359,7 @@ actor ClusterCoordinator {
         replicationCursors[nodeName]
     }
 
-    func updateReplicationCursor(for nodeName: String, lastSentRecordID: String?, term: Int) async {
+    func updateReplicationCursor(for nodeName: String, lastSentRecordID: String?, term: Int, lastSentRecordTimestamp: Date? = nil, fromRecordID: String? = nil) async {
         if let existing = replicationCursors[nodeName] {
             if existing.leaderTerm > term {
                 return
@@ -1039,7 +1367,14 @@ actor ClusterCoordinator {
             if existing.leaderTerm == term {
                 switch (existing.lastSentRecordID, lastSentRecordID) {
                 case let (existingID?, newID?):
-                    guard newID > existingID else { return }
+                    if let timestamp = lastSentRecordTimestamp, let previous = existing.lastSentRecordTimestamp {
+                        guard timestamp > previous || (timestamp == previous && newID > existingID) else { return }
+                    } else if lastSentRecordTimestamp != nil, fromRecordID == existingID {
+                        // Upgrade an ID-only cursor after a confirmed page
+                        // starting at that exact identity.
+                    } else {
+                        guard newID > existingID else { return }
+                    }
                 case (_?, nil):
                     return
                 default:
@@ -1047,7 +1382,7 @@ actor ClusterCoordinator {
                 }
             }
         }
-        replicationCursors[nodeName] = ReplicationCursor(leaderTerm: term, lastSentRecordID: lastSentRecordID, updatedAt: Date())
+        replicationCursors[nodeName] = ReplicationCursor(leaderTerm: term, lastSentRecordID: lastSentRecordID, lastSentRecordTimestamp: lastSentRecordTimestamp, updatedAt: Date())
         await onCursorsChanged?(replicationCursors)
     }
 
@@ -1061,6 +1396,11 @@ actor ClusterCoordinator {
         leaderTerm: Int = 0
     ) async {
         let resolvedLeaderPort = leaderPort ?? listenPort
+        let normalizedConfiguredAddress = normalizedBaseURL(leaderAddress, defaultPort: resolvedLeaderPort)
+            ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let placementChanged = configuredMode != mode
+            || configuredLeaderAddress.lowercased() != normalizedConfiguredAddress.lowercased()
+        let oldRuntimeMode = self.mode
         // Restore persisted term; never go backwards.
         if leaderTerm > self.leaderTerm {
             self.leaderTerm = leaderTerm
@@ -1072,16 +1412,39 @@ actor ClusterCoordinator {
         self.listenPort = listenPort
         self.leaderPort = resolvedLeaderPort
         let previousLeaderAddress = self.leaderAddress
-        self.leaderAddress = normalizedBaseURL(leaderAddress, defaultPort: resolvedLeaderPort) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if placementChanged {
+            self.leaderAddress = normalizedConfiguredAddress
+        }
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if mode == .standalone || !self.sharedSecret.isEmpty {
+            lastMissingSecretWarning = nil
+        }
         if previousLeaderAddress.lowercased() != self.leaderAddress.lowercased() {
             initialSyncCompletedLeaderBaseURL = nil
         }
         
-        if handoverTestTask == nil {
+        if placementChanged && handoverTestTask == nil {
+            configuredMode = mode
+            configuredLeaderAddress = normalizedConfiguredAddress
             self.mode = await startupReconciledMode(requestedMode: mode)
+            if self.mode == .leader {
+                if await acquireOwnership(minimumTerm: self.leaderTerm) {
+                    startOwnershipRenewal()
+                    await onTermChanged?(self.leaderTerm)
+                } else {
+                    self.mode = .standby
+                }
+            } else {
+                ownershipGranted = false
+            }
+            if oldRuntimeMode == .leader && self.mode != .leader {
+                await onDemotion?()
+                await ownershipRelease?(self.leaderTerm)
+                ownershipTask?.cancel()
+                ownershipTask = nil
+            }
         } else {
-            meshLogger.debug("Handover test in progress; ignoring mode-change in applySettings (requested: \(mode.rawValue, privacy: .public), current: \(self.mode.rawValue, privacy: .public))")
+            meshLogger.debug("Preserving elected runtime mode \(self.mode.rawValue, privacy: .public) while applying local settings")
         }
 
         snapshot.mode = self.mode
@@ -1097,6 +1460,7 @@ actor ClusterCoordinator {
 
         await restartServerIfNeeded()
         await restartWorkerRegistrationIfNeeded()
+        restartOutboundPolling()
         await restartStandbyMonitorIfNeeded()
         await reconcileFollowerStatePoll()
         await refreshWorkerHealth()
@@ -1139,35 +1503,38 @@ actor ClusterCoordinator {
     /// at the configured leaderAddress, demote to standby and register with that leader.
     private func startupReconciledMode(requestedMode: ClusterMode) async -> ClusterMode {
         guard requestedMode == .leader else { return requestedMode }
-        guard let configuredLeader = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !configuredLeader.isEmpty else {
-            return requestedMode
-        }
-        guard !isSelfClusterEndpoint(configuredLeader) else { return requestedMode }
-        guard let remoteStatus = await fetchRemoteClusterStatus(baseURL: configuredLeader) else {
-            return requestedMode
-        }
-
+        let candidates = [leaderAddress, recoveredLeaderAddress] + knownPeerAddresses.values.sorted()
         let localLeaderID = "leader-\(ProcessInfo.processInfo.hostName.lowercased())-\(listenPort)"
-        let remoteLeader = remoteStatus.response.nodes.first {
-            $0.role == .leader && $0.status != .disconnected
-        }
-        if let remoteLeader, remoteLeader.id != localLeaderID {
-            meshLogger.warning(
-                "Startup reconciliation: discovered active leader \(remoteLeader.displayName, privacy: .public) at \(configuredLeader, privacy: .public); starting in standby mode"
-            )
-            leaderAddress = configuredLeader
+        for address in candidates {
+            guard let endpoint = normalizedBaseURL(address, defaultPort: leaderPort), !isSelfClusterEndpoint(endpoint),
+                  let remote = await fetchRemoteClusterStatus(baseURL: endpoint),
+                  let active = remote.response.nodes.first(where: { $0.role == .leader && $0.status != .disconnected }),
+                  active.id != localLeaderID else { continue }
+            if let health = await fetchMeshNodeHealth(endpoint) { leaderTerm = max(leaderTerm, health.leaderTerm) }
+            leaderAddress = endpoint
+            persistRecoveryState()
+            meshLogger.warning("Returning Primary found an active owner; starting passive until catchup and handback complete")
             return .standby
         }
-
         return requestedMode
     }
 
     func stopAll() async {
         meshLogger.notice("Stopping all cluster services")
+        ownershipTask?.cancel()
+        ownershipTask = nil
+        handbackTimeoutTask?.cancel()
+        handbackTimeoutTask = nil
+        pendingHandback = nil
+        ownershipGranted = false
+        if mode == .leader { await onDemotion?() }
+        await ownershipRelease?(leaderTerm)
         stopMeshDiscovery()
         handoverTestTask?.cancel()
         _ = await handoverTestTask?.value
         handoverTestTask = nil
+        outboundPollTask?.cancel()
+        outboundPollTask = nil
         workerRegistrationTask?.cancel()
         _ = await workerRegistrationTask?.value
         workerRegistrationTask = nil
@@ -1361,7 +1728,7 @@ actor ClusterCoordinator {
             return nil
         }
 
-        let workers = sortedRegisteredWorkers()
+        let workers = sortedRegisteredWorkers().filter { $0.outboundJobsVersion == 0 }
         guard !workers.isEmpty else {
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "No workers registered"
@@ -1481,6 +1848,39 @@ actor ClusterCoordinator {
         request.setValue(nonce, forHTTPHeaderField: "X-Mesh-Nonce")
         request.setValue(String(timestamp), forHTTPHeaderField: "X-Mesh-Timestamp")
         request.setValue(sig, forHTTPHeaderField: "X-Mesh-Signature")
+    }
+
+    private func credentialProof(method: String, path: String, nodeID: String, nonce: String, timestamp: String, token: String) -> String {
+        let message = "SwiftMesh-credential-v1:\(nodeID):\(method.uppercased()):\(path):\(nonce):\(timestamp)"
+        guard let raw = Data(base64Encoded: token),
+              let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw),
+              let signature = try? key.signature(for: Data(message.utf8)) else { return "" }
+        return signature.base64EncodedString()
+    }
+
+    private func applyCredentialAuth(to request: inout URLRequest, path: String) {
+        guard !credentialNodeID.isEmpty, !credentialEnrollmentToken.isEmpty,
+              let nonce = request.value(forHTTPHeaderField: "X-Mesh-Nonce"),
+              let timestamp = request.value(forHTTPHeaderField: "X-Mesh-Timestamp") else { return }
+        request.setValue(credentialNodeID, forHTTPHeaderField: "X-Mesh-Credential-Node-ID")
+        request.setValue(credentialProof(
+            method: request.httpMethod ?? "GET", path: path, nodeID: credentialNodeID,
+            nonce: nonce, timestamp: timestamp, token: credentialEnrollmentToken
+        ), forHTTPHeaderField: "X-Mesh-Credential-Signature")
+    }
+
+    private func verifyCredentialAuthorization(_ request: HTTPRequest) async -> Bool {
+        guard request.method == "GET", request.body.isEmpty,
+              let nodeID = request.headers["x-mesh-credential-node-id"],
+              let supplied = request.headers["x-mesh-credential-signature"],
+              let nonce = request.headers["x-mesh-nonce"],
+              let timestamp = request.headers["x-mesh-timestamp"],
+              let encodedKey = await credentialPublicKeyProvider?(nodeID),
+              let rawKey = Data(base64Encoded: encodedKey),
+              let key = try? Curve25519.Signing.PublicKey(rawRepresentation: rawKey),
+              let code = Data(base64Encoded: supplied) else { return false }
+        let message = "SwiftMesh-credential-v1:\(nodeID):\(request.method):\(request.path):\(nonce):\(timestamp)"
+        return key.isValidSignature(code, for: Data(message.utf8))
     }
 
     /// Verifies inbound mesh auth headers. Returns true only if:
@@ -1847,7 +2247,11 @@ actor ClusterCoordinator {
         if request.path != "/health" {
             let normalizedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
             if mode != .standalone && normalizedSecret.isEmpty {
-                meshLogger.warning("Mesh auth rejected: non-standalone mode with no shared secret configured")
+                let now = ContinuousClock.now
+                if lastMissingSecretWarning.map({ $0.duration(to: now) >= .seconds(60) }) ?? true {
+                    lastMissingSecretWarning = now
+                    meshLogger.warning("Mesh requests blocked: configure a Shared Secret in SwiftMesh settings or select Standalone. Repeated warnings are limited to once per minute.")
+                }
                 return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
             }
             if !normalizedSecret.isEmpty {
@@ -1878,6 +2282,33 @@ actor ClusterCoordinator {
         }
 
         switch (request.method, request.path) {
+        case ("POST", "/v1/mesh/jobs/poll"):
+            guard hasActiveOwnership(), let poll = try? decoder.decode(MeshJobPollRequest.self, from: request.body),
+                  registeredWorkers.values.contains(where: { $0.nodeName == poll.nodeName }), poll.leaderTerm == leaderTerm else {
+                return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "current_owner_required"))
+            }
+            let jobs = await outboundJobs.poll(poll, currentLeaderTerm: leaderTerm)
+            return sealedResponse((try? encoder.encode(jobs)) ?? Data())
+        case ("POST", "/v1/mesh/jobs/result"):
+            guard hasActiveOwnership(), let submission = try? decoder.decode(MeshJobResultSubmission.self, from: request.body),
+                  await outboundJobs.complete(submission, currentLeaderTerm: leaderTerm) else {
+                return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "stale_job_result"))
+            }
+            return sealedResponse(Data(#"{"accepted":true}"#.utf8))
+        case ("GET", "/v1/mesh/health"):
+            let payload = MeshNodeHealth(
+                nodeName: nodeName, mode: mode.rawValue, leaderTerm: leaderTerm,
+                desiredBotRunning: desiredBotRunning,
+                gatewayConnected: await serviceHealthProvider?() ?? (mode == .leader),
+                advertisedAddress: localWorkerAdvertisedBaseURL()
+            )
+            return httpResponse(status: "200 OK", body: (try? encoder.encode(payload)) ?? Data())
+        case ("POST", "/v1/mesh/handback/prepare"):
+            return await handleHandback(request.body, phase: "prepare")
+        case ("POST", "/v1/mesh/handback/commit"):
+            return await handleHandback(request.body, phase: "commit")
+        case ("POST", "/v1/mesh/handback/abort"):
+            return await handleHandback(request.body, phase: "abort")
         case ("GET", "/health"):
             let payload = HealthResponse(nodeName: nodeName, mode: mode.rawValue, status: "ok")
             let body = (try? encoder.encode(payload)) ?? Data()
@@ -2063,10 +2494,16 @@ actor ClusterCoordinator {
         case ("POST", "/v1/mesh/handover-test/end"):
             return await handleHandoverTestEnd(request.body)
         case ("GET", "/v1/mesh/discord-token"):
+            guard await verifyCredentialAuthorization(request) else {
+                return httpResponse(status: "403 Forbidden", body: Data(#"{"error":"failover_enrollment_required"}"#.utf8))
+            }
             return await handleDiscordTokenRequest()
         case ("GET", "/v1/mesh/credentials"):
             guard mode == .leader else {
                 return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
+            }
+            guard await verifyCredentialAuthorization(request) else {
+                return httpResponse(status: "403 Forbidden", body: Data(#"{"error":"failover_enrollment_required"}"#.utf8))
             }
             let payload = await credentialsProvider?() ?? MeshCredentialsResponse()
             return sealedResponse((try? encoder.encode(payload)) ?? Data())
@@ -2177,20 +2614,24 @@ actor ClusterCoordinator {
     private func monitorLeaderHealth(_ leaderBaseURL: String) async {
         guard mode == .standby else { return }
 
-        var isHealthy = await isWorkerReachable(leaderBaseURL)
+        let nodeHealth = await fetchMeshNodeHealth(leaderBaseURL)
+        var isHealthy = nodeHealth?.mode == ClusterMode.leader.rawValue
+        if nodeHealth == nil { isHealthy = await isWorkerReachable(leaderBaseURL) }
         // Bug-2 fix: a single failed probe is not enough to count a miss. Network
         // jitter or a momentarily-busy event loop can drop one request. Retry once
         // with a short backoff before deciding the leader is unreachable.
-        if !isHealthy {
+        if !isHealthy, nodeHealth == nil {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             if Task.isCancelled { return }
             guard mode == .standby else { return }
             isHealthy = await isWorkerReachable(leaderBaseURL)
         }
         var unhealthyReason = "Primary health miss"
-        if isHealthy,
-           let primaryDiscordConnected = await onConfirmPrimaryPubliclyReachable?(),
-           primaryDiscordConnected == false {
+        let intentionallyPaused = nodeHealth?.desiredBotRunning == false
+        let gatewayBroken = nodeHealth.map { $0.mode == ClusterMode.leader.rawValue && $0.desiredBotRunning && !$0.gatewayConnected } ?? false
+        let publicGatewayConnected = intentionallyPaused || nodeHealth != nil ? nil : await onConfirmPrimaryPubliclyReachable?()
+        if !intentionallyPaused, isHealthy,
+           (gatewayBroken || publicGatewayConnected == false) {
             isHealthy = false
             unhealthyReason = "Primary Discord offline"
             meshLogger.warning("Primary mesh endpoint is reachable, but /live reports Discord offline")
@@ -2221,7 +2662,7 @@ actor ClusterCoordinator {
                           Date().timeIntervalSince(since) >= autoReclaimAfterSeconds {
                     meshLogger.notice("Auto-reclaim threshold reached after \(self.autoReclaimAfterSeconds, privacy: .public)s healthy; reclaiming Primary")
                     standbyHealthySince = nil
-                    await promoteToLeader()
+                    _ = await requestCoordinatedHandback()
                     return
                 }
             }
@@ -2245,6 +2686,10 @@ actor ClusterCoordinator {
             await publishSnapshot()
 
             if standbyHealthMisses >= Self.standbyPromotionThreshold {
+                if gatewayBroken, nodeHealth?.mode == ClusterMode.leader.rawValue {
+                    _ = await requestCoordinatedHandback()
+                    return
+                }
                 // Bug 1 / Bug 3: confirm leader is genuinely dead AND attempt a final
                 // tail-resync before promoting. If the leader answers the high-timeout
                 // probe, the previous misses were transient — abort and reset.
@@ -2279,7 +2724,9 @@ actor ClusterCoordinator {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if Task.isCancelled { return false }
             }
-            if await isWorkerReachable(leaderBaseURL, timeout: 10) {
+            if let health = await fetchMeshNodeHealth(leaderBaseURL, timeout: 10) {
+                if health.mode == ClusterMode.leader.rawValue { return false }
+            } else if await isWorkerReachable(leaderBaseURL, timeout: 10) {
                 return false
             }
         }
@@ -2305,8 +2752,22 @@ actor ClusterCoordinator {
         }
         return true
     }
-    func promoteToLeader() async {
-        guard mode == .standby else { return }
+    func promoteToLeader(grantedTerm: Int? = nil) async {
+        guard mode == .standby, !promotionInProgress, !handbackInProgress, desiredBotRunning, leaderTerm < Int.max else { return }
+        promotionInProgress = true
+        defer { promotionInProgress = false }
+        if let failure = await promotionReadinessHandler?() {
+            snapshot.diagnostics = "Takeover blocked: \(failure)"
+            await publishSnapshot()
+            return
+        }
+        guard mode == .standby, pendingHandback == nil else { return }
+        let nextTerm = max(leaderTerm + 1, grantedTerm ?? 0)
+        guard await acquireOwnership(minimumTerm: nextTerm), mode == .standby else {
+            snapshot.diagnostics = "Takeover blocked: exclusive ownership unavailable"
+            await publishSnapshot()
+            return
+        }
 
         // Capture the leader address we're about to replace so a temp-Primary
         // (handover test) knows where to send the "end" signal when its
@@ -2320,20 +2781,22 @@ actor ClusterCoordinator {
         await publishSnapshot()
 
         mode = .leader
-        leaderTerm += 1
         snapshot.mode = .leader
         snapshot.leaderTerm = leaderTerm
         snapshot.diagnostics = "PROMOTED TO PRIMARY (Term \(leaderTerm))"
         meshLogger.critical("Node promoted to Primary — term \(self.leaderTerm, privacy: .public), node \(self.nodeName, privacy: .public)")
         snapshot.workerState = .connected
         snapshot.workerStatusText = "Primary (Promoted)"
-        await publishSnapshot()
-
         // Persist the new term immediately so a restart cannot emit a stale term.
+        await jobLedger.observeLeadership(term: leaderTerm)
+        await outboundJobs.observeLeadership(term: leaderTerm)
+        restartOutboundPolling()
         await onTermChanged?(leaderTerm)
-
         // Notify AppModel to start bot services
         await onPromotion?()
+        guard mode == .leader, ownershipGranted else { return }
+        startOwnershipRenewal()
+        await publishSnapshot()
 
         // Bug 4 fix: do NOT wipe replicationCursors on promotion. The cursors
         // describe what each worker has already received; wiping them forces a
@@ -2345,6 +2808,7 @@ actor ClusterCoordinator {
             replicationCursors[nodeName] = ReplicationCursor(
                 leaderTerm: leaderTerm,
                 lastSentRecordID: cursor.lastSentRecordID,
+                lastSentRecordTimestamp: cursor.lastSentRecordTimestamp,
                 updatedAt: Date()
             )
         }
@@ -2352,10 +2816,8 @@ actor ClusterCoordinator {
 
         // Stop standby monitoring and registration — no longer a standby.
         standbyMonitorTask?.cancel()
-        _ = await standbyMonitorTask?.value
         standbyMonitorTask = nil
         workerRegistrationTask?.cancel()
-        _ = await workerRegistrationTask?.value
         workerRegistrationTask = nil
 
         // Restart server as leader
@@ -2466,8 +2928,15 @@ actor ClusterCoordinator {
 
     func updateLeaderTerm(_ newTerm: Int) async {
         guard newTerm > leaderTerm else { return }
+        if mode == .leader {
+            await demoteToStandby(observedTerm: newTerm, newLeaderAddress: nil)
+            return
+        }
         meshLogger.notice("Adopting higher leader term \(newTerm, privacy: .public) from peer (was \(self.leaderTerm, privacy: .public))")
         leaderTerm = newTerm
+        persistRecoveryState()
+        await jobLedger.observeLeadership(term: newTerm)
+        await outboundJobs.observeLeadership(term: newTerm)
         snapshot.leaderTerm = leaderTerm
         await publishSnapshot()
         await onTermChanged?(leaderTerm)
@@ -2500,15 +2969,27 @@ actor ClusterCoordinator {
         handoverTestTask?.cancel()
         handoverTestTask = nil
 
-        // Surface in-flight demotion before we start tearing down Primary state.
-        snapshot.runtimeState = .demoting
-        await publishSnapshot()
-
+        let previousTerm = leaderTerm
         mode = .standby
-        leaderTerm = observedTerm
+        ownershipGranted = false
+        ownershipTask?.cancel()
+        ownershipTask = nil
+        handbackTimeoutTask?.cancel()
+        handbackTimeoutTask = nil
+        pendingHandback = nil
+        snapshot.runtimeState = .demoting
+        // Close side effects before any term persistence, snapshot callback, or
+        // acknowledgement can cause another node to start its gateway.
+        await onDemotion?()
+        await ownershipRelease?(previousTerm)
+        leaderTerm = max(leaderTerm, observedTerm)
+        await jobLedger.observeLeadership(term: leaderTerm)
+        await outboundJobs.observeLeadership(term: leaderTerm)
+        restartOutboundPolling()
         if let addr = newLeaderAddress, !addr.isEmpty {
             leaderAddress = addr
         }
+        persistRecoveryState()
         snapshot.mode = .standby
         snapshot.leaderTerm = leaderTerm
         snapshot.leaderAddress = leaderAddress
@@ -2517,8 +2998,6 @@ actor ClusterCoordinator {
         snapshot.diagnostics = "Demoted to Standby (peer term \(observedTerm))"
         await publishSnapshot()
         await onTermChanged?(leaderTerm)
-        // Mute Discord output and restore passive-standby semantics in AppModel.
-        await onDemotion?()
         await restartStandbyMonitorIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         await restartServerIfNeeded()
@@ -2579,7 +3058,8 @@ actor ClusterCoordinator {
         let payload = WorkerRegistrationRequest(
             nodeName: nodeName,
             baseURL: localWorkerAdvertisedBaseURL(),
-            listenPort: listenPort
+            listenPort: listenPort,
+            outboundJobsVersion: 1
         )
 
         do {
@@ -2645,7 +3125,7 @@ actor ClusterCoordinator {
 
     private func adoptRegisteredLeaderTerm(_ term: Int, leaderBaseURL: String) async {
         guard mode == .worker || mode == .standby else { return }
-        guard term >= 0, leaderTerm != term else { return }
+        guard term > leaderTerm else { return }
 
         meshLogger.notice("Adopting registered Primary term \(term, privacy: .public) from \(leaderBaseURL, privacy: .public) (was \(self.leaderTerm, privacy: .public))")
         leaderTerm = term
@@ -2666,7 +3146,8 @@ actor ClusterCoordinator {
         }
         let advertisedBaseURL = normalizedBaseURL(registration.baseURL)
         let observedBaseURL = observedRegistrationBaseURL(remoteHost: remoteHost, listenPort: registration.listenPort)
-        guard let baseURL = observedBaseURL ?? advertisedBaseURL, !baseURL.isEmpty else {
+        let preferredURL = advertisedBaseURL?.hasPrefix("https://") == true ? advertisedBaseURL : observedBaseURL ?? advertisedBaseURL
+        guard let baseURL = preferredURL, !baseURL.isEmpty else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_registration"}"#.utf8))
         }
 
@@ -2684,10 +3165,14 @@ actor ClusterCoordinator {
             nodeName: workerName,
             baseURL: baseURL,
             listenPort: registration.listenPort,
-            lastSeen: Date()
+            lastSeen: Date(),
+            outboundJobsVersion: registration.outboundJobsVersion ?? 0,
+            advertisedBaseURL: advertisedBaseURL
         )
         registeredWorkers[key] = entry
         everKnownWorkers[key] = entry
+        knownPeerAddresses[workerName] = baseURL
+        persistRecoveryState()
         pruneStaleRegistrations()
 
         let workerCount = registeredWorkers.count
@@ -2747,6 +3232,7 @@ actor ClusterCoordinator {
     }
 
     private func localWorkerAdvertisedBaseURL() -> String {
+        if !publicMeshAddress.isEmpty { return publicMeshAddress }
         let host = ProcessInfo.processInfo.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedHost = host.isEmpty ? "127.0.0.1" : host
         return "http://\(resolvedHost):\(listenPort)"
@@ -2782,7 +3268,7 @@ actor ClusterCoordinator {
         }
         let resolvedPort: Int = {
             if let explicit = url.port { return explicit }
-            if let def = defaultPort { return def }
+            if !hadExplicitScheme, let def = defaultPort { return def }
             if scheme.lowercased() == "https" { return 443 }
             return 80
         }()
@@ -2812,6 +3298,7 @@ actor ClusterCoordinator {
     }
 
     private func isWorkerReachable(_ baseURL: String, timeout: TimeInterval = 5) async -> Bool {
+        if await fetchMeshNodeHealth(baseURL, timeout: timeout) != nil { return true }
         guard let url = URL(string: baseURL + "/health") else { return false }
         do {
             var request = URLRequest(url: url)
@@ -2826,6 +3313,21 @@ actor ClusterCoordinator {
         }
     }
 
+    private func fetchMeshNodeHealth(_ baseURL: String, timeout: TimeInterval = 5) async -> MeshNodeHealth? {
+        guard let url = URL(string: baseURL + "/v1/mesh/health") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMeshAuth(to: &request, path: "/v1/mesh/health")
+        request.timeoutInterval = timeout
+        do {
+            let (data, response) = try await meshSession.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try? decoder.decode(MeshNodeHealth.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
     private func describeEndpoint(_ url: URL) -> String {
         let scheme = url.scheme ?? "http"
         let host = url.host ?? "-"
@@ -2834,8 +3336,89 @@ actor ClusterCoordinator {
         return "\(scheme.uppercased()) \(host):\(port)\(path)"
     }
 
+    /// Followers only initiate outbound requests. No public port on a worker
+    /// is needed for computation dispatch, delivery retries, or result upload.
+    private func restartOutboundPolling() {
+        outboundPollTask?.cancel()
+        outboundPollTask = nil
+        guard mode == .standby || mode == .worker else { return }
+        outboundPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.pollOutboundJob()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    private func pollOutboundJob() async {
+        guard mode == .standby || mode == .worker,
+              let base = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
+              let url = URL(string: base + "/v1/mesh/jobs/poll") else { return }
+        let term = leaderTerm
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = try? encoder.encode(MeshJobPollRequest(nodeName: nodeName, leaderTerm: term))
+        applyMeshAuth(to: &request, path: "/v1/mesh/jobs/poll")
+        request.timeoutInterval = 5
+        guard let (wire, response) = try? await meshSession.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let plain = openSealedResponse(wire),
+              let jobs = try? decoder.decode(MeshJobPollResponse.self, from: plain), jobs.leaderTerm == term else { return }
+        for job in jobs.jobs {
+            guard !Task.isCancelled, leaderTerm == term, mode == .standby || mode == .worker else { return }
+            let result = await jobLedger.execute(job, currentLeaderTerm: { [weak self] in
+                await self?.currentLeaderTerm() ?? Int.max
+            }, operation: { [weak self] payload in
+                await self?.computeJob(job.kind, payload: payload)
+            })
+            guard leaderTerm == term, mode != .leader,
+                  let resultURL = URL(string: base + "/v1/mesh/jobs/result") else { return }
+            var submission = URLRequest(url: resultURL)
+            submission.httpMethod = "POST"
+            submission.httpBody = try? encoder.encode(MeshJobResultSubmission(nodeName: nodeName, inputHash: job.inputHash, response: result))
+            applyMeshAuth(to: &submission, path: "/v1/mesh/jobs/result")
+            submission.timeoutInterval = 5
+            _ = try? await meshSession.data(for: submission)
+        }
+    }
+
+    private func computeJob(_ kind: MeshJobKind, payload: Data) async -> Data? {
+        switch kind {
+        case .aiReply:
+            guard let job = try? decoder.decode(AIJobRequest.self, from: payload),
+                  let reply = await aiHandler?(job.messages, job.serverName, job.channelName, job.wikiContext) else { return nil }
+            return try? encoder.encode(AIJobResponse(nodeName: nodeName, reply: reply))
+        case .wikiLookup:
+            guard let job = try? decoder.decode(WikiJobRequest.self, from: payload),
+                  let lookup = await wikiHandler?(job.query, job.source) else { return nil }
+            return try? encoder.encode(WikiJobResponse(nodeName: nodeName, result: lookup))
+        case .playlistImport:
+            guard let job = try? decoder.decode(PlaylistImportJobRequest.self, from: payload),
+                  let url = URL(string: job.playlistURL),
+                  let imported = await playlistImportHandler?(url, job.limit) else { return nil }
+            return try? encoder.encode(PlaylistImportJobResponse(nodeName: nodeName, result: imported))
+        }
+    }
+
+    private func dispatchOutboundJob(_ kind: MeshJobKind, payload: Data) async -> Data? {
+        guard hasActiveOwnership(), let worker = sortedRegisteredWorkers().first(where: { $0.outboundJobsVersion >= 1 }) else { return nil }
+        let term = leaderTerm
+        let request = MeshJobRequestEnvelope(
+            originNodeName: nodeName, leaderTerm: term, kind: kind,
+            deadline: Date().addingTimeInterval(25), payload: payload)
+        let result = await outboundJobs.enqueue(nodeName: worker.nodeName, request: request, currentLeaderTerm: { [weak self] in
+            await self?.currentLeaderTerm() ?? Int.max
+        })
+        guard hasActiveOwnership(), leaderTerm == term, result.status == .completed else { return nil }
+        return result.result
+    }
+
     private func performRemoteAI(_ job: AIJobRequest) async -> AIJobResponse? {
-        let workers = sortedRegisteredWorkers()
+        if let payload = try? encoder.encode(job), let data = await dispatchOutboundJob(.aiReply, payload: payload) {
+            return try? decoder.decode(AIJobResponse.self, from: data)
+        }
+        let workers = sortedRegisteredWorkers().filter { $0.outboundJobsVersion == 0 }
         guard !workers.isEmpty else {
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "No workers registered"
@@ -2877,7 +3460,11 @@ actor ClusterCoordinator {
     }
 
     private func performRemoteWikiLookup(query: String, source: WikiSource) async -> WikiJobResponse? {
-        let workers = sortedRegisteredWorkers()
+        if let payload = try? encoder.encode(WikiJobRequest(query: query, source: source)),
+           let data = await dispatchOutboundJob(.wikiLookup, payload: payload) {
+            return try? decoder.decode(WikiJobResponse.self, from: data)
+        }
+        let workers = sortedRegisteredWorkers().filter { $0.outboundJobsVersion == 0 }
         guard !workers.isEmpty else {
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "No workers registered"
@@ -2919,7 +3506,11 @@ actor ClusterCoordinator {
     }
 
     private func performRemotePlaylistImport(playlistURL: URL, limit: Int) async -> PlaylistImportJobResponse? {
-        let workers = sortedRegisteredWorkers()
+        if let payload = try? encoder.encode(PlaylistImportJobRequest(playlistURL: playlistURL.absoluteString, limit: limit)),
+           let data = await dispatchOutboundJob(.playlistImport, payload: payload) {
+            return try? decoder.decode(PlaylistImportJobResponse.self, from: data)
+        }
+        let workers = sortedRegisteredWorkers().filter { $0.outboundJobsVersion == 0 }
         guard !workers.isEmpty else {
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "No workers registered"
@@ -3999,6 +4590,7 @@ actor ClusterCoordinator {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyMeshAuth(to: &request, path: "/v1/mesh/credentials")
+        applyCredentialAuth(to: &request, path: "/v1/mesh/credentials")
         request.timeoutInterval = 10
         do {
             let (data, response) = try await meshSession.data(for: request)
@@ -4035,6 +4627,8 @@ struct RegisteredWorker: Hashable, Sendable {
     var baseURL: String
     var listenPort: Int
     var lastSeen: Date
+    var outboundJobsVersion: Int = 0
+    var advertisedBaseURL: String? = nil
 }
 
 /// A LAN peer discovered via Bonjour (_swiftbot-mesh._tcp).
@@ -4048,6 +4642,7 @@ private struct WorkerRegistrationRequest: Codable {
     let nodeName: String
     let baseURL: String
     let listenPort: Int
+    var outboundJobsVersion: Int? = nil
 }
 
 private struct WorkerRegistrationResponse: Codable {

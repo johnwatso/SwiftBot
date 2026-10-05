@@ -91,7 +91,7 @@ extension AppModel {
         }
 
         // Recording folders on this Mac.
-        for source in mediaLibrarySettings.sources where source.isEnabled {
+        for source in localRecordingSources where source.isEnabled {
             let path = source.normalizedRootPath
             guard !path.isEmpty else { continue }
             var isDirectory: ObjCBool = false

@@ -186,6 +186,7 @@ actor GatewayEventDispatcher {
     private let onVoiceStateUpdate: VoiceStateUpdateHandler
     private let onVoiceServerUpdate: VoiceServerUpdateHandler
     private let onReady: ReadyHandler
+    private let onGuildUpdate: GuildCreateHandler?
     private let onGuildCreate: GuildCreateHandler
     private let onChannelCreate: ChannelCreateHandler
     private let onMemberJoin: MemberJoinHandler
@@ -210,7 +211,8 @@ actor GatewayEventDispatcher {
         onMemberLeave: @escaping MemberLeaveHandler,
         onGuildDelete: @escaping GuildDeleteHandler,
         onPresenceUpdate: @escaping PresenceUpdateHandler,
-        onRawEvent: RawEventHandler? = nil
+        onRawEvent: RawEventHandler? = nil,
+        onGuildUpdate: GuildCreateHandler? = nil
     ) {
         self.onEventReceived = onEventReceived
         self.onMessageCreate = onMessageCreate
@@ -220,6 +222,7 @@ actor GatewayEventDispatcher {
         self.onVoiceServerUpdate = onVoiceServerUpdate
         self.onReady = onReady
         self.onGuildCreate = onGuildCreate
+        self.onGuildUpdate = onGuildUpdate
         self.onChannelCreate = onChannelCreate
         self.onMemberJoin = onMemberJoin
         self.onMemberLeave = onMemberLeave
@@ -260,6 +263,9 @@ actor GatewayEventDispatcher {
         case "GUILD_CREATE":
             guard let guildCreateEvent = parseGuildCreateEvent(from: payload.d) else { return }
             await onGuildCreate(guildCreateEvent)
+        case "GUILD_UPDATE":
+            guard let event = parseGuildCreateEvent(from: payload.d) else { return }
+            await onGuildUpdate?(event)
         case "CHANNEL_CREATE":
             guard let channelCreateEvent = parseChannelCreateEvent(from: payload.d) else { return }
             await onChannelCreate(channelCreateEvent)

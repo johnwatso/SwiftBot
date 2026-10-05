@@ -6,10 +6,18 @@ actor DiscordService {
     /// Secondary safety guard — set by AppModel based on SwiftMesh cluster role.
     /// When `false`, all outbound Discord sends are blocked at the actor level.
     /// The primary gate is `ActionDispatcher`; this is a final backstop.
-    private(set) var outputAllowed: Bool = false
+    private var outputEnabled = false
+    private var outputLeaseDeadline: ContinuousClock.Instant?
+    var outputAllowed: Bool {
+        outputEnabled && (outputLeaseDeadline.map { ContinuousClock.now < $0 } ?? true)
+    }
+
+    func setOutputLeaseDeadline(_ deadline: ContinuousClock.Instant?) {
+        outputLeaseDeadline = deadline
+    }
 
     func setOutputAllowed(_ allowed: Bool) {
-        outputAllowed = allowed
+        outputEnabled = allowed
     }
 
     /// Channel/role display names (id → name), refreshed from `DiscordCache` so
@@ -179,7 +187,6 @@ actor DiscordService {
             await onConnectionState?(.stopped)
             return
         }
-        discordLogger.info("Gateway connect initiated")
         botToken = normalizedToken
         await ensureGatewayCallbacksConfigured()
         await gatewayConnection.connect(token: normalizedToken)

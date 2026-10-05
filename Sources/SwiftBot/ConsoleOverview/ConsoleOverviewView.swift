@@ -10,8 +10,6 @@ import SwiftUI
 /// the app behaves, such as Launch at Login, live in Settings › General.
 struct ConsoleOverviewView: View {
     @EnvironmentObject private var app: AppModel
-    @Environment(\.openSettings) private var openSettings
-    @AppStorage("swiftbot.preferences.selectedTab") private var preferencesTab = 0
 
     private let details = HostDetails.current
     @State private var isTestingConnection = false
@@ -45,14 +43,17 @@ struct ConsoleOverviewView: View {
                     onSelect: open
                 )
 
-                HStack(alignment: .top, spacing: 28) {
-                    QuickActionsSection(actions: quickActions)
-                        .frame(minWidth: 280, maxWidth: .infinity)
-                    SystemDetailsSection(
-                        details: details,
-                        meshRole: meshRole
-                    )
-                    .frame(minWidth: 340, maxWidth: .infinity)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 28) {
+                        quickActionsPanel
+                            .frame(minWidth: 280, maxWidth: .infinity)
+                        SystemDetailsSection(details: details, meshRole: meshRole)
+                            .frame(minWidth: 340, maxWidth: .infinity)
+                    }
+                    VStack(alignment: .leading, spacing: 32) {
+                        quickActionsPanel
+                        SystemDetailsSection(details: details, meshRole: meshRole)
+                    }
                 }
             }
             .padding(.horizontal, 36)
@@ -81,29 +82,19 @@ struct ConsoleOverviewView: View {
     // MARK: - Header
 
     private func header(_ status: HostStatus) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Overview")
-                    .font(.largeTitle.weight(.bold))
-                    .accessibilityAddTraits(.isHeader)
-                Text(status.headline)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
+        ConsolePageHeader(title: "Overview", subtitle: status.headline) {
+            HStack(spacing: 12) {
+                overflowMenu
+                lifecycleButton(for: status)
+
+                Button("Open Web Interface", systemImage: "arrow.up.forward.app") {
+                    app.launchAdminWebUI()
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(!app.settings.adminWebUI.enabled)
+                .help(app.settings.adminWebUI.enabled ? app.adminWebBaseURL() : "Turn on the Web Interface on its page in the sidebar")
             }
-
-            Spacer(minLength: 24)
-
-            overflowMenu
-            lifecycleButton(for: status)
-
-            Button("Open Web Interface", systemImage: "arrow.up.forward.app") {
-                app.launchAdminWebUI()
-            }
-            .buttonStyle(.glassProminent)
-            .disabled(!app.settings.adminWebUI.enabled)
-            .help(app.settings.adminWebUI.enabled ? app.adminWebBaseURL() : "Turn on the Web Interface on its page in the sidebar")
         }
-        .controlSize(.large)
     }
 
     private var overflowMenu: some View {
@@ -123,9 +114,10 @@ struct ConsoleOverviewView: View {
             Divider()
             Button("Show Classic Dashboard", systemImage: "square.grid.2x2", action: onShowClassicDashboard)
         } label: {
-            Label("More", systemImage: "ellipsis")
+            Label("More", systemImage: "wrench.and.screwdriver")
                 .labelStyle(.iconOnly)
         }
+        .menuStyle(.button)
         .menuIndicator(.hidden)
         .buttonStyle(.glass)
         .fixedSize()
@@ -140,7 +132,10 @@ struct ConsoleOverviewView: View {
                 Task { await app.startBot() }
             }
             .buttonStyle(.glass)
-            .disabled(app.settings.token.isEmpty)
+            .disabled(app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help(app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  ? "Add a bot token on the Discord page before starting."
+                  : "Connect SwiftBot to Discord.")
         case .connecting, .reconnecting, .running:
             Button("Restart", systemImage: "arrow.clockwise") {
                 isConfirmingRestart = true
@@ -162,6 +157,13 @@ struct ConsoleOverviewView: View {
 
     // MARK: - Quick actions
 
+    private var quickActionsPanel: some View {
+        // Re-evaluate the short connection-test cooldown even on a quiet bot.
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            QuickActionsSection(actions: quickActions)
+        }
+    }
+
     private var quickActions: [QuickAction] {
         [
             QuickAction(
@@ -169,14 +171,14 @@ struct ConsoleOverviewView: View {
                 title: "Edit Bot Token",
                 subtitle: "Replace the Discord bot token",
                 symbol: "key",
-                perform: showGeneralSettings
+                perform: { onNavigate(.discord) }
             ),
             QuickAction(
                 id: "test",
                 title: "Test Connection",
                 subtitle: testConnectionSubtitle,
                 symbol: "antenna.radiowaves.left.and.right",
-                isEnabled: !app.settings.token.isEmpty,
+                isEnabled: !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && app.canRunTestConnection,
                 isBusy: isTestingConnection,
                 perform: testConnection
             ),
@@ -191,6 +193,12 @@ struct ConsoleOverviewView: View {
     }
 
     private var testConnectionSubtitle: String {
+        if app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Add a bot token on the Discord page first"
+        }
+        if !isTestingConnection && !app.canRunTestConnection {
+            return "Wait a few seconds before testing again"
+        }
         let diagnostics = app.connectionDiagnostics
         guard let at = diagnostics.lastTestAt, !diagnostics.lastTestMessage.isEmpty else {
             return "Check that Discord accepts the bot token"
@@ -211,16 +219,10 @@ struct ConsoleOverviewView: View {
 
     private func open(_ kind: ConsoleServiceKind) {
         switch kind {
-        case .discord: showGeneralSettings()
+        case .discord: onNavigate(.discord)
         case .webInterface, .cloudflareTunnel: onNavigate(.webInterface)
         case .swiftMesh: onNavigate(.swiftMesh)
         }
-    }
-
-    /// The bot token lives in Settings › General.
-    private func showGeneralSettings() {
-        preferencesTab = PreferencesView.generalTab
-        openSettings()
     }
 
     private func restart() {

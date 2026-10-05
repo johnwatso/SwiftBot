@@ -36,53 +36,11 @@ struct AutomationRuleEditor: View {
         self.onSave = onSave
         self.onDelete = onDelete
 
-        // Intelligently extract defaults from trigger and filters
-        var defaultChannelId = "chan-123"
-        if let tc = rule.trigger.channelId, !tc.isEmpty {
-            defaultChannelId = tc
-        } else if let inChanFilter = rule.filters.first(where: { $0.kind == .inChannel }),
-                  let firstChan = inChanFilter.channelIds?.first, !firstChan.isEmpty {
-            defaultChannelId = firstChan
-        }
-        self._testChannelId = State(initialValue: defaultChannelId)
-
-        var defaultVoiceDuration = 300
-        if let threshold = rule.trigger.voiceDurationThreshold {
-            defaultVoiceDuration = threshold
-        } else if let durationFilter = rule.filters.first(where: { $0.kind == .minVoiceDurationSeconds }),
-                  let minSeconds = durationFilter.intValue {
-            defaultVoiceDuration = minSeconds
-        }
-        self._testVoiceDuration = State(initialValue: defaultVoiceDuration)
-
-        var defaultMessageContent = "Hello world!"
-        if rule.filters.contains(where: { $0.kind == .messageContainsSpamLink }) {
-            defaultMessageContent = "FREE-DISCORD-NITRO PHISHING LINK HERE: HTTPS://GIFT-NITRO.COM"
-        } else if rule.filters.contains(where: { $0.kind == .messageCapsPercentage }) {
-            defaultMessageContent = "HELLO WORLD THIS IS A LOUD SHOUTING MESSAGE"
-        } else if let mentionsFilter = rule.filters.first(where: { $0.kind == .messageMentionsCount }) {
-            let count = mentionsFilter.intValue ?? 5
-            var mentionsList: [String] = []
-            for i in 1...max(1, count + 1) {
-                mentionsList.append("<@user\(i)>")
-            }
-            defaultMessageContent = mentionsList.joined(separator: " ") + " wake up!"
-        } else if let equalsFilter = rule.filters.first(where: { $0.kind == .messageEquals }),
-                  let t = equalsFilter.text, !t.isEmpty {
-            defaultMessageContent = t
-        } else if let containsFilter = rule.filters.first(where: { $0.kind == .messageContains }),
-                  let t = containsFilter.text, !t.isEmpty {
-            defaultMessageContent = t
-        } else if let containsAnyFilter = rule.filters.first(where: { $0.kind == .messageContainsAny }),
-                  let t = containsAnyFilter.textValues?.first, !t.isEmpty {
-            defaultMessageContent = t
-        } else if let regexFilter = rule.filters.first(where: { $0.kind == .messageMatchesRegex }),
-                  let t = regexFilter.text, !t.isEmpty {
-            defaultMessageContent = "Sample matching string for regex: \(t)"
-        }
-        self._testMessageContent = State(initialValue: defaultMessageContent)
-
-        self._testUsername = State(initialValue: "john_doe")
+        let suggested = Automations.SimulationInput.suggested(for: rule)
+        self._testChannelId = State(initialValue: suggested.channelId)
+        self._testVoiceDuration = State(initialValue: suggested.voiceDurationSeconds)
+        self._testMessageContent = State(initialValue: suggested.messageContent)
+        self._testUsername = State(initialValue: suggested.username)
     }
 
     var body: some View {
@@ -1357,111 +1315,20 @@ private struct AutomationFormSection<Content: View>: View {
 
 extension AutomationRuleEditor {
     private func autofillFromRule() {
-        if let tc = rule.trigger.channelId, !tc.isEmpty {
-            testChannelId = tc
-        } else if let inChanFilter = rule.filters.first(where: { $0.kind == .inChannel }),
-                  let firstChan = inChanFilter.channelIds?.first, !firstChan.isEmpty {
-            testChannelId = firstChan
-        }
-
-        if let threshold = rule.trigger.voiceDurationThreshold {
-            testVoiceDuration = threshold
-        } else if let durationFilter = rule.filters.first(where: { $0.kind == .minVoiceDurationSeconds }),
-                  let minSeconds = durationFilter.intValue {
-            testVoiceDuration = minSeconds
-        }
-
-        if rule.filters.contains(where: { $0.kind == .messageContainsSpamLink }) {
-            testMessageContent = "FREE-DISCORD-NITRO PHISHING LINK HERE: HTTPS://GIFT-NITRO.COM"
-        } else if rule.filters.contains(where: { $0.kind == .messageCapsPercentage }) {
-            testMessageContent = "HELLO WORLD THIS IS A LOUD SHOUTING MESSAGE"
-        } else if let mentionsFilter = rule.filters.first(where: { $0.kind == .messageMentionsCount }) {
-            let count = mentionsFilter.intValue ?? 5
-            var mentionsList: [String] = []
-            for i in 1...max(1, count + 1) {
-                mentionsList.append("<@user\(i)>")
-            }
-            testMessageContent = mentionsList.joined(separator: " ") + " wake up!"
-        } else if let equalsFilter = rule.filters.first(where: { $0.kind == .messageEquals }),
-                  let t = equalsFilter.text, !t.isEmpty {
-            testMessageContent = t
-        } else if let containsFilter = rule.filters.first(where: { $0.kind == .messageContains }),
-                  let t = containsFilter.text, !t.isEmpty {
-            testMessageContent = t
-        } else if let containsAnyFilter = rule.filters.first(where: { $0.kind == .messageContainsAny }),
-                  let t = containsAnyFilter.textValues?.first, !t.isEmpty {
-            testMessageContent = t
-        } else if let regexFilter = rule.filters.first(where: { $0.kind == .messageMatchesRegex }),
-                  let t = regexFilter.text, !t.isEmpty {
-            testMessageContent = "Sample matching string for regex: \(t)"
-        }
+        let suggested = Automations.SimulationInput.suggested(for: rule)
+        testChannelId = suggested.channelId
+        testVoiceDuration = suggested.voiceDurationSeconds
+        testMessageContent = suggested.messageContent
     }
 
     private func runDryRun() {
-        let mockEvent: SwiftBotEvent
-        
-        switch rule.trigger.kind {
-        case .userJoinedVoice:
-            mockEvent = SwiftBotEvent.join(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername,
-                channelId: testChannelId
-            )
-        case .userLeftVoice:
-            mockEvent = SwiftBotEvent.leave(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername,
-                channelId: testChannelId,
-                durationSeconds: testVoiceDuration
-            )
-        case .userMovedVoice:
-            mockEvent = SwiftBotEvent.move(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername,
-                channelId: testChannelId,
-                fromChannelId: "voice-old",
-                toChannelId: testChannelId,
-                durationSeconds: testVoiceDuration
-            )
-        case .memberJoined:
-            mockEvent = SwiftBotEvent.memberJoin(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername,
-                joinedAt: Date()
-            )
-        case .memberLeft:
-            mockEvent = SwiftBotEvent.memberLeave(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername
-            )
-        case .mediaAdded:
-            mockEvent = SwiftBotEvent.mediaAdded(SwiftBotEvent.MediaPayload(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername,
-                fileName: "audio.mp3",
-                relativePath: nil,
-                sourceName: "Local",
-                nodeName: "node-1"
-            ))
-        default:
-            mockEvent = SwiftBotEvent.message(SwiftBotEvent.MessagePayload(
-                guildId: "guild-123",
-                userId: "user-123",
-                username: testUsername,
-                channelId: testChannelId,
-                messageId: "msg-123",
-                content: testMessageContent,
-                isDirectMessage: false,
-                authorIsBot: false
-            ))
-        }
-        
+        let mockEvent = Automations.SimulationInput(
+            username: testUsername,
+            channelId: testChannelId,
+            messageContent: testMessageContent,
+            voiceDurationSeconds: testVoiceDuration
+        ).event(for: rule.trigger.kind)
+
         let dummyDeps = AutomationService.Dependencies(
             sendMessage: { _, _, _ in },
             sendPayloadMessage: { _, _, _ in },

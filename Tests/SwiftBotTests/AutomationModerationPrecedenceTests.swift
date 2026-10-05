@@ -46,6 +46,7 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
 
         model = AppModel(discordRESTSession: URLSession.shared)
         await model.service.setBotTokenForTesting("bot-token-999")
+        await model.service.setOutputAllowed(true)
         model.settings.token = "bot-token-999"
         model.settings.clusterMode = .standalone
         model.clusterSnapshot.mode = .standalone
@@ -453,6 +454,56 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
         XCTAssertEqual(result.stepTraces.count, 1)
         XCTAssertTrue(result.stepTraces[0].executed)
         XCTAssertTrue(result.stepTraces[0].detail.contains("Would delete message"))
+    }
+
+    func testSimulationTracesEachStepOnItsOwnRowWithoutWaiting() async {
+        // log and delay record no dry-run action, which used to shift the
+        // send step's detail onto the wrong row; the delay used to be waited out.
+        let rule = Automations.Rule(
+            id: "r-sim-steps",
+            name: "Step Alignment",
+            enabled: true,
+            category: .automation,
+            trigger: Automations.Trigger(kind: .messageCreated),
+            filterLogic: .all,
+            filters: [],
+            steps: [
+                Automations.Step(id: "s-log", kind: .log, logText: "Saw {username}"),
+                Automations.Step(id: "s-wait", kind: .delay, delaySeconds: 600),
+                Automations.Step(id: "s-send", kind: .sendMessage, sendTarget: .sameChannel, content: "Hi {username}")
+            ]
+        )
+        let event = Automations.SimulationInput.suggested(for: rule).event(for: rule.trigger.kind)
+
+        let started = Date()
+        let result = await automationService.simulate(rule: rule, event: event)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+
+        XCTAssertEqual(result.stepTraces.map(\.stepId), ["s-log", "s-wait", "s-send"])
+        XCTAssertTrue(result.stepTraces[0].detail.contains("Would log: \"Saw john_doe\""))
+        XCTAssertTrue(result.stepTraces[1].detail.contains("Would wait 10m"))
+        XCTAssertTrue(result.stepTraces[2].executed)
+        XCTAssertTrue(result.stepTraces[2].detail.contains("Would send message"))
+        XCTAssertTrue(result.stepTraces[2].detail.contains("Hi john_doe"))
+    }
+
+    func testSimulationInputSuggestsValuesThatSatisfyTheRule() {
+        let rule = Automations.Rule(
+            id: "r-suggest",
+            name: "Suggest",
+            enabled: true,
+            category: .automation,
+            trigger: Automations.Trigger(kind: .messageCreated),
+            filterLogic: .all,
+            filters: [
+                Automations.Filter(id: "f-chan", kind: .inChannel, channelIds: ["123456"]),
+                Automations.Filter(id: "f-text", kind: .messageContains, text: "ping")
+            ],
+            steps: []
+        )
+        let input = Automations.SimulationInput.suggested(for: rule)
+        XCTAssertEqual(input.channelId, "123456")
+        XCTAssertEqual(input.messageContent, "ping")
     }
 
     private func roleFilterRule(_ filter: Automations.Filter) -> Automations.Rule {

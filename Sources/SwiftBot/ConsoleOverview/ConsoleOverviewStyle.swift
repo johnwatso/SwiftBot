@@ -180,13 +180,14 @@ struct ConsoleIssueRow: View {
                 Text(issue.detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 16)
             if let onShow {
-                Button("Show", action: onShow)
+                Button("Review", action: onShow)
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Review \(issue.kind.title) issue")
             }
         }
         .padding(.horizontal, 14)

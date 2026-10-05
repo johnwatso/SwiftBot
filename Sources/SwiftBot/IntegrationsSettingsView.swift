@@ -23,11 +23,7 @@ struct IntegrationsSettingsView: View {
                 ? "Read-only on Failover nodes. Integration settings sync from Primary."
                 : nil
         ) {
-            IntegrationSection(
-                title: "Game Tracking",
-                systemImage: "gamecontroller.fill",
-                subtitle: "Connect data providers used by Game Tracker."
-            ) {
+            IntegrationSection(title: "Game Tracking") {
                 ForEach(providerDescriptors, id: \.id) { descriptor in
                     IntegrationRow(
                         title: descriptor.id.displayName,
@@ -39,11 +35,7 @@ struct IntegrationsSettingsView: View {
                 }
             }
 
-            IntegrationSection(
-                title: "Companion Apps",
-                systemImage: "app.connected.to.app.below.fill",
-                subtitle: "Connect SwiftBot with companion apps and services."
-            ) {
+            IntegrationSection(title: "Companion Apps") {
                 IntegrationRow(
                     title: "SwiftMiner",
                     subtitle: "Mining events and account notifications",
@@ -103,19 +95,10 @@ struct IntegrationsSettingsView: View {
 /// short explanatory subtitle, wrapping compact integration rows.
 struct IntegrationSection<Content: View>: View {
     let title: String
-    let systemImage: String
-    let subtitle: String
     private let content: Content
 
-    init(
-        title: String,
-        systemImage: String,
-        subtitle: String,
-        @ViewBuilder content: () -> Content
-    ) {
+    init(title: String, @ViewBuilder content: () -> Content) {
         self.title = title
-        self.systemImage = systemImage
-        self.subtitle = subtitle
         self.content = content()
     }
 
@@ -123,15 +106,7 @@ struct IntegrationSection<Content: View>: View {
         Section {
             content
         } header: {
-            VStack(alignment: .leading, spacing: 2) {
-                Label(title, systemImage: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .textCase(nil)
-            .padding(.bottom, 2)
+            Text(title)
         }
     }
 }

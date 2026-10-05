@@ -111,37 +111,45 @@ struct ActivityLogView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                ViewSectionHeader(title: "Activity", symbol: "list.bullet.clipboard.fill")
-                Spacer()
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(
-                        visibleEntries.map(formatForCopy).joined(separator: "\n"),
-                        forType: .string
-                    )
+        VStack(alignment: .leading, spacing: 24) {
+            ConsolePageHeader(title: "Activity", subtitle: "Runtime events, Discord commands, and the audit trail.") {
+                HStack(spacing: 10) {
+                    Button("Export…", systemImage: "square.and.arrow.up") {
+                        Task { await LogExporter.presentSavePanel(app: app) }
+                    }
+                    .buttonStyle(.glass)
+                    Button("Copy", systemImage: "doc.on.doc") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(
+                            visibleEntries.map(formatForCopy).joined(separator: "\n"),
+                            forType: .string
+                        )
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(visibleEntries.isEmpty)
+                    Button("Clear…", systemImage: "trash") { showClearConfirm = true }
+                        .buttonStyle(.glass)
+                        .disabled(app.commandLog.isEmpty && app.logs.lines.isEmpty && app.auditLog.isEmpty)
                 }
-                .disabled(visibleEntries.isEmpty)
-                Button("Clear") { showClearConfirm = true }
-                    .disabled(app.commandLog.isEmpty && app.logs.lines.isEmpty && app.auditLog.isEmpty)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
 
-            controlsHeader
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 10)
-
-            Divider().opacity(0.3)
-
-            if visibleEntries.isEmpty {
-                emptyState
-            } else {
-                entryList
+            VStack(alignment: .leading, spacing: 0) {
+                controlsHeader
+                    .padding(22)
+                Divider().opacity(0.3)
+                if visibleEntries.isEmpty {
+                    emptyState
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    entryList
+                }
             }
+            .consoleSurface()
         }
+        .padding(.horizontal, 36)
+        .padding(.top, 32)
+        .padding(.bottom, 40)
+        .frame(maxWidth: 1120, maxHeight: .infinity, alignment: .topLeading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .alert("Clear all activity?", isPresented: $showClearConfirm) {
             Button("Clear", role: .destructive) {
@@ -151,7 +159,7 @@ struct ActivityLogView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Both commands and system log lines will be removed. This cannot be undone.")
+            Text("Commands, system logs, and audit entries will be removed. This cannot be undone.")
         }
     }
 
@@ -196,47 +204,49 @@ struct ActivityLogView: View {
     }
 
     private var filterChipsRow: some View {
-        HStack(spacing: 8) {
-            ForEach(ActivityFilter.allCases) { option in
-                let isSelected = selectedFilters.contains(option)
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        if isSelected { selectedFilters.remove(option) }
-                        else { selectedFilters.insert(option) }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: option.symbol)
-                            .font(.caption.weight(.semibold))
-                        Text(option.rawValue)
-                            .font(.subheadline.weight(.medium))
-                    }
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(
-                        Group {
-                            if isSelected {
-                                Capsule().fill(.thinMaterial.opacity(0.95))
-                            } else {
-                                Capsule().fill(Color.clear)
-                            }
-                        }
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(isSelected ? Color.primary.opacity(0.20) : Color.secondary.opacity(0.18), lineWidth: 1)
-                    )
+        VStack(alignment: .leading, spacing: 12) {
+            // Topics and severity are separate controls, so the filters fit a
+            // narrower console without a hidden horizontal scrolling strip.
+            HStack(spacing: 8) {
+                ForEach(ActivityFilter.allCases.filter { $0 != .errors && $0 != .warnings }) { option in
+                    filterChip(option)
                 }
-                .buttonStyle(.plain)
-                .help("Toggle \(option.rawValue)")
             }
-            filterHelpButton
-            Spacer()
-            Text("\(visibleEntries.count) of \(unifiedEntries.count)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            HStack(spacing: 8) {
+                filterChip(.errors)
+                filterChip(.warnings)
+                filterHelpButton
+                Spacer()
+                Text("\(visibleEntries.count) of \(unifiedEntries.count) events")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
         }
+    }
+
+    private func filterChip(_ option: ActivityFilter) -> some View {
+        let isSelected = selectedFilters.contains(option)
+        return Button {
+            if isSelected {
+                selectedFilters.remove(option)
+            } else {
+                selectedFilters.insert(option)
+            }
+        } label: {
+            Label(option.rawValue, systemImage: option.symbol)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(isSelected ? Color.primary.opacity(0.07) : Color.clear, in: Capsule())
+                .overlay(Capsule().strokeBorder(.primary.opacity(isSelected ? 0.16 : 0.08), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityLabel("\(option.rawValue) filter")
+        .accessibilityValue(isSelected ? "Included" : "Excluded")
+        .help("Toggle \(option.rawValue)")
     }
 
     private var filterHelpButton: some View {
@@ -281,14 +291,21 @@ struct ActivityLogView: View {
     }
 
     private var emptyState: some View {
-        HStack {
-            Text(emptyStateMessage)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Spacer()
+        ContentUnavailableView {
+            Label(emptyStateMessage, systemImage: "list.bullet.clipboard")
+        } description: {
+            Text(selectedFilters.isEmpty
+                 ? "Choose a filter above to show events."
+                 : "New events appear here as SwiftBot runs. Try changing your search or filters.")
+        } actions: {
+            if !searchText.isEmpty || selectedFilters != Set(ActivityFilter.allCases) {
+                Button("Reset Filters") {
+                    searchText = ""
+                    selectedFilters = Set(ActivityFilter.allCases)
+                }
+                .buttonStyle(.bordered)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
     }
 
     private var emptyStateMessage: String {

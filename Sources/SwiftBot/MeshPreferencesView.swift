@@ -114,26 +114,61 @@ struct MeshPreferencesView: View {
                 .pickerStyle(.menu)
 
                 if shouldShowConfigurationDetails {
-                    TextField(
-                        "Node Name",
-                        text: $app.settings.clusterNodeName,
-                        prompt: Text("SwiftBot Node")
-                    )
+                    LabeledContent("Node Name") {
+                        TextField("Node Name", text: $app.settings.clusterNodeName, prompt: Text("SwiftBot Node"))
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 220)
+                    }
 
                     if app.settings.clusterMode == .standby {
-                        TextField(
-                            "Primary Host",
-                            text: $app.settings.clusterLeaderAddress,
-                            prompt: Text("192.168.1.100")
-                        )
+                        LabeledContent("Primary Host") {
+                            TextField("Primary Host", text: $app.settings.clusterLeaderAddress, prompt: Text("192.168.1.100"))
+                                .labelsHidden()
+                                .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 220)
+                        }
                     }
 
                     LabeledContent("Shared Secret") {
-                        RevealableSecretField(
-                            text: $app.settings.clusterSharedSecret,
-                            placeholder: "Required for clustered mode",
-                            allowRegenerate: true
+                        SecretSettingsControl(
+                            secret: $app.settings.clusterSharedSecret,
+                            title: "SwiftMesh Shared Secret",
+                            message: "Use the same secret on every node in your mesh. It is stored in your macOS Keychain.",
+                            replacementWarning: "Replacing the secret invalidates existing Join Codes. Connected nodes must use the new secret to reconnect.",
+                            allowsGeneration: true,
+                            // A Primary creates the secret with its first Join Code.
+                            isRequired: app.settings.clusterMode != .leader,
+                            emptyLabel: app.settings.clusterMode == .leader ? "Created with Join Code" : "Not configured",
+                            onSave: { app.saveSettings() }
                         )
+                    }
+
+                    if app.settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label {
+                            Text(app.settings.clusterMode == .leader
+                                 ? "Mesh requests are blocked until a shared secret is configured. Generate a Join Code below or add a shared secret."
+                                 : "Mesh requests are blocked until a shared secret is configured. Paste the Primary’s Join Code below or add the same shared secret as the Primary.")
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    // Port overrides, collapsed by default: the Join Code
+                    // fills these in, so they only matter for multi-instance,
+                    // NAT port-forward, or split inbound/outbound setups.
+                    ConsoleDisclosureRow(
+                        title: "Advanced Ports",
+                        subtitle: "Only for multiple instances or NAT setups.",
+                        isExpanded: $isAdvancedPortsExpanded
+                    )
+                    if isAdvancedPortsExpanded {
+                        advancedPortRows
                     }
                 }
             } header: {
@@ -151,89 +186,27 @@ struct MeshPreferencesView: View {
 
             if app.settings.clusterMode == .standby {
                 Section {
-                    Button {
-                        Task { await pasteAndVerifyJoinCode() }
-                    } label: {
-                        HStack(spacing: 6) {
+                    ConsoleSettingRow(
+                        title: "Join Code",
+                        symbol: "doc.on.clipboard",
+                        subtitle: joinCodeFeedback == nil ? "Paste the Join Code copied on the Primary to fill in its host, port, and secret." : nil,
+                        status: joinCodeFeedback.map { ($0.message, $0.ok ? ServiceHealth.healthy : .error) }
+                    ) {
+                        Button {
+                            Task { await pasteAndVerifyJoinCode() }
+                        } label: {
                             if isApplyingJoinCode {
                                 ProgressView().controlSize(.small)
                             } else {
-                                Image(systemName: "doc.on.clipboard")
+                                Text("Paste & Verify")
                             }
-                            Text(isApplyingJoinCode ? "Verifying…" : "Paste & Verify Join Code")
                         }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(isApplyingJoinCode)
-
-                    if let joinCodeFeedback {
-                        Text(joinCodeFeedback.message)
-                            .font(.caption)
-                            .foregroundStyle(joinCodeFeedback.ok ? .green : .red)
-                            .fixedSize(horizontal: false, vertical: true)
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .disabled(isApplyingJoinCode)
                     }
                 } header: {
                     Label("Join Code", systemImage: "doc.on.clipboard")
-                } footer: {
-                    Text("Copy the Join Code from the Primary node and paste it here to fill in the host, port, and shared secret automatically.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            // Advanced — port overrides. Collapsed by default because the
-            // Join Code flow pre-fills everything correctly; only needed for
-            // multi-instance, NAT port-forward, or split inbound/outbound
-            // setups.
-            if shouldShowConfigurationDetails {
-                Section {
-                    DisclosureGroup(isExpanded: $isAdvancedPortsExpanded) {
-                        LabeledContent("Mesh Port") {
-                            VStack(alignment: .trailing, spacing: 4) {
-                                TextField("38787", text: listenPortBinding)
-                                    .textFieldStyle(.roundedBorder)
-                                    .labelsHidden()
-                                    .frame(width: 120)
-                                if hasInvalidPort {
-                                    Text("Port must be between 1 and 65535.")
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                            }
-                        }
-
-                        Toggle("Use a different outbound port", isOn: $useSeparateLeaderPort)
-                            .onChange(of: useSeparateLeaderPort) { _, isOn in
-                                if !isOn {
-                                    app.settings.clusterLeaderPort = app.settings.clusterListenPort
-                                }
-                            }
-
-                        if useSeparateLeaderPort {
-                            LabeledContent("Leader Port") {
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    TextField("38787", text: leaderPortBinding)
-                                        .textFieldStyle(.roundedBorder)
-                                        .labelsHidden()
-                                        .frame(width: 120)
-                                    if hasInvalidLeaderPort {
-                                        Text("Leader Port must be between 1 and 65535.")
-                                            .font(.caption)
-                                            .foregroundStyle(.red)
-                                    }
-                                }
-                            }
-                            SettingsSecondaryText("Use when the Primary listens on a different port than this node (two SwiftBot instances on the same machine, or a NAT port-forward).")
-                        }
-                    } label: {
-                        Text("Advanced Ports")
-                            .font(.subheadline.weight(.medium))
-                    }
-                } footer: {
-                    Text("The Join Code on the Primary node fills these in automatically — you only need to touch them for multi-instance or NAT setups.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -241,41 +214,31 @@ struct MeshPreferencesView: View {
 
             if app.settings.clusterMode == .leader && shouldShowConfigurationDetails {
                 Section {
-                    Button {
-                        isCopyingJoinCode = true
-                        Task {
-                            if let code = await app.generateSwiftMeshJoinCode() {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(code, forType: .string)
-                                app.logs.append("[SwiftMesh] Join code copied to clipboard!")
-                                justCopiedJoinCode = true
-                                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                justCopiedJoinCode = false
-                            }
-                            isCopyingJoinCode = false
+                    ConsoleSettingRow(
+                        title: "Join Code",
+                        symbol: "doc.on.clipboard",
+                        subtitle: "Pair Fail Over and Worker nodes without typing hosts, ports, or secrets."
+                    ) {
+                        Button(isCopyingJoinCode ? "Generating…" : justCopiedJoinCode ? "Copied" : "Copy Join Code") {
+                            copyJoinCode()
                         }
-                    } label: {
-                        if isCopyingJoinCode {
-                            Label("Generating Join Code…", systemImage: "arrow.clockwise")
-                        } else if justCopiedJoinCode {
-                            Label("Join Code Copied!", systemImage: "checkmark.circle.fill")
-                        } else {
-                            Label("Copy SwiftMesh Join Code", systemImage: "doc.on.clipboard.fill")
-                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .disabled(isCopyingJoinCode)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isCopyingJoinCode)
 
-                    Button(role: .destructive) {
-                        rotateSharedSecret()
-                    } label: {
-                        Label("Rotate Shared Secret", systemImage: "arrow.triangle.2.circlepath")
+                    ConsoleSettingRow(
+                        title: "Rotate Shared Secret",
+                        symbol: "arrow.triangle.2.circlepath",
+                        subtitle: "Existing Join Codes stop working; connected nodes must re-pair."
+                    ) {
+                        Button("Rotate…", role: .destructive) { rotateSharedSecret() }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.capsule)
+                            .disabled(isCopyingJoinCode)
                     }
-                    .disabled(isCopyingJoinCode)
                 } header: {
-                    Label("SwiftMesh Join Code", systemImage: "doc.on.clipboard")
-                } footer: {
-                    Text("Share this Join Code with standby or worker nodes to pair them automatically without typing hosts, ports, or secrets manually. Rotating the shared secret invalidates any Join Codes already in circulation — connected workers will need to re-pair.")
+                    Label("Pairing", systemImage: "doc.on.clipboard")
                 }
             }
 
@@ -285,32 +248,33 @@ struct MeshPreferencesView: View {
                 Section {
                     Toggle(
                         "Reclaim Primary automatically after failover",
-                        isOn: Binding(
-                            get: { app.settings.clusterAutoReclaimAfterHours > 0 },
-                            set: { app.settings.clusterAutoReclaimAfterHours = $0 ? max(1, app.settings.clusterAutoReclaimAfterHours == 0 ? 6 : app.settings.clusterAutoReclaimAfterHours) : 0 }
-                        )
+                        isOn: $app.settings.clusterAutomaticHandbackEnabled
                     )
 
-                    if app.settings.clusterAutoReclaimAfterHours > 0 {
+                    if app.settings.clusterAutomaticHandbackEnabled {
                         Stepper(
                             value: $app.settings.clusterAutoReclaimAfterHours,
-                            in: 1...72,
+                            in: 0...72,
                             step: 1
                         ) {
-                            Text("After \(app.settings.clusterAutoReclaimAfterHours) hour\(app.settings.clusterAutoReclaimAfterHours == 1 ? "" : "s") of uninterrupted standby health")
+                            Text(app.settings.clusterAutoReclaimAfterHours == 0
+                                 ? "After 60 seconds of stable health and catchup"
+                                 : "After \(app.settings.clusterAutoReclaimAfterHours) hours of stable health and catchup")
                                 .font(.subheadline)
                         }
                     }
                 } header: {
-                    Label("Auto-Reclaim (Advanced)", systemImage: "arrow.uturn.up.circle")
+                    Label("Auto-Reclaim", systemImage: "arrow.uturn.up.circle")
                 } footer: {
-                    Text(
-                        "**Off by default.** When this Primary fails over and later rejoins as Standby, auto-reclaim swings it back to "
-                        + "Primary after a healthy window. That's convenient but assumes this node is always the canonical Primary — if "
-                        + "you'd rather have the cluster stay on whichever node took over, leave this off and use **Promote to Primary** "
-                        + "when you actually want to swap back. Manual promotion always works regardless."
-                    )
+                    Text("""
+                    Return this Mac to Primary after stable health and catchup. Leave off to keep the current owner. \
+                    Manual promotion also checks state and ownership.
+                    """)
                 }
+            }
+
+            if shouldShowConfigurationDetails {
+                MeshRecoveryPreferencesSection()
             }
 
             // MARK: - Worker Offload
@@ -326,7 +290,7 @@ struct MeshPreferencesView: View {
                 } header: {
                     Label("Worker Offload", systemImage: "point.3.connected.trianglepath.dotted")
                 } footer: {
-                    Text("Allow SwiftBot to distribute certain workloads to worker nodes in the SwiftMesh cluster.")
+                    Text("Let Worker nodes handle some work for the Primary.")
                 }
                 .disabled(!canEditOffloadPolicy)
                 .opacity(canEditOffloadPolicy ? 1 : 0.62)
@@ -342,11 +306,9 @@ struct MeshPreferencesView: View {
                 } message: {
                     Text(
                         """
-                        Enabling Worker Offload allows SwiftBot to distribute certain responses to worker nodes.
+                        Paired standby nodes can compute AI replies, Wiki lookups, and playlist imports for the active Primary. Only the active Primary sends the result to Discord.
 
-                        Worker nodes will use the same Discord API token as the primary bot instance. Running multiple bot processes with the same token may cause duplicate responses or rate-limit conflicts.
-
-                        Discord recommends operating a single active bot connection per token. This feature should only be enabled in advanced or controlled environments.
+                        Tasks use saved job IDs and deadlines. Workers fetch tasks through an outbound connection, so no inbound port forwarding is required.
                         """
                     )
                 }
@@ -469,6 +431,66 @@ struct MeshPreferencesView: View {
         }
     }
 
+    @ViewBuilder
+    private var advancedPortRows: some View {
+        LabeledContent("Mesh Port") {
+            VStack(alignment: .trailing, spacing: 4) {
+                TextField("38787", text: listenPortBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 120)
+                if hasInvalidPort {
+                    Text("Port must be between 1 and 65535.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+
+        Toggle(isOn: $useSeparateLeaderPort) {
+            Text("Use a different outbound port")
+            Text("When the Primary listens on another port, such as two instances on one Mac or a NAT port-forward.")
+        }
+        .onChange(of: useSeparateLeaderPort) { _, isOn in
+            if !isOn {
+                app.settings.clusterLeaderPort = app.settings.clusterListenPort
+            }
+        }
+
+        if useSeparateLeaderPort {
+            LabeledContent("Leader Port") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    TextField("38787", text: leaderPortBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 120)
+                    if hasInvalidLeaderPort {
+                        Text("Leader Port must be between 1 and 65535.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+    }
+
+    private func copyJoinCode() {
+        isCopyingJoinCode = true
+        Task {
+            if let code = await app.generateSwiftMeshJoinCode() {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(code, forType: .string)
+                app.logs.append("[SwiftMesh] Join code copied to clipboard!")
+                justCopiedJoinCode = true
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                justCopiedJoinCode = false
+            }
+            isCopyingJoinCode = false
+        }
+    }
+
     private func rotateSharedSecret() {
         showRotateSecretConfirm = true
     }
@@ -494,7 +516,7 @@ struct MeshPreferencesView: View {
 
         do {
             let decoded = try app.decodeSwiftMeshJoinCode(raw)
-            let applied = app.applySwiftMeshJoinCode(raw)
+            let applied = await app.applySwiftMeshJoinCode(raw)
             guard applied.ok else {
                 joinCodeFeedback = JoinCodeFeedback(ok: false, message: applied.message)
                 return

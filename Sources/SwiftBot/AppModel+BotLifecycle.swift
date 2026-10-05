@@ -8,13 +8,6 @@ extension AppModel {
     // MARK: - Bot Lifecycle
 
     func startBot() async {
-        if isRemoteLaunchMode {
-            await MainActor.run {
-                logs.append("⚠️ Remote Control Mode does not start a local Discord bot.")
-            }
-            return
-        }
-
         // Worker mode is temporarily disabled pending UX redesign.
         // The underlying code is preserved; re-enable by removing this guard when ready.
         if settings.clusterMode == .worker {
@@ -24,6 +17,8 @@ extension AppModel {
             return
         }
 
+        await cluster.setDesiredBotRunning(true)
+        await configureMeshRecovery()
         await cluster.applySettings(
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,
@@ -40,7 +35,7 @@ extension AppModel {
         )
         await cluster.setAutoReclaimPolicy(
             isConfiguredPrimary: settings.clusterMode == .leader,
-            afterHours: settings.clusterAutoReclaimAfterHours
+            afterHours: settings.clusterAutoReclaimAfterHours, automaticHandbackEnabled: settings.clusterAutomaticHandbackEnabled
         )
         configureMeshSync()
 
@@ -61,7 +56,7 @@ extension AppModel {
             return
         }
 
-        await service.setOutputAllowed(true)
+        await service.setOutputAllowed(await cluster.hasActiveOwnership())
 
         let normalizedToken = normalizedDiscordToken(from: settings.token)
         if settings.token != normalizedToken {
@@ -144,7 +139,7 @@ extension AppModel {
         // inside ClusterCoordinator.confirmLeaderDeadAndResync() before
         // promotion was committed, so by the time we get here our local
         // state contains everything we could pull from the prior leader.
-        await service.setOutputAllowed(true)
+        await service.setOutputAllowed(await cluster.hasActiveOwnership())
 
         if status == .running {
             // Rare path — possibly a stale connection lingering from a
@@ -237,6 +232,7 @@ extension AppModel {
 
         if let servers = snapshot.connectedServers {
             connectedServers = servers
+            guildIconHashes = snapshot.guildIconHashes ?? [:]
         }
         if let count = snapshot.gatewayEventCount { gatewayEventCount = count }
         if let count = snapshot.voiceStateEventCount { voiceStateEventCount = count }
@@ -374,6 +370,31 @@ extension AppModel {
         return true
     }
 
+    /// Verifies `rawToken` with Discord before touching the saved token, so a
+    /// typo or Cancel never signs out a working bot. On success the old token
+    /// is cleared as in `clearAPIKey()`, the new one is saved, and a running
+    /// bot reconnects with it.
+    func replaceBotToken(with rawToken: String) async -> Bool {
+        let token = normalizedDiscordToken(from: rawToken)
+        guard !token.isEmpty else { return false }
+        let result = await identityRESTClient.validateBotTokenRich(token)
+        lastTokenValidationResult = result
+        guard result.isValid else { return false }
+
+        let wasRunning = status != .stopped
+        if !normalizedDiscordToken(from: settings.token).isEmpty {
+            await clearAPIKey()
+        }
+        settings.token = token
+        saveSettings()
+        lastTokenValidationResult = result
+        resolvedClientID = await resolveClientID(token: token, fallbackUserID: result.userId)
+        if wasRunning {
+            await startBot()
+        }
+        return true
+    }
+
     /// Checks if the bot is currently in at least one server/guild.
     func checkBotInAnyGuild() async -> Bool {
         let token = normalizedDiscordToken(from: settings.token)
@@ -388,7 +409,6 @@ extension AppModel {
     /// Persists settings through the Keychain path, then flips `isOnboardingComplete`.
     /// Must only be called after a successful `validateAndOnboard()`.
     func completeOnboarding() {
-        viewMode = .local
         settings.autoStart = true
         saveSettings()
         isOnboardingComplete = true
@@ -399,46 +419,8 @@ extension AppModel {
     }
 
     private var shouldStartAfterOnboarding: Bool {
-        if isRemoteLaunchMode { return false }
         if settings.clusterMode == .standby { return true }
         return !normalizedDiscordToken(from: settings.token).isEmpty
-    }
-
-    func completeRemoteModeOnboarding(primaryNodeAddress: String, accessToken: String) {
-        settings.launchMode = .remoteControl
-        settings.remoteMode = RemoteModeSettings(
-            primaryNodeAddress: primaryNodeAddress,
-            accessToken: accessToken
-        )
-        settings.remoteMode.normalize()
-        viewMode = .remote
-        saveSettings()
-        isOnboardingComplete = true
-    }
-
-    /// Handles OAuth session token received via deep link for remote authentication.
-    /// Stores the session token in Keychain and updates remote mode settings.
-    func handleRemoteAuthSession(_ sessionToken: String) {
-        // Store session token in Keychain for secure persistence
-        KeychainHelper.save(sessionToken, account: "remote-session-token")
-
-        // Update the remote mode settings with the session token
-        var currentMode = settings.remoteMode
-        currentMode.accessToken = sessionToken
-        settings.remoteMode = currentMode
-        saveSettings()
-
-        // Post notification so UI can react to successful auth
-        NotificationCenter.default.post(name: .remoteAuthSessionReceived, object: sessionToken)
-    }
-
-    func updateRemoteModeConnection(primaryNodeAddress: String, accessToken: String) {
-        settings.remoteMode = RemoteModeSettings(
-            primaryNodeAddress: primaryNodeAddress,
-            accessToken: accessToken
-        )
-        settings.remoteMode.normalize()
-        saveSettings()
     }
 
     /// Performs a safe API key reset with deterministic ordering:
@@ -495,7 +477,6 @@ extension AppModel {
     func runInitialSetup() {
         resolvedClientID = nil
         lastTokenValidationResult = nil
-        viewMode = .local
         isOnboardingComplete = false
     }
 

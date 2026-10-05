@@ -3,18 +3,11 @@ import SwiftUI
 // MARK: - Mode Selection View
 
 struct ModeSelectionView: View {
-    @EnvironmentObject var app: AppModel
     @Binding var mode: SetupMode?
-
-    private var availableModes: [SetupMode] {
-        SetupMode.allCases.filter { setupMode in
-            setupMode != .remote || app.remoteControlFeatureEnabled
-        }
-    }
 
     var body: some View {
         VStack(spacing: 10) {
-            ForEach(availableModes) { setupMode in
+            ForEach(SetupMode.allCases) { setupMode in
                 ModeSelectionButton(mode: setupMode) {
                     mode = setupMode
                 }
@@ -26,22 +19,13 @@ struct ModeSelectionView: View {
 // MARK: - Mode Selection Button
 
 private struct ModeSelectionButton: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let mode: SetupMode
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: mode.icon)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 38, height: 38)
-                    .background(
-                        Color.accentColor.opacity(colorScheme == .dark ? 0.16 : 0.11),
-                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    )
+                ConsoleIconTile(symbol: mode.icon, size: 40)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(mode.title)
@@ -62,14 +46,8 @@ private struct ModeSelectionButton: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .frame(maxWidth: 420)
-            .background(
-                Color.white.opacity(colorScheme == .dark ? 0.07 : 0.18),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.24), lineWidth: 1)
-            )
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .consoleSurface(cornerRadius: 16)
         }
         .buttonStyle(.plain)
     }

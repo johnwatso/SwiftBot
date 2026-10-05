@@ -897,6 +897,125 @@ struct SettingsSecondaryText: View {
     }
 }
 
+/// Compact settings control: the credential is only editable in a sheet.
+/// The sheet holds its own draft, so Cancel cannot change the saved value.
+struct SecretSettingsControl: View {
+    @Binding var secret: String
+    let title: String
+    var message = "Stored securely in your macOS Keychain."
+    var replacementWarning: String?
+    var allowsGeneration = false
+    /// Off when the app can create the secret itself, so an empty one isn't
+    /// shown as something to fix.
+    var isRequired = true
+    var emptyLabel = "Not configured"
+    var onSave: () -> Void = {}
+
+    @State private var isEditing = false
+
+    private var isConfigured: Bool {
+        !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label(isConfigured ? "Configured" : emptyLabel, systemImage: isConfigured ? "checkmark.circle.fill" : "key")
+                .font(.callout)
+                .foregroundStyle(isConfigured || !isRequired ? Color.secondary : Color.orange)
+            Button(isConfigured ? "Manage…" : "Add…") { isEditing = true }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .accessibilityLabel(isConfigured ? "Manage \(title)" : "Add \(title)")
+        }
+        .sheet(isPresented: $isEditing) {
+            SecretEditorSheet(
+                title: title,
+                message: message,
+                initialValue: secret,
+                replacementWarning: replacementWarning,
+                allowsGeneration: allowsGeneration
+            ) { value in
+                secret = value
+                onSave()
+            }
+        }
+    }
+}
+
+private struct SecretEditorSheet: View {
+    let title: String
+    let message: String
+    let initialValue: String
+    let replacementWarning: String?
+    let allowsGeneration: Bool
+    let onSave: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String
+    @State private var isConfirmingReplacement = false
+
+    init(title: String, message: String, initialValue: String, replacementWarning: String?, allowsGeneration: Bool, onSave: @escaping (String) -> Void) {
+        self.title = title
+        self.message = message
+        self.initialValue = initialValue
+        self.replacementWarning = replacementWarning
+        self.allowsGeneration = allowsGeneration
+        self.onSave = onSave
+        _draft = State(initialValue: initialValue)
+    }
+
+    private var canSave: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft != initialValue
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Label(title, systemImage: "key.fill")
+                .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            RevealableSecretField(text: $draft, placeholder: title, allowRegenerate: allowsGeneration)
+                .accessibilityLabel(title)
+            if let replacementWarning, !initialValue.isEmpty {
+                Label(replacementWarning, systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    if replacementWarning != nil && !initialValue.isEmpty {
+                        isConfirmingReplacement = true
+                    } else {
+                        save()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+        .confirmationDialog("Replace \(title)?", isPresented: $isConfirmingReplacement, titleVisibility: .visible) {
+            Button("Replace", role: .destructive) { save() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(replacementWarning ?? "")
+        }
+    }
+
+    private func save() {
+        onSave(draft)
+        dismiss()
+    }
+}
+
 /// Reusable field for editing a sensitive value (mesh shared secret, etc.)
 /// where the user still needs to copy and inspect the plaintext.
 ///

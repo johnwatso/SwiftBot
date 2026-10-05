@@ -329,7 +329,7 @@ extension AppModel {
             while !Task.isCancelled {
                 // Leader pushes, Standby pulls
                 // Sync every 60 seconds.
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                try? await Task.sleep(for: .seconds(15))
                 if Task.isCancelled { break }
 
                 guard let self else { break }
@@ -344,6 +344,8 @@ extension AppModel {
                     // 3. Standby: Pull config files and wiki cache from Primary
                     await self.pullConfigFilesFromLeader()
                     await self.pullWikiCacheFromLeader()
+                    await self.pullCredentialsIfNeeded()
+                    await self.requestResyncFromLeader(fromRecordID: self.localLastMergedRecordID)
                 }
             }
         }
@@ -366,7 +368,7 @@ extension AppModel {
     }
 
     func runBackgroundMeshRefresh() async {
-        guard settings.clusterMode == .standby || settings.clusterMode == .worker else { return }
+        guard runtimeClusterMode == .standby || runtimeClusterMode == .worker else { return }
         await pullConfigFilesFromLeader()
         await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
     }
@@ -394,7 +396,10 @@ extension AppModel {
             )
             let ok = await cluster.pushConversationsToSingleNode(baseURL, payload)
             if ok, lastID != nil {
-                await cluster.updateReplicationCursor(for: nodeName, lastSentRecordID: lastID, term: currentTerm)
+                await cluster.updateReplicationCursor(
+                    for: nodeName, lastSentRecordID: lastID, term: currentTerm,
+                    lastSentRecordTimestamp: records.last?.timestamp, fromRecordID: cursor?.lastSentRecordID
+                )
             }
         }
     }
@@ -407,7 +412,7 @@ extension AppModel {
     /// incremental path on the next tick. Quiet no-op when not Primary or
     /// when no nodes are registered.
     func pushLiveSnapshotEagerly(reason: String) async {
-        let isLeader: Bool = await MainActor.run { settings.clusterMode == .leader }
+        let isLeader = await cluster.hasActiveOwnership()
         guard isLeader else { return }
         let nodes = await cluster.registeredNodeInfo()
         guard !nodes.isEmpty else { return }
@@ -454,7 +459,8 @@ extension AppModel {
             scheduledHandoverTestAt: clusterSnapshot.scheduledHandoverTestAt,
             scheduledHandoverTargetNodeName: clusterSnapshot.scheduledHandoverTargetNodeName,
             primaryPublicURL: publicPrimaryURLForSnapshot(),
-            runtimeState: clusterSnapshot.runtimeState.rawValue
+            runtimeState: clusterSnapshot.runtimeState.rawValue,
+            guildIconHashes: guildIconHashes
         )
     }
 
@@ -540,30 +546,27 @@ extension AppModel {
     }
 
     func pullConfigFilesFromLeader() async {
-        guard settings.clusterMode == .standby || settings.clusterMode == .worker else { return }
-        guard let data = await cluster.fetchConfigFiles() else { return }
-        await applyMeshSyncedConfigFiles(data, sourceDescription: "pulled")
+        _ = await pullMeshConfiguration()
     }
 
-    func applyMeshSyncedConfigFiles(_ data: Data, sourceDescription: String) async {
-        let imported = await store.importMeshSyncedFiles(
-            data,
-            excludingFileNames: Set([
-                SwiftBotStorage.swiftMeshConfigFileName,
-                SwiftBotStorage.clusterStateFileName
-            ])
-        )
-        guard imported > 0 else { return }
-
-        logs.append("SwiftMesh: \(sourceDescription) \(imported) config file(s) from Primary")
-        await reloadSyncedConfigFromDisk()
+    @discardableResult
+    func applyMeshSyncedConfigFiles(_ data: Data, sourceDescription: String) async -> Bool {
+        let result = await store.importMeshSnapshot(data, minimumLeaderTerm: await cluster.currentLeaderTerm())
+        guard result.accepted else {
+            logs.append("SwiftMesh rejected configuration: \(result.rejectionReason ?? "invalid snapshot")")
+            return false
+        }
+        if result.importedFileCount > 0 {
+            logs.append("SwiftMesh: \(sourceDescription) \(result.importedFileCount) shared files")
+            await reloadSyncedConfigFromDisk()
+        }
+        return true
     }
 
     func reloadSyncedConfigFromDisk() async {
         // Keep local mesh identity authoritative on this node.
         let currentLocalMesh = settings.swiftMeshSettings
         let currentLocalMedia = mediaLibrarySettings
-        let currentLocalAdminWebUI = settings.adminWebUI
         var reloaded = await store.load()
         let meshFromFile = await swiftMeshConfigStore.load()
         let effectiveLocalMesh = meshFromFile ?? currentLocalMesh
@@ -572,18 +575,17 @@ extension AppModel {
             // Self-heal missing mesh file so future reloads remain stable.
             try? await swiftMeshConfigStore.save(effectiveLocalMesh)
         }
-        if effectiveLocalMesh.mode == .standby || effectiveLocalMesh.mode == .worker {
-            reloaded.adminWebUI = currentLocalAdminWebUI
-        }
         reloaded.wikiBot.normalizeSources()
         settings = reloaded
         mediaLibrarySettings = currentLocalMedia
         await mediaLibraryIndexer.invalidate()
-        await ruleStore.reloadFromDisk()
         // Re-read automations from the replicated file so a Failover's GUI
         // reflects rule edits that were applied on the Primary (and any the
         // Failover itself just pushed up and reconciled back down).
         automationStore.load()
+        await voiceSessionStore.load()
+        await communityStatsStore.reloadFromDisk()
+        restoreMeshCommandCooldowns()
         await aiService.configureLocalAIDMReplies(
             enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
             systemPrompt: settings.localAISystemPrompt
@@ -599,35 +601,7 @@ extension AppModel {
     /// working after a failover. Runs once after launch and again whenever a
     /// change date in the synced settings moves, never on every routine sync.
     func pullCredentialsIfNeeded() async {
-        guard settings.clusterMode == .standby else { return }
-        var revisions: [String: Date] = [:]
-        for id in GameProviderID.allCases {
-            revisions[id.rawValue] = settings.gameProviders[id].credentialUpdatedAt
-        }
-        revisions["swiftMiner"] = settings.swiftMiner.credentialsUpdatedAt
-        guard pulledCredentialRevisions != revisions else { return }
-        guard let pulled = await cluster.fetchCredentials() else { return }
-
-        var changed = false
-        for id in GameProviderID.allCases {
-            let token = (pulled.gameProviderTokens[id.rawValue] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if settings.gameProviders.token(for: id) != token {
-                settings.gameProviders.setToken(token, for: id)
-                changed = true
-            }
-        }
-        let apiKey = pulled.swiftMinerAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let webhookSecret = pulled.swiftMinerWebhookSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        if settings.swiftMiner.apiKey != apiKey || settings.swiftMiner.webhookSecret != webhookSecret {
-            settings.swiftMiner.apiKey = apiKey
-            settings.swiftMiner.webhookSecret = webhookSecret
-            changed = true
-        }
-        pulledCredentialRevisions = revisions
-        guard changed else { return }
-        saveSettings()
-        configureGameTrackingMonitoring()
-        logs.append("[INFO] SwiftMesh pulled credentials (Game Tracker, SwiftMiner) from Primary.")
+        _ = await syncMeshCredentials()
     }
 
     func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, leaderPort: Int, listenPort: Int, sharedSecret: String) async {
@@ -662,14 +636,15 @@ extension AppModel {
         )
         await cluster.setAutoReclaimPolicy(
             isConfiguredPrimary: settings.clusterMode == .leader,
-            afterHours: settings.clusterAutoReclaimAfterHours
+            afterHours: settings.clusterAutoReclaimAfterHours, automaticHandbackEnabled: settings.clusterAutomaticHandbackEnabled
         )
         // Sync secondary safety guard from the reconciled runtime role, not
         // only the configured role. A returning Primary may start as Standby
         // when another healthy Primary already exists.
         let runtimeMode = await cluster.currentSnapshot().mode
         let isPrimary = runtimeMode == .standalone || runtimeMode == .leader
-        await service.setOutputAllowed(isPrimary)
+        let owns = await cluster.hasActiveOwnership()
+        await service.setOutputAllowed(isPrimary && !meshWritesPaused && owns)
         configureMeshSync()
         if mode == .standby {
             await pullConfigFilesFromLeader()
@@ -994,12 +969,21 @@ extension AppModel {
 
         let port = settings.clusterListenPort
         let sharedSecret = ensureSwiftMeshSharedSecret()
+        guard let enrollment = try? await meshCredentialStore.issueGrant(nodeName: "Paired Failover") else {
+            logs.append("SwiftMesh could not issue a credential approval; join code was not generated.")
+            return nil
+        }
+        if !localMeshPublicAddress.isEmpty {
+            addresses.removeAll { $0 == localMeshPublicAddress }
+            addresses.insert(localMeshPublicAddress, at: 0)
+        }
 
         let bundle = SwiftMeshJoinBundle(
             leaderAddresses: addresses,
             leaderPort: port,
             sharedSecret: sharedSecret,
-            leaderTerm: settings.clusterLeaderTerm
+            leaderTerm: settings.clusterLeaderTerm,
+            credentialEnrollment: enrollment, witness: MeshWitnessSettingsStore.load().isConfigured ? MeshWitnessSettingsStore.load() : nil
         )
 
         // Surface what's in the code so the user can see at a glance whether
@@ -1007,7 +991,7 @@ extension AppModel {
         let lanSummary = lanAddresses.isEmpty ? "none" : lanAddresses.joined(separator: ", ")
         let wanSummary = wanAddress ?? "unavailable (public IP lookup failed)"
         logs.append("[SwiftMesh] Join Code generated — LAN: \(lanSummary); WAN: \(wanSummary); port: \(port).")
-        if wanAddress == nil {
+        if wanAddress == nil && localMeshPublicAddress.isEmpty {
             logs.append("[SwiftMesh] ⚠️ Public IP lookup failed — Join Code will only work for standby nodes on the same LAN. Check internet access and try again.")
         }
 
@@ -1057,9 +1041,17 @@ extension AppModel {
     }
 
     /// Applies a SwiftMesh Join Code bundle to settings.
-    func applySwiftMeshJoinCode(_ rawCode: String) -> (ok: Bool, message: String) {
+    func applySwiftMeshJoinCode(_ rawCode: String) async -> (ok: Bool, message: String) {
         do {
             let bundle = try decodeSwiftMeshJoinCode(rawCode)
+            guard (1...65535).contains(bundle.leaderPort), !bundle.sharedSecret.isEmpty,
+                  let enrollment = bundle.credentialEnrollment else {
+                return (false, "Generate a new Join Code on the Primary to approve this failover for credentials.")
+            }
+            try await meshCredentialStore.saveLocalEnrollment(enrollment)
+            if let witness = bundle.witness, !MeshWitnessSettingsStore.save(witness) {
+                return (false, "Could not save the ownership witness configuration.")
+            }
 
             // We do not save a single leaderAddress yet. We let the Standby's
             // connection tester cycle through `bundle.leaderAddresses` to find
@@ -1186,12 +1178,16 @@ struct SwiftMeshJoinBundle: Codable {
     let leaderPort: Int
     let sharedSecret: String
     let leaderTerm: Int
+    let credentialEnrollment: MeshCredentialEnrollment?
+    let witness: MeshWitnessConfiguration?
 
-    init(leaderAddresses: [String], leaderPort: Int, sharedSecret: String, leaderTerm: Int = 0) {
+    init(leaderAddresses: [String], leaderPort: Int, sharedSecret: String, leaderTerm: Int = 0, credentialEnrollment: MeshCredentialEnrollment? = nil, witness: MeshWitnessConfiguration? = nil) {
         self.leaderAddresses = leaderAddresses
         self.leaderPort = leaderPort
         self.sharedSecret = sharedSecret
         self.leaderTerm = leaderTerm
+        self.credentialEnrollment = credentialEnrollment
+        self.witness = witness
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1199,6 +1195,7 @@ struct SwiftMeshJoinBundle: Codable {
         case leaderPort
         case sharedSecret
         case leaderTerm
+        case credentialEnrollment, witness
     }
 
     init(from decoder: Decoder) throws {
@@ -1207,6 +1204,8 @@ struct SwiftMeshJoinBundle: Codable {
         leaderPort = try container.decode(Int.self, forKey: .leaderPort)
         sharedSecret = try container.decode(String.self, forKey: .sharedSecret)
         leaderTerm = try container.decodeIfPresent(Int.self, forKey: .leaderTerm) ?? 0
+        credentialEnrollment = try container.decodeIfPresent(MeshCredentialEnrollment.self, forKey: .credentialEnrollment)
+        witness = try container.decodeIfPresent(MeshWitnessConfiguration.self, forKey: .witness)
     }
 }
 

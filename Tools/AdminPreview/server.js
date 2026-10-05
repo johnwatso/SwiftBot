@@ -212,10 +212,21 @@ const sourceOwners = { clips: '412378964087275541' };
 function withClipPeople(item, i) {
   const recordedByID = sourceOwners.clips || null;
   const people = clipCrew.filter(([id], j) => id === recordedByID || (j === 0 ? i % 3 !== 2 : (i + j) % 3 === 0)).map(([id, name]) => ({ id, name }));
-  return { ...item, people, recordedByID };
+  return withGameFix({ ...item, people, recordedByID });
 }
+// Fix Match, as AppModel.resolvedMediaGameName: this clip's fix, then one
+// for every clip detected as the same game, then the filename's game.
+const gameFixes = { clip: {}, detected: {} };
+function withGameFix(item) {
+  const detected = item.gameName;
+  const clipFix = gameFixes.clip[item.id];
+  const gameName = clipFix || gameFixes.detected[detected.toLowerCase()] || detected;
+  return { ...item, gameName, detectedGameName: detected, gameMatch: clipFix ? 'clip' : gameName !== detected ? 'detected' : null };
+}
+const previewSteamGames = ['Call of Duty®: Black Ops 6', 'Call of Duty®: Modern Warfare® III', 'THE FINALS', 'Apex Legends™', 'Counter-Strike 2', 'Marvel Rivals', 'Helldivers™ 2', 'Overwatch® 2']
+  .map((name, i) => ({ name, steamAppID: String(2_000_000 + i) }));
 // SwiftMesh: a Primary with one Fail Over, mirroring AdminWebSwiftMeshPayload.
-const meshState = { handoverScheduledAt: null, handoverEndsAt: null, lastRunAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRunOK: true, forgotten: new Set() };
+const meshState = { handoverScheduledAt: null, handoverEndsAt: null, lastRunAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRunOK: true, forgotten: new Set(), icons: {} };
 function swiftMeshFixture() {
   const cfg = config.swiftMesh;
   const mode = { leader: 'Leader', standby: 'Standby', standalone: 'Standalone' }[String(cfg.mode).toLowerCase()] || cfg.mode;
@@ -372,6 +383,9 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/music/preview': return sendJSON(res, fixtures.musicPreview);
       case '/api/access': return sendJSON(res, fixtures.access);
       case '/api/activity': return sendJSON(res, fixtures.activity);
+      case '/api/activity/export':
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="SwiftBot-Diagnostics-preview.txt"' });
+        return res.end('=== SwiftBot Diagnostic Report ===\n(preview)\n');
       case '/api/automations': {
         const category = query.get('category') || 'automation';
         return sendJSON(res, fixtures.automations(category, automationRules[category]));
@@ -381,7 +395,13 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/aibots': return sendJSON(res, fixtures.aibots);
       case '/api/swiftmesh': {
         const mesh = swiftMeshFixture();
-        mesh.nodes = mesh.nodes.map(n => ({ ...n, operatorID: operatorState.byNode[n.displayName] || null }));
+        mesh.nodes = mesh.nodes.map(n => ({ ...n, operatorID: operatorState.byNode[n.displayName] || null, iconOverride: meshState.icons[n.displayName] || null }));
+        mesh.iconOptions = [
+          { symbol: 'laptopcomputer', label: 'Laptop' }, { symbol: 'macbook', label: 'MacBook' },
+          { symbol: 'desktopcomputer', label: 'Desktop' }, { symbol: 'macmini', label: 'Mac mini' },
+          { symbol: 'macstudio', label: 'Mac Studio' }, { symbol: 'macpro.gen3', label: 'Mac Pro' },
+          { symbol: 'server.rack', label: 'Server rack' }
+        ];
         return sendJSON(res, mesh);
       }
       case '/api/operators': return sendJSON(res, operatorsFixture());
@@ -405,6 +425,10 @@ async function handleAPI(req, res, pathname, query) {
         }).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
         return sendJSON(res, { ...fixtures.media, sources: fixtures.media.sources.map(s => ({ ...s, ownerID: sourceOwners[s.id] || null })), items, totalItems: items.length, gameSummaries, games: gameSummaries.map(g => g.name).sort(), selectedGame: game || null, selectedDateRange: range });
       }
+      case '/api/media/game-search': {
+        const term = (query.get('q') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return sendJSON(res, term ? previewSteamGames.filter(g => g.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(term)) : []);
+      }
       case '/api/media/exports': return sendJSON(res, fixtures.mediaExports);
       case '/api/media/export-status': return sendJSON(res, { installed: true, version: '7.1' });
       default:
@@ -419,6 +443,10 @@ async function handleAPI(req, res, pathname, query) {
 
     // Host actions: bot lifecycle, tests, updates. Mutate the fixtures so the
     // page's follow-up reads see the change.
+    if (['/api/cache/clear', '/api/activity/clear', '/api/bot/permissions/force-rejoin'].includes(pathname)) {
+      console.log(`[host] ${pathname}`, JSON.stringify(body));
+      return sendJSON(res, { ok: true });
+    }
     if (pathname === '/api/bot/start' || pathname === '/api/bot/restart') {
       fixtures.status.botStatus = 'connecting';
       setTimeout(() => { fixtures.status.botStatus = 'running'; }, 3000);
@@ -686,12 +714,45 @@ async function handleAPI(req, res, pathname, query) {
         }
         case '/api/automations/validate':
           return sendJSON(res, { ok: true, issues: [] });
+        case '/api/automations/simulate': {
+          // A rough stand-in: the real trace comes from AutomationService.
+          const r = body.rule;
+          const input = { username: body.input?.username || 'john_doe', channelId: body.input?.channelId || 'chan-123', messageContent: body.input?.messageContent || 'Hello world!', voiceDurationSeconds: body.input?.voiceDurationSeconds ?? 300 };
+          const filterTraces = (r.filters || []).map(f => ({ filterId: f.id, kind: f.kind, matched: true, detail: 'Filter matched criteria' }));
+          const stepTraces = (r.steps || []).map(st => ({ stepId: st.id, kind: st.kind, executed: st.kind !== 'log', detail: st.kind === 'delay' ? `Would wait ${st.delaySeconds || 0}s` : (st.kind === 'log' ? 'Nothing to log' : `Would ${st.kind}`) }));
+          return sendJSON(res, { input, result: { triggerMatched: true, filtersMatched: true, filterTraces, stepTraces } });
+        }
         case '/api/automations/draft':
           return sendJSON(res, { error: 'Drafting needs Apple Intelligence on the bot.' });
       }
       return sendJSON(res, { ok: true });
     }
 
+    if (pathname === '/api/media/game-match' && body.fromGame) {
+      const name = String(body.gameName || '').replace(/[®™©]/g, '').split(/\s+/).filter(Boolean).join(' ');
+      for (const item of fixtures.media.items.map(withGameFix)) {
+        if (gameFixes.clip[item.id]) { if (gameFixes.clip[item.id] === body.fromGame) gameFixes.clip[item.id] = name; continue; }
+        if (item.gameName === body.fromGame) gameFixes.detected[item.detectedGameName.toLowerCase()] = name;
+      }
+      console.log(`[media] fix match ${body.fromGame} → ${name}`);
+      return sendJSON(res, { ok: true });
+    }
+    if (pathname === '/api/media/game-match') {
+      const item = fixtures.media.items.find(i => i.id === body.itemID);
+      if (!item) return sendJSON(res, { error: 'invalid_payload' }, 400);
+      const name = String(body.gameName || '').trim();
+      if (body.applyToDetected) {
+        if (name && name.toLowerCase() !== item.gameName.toLowerCase()) gameFixes.detected[item.gameName.toLowerCase()] = name;
+        else delete gameFixes.detected[item.gameName.toLowerCase()];
+        delete gameFixes.clip[item.id];
+      } else if (name) {
+        gameFixes.clip[item.id] = name;
+      } else {
+        delete gameFixes.clip[item.id];
+      }
+      console.log(`[media] fix match ${item.id} → ${name || '(detected)'}${body.applyToDetected ? ' for all' : ''}`);
+      return sendJSON(res, { ok: true });
+    }
     if (pathname === '/api/media/source-owner') {
       if (body.userID) sourceOwners[body.sourceID] = body.userID; else delete sourceOwners[body.sourceID];
       return sendJSON(res, { ok: true });
@@ -764,6 +825,10 @@ async function handleAPI(req, res, pathname, query) {
           break;
         case 'forget':
           meshState.forgotten.add(body.node);
+          break;
+        case 'setIcon':
+          if (body.icon) meshState.icons[body.node] = body.icon; else delete meshState.icons[body.node];
+          console.log(`[swiftmesh] icon ${body.node} → ${body.icon || 'auto'}`);
           break;
         default:
           return sendJSON(res, { error: 'Unknown action.' }, 400);

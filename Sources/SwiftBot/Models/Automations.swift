@@ -499,7 +499,7 @@ enum Automations {
 
     // MARK: - Simulation Trace Models
 
-    struct FilterTrace: Sendable, Hashable, Identifiable {
+    struct FilterTrace: Codable, Sendable, Hashable, Identifiable {
         var id: String { filterId }
         let filterId: String
         let kind: FilterKind
@@ -507,7 +507,7 @@ enum Automations {
         let detail: String
     }
 
-    struct StepTrace: Sendable, Hashable, Identifiable {
+    struct StepTrace: Codable, Sendable, Hashable, Identifiable {
         var id: String { stepId }
         let stepId: String
         let kind: StepKind
@@ -515,7 +515,7 @@ enum Automations {
         let detail: String
     }
 
-    struct SimulationResult: Sendable, Hashable {
+    struct SimulationResult: Codable, Sendable, Hashable {
         let triggerMatched: Bool
         let filtersMatched: Bool
         let filterTraces: [FilterTrace]

@@ -10,13 +10,12 @@ extension AppModel {
     // MARK: - Media Library
 
     func localMediaLibrarySnapshot(ownerBaseURL: String? = nil) async -> MediaLibraryPayload {
-        await ensureExportSourceConfigured()
         let configURL = await mediaLibraryConfigStore.fileURL()
         let ownerNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName
         let payload = await mediaLibraryIndexer.snapshot(
-            sources: effectiveMediaSources(),
+            sources: localRecordingSources,
             ownerNodeName: ownerNodeName,
             ownerBaseURL: ownerBaseURL,
             configFilePath: configURL.path
@@ -34,50 +33,10 @@ extension AppModel {
         return payload
     }
 
-    private func effectiveMediaSources() -> [MediaLibrarySource] {
-        var sources = mediaLibrarySettings.sources
-        guard mediaLibrarySettings.exportIncludeInLibrary else { return sources }
-        let exportPath = mediaExportRootURL().path
-        if exportPath.isEmpty { return sources }
-        let exportID = mediaLibrarySettings.exportSourceID ?? UUID()
-        if !sources.contains(where: { $0.id == exportID }) {
-            let exportSource = MediaLibrarySource(
-                id: exportID,
-                name: "Exports",
-                rootPath: exportPath,
-                isEnabled: true,
-                allowedExtensions: ["mp4", "mov", "m4v"]
-            )
-            sources.append(exportSource)
-        }
-        return sources
-    }
-
-    private func ensureExportSourceConfigured() async {
-        guard mediaLibrarySettings.exportIncludeInLibrary else { return }
-        let exportPath = mediaExportRootURL().path
-        guard !exportPath.isEmpty else { return }
-        if mediaLibrarySettings.exportSourceID == nil {
-            mediaLibrarySettings.exportSourceID = UUID()
-        }
-        let exportID = mediaLibrarySettings.exportSourceID!
-        if !mediaLibrarySettings.sources.contains(where: { $0.id == exportID }) {
-            mediaLibrarySettings.sources.append(
-                MediaLibrarySource(
-                    id: exportID,
-                    name: "Exports",
-                    rootPath: exportPath,
-                    isEnabled: true,
-                    allowedExtensions: ["mp4", "mov", "m4v"]
-                )
-            )
-            try? await mediaLibraryConfigStore.save(mediaLibrarySettings)
-        } else if let index = mediaLibrarySettings.sources.firstIndex(where: { $0.id == exportID }) {
-            if mediaLibrarySettings.sources[index].rootPath != exportPath {
-                mediaLibrarySettings.sources[index].rootPath = exportPath
-                try? await mediaLibraryConfigStore.save(mediaLibrarySettings)
-            }
-        }
+    /// The automatically managed export source is hidden until exporting is ready.
+    /// Keep its saved configuration and files intact so it can return later.
+    var localRecordingSources: [MediaLibrarySource] {
+        mediaLibrarySettings.sources.filter { $0.id != mediaLibrarySettings.exportSourceID }
     }
 
     private func mediaExportRootURL() -> URL {
@@ -467,7 +426,8 @@ extension AppModel {
                         return nil
                     }
 
-                    let gameName = mediaGameName(for: item.fileName)
+                    let detectedGame = mediaGameName(for: item.fileName)
+                    let gameName = resolvedMediaGameName(itemKey: itemKey, detected: detectedGame)
                     if let normalizedSelectedGame, !normalizedSelectedGame.isEmpty, normalizedGameKey(gameName) != normalizedSelectedGame {
                         return nil
                     }
@@ -492,6 +452,9 @@ extension AppModel {
                     )
                     result.people = itemPeople.map { AdminWebSimpleOption(id: $0, name: knownUsersById[$0] ?? "Member") }
                     result.recordedByID = settings.recordingSourceOwners[sourceToken]
+                    result.detectedGameName = detectedGame
+                    result.gameMatch = settings.recordingGameOverrides[itemKey] != nil ? "clip"
+                        : gameName != detectedGame ? "detected" : nil
                     return result
                 }
             }
@@ -521,12 +484,102 @@ extension AppModel {
         return "Unlabeled"
     }
 
+    /// The game a clip is filed under: a Fix Match for this clip, then one
+    /// for every clip detected as the same game, then the filename's game.
+    func resolvedMediaGameName(itemKey: String, detected: String) -> String {
+        if let fixed = settings.recordingGameOverrides[itemKey] { return fixed }
+        if let alias = settings.recordingGameAliases[normalizedGameKey(detected)] { return alias }
+        return detected
+    }
+
+    func resolvedMediaGameName(for item: MediaLibraryItem, nodeName: String) -> String {
+        resolvedMediaGameName(itemKey: "\(nodeName)|\(item.id)", detected: mediaGameName(for: item.fileName))
+    }
+
+    /// Admin Fix Match. An empty `gameName` returns the clip (or every clip
+    /// detected as its game) to the filename's game. With `applyToDetected`,
+    /// the match covers every clip whose filename names the same game,
+    /// including future ones, and this clip's own fix is cleared.
+    func fixMediaGameMatch(itemKey rawKey: String, gameName rawName: String, steamAppID: String?, applyToDetected: Bool) async -> Bool {
+        let itemKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Kept as picked, only tidied: it's a deliberate name.
+        let gameName = Self.tidiedMediaGameName(rawName)
+        let isReset = gameName.isEmpty
+        guard itemKey.contains("|"), gameName.count <= 120 else { return false }
+        guard let item = await allMediaLibraryPayloads()
+            .lazy
+            .compactMap({ payload in payload.items.first { "\(payload.nodeName)|\($0.id)" == itemKey } })
+            .first else { return false }
+        let detectedKey = normalizedGameKey(mediaGameName(for: item.fileName))
+
+        if applyToDetected {
+            guard detectedKey != "unlabeled" else { return false }
+            settings.recordingGameAliases[detectedKey] = isReset || normalizedGameKey(gameName) == detectedKey ? nil : gameName
+            settings.recordingGameOverrides[itemKey] = nil
+        } else {
+            settings.recordingGameOverrides[itemKey] = isReset ? nil : gameName
+        }
+        if !isReset, let appID = steamAppID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !appID.isEmpty, appID.allSatisfy(\.isNumber) {
+            // Pin the artwork to the title that was picked, so the poster
+            // matches even when the name alone would find another game.
+            await RecordingSteamArtworkService.shared.setManualAppID(for: gameName, appID: appID)
+        }
+        saveSettings()
+        return true
+    }
+
+    /// Fix Match for a whole game in the library: every clip filed under
+    /// `fromGame` moves to `gameName`, and so do future clips detected as
+    /// the same games. Clips fixed one at a time follow along.
+    func renameMediaGame(from rawFrom: String, to rawName: String, steamAppID: String?) async -> Bool {
+        let from = rawFrom.trimmingCharacters(in: .whitespacesAndNewlines)
+        let gameName = Self.tidiedMediaGameName(rawName)
+        // "Unlabeled" is every clip with no game; filing them all under one
+        // would also catch every future unlabeled clip.
+        guard !from.isEmpty, from != "Unlabeled", !gameName.isEmpty, gameName.count <= 120 else { return false }
+
+        for payload in await allMediaLibraryPayloads() {
+            for item in payload.items {
+                let itemKey = "\(payload.nodeName)|\(item.id)"
+                if let fixed = settings.recordingGameOverrides[itemKey] {
+                    if fixed == from { settings.recordingGameOverrides[itemKey] = gameName }
+                    continue
+                }
+                let detected = mediaGameName(for: item.fileName)
+                guard detected != "Unlabeled", resolvedMediaGameName(itemKey: itemKey, detected: detected) == from else { continue }
+                let key = normalizedGameKey(detected)
+                settings.recordingGameAliases[key] = key == normalizedGameKey(gameName) ? nil : gameName
+            }
+        }
+        // Detected names with no clips right now still follow, for later clips.
+        for (key, value) in settings.recordingGameAliases where value == from {
+            settings.recordingGameAliases[key] = key == normalizedGameKey(gameName) ? nil : gameName
+        }
+        if let appID = steamAppID?.trimmingCharacters(in: .whitespacesAndNewlines), !appID.isEmpty, appID.allSatisfy(\.isNumber) {
+            await RecordingSteamArtworkService.shared.setManualAppID(for: gameName, appID: appID)
+        }
+        saveSettings()
+        return true
+    }
+
+    /// Whitespace collapsed and trademark marks dropped, so "Call of Duty®:
+    /// Black Ops 6" from Steam and a recorder's "Call of Duty: Black Ops 6"
+    /// file under one game.
+    static func tidiedMediaGameName(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "[®™©]", with: "", options: .regularExpression)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
     /// Folds the names recorders write for one game into a single filter
     /// entry: "cod" shorthand, and Call of Duty HQ's launcher names that list
     /// every bundled title ("Call of Duty Modern Warfare II Call of Duty
     /// Modern Warfare III Warzone 2.0") or tack Warzone onto one.
     static func canonicalMediaGameName(_ raw: String) -> String {
-        let name = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        // A beta is the same game: "Call of Duty Modern Warfare 4 - Beta".
+        let name = tidiedMediaGameName(raw)
+            .replacingOccurrences(of: #"\s*[-–(]?\s*\b(open\s+)?beta\)?$"#, with: "", options: [.regularExpression, .caseInsensitive])
         let lower = name.lowercased()
         if name.isEmpty || lower == "unknown" { return "Unlabeled" }
         if lower == "cod" { return "Call of Duty" }
@@ -1007,7 +1060,7 @@ extension AppModel {
 
         await prewarmLocalMediaFastStartCache()
 
-        let shouldScan = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .mediaAdded }
+        let shouldScan = automationStore.rules.contains { $0.enabled && $0.trigger.kind == .mediaAdded }
         guard shouldScan else {
             lastSeenMediaItemIDs.removeAll()
             return

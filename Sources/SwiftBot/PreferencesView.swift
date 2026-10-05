@@ -12,48 +12,29 @@ struct PreferencesView: View {
 
     var body: some View {
         Group {
-            if app.isRemoteLaunchMode {
-                PreferencesTabContainer {
-                    PreferencesCard(
-                        "Remote Control Mode",
-                        systemImage: "dot.radiowaves.left.and.right",
-                        subtitle: "Local Discord, SwiftMesh, and Web UI runtime settings are inactive while this Mac is acting as a remote management client."
-                    ) {
-                        Text("Use the Remote dashboard to update the primary node connection, inspect status, edit rules, and change runtime settings on the primary.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
+            // App-level preferences only. Each service's settings (Web
+            // Interface, Discord, SwiftMesh, Integrations) live on its own page in
+            // the main window's sidebar.
+            TabView(selection: $selectedTab) {
+                GeneralPreferencesView()
+                    .tabItem {
+                        Label("General", systemImage: "gear")
                     }
+                    .tag(Self.generalTab)
 
-                    SettingsForm {
-                        LocalRecordingsPreferencesSection()
+                UpdatesPreferencesView()
+                    .tabItem {
+                        Label("Updates", systemImage: "arrow.clockwise")
                     }
-                    .autosavesPreferences(for: app)
-                }
-            } else {
-                // App-level preferences only. Each service's settings (Web
-                // Interface, SwiftMesh, Integrations) live on its own page in
-                // the main window's sidebar.
-                TabView(selection: $selectedTab) {
-                    GeneralPreferencesView()
-                        .tabItem {
-                            Label("General", systemImage: "gear")
-                        }
-                        .tag(Self.generalTab)
-
-                    UpdatesPreferencesView()
-                        .tabItem {
-                            Label("Updates", systemImage: "arrow.clockwise")
-                        }
-                        .tag(Self.updatesTab)
-                }
-                // A tab saved by an older build (SwiftMesh, Web UI, …) no longer exists.
-                .onAppear {
-                    if ![Self.generalTab, Self.updatesTab].contains(selectedTab) {
-                        selectedTab = Self.generalTab
-                    }
-                }
-                .autosavesPreferences(for: app)
+                    .tag(Self.updatesTab)
             }
+            // A tab saved by an older build (SwiftMesh, Web UI, …) no longer exists.
+            .onAppear {
+                if ![Self.generalTab, Self.updatesTab].contains(selectedTab) {
+                    selectedTab = Self.generalTab
+                }
+            }
+            .autosavesPreferences(for: app)
         }
         .frame(width: 720, height: 480)
         .background(

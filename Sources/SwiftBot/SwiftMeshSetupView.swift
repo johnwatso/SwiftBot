@@ -40,16 +40,7 @@ struct SwiftMeshSetupView: View {
 
     private var entryView: some View {
         VStack(spacing: 24) {
-            // Glowing mesh icon
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 32))
-                    .foregroundStyle(Color.accentColor)
-            }
+            ConsoleIconTile(symbol: "point.3.connected.trianglepath.dotted", size: 64)
             
             VStack(spacing: 8) {
                 Text("Join SwiftMesh")
@@ -273,7 +264,8 @@ struct SwiftMeshSetupView: View {
             let decoded = try app.decodeSwiftMeshJoinCode(rawCode)
             self.bundle = decoded
 
-            let result = app.applySwiftMeshJoinCode(rawCode)
+            Task {
+            let result = await app.applySwiftMeshJoinCode(rawCode)
             guard result.ok else {
                 errorMessage = result.message
                 step = .failed
@@ -282,7 +274,6 @@ struct SwiftMeshSetupView: View {
 
             step = .testing
 
-            Task {
                 let success = await app.testWorkerJoinCodeConnection(
                     addresses: decoded.leaderAddresses,
                     port: decoded.leaderPort

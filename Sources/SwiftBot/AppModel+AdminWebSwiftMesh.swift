@@ -2,6 +2,16 @@ import Foundation
 
 /// The WebUI's SwiftMesh page: the same state and actions as `SwiftMeshView`.
 extension AppModel {
+    func adminWebSwiftMeshJoinCode() async -> String? {
+        guard settings.clusterMode == .leader,
+              await cluster.currentSnapshot().mode == .leader else { return nil }
+        let code = await generateSwiftMeshJoinCode()
+        // Address discovery suspends; ownership may have changed meanwhile.
+        guard settings.clusterMode == .leader,
+              await cluster.currentSnapshot().mode == .leader else { return nil }
+        return code
+    }
+
     func adminWebSwiftMeshSnapshot() async -> AdminWebSwiftMeshPayload {
         // The native view polls while it's open; the web page polls this
         // endpoint instead, so refresh here too.
@@ -38,6 +48,7 @@ extension AppModel {
                 }
             )
             result.operatorID = operatorID(forNode: node.displayName)
+            result.iconOverride = settings.clusterNodeIconOverrides[node.displayName]
             return result
         }
 
@@ -54,6 +65,7 @@ extension AppModel {
             workerOffloadEnabled: settings.clusterWorkerOffloadEnabled,
             offloadAIReplies: settings.clusterOffloadAIReplies,
             offloadWikiLookups: settings.clusterOffloadWikiLookups,
+            automaticHandbackEnabled: settings.clusterAutomaticHandbackEnabled,
             autoReclaimAfterHours: settings.clusterAutoReclaimAfterHours,
             autoReclaimRemainingSeconds: autoReclaimRemainingSeconds,
             server: .init(state: snapshot.serverState.rawValue, text: snapshot.serverStatusText),
@@ -72,7 +84,8 @@ extension AppModel {
                 lastRunOK: settings.clusterLastHandoverTestOK,
                 canRun: settings.clusterMode == .leader && registeredWorkersDebugCount > 0 && !isTestPending
             ),
-            nodes: nodes
+            nodes: nodes,
+            iconOptions: SwiftMeshNodeIconCatalog.all.map { .init(symbol: $0.symbol, label: $0.label) }
         )
     }
 
@@ -104,6 +117,18 @@ extension AppModel {
             }
             guard node.status == .disconnected else { return "Only disconnected nodes can be forgotten." }
             await forgetClusterNode(displayName: node.displayName)
+        case "setIcon":
+            let name = request.node?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let node = clusterNodes.first(where: { $0.displayName.caseInsensitiveCompare(name) == .orderedSame }) else {
+                return "That node isn't in the cluster."
+            }
+            if let icon = request.icon {
+                guard SwiftMeshNodeIconCatalog.all.contains(where: { $0.symbol == icon }) else { return "Unknown icon." }
+                settings.clusterNodeIconOverrides[node.displayName] = icon
+            } else {
+                settings.clusterNodeIconOverrides.removeValue(forKey: node.displayName)
+            }
+            saveSettings()
         default:
             return "Unknown action."
         }

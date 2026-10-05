@@ -48,17 +48,29 @@ struct SidebarNavigationRow: View {
     let isSelected: Bool
     let selectionNamespace: Namespace.ID
     var badgeCount = 0
+    var brandAsset: String?
     let action: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .symbolVariant(isSelected ? .fill : .none)
-                .font(.system(size: 14, weight: .semibold))
+            Group {
+                if let brandAsset {
+                    Image(brandAsset)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                } else {
+                    Image(systemName: systemImage)
+                        .symbolVariant(isSelected ? .fill : .none)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+            }
                 // The selected row's glyph takes the accent, so the row stays
                 // the anchor even when the window is inactive.
                 .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
                 .frame(width: 18)
+                .accessibilityHidden(true)
 
             Text(title)
                 .font(.system(size: 14, weight: isSelected ? .semibold : .medium))

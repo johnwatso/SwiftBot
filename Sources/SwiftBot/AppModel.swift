@@ -104,6 +104,7 @@ final class AppModel: ObservableObject {
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
     @Published var connectedServers: [String: String] = [:]
+    @Published var guildIconHashes: [String: String] = [:]
     /// Owned by SwiftBotApp; held here so the Web UI can report and drive
     /// software updates.
     weak var appUpdater: AppUpdater?
@@ -124,7 +125,7 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateAt: Date?
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
-    private var lastPublishedRole: ClusterMode?
+    var lastPublishedRole: ClusterMode?
     @Published var clusterNodes: [ClusterNodeStatus] = []
     /// Phase 4: seconds remaining until this node auto-reclaims Primary, or
     /// `nil` if auto-reclaim is disabled / not eligible. Refreshed by
@@ -196,36 +197,8 @@ final class AppModel: ObservableObject {
     /// `true` once a valid token has been confirmed — gates the main dashboard.
     @Published var isOnboardingComplete: Bool = false
 
-    // MARK: - View Mode
-
-    /// The current view mode (local or remote dashboard). Persisted across launches.
-    @AppStorage("swiftbot.viewMode")
-    private var viewModeRaw: String = ViewMode.local.rawValue
-
-    var viewMode: ViewMode {
-        get { ViewMode(rawValue: viewModeRaw) ?? .local }
-        set {
-            viewModeRaw = newValue.rawValue
-            updateProvider()
-        }
-    }
-
-    // MARK: - Bot Data Provider
-
-    /// The current data provider (local or remote). Views should use this instead of accessing AppModel directly.
-    @Published var provider: AnyBotDataProvider?
-
-    private var localProvider: LocalBotProvider?
-    private var localProviderBox: AnyBotDataProvider?
-
-    private func updateProvider() {
-        if localProvider == nil {
-            let localProvider = LocalBotProvider(app: self)
-            self.localProvider = localProvider
-            self.localProviderBox = AnyBotDataProvider(localProvider)
-        }
-        provider = localProviderBox
-    }
+    /// False until saved settings have loaded; the dashboard waits for it.
+    @Published var hasLoadedSettings = false
 
     /// OAuth2 client ID resolved from a validated token; used to build the invite URL.
     @Published var resolvedClientID: String?
@@ -236,10 +209,6 @@ final class AppModel: ObservableObject {
     var logs = LogStore()
     let automationStore = AutomationStore()
     let automationDrafter = AutomationDrafter()
-    /// Legacy rule store — empty no-op shim. Retained so the web admin
-    /// rule editor, analytics rule panels, and bot data provider compile.
-    /// All real rule logic now lives in `automationStore`.
-    let ruleStore = RuleStore()
 
     let store = ConfigStore()
     let analyticsRuntimeStore = AnalyticsRuntimeStore()
@@ -318,6 +287,11 @@ final class AppModel: ObservableObject {
         wikiLookupService: wikiLookupService
     )
     let cluster = ClusterCoordinator()
+    let meshCredentialStore = MeshCredentialEnrollmentStore()
+    let meshWitnessClient = MeshWitnessClient()
+    @Published var meshWritesPaused = false
+    @Published var meshOwnershipDeadline: ContinuousClock.Instant?
+    var meshLastSuccessfulSync: Date?
     let adminWebServer = AdminWebServer()
     let certificateManager = CertificateManager()
     let tunnelProvider: any TunnelProvider = TunnelManager.shared
@@ -537,34 +511,8 @@ final class AppModel: ObservableObject {
         return URL(string: "https://cdn.discordapp.com/embed/avatars/\(index).png")
     }
 
-    var isRemoteLaunchMode: Bool {
-        settings.launchMode == .remoteControl
-    }
-
-    var remoteControlFeatureEnabled: Bool {
-        #if DEBUG
-        return isBetaBuild
-        #else
-        return false
-        #endif
-    }
-
-    var canSwitchDashboardViewMode: Bool {
-        !isRemoteLaunchMode && !isFailoverManagedNode
-    }
-
-    var canOpenRemoteDashboardFromLocalApp: Bool {
-        remoteControlFeatureEnabled && canSwitchDashboardViewMode
-    }
-
-    var usesLocalRuntime: Bool {
-        settings.launchMode != .remoteControl
-    }
-
     private func onboardingCompleted(for settings: BotSettings) -> Bool {
         switch settings.launchMode {
-        case .remoteControl:
-            return settings.remoteMode.isConfigured
         case .standaloneBot:
             return !settings.token.isEmpty
         case .swiftMeshClusterNode:
@@ -679,7 +627,7 @@ final class AppModel: ObservableObject {
         Task { [self] in
             guard !Self.isRunningUnderXCTest else {
                 isOnboardingComplete = onboardingCompleted(for: settings)
-                updateProvider()
+                hasLoadedSettings = true
                 return
             }
 
@@ -719,7 +667,6 @@ final class AppModel: ObservableObject {
                 workerModeMigrated = true
                 migrated = true
             }
-            loadedSettings.remoteMode.normalize()
             if loadedSettings.swiftMiner.enabled && !loadedSettings.adminWebUI.enabled {
                 loadedSettings.adminWebUI.enabled = true
                 migrated = true
@@ -731,9 +678,8 @@ final class AppModel: ObservableObject {
             restoreCachedBotIdentity()
             isOnboardingComplete = onboardingCompleted(for: loadedSettings)
 
-            // Initialize the appropriate data provider
             await MainActor.run {
-                self.updateProvider()
+                self.hasLoadedSettings = true
             }
             if let cachedDiscord = await discordCacheStore.load() {
                 await discordCache.replace(with: cachedDiscord)
@@ -749,13 +695,6 @@ final class AppModel: ObservableObject {
                 try? await store.save(loadedSettings)
                 try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
                 lastPersistedSettingsSnapshot = loadedSettings
-            }
-
-            guard loadedSettings.launchMode != .remoteControl else {
-                await cluster.stopAll()
-                await adminWebServer.stop()
-                await service.setOutputAllowed(false)
-                return
             }
 
             await service.setAutomationService(automationService, store: automationStore)
@@ -846,22 +785,14 @@ final class AppModel: ObservableObject {
                 },
                 onPromotion: { [weak self] in
                     guard let self else { return }
-                    // Promoted to Primary — enable Discord output.
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        self.lastPublishedRole = .leader
-                        logs.append("[OK] SwiftMesh promoted to Primary.")
-                        Task {
-                            await self.handleClusterRoleChange()
-                            await self.connectDiscordAfterPromotion()
-                        }
-                    }
+                    await self.meshDidPromote()
                 }
             )
             await aiService.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
                 systemPrompt: settings.localAISystemPrompt
             )
+            await configureMeshRecovery()
             await cluster.applySettings(
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
@@ -895,15 +826,7 @@ final class AppModel: ObservableObject {
             // since settings.json reaches the Standby with them blanked.
             await cluster.setCredentialsProvider { [weak self] in
                 guard let self else { return MeshCredentialsResponse() }
-                return await MainActor.run {
-                    MeshCredentialsResponse(
-                        gameProviderTokens: Dictionary(uniqueKeysWithValues: GameProviderID.allCases.map {
-                            ($0.rawValue, self.settings.gameProviders.token(for: $0))
-                        }),
-                        swiftMinerAPIKey: self.settings.swiftMiner.apiKey,
-                        swiftMinerWebhookSecret: self.settings.swiftMiner.webhookSecret
-                    )
-                }
+                return await self.meshCredentialsSnapshot()
             }
             // Primary-side: serve the Discord token to mesh-authenticated
             // peers so a Failover can pull it after onboarding.
@@ -964,22 +887,7 @@ final class AppModel: ObservableObject {
                 }
             }
             await cluster.setDemotionHandler { [weak self] in
-                guard let self else { return }
-                // Higher-term peer detected — disconnect the Discord gateway
-                // entirely so the now-Standby doesn't race the new Primary's
-                // IDENTIFY for the single allowed session per token. Mute
-                // first as belt-and-braces in case disconnect lags.
-                await self.service.setOutputAllowed(false)
-                await self.service.disconnect()
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    self.lastPublishedRole = .standby
-                    self.status = .stopped
-                    self.logs.append("[WARN] SwiftMesh demoted to Standby — another Primary holds a higher term. Discord gateway closed.")
-                    Task {
-                        await self.handleClusterRoleChange()
-                    }
-                }
+                await self?.meshDidDemote()
             }
             // Phase 3: provide this node's follower-state summary on demand.
             // Called by the local /v1/mesh/follower-state endpoint when the
@@ -1101,7 +1009,6 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.importedCertificateChainFile = settings.adminWebUI.normalizedImportedCertificateChainFile
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
-        settings.remoteMode.normalize()
         settings.patchy.syncMonitoringEnabledWithTargets()
         settings.gameTracking.normalize()
         settings.gameProviders.normalize()
@@ -1133,34 +1040,21 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            if self.usesLocalRuntime {
-                await aiService.configureLocalAIDMReplies(
-                    enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
-                    systemPrompt: settings.localAISystemPrompt
-                )
-                await applyClusterSettingsRuntime(
-                    mode: settings.clusterMode,
-                    nodeName: settings.clusterNodeName,
-                    leaderAddress: settings.clusterLeaderAddress,
-                    leaderPort: settings.clusterLeaderPort,
-                    listenPort: settings.clusterListenPort,
-                    sharedSecret: settings.clusterSharedSecret
-                )
-                await configureAdminWebServer()
-                configurePatchyMonitoring()
-                configureGameTrackingMonitoring()
-            } else {
-                patchyMonitorTask?.cancel()
-                patchyMonitorTask = nil
-                gameTrackingMonitorTask?.cancel()
-                gameTrackingMonitorTask = nil
-                await cluster.stopAll()
-                await adminWebServer.stop()
-                await service.setOutputAllowed(false)
-                adminWebResolvedBaseURL = ""
-                adminWebIsListening = false
-                adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
-            }
+            await aiService.configureLocalAIDMReplies(
+                enabled: settings.localAIDMReplyEnabled || settings.behavior.useAIInGuildChannels,
+                systemPrompt: settings.localAISystemPrompt
+            )
+            await applyClusterSettingsRuntime(
+                mode: settings.clusterMode,
+                nodeName: settings.clusterNodeName,
+                leaderAddress: settings.clusterLeaderAddress,
+                leaderPort: settings.clusterLeaderPort,
+                listenPort: settings.clusterListenPort,
+                sharedSecret: settings.clusterSharedSecret
+            )
+            await configureAdminWebServer()
+            configurePatchyMonitoring()
+            configureGameTrackingMonitoring()
 
             await notifyConfigFilesChangedIfLeader()
         }
@@ -1171,13 +1065,13 @@ final class AppModel: ObservableObject {
     }
 
     func notifyConfigFilesChangedIfLeader() async {
-        guard settings.clusterMode == .leader else { return }
+        guard await cluster.acceptsClusterWrites() else { return }
         let currentTerm = await cluster.currentLeaderTerm()
         let configFiles = await store.exportMeshSyncedFiles(
             excludingFileNames: Set([
                 SwiftBotStorage.swiftMeshConfigFileName,
                 SwiftBotStorage.clusterStateFileName
-            ])
+            ]), leaderTerm: currentTerm
         )
         let payload = MeshSyncPayload(
             conversations: [],
@@ -1204,6 +1098,7 @@ final class AppModel: ObservableObject {
     // MARK: - Admin Web Server (see AppModel+AdminWeb.swift)
 
     func stopBot() async {
+        await cluster.setDesiredBotRunning(false)
         stopMediaMonitor()
         await disconnectVoice()
         await service.disconnect()
@@ -1272,7 +1167,7 @@ final class AppModel: ObservableObject {
     }
 
     var isFailoverManagedNode: Bool {
-        runtimeClusterMode == .worker || runtimeClusterMode == .standby
+        meshWritesPaused || meshOwnershipExpired || clusterSnapshot.runtimeState == .demoting || runtimeClusterMode == .worker || runtimeClusterMode == .standby
     }
 
     /// True when this node is acting as a Failover (Standby) and config edits
@@ -1287,7 +1182,7 @@ final class AppModel: ObservableObject {
     }
 
     var shouldProcessPrimaryGatewayActions: Bool {
-        runtimeClusterMode == .standalone || runtimeClusterMode == .leader
+        !meshWritesPaused && !meshOwnershipExpired && clusterSnapshot.runtimeState != .demoting && (runtimeClusterMode == .standalone || runtimeClusterMode == .leader)
     }
 
     func configureServiceCallbacks() async {
@@ -1414,6 +1309,7 @@ final class AppModel: ObservableObject {
         await discordCache.replace(with: DiscordCacheSnapshot())
         await discordCacheStore.delete()
         connectedServers = [:]
+        guildIconHashes = [:]
         availableVoiceChannelsByServer = [:]
         availableTextChannelsByServer = [:]
         availableRolesByServer = [:]
@@ -1674,9 +1570,3 @@ actor ClusterStatusPollingService {
     }
 }
 
-// MARK: - Notification Names
-
-extension Notification.Name {
-    /// Posted when a remote authentication session token is received via deep link.
-    static let remoteAuthSessionReceived = Notification.Name("remoteAuthSessionReceived")
-}

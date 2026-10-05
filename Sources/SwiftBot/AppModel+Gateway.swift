@@ -52,6 +52,9 @@ extension AppModel {
             },
             onRawEvent: { [weak self] name, payload in
                 await self?.recordRewindGatewayEvent(name: name, payload: payload)
+            },
+            onGuildUpdate: { [weak self] event in
+                await self?.handleGuildUpdate(event)
             }
         )
     }
@@ -93,7 +96,8 @@ extension AppModel {
         persistCachedBotIdentityIfNeeded()
     }
 
-    func handleMeshSync(_ payload: MeshSyncPayload) async {
+    func handleMeshSync(_ payload: MeshSyncPayload, paginate: Bool = true) async {
+        guard payload.leaderTerm >= (await cluster.currentLeaderTerm()) else { return }
         // Adopt newer leader term to ensure clean failover.
         if payload.leaderTerm > settings.clusterLeaderTerm {
             await MainActor.run {
@@ -104,7 +108,7 @@ extension AppModel {
         }
 
         // Gap detection: if leader assumed we held cursor X but we actually hold Y, resync from Y.
-        if let expectedFrom = payload.fromCursorRecordID,
+        if paginate, let expectedFrom = payload.fromCursorRecordID,
            expectedFrom != localLastMergedRecordID {
             logs.append("SwiftMesh: gap detected — requesting resync from \(localLastMergedRecordID ?? "start")")
             await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
@@ -113,22 +117,14 @@ extension AppModel {
 
         // Idempotent merge.
         for record in payload.conversations {
-            let message = Message(
-                id: record.id,
-                channelID: record.scope.id,
-                userID: record.userID,
-                username: "",
-                content: record.content,
-                timestamp: record.timestamp,
-                role: record.role
-            )
-            await conversationStore.appendIfNotExists(message)
+            await conversationStore.appendMeshRecordIfAbsent(record)
         }
 
         // Image-usage merge removed with /image command. Ignore any
         // payload.imageUsage from older nodes still in the mesh.
 
-        if let lastID = payload.conversations.last?.id {
+        if let lastID = payload.conversations.last?.id,
+           await conversationStore.cursorIsAfter(lastID, previous: localLastMergedRecordID) {
             localLastMergedRecordID = lastID
         }
         if let remoteCommandLog = payload.commandLog {
@@ -143,10 +139,10 @@ extension AppModel {
         if let remoteActiveVoice = payload.activeVoice {
             await replaceVoicePresence(remoteActiveVoice)
         }
-        if let snapshot = payload.liveSnapshot, settings.clusterMode == .standby {
+        if let snapshot = payload.liveSnapshot, runtimeClusterMode == .standby {
             applyMeshLiveSnapshot(snapshot)
         }
-        if payload.configFilesChanged, settings.clusterMode == .standby {
+        if payload.configFilesChanged, runtimeClusterMode == .standby {
             if let configFiles = payload.configFiles {
                 await applyMeshSyncedConfigFiles(configFiles, sourceDescription: "received")
             } else {
@@ -159,15 +155,22 @@ extension AppModel {
             logs.append("SwiftMesh: config updated on Primary — pulled latest config files")
         }
         // Fetch next page immediately if more records exist.
-        if payload.hasMore {
-            await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
+        if paginate && payload.hasMore {
+            await requestResyncFromLeader(fromRecordID: payload.cursorRecordID ?? payload.conversations.last?.id)
         }
     }
 
     /// Standby requests a bounded page of records from the leader starting after `fromRecordID`.
     func requestResyncFromLeader(fromRecordID: String?) async {
-        guard let payload = await cluster.fetchResyncPage(fromRecordID: fromRecordID, pageSize: 500) else { return }
-        await handleMeshSync(payload)
+        var cursor = fromRecordID
+        for _ in 0..<100 {
+            guard let payload = await cluster.fetchResyncPage(fromRecordID: cursor, pageSize: 500) else { return }
+            await handleMeshSync(payload, paginate: false)
+            guard payload.hasMore else { return }
+            let next = payload.cursorRecordID ?? payload.conversations.last?.id
+            guard let next, next != cursor else { return }
+            cursor = next
+        }
     }
 
     func handleMeshRequest(type: String) async -> Data? {
@@ -180,7 +183,8 @@ extension AppModel {
                 excludingFileNames: Set([
                     SwiftBotStorage.swiftMeshConfigFileName,
                     SwiftBotStorage.clusterStateFileName
-                ])
+                ]),
+                leaderTerm: await cluster.currentLeaderTerm()
             )
         case "live-snapshot":
             return try? JSONEncoder().encode(buildMeshLiveSnapshot())
@@ -212,6 +216,7 @@ extension AppModel {
             }
         }
         lastCommandTimeByUserId[userId] = Date()
+        persistMeshCommandCooldowns()
         return true
     }
 
@@ -2001,6 +2006,7 @@ extension AppModel {
         scheduleDiscordCacheSave()
         // GUILD_MEMBER_ADD is now handled via handleMemberJoin (P0.5).
         armVoiceAutoConnect()
+        await automationService.resumePendingExecutions(token: settings.token, rules: automationStore.rules)
     }
 
 }

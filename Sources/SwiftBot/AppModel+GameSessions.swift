@@ -11,7 +11,6 @@ extension AppModel {
     func handlePresenceUpdate(_ event: GatewayPresenceUpdateEvent) async {
         recordRewindPresence(event)
         guard settings.gameTracking.sessionTrackingEnabled else { return }
-        guard usesLocalRuntime else { return }
         let mode = runtimeClusterMode
         guard mode == .standalone || mode == .leader else { return }
         // Only members linked to a tracked profile are of interest.

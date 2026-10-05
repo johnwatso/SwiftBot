@@ -164,6 +164,45 @@ components:
     padding: 6px
 ---
 
+## Current native console baseline — 2026-10-05
+
+The console Overview is the user-approved visual baseline for new native UI.
+Its styling takes precedence over the older SwiftMesh density and token examples
+below: preserve the large system title, 36pt page gutters, generous section
+spacing, quiet glass surfaces, rounded panels, and service cards.
+
+- Reuse `ConsolePageHeader`, `ConsoleSection`, `consoleSurface`, and
+  `ConsoleFormStyle` for the main window rather than inventing page styles.
+- Match Overview’s 1120pt maximum content width and 32pt top / 40pt bottom insets.
+- Section titles are plain text, as on Overview’s panels: no glyph tile and no
+  subtitle. Inside a settings page every section’s content — status lists and
+  diagnostics included — sits in the inset row group (`ConsoleSettingRow`),
+  never directly on the panel. Explanations belong in a row’s one-line caption
+  or a short footer, not in summary cards.
+- Give core services their own sidebar destination. Discord owns bot credentials,
+  connection settings, server access, and connection diagnostics.
+  General Settings retains app preferences. Overview service cards open the
+  corresponding page.
+- Recordings owns local recording folders, availability, scanning, and Fast
+  Start output settings. Its Web Interface counterpart owns browsing/playback.
+- Keep Activity’s controls visible above a scrolling event list, using the same
+  header and surface as the rest of the console.
+- Let headers stack their accessories, diagnostic sections stack vertically,
+  and summary facts wrap when space is limited. Retain the normal wide layout.
+- Service warnings must show their complete detail and a named review action.
+- Separate local web transport, public access transport, and HTTPS policy.
+  A Cloudflare HTTPS endpoint does not imply the local listener uses TLS.
+- Keep API tokens, passwords, and shared secrets out of inline settings fields.
+  Show credential status and Add / Manage / Replace controls; edit a sheet draft
+  and commit only after Save or successful verification. Cancel must preserve
+  the existing credential, and replacements must retain relevant warnings.
+- Use semantic SwiftUI colors and system typography. Preserve the native sidebar
+  and the existing cluster and authentication safeguards.
+
+The older guidance below remains useful for semantic colors and native controls;
+its smaller titles and denser section metrics are historical, not the target for
+the new console.
+
 ## Overview
 
 SwiftBot is a native macOS control surface for running a Discord bot. The preferred visual baseline is the SwiftMesh interface: calm, dense, operational, and distinctly Apple-platform-native.

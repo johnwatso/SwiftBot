@@ -1162,7 +1162,7 @@ struct AnalyticsView: View {
                 topUserStreak: snapshot.voice.topUserStreak,
                 commandLog: app.commandLog,
                 events: app.events,
-                rules: app.ruleStore.rules,
+                rules: app.automationStore.rules,
                 patchyMonitoringEnabled: app.settings.patchy.monitoringEnabled,
                 patchyEnabledTargetCount: app.settings.patchy.sourceTargets.filter(\.isEnabled).count,
                 patchyTotalTargetCount: app.settings.patchy.sourceTargets.count,
@@ -2058,7 +2058,7 @@ private struct OperationalInsightContext {
     let topUserStreak: AnalyticsUserStreak?
     let commandLog: [CommandLogEntry]
     let events: [ActivityEvent]
-    let rules: [Rule]
+    let rules: [Automations.Rule]
     let patchyMonitoringEnabled: Bool
     let patchyEnabledTargetCount: Int
     let patchyTotalTargetCount: Int
@@ -2184,8 +2184,8 @@ private enum OperationalInsightsEngine {
     }
 
     private static func automationCoverageInsight(_ context: OperationalInsightContext) -> OperationalInsight? {
-        let enabledRules = context.rules.filter(\.isEnabled)
-        let configuredSteps = enabledRules.reduce(0) { $0 + actionableBlockCount(in: $1) }
+        let enabledRules = context.rules.filter(\.enabled)
+        let configuredSteps = enabledRules.reduce(0) { $0 + actionableStepCount(in: $1) }
         let activeAutomationCount = enabledRules.count
         guard configuredSteps > 0 || context.patchyEnabledTargetCount > 0 else { return nil }
 
@@ -2444,7 +2444,7 @@ private enum OperationalInsightsEngine {
             tone = context.system.failedAutomationCount > 0 ? .warning : .healthy
         }
 
-        let enabledAutomationCount = context.rules.filter { $0.isEnabled }.count
+        let enabledAutomationCount = context.rules.filter(\.enabled).count
         let note: String?
         if context.system.failedAutomationCount > 0 {
             note = "\(context.system.failedAutomationCount) automation failure\(context.system.failedAutomationCount == 1 ? "" : "s") need attention."
@@ -2486,9 +2486,9 @@ private enum OperationalInsightsEngine {
         return trimmed
     }
 
-    private static func actionableBlockCount(in rule: Rule) -> Int {
-        let modifierTypes: Set<ActionType> = [.mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM, .replyToTrigger]
-        return rule.processedActions.filter { !modifierTypes.contains($0.type) }.count
+    /// Steps that do something; waits and log lines don't count.
+    private static func actionableStepCount(in rule: Automations.Rule) -> Int {
+        rule.steps.filter { $0.kind != .delay && $0.kind != .log }.count
     }
 
     private static func weekdayName(for date: Date) -> String {

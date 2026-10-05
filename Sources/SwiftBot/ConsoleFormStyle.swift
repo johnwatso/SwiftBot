@@ -28,7 +28,7 @@ extension EnvironmentValues {
 
 struct ConsoleFormStyle: FormStyle {
     func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 24) {
             ForEach(sections: configuration.content) { section in
                 ConsoleFormSection(section: section)
             }
@@ -53,6 +53,8 @@ private struct ConsoleFormSection: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
                 .textCase(nil)
+                // Plain titles, as on the Overview's panels.
+                .labelStyle(.titleOnly)
             }
 
             VStack(alignment: .leading, spacing: 0) {
@@ -144,37 +146,14 @@ private struct RowLabel<Label: View>: View {
 
 // MARK: - Console setting components
 
-/// A section's heading: a small glyph tile, the title, and an optional
-/// one-line description of what the section configures.
+/// A section's heading: a plain title, as on the Overview's panels.
 struct ConsoleSectionHeader: View {
     let title: String
-    let symbol: String
-    var subtitle: String?
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 32, height: 32)
-                .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
-                )
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.title3.weight(.semibold))
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.horizontal, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+        Text(title)
+            .font(.title3.weight(.semibold))
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -184,6 +163,7 @@ struct ConsoleSettingRow<Trailing: View>: View {
     let title: String
     var symbol: String?
     var brandAsset: String?
+    var imageURL: URL? = nil
     var symbolTint: Color = .secondary
     var subtitle: String?
     /// A short status line shown in place of, or above, the description:
@@ -193,7 +173,7 @@ struct ConsoleSettingRow<Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            if symbol != nil || brandAsset != nil {
+            if symbol != nil || brandAsset != nil || imageURL != nil {
                 glyph
                     .frame(width: 30, height: 30)
                     .background(.primary.opacity(0.05), in: Circle())
@@ -234,7 +214,19 @@ struct ConsoleSettingRow<Trailing: View>: View {
 
     @ViewBuilder
     private var glyph: some View {
-        if let brandAsset {
+        if let imageURL {
+            AsyncImage(url: imageURL) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    Image(systemName: symbol ?? "person.3.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(symbolTint)
+                }
+            }
+            .frame(width: 30, height: 30)
+            .clipShape(Circle())
+        } else if let brandAsset {
             Image(brandAsset)
                 .resizable()
                 .scaledToFit()
