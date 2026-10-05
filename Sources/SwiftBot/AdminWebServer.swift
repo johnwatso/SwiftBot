@@ -4445,12 +4445,16 @@ actor AdminWebServer {
         if let scriptNonce {
             scriptSrc += " 'nonce-\(scriptNonce)'"
         }
+        // Music card previews show cover art straight from the services it
+        // comes from: Apple (iTunes search), and the oEmbed thumbnails of
+        // Spotify, YouTube and SoundCloud links Apple couldn't match.
+        let musicArtworkHosts = "https://*.mzstatic.com https://i.scdn.co https://*.spotifycdn.com https://i.ytimg.com https://*.sndcdn.com"
         let parts = [
             "default-src 'self'",
             "script-src \(scriptSrc)",
             "script-src-attr 'none'",
             "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob: https://cdn.discordapp.com https://media.discordapp.net",
+            "img-src 'self' data: blob: https://cdn.discordapp.com https://media.discordapp.net \(musicArtworkHosts)",
             "media-src 'self' blob:",
             "connect-src 'self'",
             "font-src 'self' data:",
