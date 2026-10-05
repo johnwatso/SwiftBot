@@ -3797,6 +3797,17 @@
       padding: 7px 9px; font-size: 11.5px; color: var(--cv-text-muted);
     }
     .ac-combo-more { border-top: 1px solid var(--cv-border-soft); margin-top: 4px; }
+    .ac-combo-group {
+      padding: 7px 9px 3px; font-size: 10.5px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em; color: var(--cv-text-muted);
+    }
+    .ac-combo-option.is-current { font-weight: 600; }
+    /* Channel <select>s upgraded to the type-ahead above (enhanceChannelSelect). */
+    .ch-picker { min-width: 0; }
+    .automation-editor-row > .ch-picker { flex: 1; }
+    .ch-picker.rw-picker { width: 220px; max-width: 100%; flex: none; }
+    .ch-picker .ch-picker-input { width: 100%; text-overflow: ellipsis; }
+    .ch-picker .ac-chips:empty { display: none; }
 
     /* Announcer live state — mirrors the native "Current State" panel. */
     .ac-state-head {
@@ -5462,10 +5473,6 @@
       .cmd-row-link.is-side { display: none; }
       .cmd-row-link.is-below { display: inline-flex; }
     }
-    .music-server + .music-server { margin-top: 12px; }
-    .music-filter { display: flex; margin-bottom: 12px; }
-    #modalOverlay .music-filter input { border: 0; border-radius: 0; box-shadow: none; padding: 0; height: 30px; min-height: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; outline: none; flex: 1; width: auto; }
-    #musicWatchChannels .patchy-role-list { max-height: 260px; overflow-y: auto; }
     .cmd-item { cursor: default; }
     #appShell .cmd-item .ub-item-title { white-space: normal; flex-wrap: wrap; align-items: center; row-gap: 4px; }
     #appShell .cmd-item .ub-item-text { min-width: 0; }
@@ -8943,14 +8950,11 @@
       if (!watcher) return;
       const selected = new Set(watcher.channelIDs || []);
       const servers = (watcher.servers || []).filter(server => (watcher.textChannelsByServer?.[server.id] || []).length);
-      const serverBlock = (server) => `
-        <div class="music-server">
-          ${servers.length > 1 ? `<div class="ac-field-label">${escapeHTML(server.name)}</div>` : ''}
-          <div class="patchy-role-list">
-            ${(watcher.textChannelsByServer?.[server.id] || []).map(channel => `
-              <label class="patchy-role-chip"><input type="checkbox" class="music-channel" value="${escapeHTML(channel.id)}" ${selected.has(channel.id) ? 'checked' : ''}><span>#${escapeHTML(channel.name)}</span></label>`).join('')}
-          </div>
-        </div>`;
+      const channelOptions = (server) => (watcher.textChannelsByServer?.[server.id] || []).map(channel => `
+        <option value="${escapeHTML(channel.id)}" ${selected.has(channel.id) ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('');
+      const channelPicker = `<select id="musicWatchSelect" multiple data-channel-picker aria-label="Channels to watch">${servers.length > 1
+        ? servers.map(server => `<optgroup label="${escapeHTML(server.name)}">${channelOptions(server)}</optgroup>`).join('')
+        : servers.map(channelOptions).join('')}</select>`;
 
       showModal('Music link watcher', `
         <div class="automation-editor-section">
@@ -8961,10 +8965,7 @@
         </div>
         <div class="automation-editor-section" id="musicWatchChannels">
           <h3><i class="lucide" data-lucide="hash"></i> Channels</h3>
-          ${servers.reduce((n, server) => n + (watcher.textChannelsByServer?.[server.id] || []).length, 0) > 20
-            ? '<label class="cmd-search music-filter"><i class="lucide" data-lucide="search"></i><input id="musicWatchFilter" type="search" placeholder="Filter channels" autocomplete="off" spellcheck="false"></label>'
-            : ''}
-          ${servers.length ? servers.map(serverBlock).join('') : '<div class="ub-help" style="margin-top:0;">No text channels found. Connect SwiftBot to a server first.</div>'}
+          ${servers.length ? channelPicker : '<div class="ub-help" style="margin-top:0;">No text channels found. Connect SwiftBot to a server first.</div>'}
         </div>
         <div class="automation-editor-section">
           <h3><i class="lucide" data-lucide="eye"></i> Preview</h3>
@@ -8982,7 +8983,7 @@
 
       const validate = () => {
         const enabled = document.getElementById('musicWatchEnabled').checked;
-        const count = document.querySelectorAll('.music-channel:checked').length;
+        const count = document.getElementById('musicWatchSelect')?.selectedOptions.length || 0;
         document.getElementById('musicWatchChannels').classList.toggle('is-dimmed', !enabled);
         const issue = enabled && !count ? 'Pick at least one channel to watch.' : '';
         document.getElementById('musicWatchHint').textContent = issue;
@@ -8990,14 +8991,6 @@
       };
       // The section's parent is this dialog's own content, replaced on every open.
       document.getElementById('musicWatchChannels').parentElement.addEventListener('change', validate);
-      document.getElementById('musicWatchFilter')?.addEventListener('input', (e) => {
-        const term = e.target.value.trim().toLowerCase();
-        document.querySelectorAll('#musicWatchChannels .patchy-role-chip').forEach(chip => {
-          const input = chip.querySelector('input');
-          // Keep chosen channels visible so a filter never hides a selection.
-          chip.style.display = !term || input.checked || chip.textContent.toLowerCase().includes(term) ? '' : 'none';
-        });
-      });
       validate();
       refreshIcons();
       document.getElementById('musicPreviewForm').addEventListener('submit', (event) => {
@@ -9010,7 +9003,7 @@
       loadMusicCardPreview(musicPreviewLink);
 
       document.getElementById('musicWatchSave').onclick = async (e) => {
-        const channelIDs = Array.from(document.querySelectorAll('.music-channel:checked')).map(input => input.value);
+        const channelIDs = Array.from(document.getElementById('musicWatchSelect')?.selectedOptions || []).map(option => option.value);
         e.currentTarget.disabled = true;
         try {
           await saveConfigPatch({ musicLinkWatchEnabled: document.getElementById('musicWatchEnabled').checked, musicLinkWatchChannelIDs: channelIDs });
@@ -9726,7 +9719,7 @@
             </div>
             <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
               <div class="ub-row-text"><div class="ub-row-title">Post the server Replay in</div><div class="ub-row-desc">The server-wide recap everyone sees.</div></div>
-              <select id="rwDropChannel" class="field-select rw-picker" aria-label="Channel for Replay posts"><option value="">Don’t post</option>${g.channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === g.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>
+              <select id="rwDropChannel" class="field-select rw-picker" data-channel-picker aria-label="Channel for Replay posts"><option value="">Don’t post</option>${g.channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === g.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}</select>
             </div>
             <div class="ub-row${scheduled ? '' : ' is-dimmed'}">
               <div class="ub-row-text">
@@ -10761,7 +10754,7 @@
           <h3><i class="lucide" data-lucide="play-circle"></i> Simulate</h3>
           <p class="ub-help" style="margin-top:0;">Tests the rule as it is now, saved or not, against a sample event. Nothing is sent to Discord. Leave a field blank to use a value that suits the rule.</p>
           <div class="automation-editor-row"><label>Username</label><input id="simUsername" class="field-input" placeholder="From the rule"></div>
-          <div class="automation-editor-row"><label>Channel</label><select id="simChannel" class="field-select">
+          <div class="automation-editor-row"><label>Channel</label><select id="simChannel" class="field-select" data-channel-picker>
             <option value="">From the rule</option>
             ${ctx.textChannels.map(c => `<option value="${escapeHTML(c.id)}">#${escapeHTML(c.name)}</option>`).join('')}
             ${(ctx.voiceChannels || []).map(c => `<option value="${escapeHTML(c.id)}">🔊 ${escapeHTML(c.name)}</option>`).join('')}
@@ -11005,7 +10998,7 @@
             </div>
           ` : ''}
           ${['messageCreated', 'reactionAdded', 'slashCommand'].includes(rule.trigger.kind) ? `
-            <div class="automation-editor-row"><label>Trigger channel</label><select id="autoTriggerChannel" class="field-select"><option value="">Any channel</option>${ctx.textChannels.map(channel => `<option value="${channel.id}" ${channel.id === rule.trigger.channelId ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('')}</select></div>
+            <div class="automation-editor-row"><label>Trigger channel</label><select id="autoTriggerChannel" class="field-select" data-channel-picker><option value="">Any channel</option>${ctx.textChannels.map(channel => `<option value="${channel.id}" ${channel.id === rule.trigger.channelId ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('')}</select></div>
           ` : ''}
           ${rule.trigger.kind === 'reactionAdded' ? `<div class="automation-editor-row"><label>Reaction emoji</label><input id="autoTriggerEmoji" class="field-input" value="${escapeHTML(rule.trigger.reactionEmoji || '')}" placeholder="Any emoji"></div>` : ''}
           ${rule.trigger.kind === 'userLeftVoice' ? `<div class="automation-editor-row"><label>Minimum stay (seconds)</label><input id="autoTriggerVoiceDuration" type="number" min="0" class="field-input" value="${rule.trigger.voiceDurationThreshold ?? ''}" placeholder="Any duration"></div>` : ''}
@@ -11115,7 +11108,7 @@
         const sel = selectedSet(arr);
         return `<div class="automation-editor-row">
           <label>${label}</label>
-          <select multiple size="${Math.min(6, Math.max(3, pool.length))}" class="field-select auto-filter-multi" data-field="${dataKey}" data-filter-index="${idx}">
+          <select multiple size="${Math.min(6, Math.max(3, pool.length))}" class="field-select auto-filter-multi" ${dataKey === 'channelIds' ? 'data-channel-picker' : ''} data-field="${dataKey}" data-filter-index="${idx}">
             ${pool.map(o => `<option value="${o.id}" ${isSelected(sel, o.id)}>${(dataKey === 'channelIds' && pool === ctx.textChannels) ? '#' : ''}${escapeHTML(o.name)}</option>`).join('')}
           </select>
         </div>`;
@@ -11304,7 +11297,7 @@
               <option value="specificChannel" ${s.sendTarget==='specificChannel'?'selected':''}>Specific channel</option>
             </select>`),
             (s.sendTarget === 'specificChannel' ? row('Channel',
-              `<select class="field-select auto-step-field" data-field="channelId" data-step-index="${idx}">${channelOpts(ctx.textChannels, s.channelId)}</select>`) : ''),
+              `<select class="field-select auto-step-field" data-channel-picker data-field="channelId" data-step-index="${idx}">${channelOpts(ctx.textChannels, s.channelId)}</select>`) : ''),
             row('Message', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="content" data-step-index="${idx}" rows="3" placeholder="Hey {username}!">${escapeHTML(s.content || '')}</textarea>${automationVariableChips('content', idx)}</div>`),
             renderAutomationAIPromptRow(s, idx)
           ].join('');
@@ -11324,7 +11317,7 @@
               ? row('Reason', `<input class="field-input auto-step-field" data-field="kickReason" data-step-index="${idx}" value="${escapeHTML(s.kickReason || '')}">`)
               : '',
             (s.memberOp === 'moveVoice')
-              ? row('Voice channel', `<select class="field-select auto-step-field" data-field="targetVoiceChannelId" data-step-index="${idx}">${channelOpts(ctx.voiceChannels, s.targetVoiceChannelId)}</select>`)
+              ? row('Voice channel', `<select class="field-select auto-step-field" data-channel-picker data-field="targetVoiceChannelId" data-step-index="${idx}">${channelOpts(ctx.voiceChannels, s.targetVoiceChannelId)}</select>`)
               : ''
           ].join('');
         case 'modifyMessage':
@@ -11655,7 +11648,7 @@
     function channelSelect(id, selected) {
       const options = `<option value="">-- Pick a text channel --</option>` + (welcomeContext().textChannels || [])
         .map(c => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('');
-      return `<select id="${id}" class="field-select">${options}</select>`;
+      return `<select id="${id}" class="field-select" data-channel-picker>${options}</select>`;
     }
 
     function roleSelect(cls, selected, index) {
@@ -13123,7 +13116,7 @@
             row('Discord member', gameTrackerMemberSelect(data.members || [], draft.discordUserID, off)
               + '<div class="ub-help">Links this profile to a Discord account so SwiftBot can spot play sessions from rich presence and post a summary when one ends.</div>'))}
           ${section('megaphone', 'Announcements',
-            row('Channel', `<select id="gtChannel" class="field-select" ${off}><option value="">Select a channel</option>${(data.channels || []).map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.destinationChannelID ? 'selected' : ''}>${escapeHTML(c.name)}</option>`).join('')}</select>`)
+            row('Channel', `<select id="gtChannel" class="field-select" data-channel-picker ${off}><option value="">Select a channel</option>${(data.channels || []).map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.destinationChannelID ? 'selected' : ''}>${escapeHTML(c.name)}</option>`).join('')}</select>`)
             + `<label class="ac-toggle"><input id="gtEnabled" type="checkbox" ${draft.isEnabled ? 'checked' : ''} ${off}><span class="ac-toggle-text"><span class="ac-toggle-title">Track this player</span></span></label>`
             + '<div class="ub-help">Every stat is recorded. What gets posted is set once for everyone under Announcements › Discord post style.</div>')}
         `;
@@ -13605,7 +13598,7 @@
       root.innerHTML = `
         ${section('hash', 'Channel',
           row('Server', `<select id="seGuild" class="field-select">${servers.map(s => `<option value="${escapeHTML(s.id)}" ${s.id === draft.guildID ? 'selected' : ''}>${escapeHTML(s.name)}</option>`).join('')}</select>`)
-          + row('Channel', `<select id="seChannel" class="field-select"><option value="">Select a channel</option>${
+          + row('Channel', `<select id="seChannel" class="field-select" data-channel-picker><option value="">Select a channel</option>${
               voiceChannels.length ? `<optgroup label="Text channels">` : ''}${channels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.channelID ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('')}${
               voiceChannels.length ? `</optgroup><optgroup label="Voice channel chats">${voiceChannels.map(c => `<option value="${escapeHTML(c.id)}" ${c.id === draft.channelID ? 'selected' : ''}>🔊 ${escapeHTML(c.name)}</option>`).join('')}</optgroup>` : ''}</select>`)
           + row('Rule name', `<input id="seName" class="field-input" value="${escapeHTML(draft.name)}" placeholder="Defaults to “Tidy #channel”">`))}
@@ -14302,6 +14295,184 @@
       renderChips();
     }
 
+    // Type-ahead for any channel <select> marked data-channel-picker. The
+    // select stays in the DOM (hidden) as the source of truth, so the code that
+    // reads .value / .selectedOptions or listens for "change" is unchanged;
+    // this only replaces how a channel is found. Same combobox as the
+    // Announcer's text-channel picker: never renders more than
+    // AC_CHANNEL_RESULT_LIMIT matches. A <select multiple> gets chips.
+    function enhanceChannelSelect(select) {
+      if (select.dataset.channelPickerReady) return;
+      select.dataset.channelPickerReady = 'true';
+      const multiple = select.multiple;
+      const listID = `chPicker${Math.random().toString(36).slice(2, 9)}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'ch-picker' + (select.classList.contains('rw-picker') ? ' rw-picker' : '');
+      wrap.innerHTML = `
+        ${multiple ? '<div class="ac-chips"></div>' : ''}
+        <div class="ac-combo">
+          ${multiple ? '<i class="lucide" data-lucide="search"></i>' : ''}
+          <input class="${multiple ? 'ac-combo-input' : 'field-select ch-picker-input'}" type="text" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-expanded="false" aria-controls="${listID}"
+                 aria-label="${escapeHTML(select.getAttribute('aria-label') || 'Channel')}"
+                 placeholder="${multiple ? 'Search channels to add…' : 'Search channels…'}">
+        </div>
+        <div id="${listID}" class="ac-combo-list" role="listbox" hidden></div>
+      `;
+      select.style.display = 'none';
+      select.after(wrap);
+
+      const chipsNode = wrap.querySelector('.ac-chips');
+      const input = wrap.querySelector('input');
+      const listNode = wrap.querySelector('.ac-combo-list');
+      const options = () => Array.from(select.options);
+      const groupOf = (option) => option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.label : '';
+      const labelOf = (option) => option.textContent.trim();
+      const searchText = (option) => `${labelOf(option)} ${groupOf(option)}`.replace(/#/g, '').toLowerCase();
+      let activeIndex = -1;
+      let matches = [];
+
+      function syncInput() {
+        input.disabled = select.disabled;
+        if (!multiple) input.value = select.selectedOptions[0] ? labelOf(select.selectedOptions[0]) : '';
+      }
+
+      function renderChips() {
+        if (!chipsNode) return;
+        const chosen = options().filter(o => o.selected);
+        chipsNode.innerHTML = chosen.length
+          ? chosen.map(o => `
+            <span class="ac-chip">
+              ${escapeHTML(labelOf(o))}
+              <button type="button" class="ac-chip-remove" data-index="${o.index}" aria-label="Remove ${escapeHTML(labelOf(o))}" ${select.disabled ? 'disabled' : ''}>
+                <i class="lucide" data-lucide="x"></i>
+              </button>
+            </span>`).join('')
+          : '<span class="ac-chips-empty">No channels chosen yet.</span>';
+        chipsNode.querySelectorAll('.ac-chip-remove').forEach(btn => {
+          btn.addEventListener('click', () => setSelected(select.options[Number(btn.dataset.index)], false));
+        });
+        refreshIcons();
+      }
+
+      function renderOptions() {
+        const query = input.value.trim().replace(/^#/, '').toLowerCase();
+        // A single picker shows every channel until the text differs from the
+        // current choice, so focusing it doesn't filter down to one row.
+        const filtering = query && !(!multiple && select.selectedOptions[0] && input.value === labelOf(select.selectedOptions[0]));
+        matches = options()
+          .filter(o => !o.disabled && !(multiple && o.selected))
+          .filter(o => !filtering || searchText(o).includes(query));
+
+        if (matches.length === 0) {
+          listNode.innerHTML = `<div class="ac-combo-empty">${filtering ? 'No channels match' : 'All channels added'}</div>`;
+          activeIndex = -1;
+          return;
+        }
+
+        const shown = matches.slice(0, AC_CHANNEL_RESULT_LIMIT);
+        if (activeIndex >= shown.length) activeIndex = shown.length - 1;
+        let lastGroup = '';
+        listNode.innerHTML = shown.map((o, i) => {
+          const group = groupOf(o);
+          const head = group && group !== lastGroup ? `<div class="ac-combo-group">${escapeHTML(group)}</div>` : '';
+          lastGroup = group;
+          const current = !multiple && o.selected;
+          return `${head}<div class="ac-combo-option${i === activeIndex ? ' is-active' : ''}${current ? ' is-current' : ''}" role="option"
+               aria-selected="${current || i === activeIndex}" data-index="${i}">${escapeHTML(labelOf(o))}</div>`;
+        }).join('') + (matches.length > shown.length
+          ? `<div class="ac-combo-more">${matches.length - shown.length} more — keep typing to narrow</div>`
+          : '');
+
+        listNode.querySelectorAll('.ac-combo-option').forEach(node => {
+          // mousedown fires before the input's blur, so the click isn't lost.
+          node.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            pick(shown[Number(node.dataset.index)]);
+          });
+          node.addEventListener('mouseenter', () => {
+            activeIndex = Number(node.dataset.index);
+            listNode.querySelectorAll('.ac-combo-option').forEach(n => n.classList.remove('is-active'));
+            node.classList.add('is-active');
+          });
+        });
+      }
+
+      function setSelected(option, on) {
+        if (!option || select.disabled) return;
+        if (multiple) option.selected = on;
+        else select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        renderChips();
+      }
+
+      function pick(option) {
+        if (!option) return;
+        const changed = multiple || select.value !== option.value;
+        if (changed) setSelected(option, true);
+        activeIndex = -1;
+        if (multiple) {
+          input.value = '';
+          renderOptions();
+          input.focus();
+        } else {
+          syncInput();
+          closeList();
+          input.blur();
+        }
+      }
+
+      function openList() {
+        if (select.disabled) return;
+        listNode.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        renderOptions();
+      }
+
+      function closeList() {
+        listNode.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        activeIndex = -1;
+      }
+
+      input.addEventListener('focus', () => { if (!multiple) input.select(); openList(); });
+      input.addEventListener('input', () => { activeIndex = -1; openList(); });
+      input.addEventListener('blur', () => setTimeout(() => { closeList(); syncInput(); }, 120));
+      select.addEventListener('change', () => { if (document.activeElement !== input) syncInput(); });
+
+      input.addEventListener('keydown', (event) => {
+        const shownCount = Math.min(matches.length, AC_CHANNEL_RESULT_LIMIT);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          if (listNode.hidden) { openList(); return; }
+          if (shownCount === 0) return;
+          activeIndex = event.key === 'ArrowDown'
+            ? (activeIndex + 1) % shownCount
+            : (activeIndex <= 0 ? shownCount - 1 : activeIndex - 1);
+          renderOptions();
+          listNode.querySelector('.ac-combo-option.is-active')?.scrollIntoView({ block: 'nearest' });
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          if (listNode.hidden || shownCount === 0) return;
+          pick(matches[activeIndex >= 0 ? activeIndex : 0]);
+        } else if (event.key === 'Escape') {
+          if (!listNode.hidden) { event.stopPropagation(); closeList(); syncInput(); }
+        } else if (multiple && event.key === 'Backspace' && input.value === '') {
+          const last = options().filter(o => o.selected).pop();
+          if (last) { setSelected(last, false); renderOptions(); }
+        }
+      });
+
+      syncInput();
+      renderChips();
+    }
+
+    // Views and dialogs render with innerHTML, so pick up channel selects
+    // wherever they appear instead of wiring each one by hand.
+    new MutationObserver(() => {
+      document.querySelectorAll('select[data-channel-picker]:not([data-channel-picker-ready])').forEach(enhanceChannelSelect);
+    }).observe(document.body, { childList: true, subtree: true });
+
     function renderAnnouncerEditor(config) {
       const root = document.getElementById('announcerEditorBody');
       if (!root) return;
@@ -14387,7 +14558,7 @@
       const voiceChannelBody = allVoiceChannels.length === 0
         ? '<div class="ac-note">No voice channels found. Connect the bot to Discord first.</div>'
         : row('Voice Channel', `
-            <select id="acVoiceChannel" class="field-select">
+            <select id="acVoiceChannel" class="field-select" data-channel-picker>
               <option value="">— Pick a voice channel —</option>
               ${allVoiceChannels.map(vc => `<option value="${escapeHTML(vc.id)}" data-channel-name="${escapeHTML(vc.name)}" ${vc.id === config.voiceChannelID ? 'selected' : ''}>${escapeHTML(vc.label)}</option>`).join('')}
             </select>
@@ -14946,7 +15117,7 @@
 
       const delivery = row('Server', `<select id="peServer" class="field-select" ${off}>${asOptions(servers, draft.serverId)}</select>`)
         + row('Channel', channels.length
-          ? `<select id="peChannel" class="field-select" ${off}>${asOptions(channels, draft.channelId)}</select>`
+          ? `<select id="peChannel" class="field-select" data-channel-picker ${off}>${asOptions(channels, draft.channelId)}</select>`
           : '<div class="ub-help">No text channels found for this server.</div>')
         + row('Mention roles', rolesHTML)
         + (draft.source === 'SwiftMiner'
