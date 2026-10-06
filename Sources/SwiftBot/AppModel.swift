@@ -291,6 +291,16 @@ final class AppModel: ObservableObject {
     let meshWitnessClient = MeshWitnessClient()
     @Published var meshWritesPaused = false
     @Published var meshOwnershipDeadline: ContinuousClock.Instant?
+    /// Ruru shown on the SwiftMesh map; nil when no witness is configured.
+    @Published var meshWitnessHealth: MeshWitnessHealth?
+    @Published var meshWitnessEndpoint = ""
+    var meshWitnessHealthTask: Task<Void, Never>?
+    /// Ruru's Preferred Primary, polled every 5 s while witness-backed SwiftMesh runs.
+    @Published var meshPrimaryPreference = MeshPrimaryPreference()
+    var meshPrimaryPreferenceTracker = MeshPrimaryPreferenceTracker()
+    var meshPrimaryPolicyTask: Task<Void, Never>?
+    /// This Mac's stable enrollment node ID (its witness `nodeID`).
+    @Published var meshLocalNodeID = ""
     var meshLastSuccessfulSync: Date?
     let adminWebServer = AdminWebServer()
     let certificateManager = CertificateManager()
@@ -1103,6 +1113,7 @@ final class AppModel: ObservableObject {
         await disconnectVoice()
         await service.disconnect()
         await cluster.stopAll()
+        await meshDidStop()
         meshSyncTask?.cancel()
         meshSyncTask = nil
         clusterNodesRefreshTask?.cancel()

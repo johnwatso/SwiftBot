@@ -276,6 +276,9 @@ actor ClusterCoordinator {
     private var pendingHandback: HandbackTransfer?
     private var committedHandbacks: [UUID: HandbackTransfer] = [:]
     private var credentialPublicKeyProvider: (@Sendable (String) async -> String?)?
+    /// Ruru's Preferred Primary as last pushed by AppModel. Chooses which
+    /// Standby reclaims automatically; never grants ownership.
+    private var primaryPreference = MeshPrimaryPreference()
     private var credentialNodeID = ""
     private var credentialEnrollmentToken = ""
     private var publicMeshAddress = ""
@@ -288,6 +291,27 @@ actor ClusterCoordinator {
         let targetAddress: String
         let leaderTerm: Int
         let expiresAt: Date
+        /// The target's stable enrollment node ID, proven by its credential
+        /// signature on the request. Absent from older builds.
+        var targetNodeID: String?
+        /// Started by the reclaim timer rather than an operator. Only these are
+        /// held to Ruru's Preferred Primary. Absent (manual) from older builds.
+        var automatic: Bool?
+    }
+
+    func setPrimaryPreference(_ preference: MeshPrimaryPreference) {
+        if preference != primaryPreference { standbyHealthySince = nil }
+        primaryPreference = preference
+    }
+
+    func currentPrimaryPreference() -> MeshPrimaryPreference { primaryPreference }
+
+    /// Whether this Standby's reclaim timer may run. See `MeshPrimaryPreferenceDecision`.
+    private func mayReclaimAutomatically() -> Bool {
+        autoReclaimAfterSeconds > 0 && MeshPrimaryPreferenceDecision.mayReclaimAutomatically(
+            primaryPreference, localNodeID: credentialNodeID, localMode: mode,
+            isConfiguredPrimary: isConfiguredPrimary, now: .now
+        )
     }
 
     func setPromotionReadinessHandler(_ handler: @escaping @Sendable () async -> String?) {
@@ -404,17 +428,22 @@ actor ClusterCoordinator {
 
     /// Read-only catchup precedes a transfer. The active owner stays frozen until
     /// it either explicitly aborts or acknowledges that it has closed output.
+    /// `automatic` marks a reclaim-timer request: it must still be allowed by
+    /// Ruru's preference at prepare and again before commit.
     @discardableResult
-    func requestCoordinatedHandback() async -> Bool {
+    func requestCoordinatedHandback(automatic: Bool = false) async -> Bool {
         guard mode == .standby, !handbackInProgress, !promotionInProgress,
               desiredBotRunning, let catchup = handbackCatchupHandler,
               let baseURL = normalizedBaseURL(leaderAddress), !baseURL.isEmpty else { return false }
+        if automatic, !mayReclaimAutomatically() { return false }
         handbackInProgress = true
         defer { handbackInProgress = false }
         let request = HandbackTransfer(
             transferID: UUID(), targetNodeName: nodeName,
             targetAddress: localWorkerAdvertisedBaseURL(), leaderTerm: leaderTerm,
-            expiresAt: Date().addingTimeInterval(90)
+            expiresAt: Date().addingTimeInterval(90),
+            targetNodeID: credentialNodeID.isEmpty ? nil : credentialNodeID,
+            automatic: automatic ? true : nil
         )
         guard let prepared = await postHandback(request, phase: "prepare", baseURL: baseURL),
               prepared.transferID == request.transferID,
@@ -426,6 +455,14 @@ actor ClusterCoordinator {
               await promotionReadinessHandler?() == nil else {
             _ = await postHandback(prepared, phase: "abort", baseURL: baseURL)
             snapshot.diagnostics = "Handback deferred: catchup or readiness failed; current Primary retained"
+            await publishSnapshot()
+            return false
+        }
+        // The preference may have changed during catchup. Before commit the
+        // owner has only frozen, so aborting here is still safe.
+        if automatic, !mayReclaimAutomatically() {
+            _ = await postHandback(prepared, phase: "abort", baseURL: baseURL)
+            snapshot.diagnostics = "Handback cancelled: Ruru's Preferred Primary changed; current Primary retained"
             await publishSnapshot()
             return false
         }
@@ -457,6 +494,8 @@ actor ClusterCoordinator {
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyMeshAuth(to: &request, path: path)
+        // Proves `targetNodeID` with this node's enrollment key.
+        applyCredentialAuth(to: &request, path: path)
         request.timeoutInterval = 25
         do {
             let (data, response) = try await meshSession.data(for: request)
@@ -467,15 +506,35 @@ actor ClusterCoordinator {
         }
     }
 
-    private func handleHandback(_ body: Data, phase: String) async -> Data {
-        guard let transfer = try? decoder.decode(HandbackTransfer.self, from: body),
+    private func handleHandback(_ request: HTTPRequest, phase: String) async -> Data {
+        guard let transfer = try? decoder.decode(HandbackTransfer.self, from: request.body),
               let target = normalizedBaseURL(transfer.targetAddress),
               !isSelfClusterEndpoint(target) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_transfer"}"#.utf8))
         }
+        // A claimed stable ID must match the enrollment signature. Automatic
+        // requests must carry one, and must name Ruru's Preferred Primary
+        // when this owner has a fresh preference.
+        let verifiedNodeID = await authenticatedCredentialNodeID(request)
+        if let claimed = transfer.targetNodeID, let verifiedNodeID, claimed != verifiedNodeID {
+            return httpResponse(status: "403 Forbidden", body: Data(#"{"error":"target_identity_mismatch"}"#.utf8))
+        }
         if phase == "commit", let committed = committedHandbacks[transfer.transferID],
-           committed.targetNodeName == transfer.targetNodeName, committed.targetAddress == target {
+           committed.targetNodeName == transfer.targetNodeName, committed.targetAddress == target,
+           committed.targetNodeID == transfer.targetNodeID {
             return sealedResponse((try? encoder.encode(committed)) ?? Data())
+        }
+        // After a commit is recorded, the replay above must keep answering even
+        // if the preference has since changed: the old owner has already closed.
+        if transfer.automatic == true, phase != "abort" {
+            guard let claimed = transfer.targetNodeID, claimed == verifiedNodeID else {
+                return httpResponse(status: "403 Forbidden", body: Data(#"{"error":"target_identity_unverified"}"#.utf8))
+            }
+            guard MeshPrimaryPreferenceDecision.acceptsAutomaticHandback(primaryPreference, verifiedTargetNodeID: claimed, now: .now) else {
+                // Changed after prepare: nothing is committed yet, so unfreeze now.
+                if pendingHandback?.transferID == transfer.transferID { await abortPendingHandback(transfer.transferID) }
+                return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "not_preferred_primary"))
+            }
         }
         guard mode == .leader, ownershipGranted, transfer.leaderTerm == leaderTerm else {
             return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "current_owner_required"))
@@ -490,7 +549,8 @@ actor ClusterCoordinator {
             }
             let prepared = HandbackTransfer(
                 transferID: transfer.transferID, targetNodeName: transfer.targetNodeName,
-                targetAddress: target, leaderTerm: leaderTerm, expiresAt: Date().addingTimeInterval(90)
+                targetAddress: target, leaderTerm: leaderTerm, expiresAt: Date().addingTimeInterval(90),
+                targetNodeID: transfer.targetNodeID, automatic: transfer.automatic
             )
             pendingHandback = prepared
             snapshot.runtimeState = .demoting
@@ -511,6 +571,7 @@ actor ClusterCoordinator {
         }
         guard let pending = pendingHandback, pending.transferID == transfer.transferID,
               pending.targetAddress == target, pending.targetNodeName == transfer.targetNodeName,
+              pending.targetNodeID == transfer.targetNodeID, pending.automatic == transfer.automatic,
               pending.expiresAt > Date() else {
             return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "transfer_expired"))
         }
@@ -523,7 +584,8 @@ actor ClusterCoordinator {
         }
         let committed = HandbackTransfer(
             transferID: pending.transferID, targetNodeName: pending.targetNodeName,
-            targetAddress: target, leaderTerm: leaderTerm + 1, expiresAt: pending.expiresAt
+            targetAddress: target, leaderTerm: leaderTerm + 1, expiresAt: pending.expiresAt,
+            targetNodeID: pending.targetNodeID, automatic: pending.automatic
         )
         // onDemotion closes output synchronously before the commit response can
         // authorise the returning Mac to open its Discord gateway.
@@ -672,9 +734,7 @@ actor ClusterCoordinator {
     /// Phase 4: time remaining (seconds) until auto-reclaim, or `nil` if
     /// auto-reclaim is disabled / not eligible. Exposed for the GUI countdown.
     func autoReclaimCountdownSeconds() -> TimeInterval? {
-        guard isConfiguredPrimary,
-              autoReclaimAfterSeconds > 0,
-              mode == .standby,
+        guard mayReclaimAutomatically(),
               let since = standbyHealthySince else { return nil }
         let elapsed = Date().timeIntervalSince(since)
         return max(0, autoReclaimAfterSeconds - elapsed)
@@ -1870,17 +1930,24 @@ actor ClusterCoordinator {
     }
 
     private func verifyCredentialAuthorization(_ request: HTTPRequest) async -> Bool {
-        guard request.method == "GET", request.body.isEmpty,
-              let nodeID = request.headers["x-mesh-credential-node-id"],
+        guard request.method == "GET", request.body.isEmpty else { return false }
+        return await authenticatedCredentialNodeID(request) != nil
+    }
+
+    /// The approved node whose enrollment key signed this request's method,
+    /// path, nonce and timestamp. The nonce is also bound to the body by the
+    /// mesh HMAC, which the router has already verified.
+    private func authenticatedCredentialNodeID(_ request: HTTPRequest) async -> String? {
+        guard let nodeID = request.headers["x-mesh-credential-node-id"],
               let supplied = request.headers["x-mesh-credential-signature"],
               let nonce = request.headers["x-mesh-nonce"],
               let timestamp = request.headers["x-mesh-timestamp"],
               let encodedKey = await credentialPublicKeyProvider?(nodeID),
               let rawKey = Data(base64Encoded: encodedKey),
               let key = try? Curve25519.Signing.PublicKey(rawRepresentation: rawKey),
-              let code = Data(base64Encoded: supplied) else { return false }
+              let code = Data(base64Encoded: supplied) else { return nil }
         let message = "SwiftMesh-credential-v1:\(nodeID):\(request.method):\(request.path):\(nonce):\(timestamp)"
-        return key.isValidSignature(code, for: Data(message.utf8))
+        return key.isValidSignature(code, for: Data(message.utf8)) ? nodeID : nil
     }
 
     /// Verifies inbound mesh auth headers. Returns true only if:
@@ -2304,11 +2371,11 @@ actor ClusterCoordinator {
             )
             return httpResponse(status: "200 OK", body: (try? encoder.encode(payload)) ?? Data())
         case ("POST", "/v1/mesh/handback/prepare"):
-            return await handleHandback(request.body, phase: "prepare")
+            return await handleHandback(request, phase: "prepare")
         case ("POST", "/v1/mesh/handback/commit"):
-            return await handleHandback(request.body, phase: "commit")
+            return await handleHandback(request, phase: "commit")
         case ("POST", "/v1/mesh/handback/abort"):
-            return await handleHandback(request.body, phase: "abort")
+            return await handleHandback(request, phase: "abort")
         case ("GET", "/health"):
             let payload = HealthResponse(nodeName: nodeName, mode: mode.rawValue, status: "ok")
             let body = (try? encoder.encode(payload)) ?? Data()
@@ -2655,16 +2722,19 @@ actor ClusterCoordinator {
             // Phase 4: only the originally-configured primary, currently
             // demoted to standby, with auto-reclaim enabled, accumulates a
             // continuous healthy clock. Reclaim once the threshold elapses.
-            if isConfiguredPrimary && autoReclaimAfterSeconds > 0 {
+            // With Ruru, a fresh Preferred Primary picks which Standby this is.
+            if mayReclaimAutomatically() {
                 if standbyHealthySince == nil {
                     standbyHealthySince = Date()
                 } else if let since = standbyHealthySince,
                           Date().timeIntervalSince(since) >= autoReclaimAfterSeconds {
                     meshLogger.notice("Auto-reclaim threshold reached after \(self.autoReclaimAfterSeconds, privacy: .public)s healthy; reclaiming Primary")
                     standbyHealthySince = nil
-                    _ = await requestCoordinatedHandback()
+                    _ = await requestCoordinatedHandback(automatic: true)
                     return
                 }
+            } else {
+                standbyHealthySince = nil
             }
             // NOTE: Removed the duplicate `registerWithLeader` safety-net call.
             // The dedicated `workerRegistrationTask` already registers every 30s.

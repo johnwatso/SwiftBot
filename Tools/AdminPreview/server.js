@@ -402,6 +402,8 @@ async function handleAPI(req, res, pathname, query) {
           { symbol: 'macstudio', label: 'Mac Studio' }, { symbol: 'macpro.gen3', label: 'Mac Pro' },
           { symbol: 'server.rack', label: 'Server rack' }
         ];
+        // Ruru, the ownership witness (display state only, like the app).
+        if (mesh.configuredMode !== 'Standalone') mesh.witness = { host: 'ruru.example.com', health: 'ready', leaseHeld: mesh.configuredMode === 'Leader', preferenceStatus: 'current', preferredPrimary: 'Studio', preferredIsThisMac: false, currentOwner: 'Preview Mac (this Mac)' };
         return sendJSON(res, mesh);
       }
       case '/api/operators': return sendJSON(res, operatorsFixture());
@@ -808,6 +810,11 @@ async function handleAPI(req, res, pathname, query) {
     }
     if (pathname === '/api/operators/test') {
       return operatorState.byNode['Preview Mac'] ? sendJSON(res, { ok: true }) : sendJSON(res, { error: 'no_operator' }, 409);
+    }
+    if (pathname === '/api/swiftmesh/pair') {
+      // The app's most common refusal; set PAIR_OK=1 to get a link instead.
+      if (process.env.PAIR_OK) return sendJSON(res, { joinURL: 'swiftmesh://join?b=preview' });
+      return sendJSON(res, { error: 'reauth_required', message: 'For security, sign out and back in to pair a Mac. You signed in more than 15 minutes ago.' }, 401);
     }
     if (pathname === '/api/swiftmesh/action') {
       const mesh = swiftMeshFixture();

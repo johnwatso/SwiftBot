@@ -129,7 +129,7 @@ struct SwiftMeshView: View {
                     if topologyNodes.isEmpty {
                         PlaceholderPanelLine(text: "Waiting for cluster status…")
                     } else {
-                        ClusterMapView(nodes: topologyNodes)
+                        ClusterMapView(nodes: topologyNodes, witness: ClusterMapWitness(app: app))
                     }
                 }
 
@@ -753,6 +753,8 @@ struct ClusterMapView: View {
 
     @EnvironmentObject var app: AppModel
     let nodes: [ClusterNodeStatus]
+    /// Ruru, drawn above the nodes with an ownership line to the Primary.
+    var witness: ClusterMapWitness?
     var presentation: Presentation = .dashboard
 
     private func makeIconSelector(for displayName: String) -> (String?) -> Void {
@@ -826,6 +828,17 @@ struct ClusterMapView: View {
             let layout = topologyLayout(in: proxy.size)
 
             ZStack {
+                if let witness, let witnessPosition = layout.witnessPosition {
+                    WitnessOwnershipLine(
+                        start: CGPoint(x: witnessPosition.x, y: witnessPosition.y + Self.chipHeight / 2),
+                        end: CGPoint(x: layout.leaderPosition.x, y: layout.leaderPosition.y - Self.chipHeight / 2),
+                        leaseHeld: witness.leaseHeld
+                    )
+                    ClusterMapWitnessChip(witness: witness)
+                        .frame(width: leaderCardWidth)
+                        .position(witnessPosition)
+                }
+
                 ForEach(Array(workers.enumerated()), id: \.element.id) { index, worker in
                     let workerPosition = layout.workerPositions[index]
                     let endpoints = connectionEndpoints(
@@ -884,10 +897,23 @@ struct ClusterMapView: View {
         )
     }
 
+    /// Rendered height of a dashboard node chip, for joining lines to its edges.
+    private static let chipHeight: CGFloat = 44
+
+    /// Space reserved above the nodes for the Ruru chip.
+    private var witnessBand: CGFloat {
+        witness == nil ? 0 : Self.chipHeight + 28
+    }
+
     private func topologyLayout(in size: CGSize) -> ClusterTopologyLayout {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let band = witnessBand
+        let center = CGPoint(x: size.width / 2, y: band + (size.height - band) / 2)
+        // Ruru sits directly above the Primary, which holds its lease.
+        func witnessPosition(above leader: CGPoint) -> CGPoint? {
+            witness == nil ? nil : CGPoint(x: leader.x, y: mapPadding + Self.chipHeight / 2)
+        }
         guard !workers.isEmpty else {
-            return ClusterTopologyLayout(leaderPosition: center, workerPositions: [])
+            return ClusterTopologyLayout(leaderPosition: center, workerPositions: [], witnessPosition: witnessPosition(above: center))
         }
 
         // Left-to-right topology:
@@ -898,7 +924,7 @@ struct ClusterMapView: View {
         let workerX = size.width - mapPadding - (workerCardWidth / 2)
         let leaderPosition = CGPoint(x: leaderX, y: center.y)
 
-        let topY = mapPadding + (compactCardHeight / 2)
+        let topY = band + mapPadding + (compactCardHeight / 2)
         let bottomY = size.height - mapPadding - (compactCardHeight / 2)
 
         let workerPositions: [CGPoint]
@@ -914,7 +940,8 @@ struct ClusterMapView: View {
 
         return ClusterTopologyLayout(
             leaderPosition: leaderPosition,
-            workerPositions: workerPositions
+            workerPositions: workerPositions,
+            witnessPosition: witnessPosition(above: leaderPosition)
         )
     }
 
@@ -944,18 +971,117 @@ struct ClusterMapView: View {
         }
 
         let workerCount = workers.count
-        if workerCount == 0 { return 118 }
-        if workerCount == 1 { return 160 }
-        if workerCount == 2 { return 220 }
-        if workerCount <= 4 { return 340 }
-        if workerCount <= 6 { return 400 }
-        return 470
+        let nodesHeight: CGFloat = switch workerCount {
+        case 0: 118
+        case 1: 160
+        case 2: 220
+        case 3...4: 340
+        case 5...6: 400
+        default: 470
+        }
+        return nodesHeight + witnessBand
     }
 }
 
 private struct ClusterTopologyLayout {
     let leaderPosition: CGPoint
     let workerPositions: [CGPoint]
+    var witnessPosition: CGPoint?
+}
+
+/// What the map shows for Ruru. Health is this Mac's `/health` probe; the
+/// lease is only known locally, so it is shown only while this Mac holds it.
+struct ClusterMapWitness: Equatable {
+    let host: String
+    let endpoint: String
+    let health: MeshWitnessHealth
+    let leaseHeld: Bool
+
+    init(endpoint: String, health: MeshWitnessHealth, leaseHeld: Bool) {
+        self.endpoint = endpoint
+        host = URL(string: endpoint)?.host ?? endpoint
+        self.health = health
+        self.leaseHeld = leaseHeld
+    }
+
+    @MainActor
+    init?(app: AppModel) {
+        guard let health = app.meshWitnessHealth, !app.meshWitnessEndpoint.isEmpty else { return nil }
+        endpoint = app.meshWitnessEndpoint
+        host = URL(string: endpoint)?.host ?? endpoint
+        self.health = health
+        leaseHeld = app.runtimeClusterMode == .leader && (app.meshOwnershipDeadline.map { ContinuousClock.now < $0 } ?? false)
+    }
+}
+
+private struct WitnessOwnershipLine: View {
+    let start: CGPoint
+    let end: CGPoint
+    let leaseHeld: Bool
+
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: start.x, y: start.y + 4))
+            path.addLine(to: CGPoint(x: end.x, y: end.y - 4))
+        }
+        .stroke(
+            leaseHeld ? Color.green.opacity(0.7) : Color.secondary.opacity(0.5),
+            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: leaseHeld ? [] : [4, 4])
+        )
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ClusterMapWitnessChip: View {
+    let witness: ClusterMapWitness
+
+    private var statusColor: Color {
+        switch witness.health {
+        case .ready: .green
+        case .recovering: .yellow
+        case .unreachable: .red
+        case .checking: .gray
+        }
+    }
+
+    private var statusText: String {
+        witness.leaseHeld && witness.health == .ready ? "Lease held" : witness.health.displayName
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.shield")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Ruru")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Circle().fill(statusColor).frame(width: 6, height: 6)
+                    Text(statusText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(witness.health == .unreachable ? 0.07 : 0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+        )
+        .help("Ownership witness at \(witness.host)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Ruru ownership witness, \(statusText)")
+    }
 }
 
 @MainActor

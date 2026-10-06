@@ -20,6 +20,8 @@ extension AppModel {
             }, localNodeID: enrollment.nodeID, localToken: enrollment.token)
             let witness = await Self.loadWitnessSettingsOffMain()
             await meshWitnessClient.configure(witness, nodeID: enrollment.nodeID, nodeName: settings.clusterNodeName)
+            meshLocalNodeID = enrollment.nodeID
+            updateMeshWitnessMonitoring(witness)
             if witness.isConfigured && settings.clusterMode != .standalone {
                 await cluster.setOwnershipHandlers(acquire: { [weak self] term in
                     guard let self else { return nil }
@@ -71,6 +73,94 @@ extension AppModel {
             afterHours: settings.clusterAutoReclaimAfterHours,
             automaticHandbackEnabled: settings.clusterAutomaticHandbackEnabled
         )
+    }
+
+    /// Polls Ruru's `/health` for the SwiftMesh map. Display only: ownership
+    /// still comes solely from lease grants and the local deadline.
+    func updateMeshWitnessMonitoring(_ witness: MeshWitnessConfiguration) {
+        meshWitnessHealthTask?.cancel()
+        meshWitnessHealthTask = nil
+        restartMeshPrimaryPolicyPolling(configured: witness.isValid && settings.clusterMode != .standalone)
+        guard witness.isValid, settings.clusterMode != .standalone else {
+            meshWitnessHealth = nil
+            meshWitnessEndpoint = ""
+            return
+        }
+        if meshWitnessEndpoint != witness.endpoint { meshWitnessHealth = .checking }
+        meshWitnessEndpoint = witness.endpoint
+        guard !Self.isRunningUnderXCTest else { return }
+        meshWitnessHealthTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let client = self?.meshWitnessClient else { return }
+                let health = await client.health()
+                guard !Task.isCancelled else { return }
+                self?.meshWitnessHealth = health
+                // Automatic handback waits for Ruru to be ready (not in restart quarantine).
+                self?.meshPrimaryPreferenceTracker.setAuthorityReady(health == .ready)
+                await self?.publishMeshPrimaryPreference()
+                try? await Task.sleep(for: .seconds(15))
+            }
+        }
+    }
+
+    /// Clears cached intent (any endpoint, cluster or token change, or stop)
+    /// and, when configured, polls `POST /v1/service/policy` every 5 s. Results
+    /// from an earlier generation are dropped by the tracker.
+    func restartMeshPrimaryPolicyPolling(configured: Bool) {
+        meshPrimaryPolicyTask?.cancel()
+        meshPrimaryPolicyTask = nil
+        let generation = meshPrimaryPreferenceTracker.reset(configured: configured)
+        meshPrimaryPreferenceTracker.setAuthorityReady(meshWitnessHealth == .ready)
+        Task { await publishMeshPrimaryPreference() }
+        guard configured, !Self.isRunningUnderXCTest else { return }
+        meshPrimaryPolicyTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let client = self?.meshWitnessClient else { return }
+                let fetch = await client.primaryPolicy()
+                guard !Task.isCancelled, let self else { return }
+                if let fetch, self.meshPrimaryPreferenceTracker.ingest(fetch, generation: generation, at: .now) {
+                    await self.publishMeshPrimaryPreference()
+                }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    /// The Mac that runs the bot now, from the cluster map.
+    var meshCurrentOwnerName: String {
+        if runtimeClusterMode == .leader, !meshOwnershipExpired {
+            return settings.clusterNodeName.isEmpty ? "This Mac" : "\(settings.clusterNodeName) (this Mac)"
+        }
+        return clusterNodes.first { $0.role == .leader && $0.status != .disconnected }?.displayName ?? "None"
+    }
+
+    /// A node's name from its stable ID: this Mac, or a paired grant.
+    func meshNodeName(forNodeID id: String, grants: [MeshCredentialGrant]) -> String {
+        if id == meshLocalNodeID {
+            return settings.clusterNodeName.isEmpty ? "This Mac" : "\(settings.clusterNodeName) (this Mac)"
+        }
+        if let grant = grants.first(where: { $0.nodeID == id }), !grant.nodeName.isEmpty {
+            return grant.nodeName
+        }
+        return "Node \(id.prefix(8))"
+    }
+
+    func meshPreferredPrimaryText(grants: [MeshCredentialGrant]) -> String {
+        let preference = meshPrimaryPreference
+        let preferred = preference.policy?.preferredPrimaryNodeID.map { meshNodeName(forNodeID: $0, grants: grants) }
+        switch preference.status {
+        case .notConfigured: return "—"
+        case .checking: return "Checking Ruru…"
+        case .unsupported: return "Not supported by this Ruru"
+        case .unavailable: return preferred.map { "Unavailable (last: \($0))" } ?? "Unavailable"
+        case .current: return preferred ?? "None set in Ruru"
+        }
+    }
+
+    func publishMeshPrimaryPreference() async {
+        let preference = meshPrimaryPreferenceTracker.preference
+        if meshPrimaryPreference != preference { meshPrimaryPreference = preference }
+        await cluster.setPrimaryPreference(preference)
     }
 
     var meshOwnershipExpired: Bool {
@@ -189,6 +279,22 @@ extension AppModel {
         logs.append("SwiftMesh promoted to Primary after checking shared state and ownership.")
         await handleClusterRoleChange()
         await connectDiscordAfterPromotion()
+    }
+
+    /// A deliberate Stop is not a demotion. `ClusterCoordinator.stopAll()` runs
+    /// the demotion handler to close output, which marks this Mac as Standby
+    /// and leaves the released lease's deadline to expire; either one locked a
+    /// stopped Primary's settings as "managed by the Primary node". Output is
+    /// already closed here, and Start acquires ownership again before enabling it.
+    func meshDidStop() async {
+        // Stale intent must not survive a stop; Start polls again.
+        meshPrimaryPolicyTask?.cancel()
+        meshPrimaryPolicyTask = nil
+        meshPrimaryPreferenceTracker.reset(configured: meshWitnessHealth != nil)
+        await publishMeshPrimaryPreference()
+        lastPublishedRole = nil
+        clusterSnapshot = await cluster.currentSnapshot()
+        await updateMeshOwnershipDeadline(nil)
     }
 
     func meshDidDemote() async {

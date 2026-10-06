@@ -978,12 +978,14 @@ extension AppModel {
             addresses.insert(localMeshPublicAddress, at: 0)
         }
 
+        // Carry the Ruru witness so a new failover joins the same ownership authority.
+        let witness = MeshWitnessSettingsStore.load()
         let bundle = SwiftMeshJoinBundle(
             leaderAddresses: addresses,
             leaderPort: port,
             sharedSecret: sharedSecret,
             leaderTerm: settings.clusterLeaderTerm,
-            credentialEnrollment: enrollment, witness: MeshWitnessSettingsStore.load().isConfigured ? MeshWitnessSettingsStore.load() : nil
+            credentialEnrollment: enrollment, witness: witness.isConfigured ? witness : nil
         )
 
         // Surface what's in the code so the user can see at a glance whether
@@ -1044,6 +1046,12 @@ extension AppModel {
     func applySwiftMeshJoinCode(_ rawCode: String) async -> (ok: Bool, message: String) {
         do {
             let bundle = try decodeSwiftMeshJoinCode(rawCode)
+            // Opening Pair SwiftBot in a browser on the Primary itself would
+            // otherwise turn the Primary into a Fail Over of itself.
+            if settings.clusterMode == .leader, !bundle.sharedSecret.isEmpty,
+               bundle.sharedSecret == settings.clusterSharedSecret {
+                return (false, "This Mac is the Primary that made this Join Code. Open Pair SwiftBot on the Mac you want to add.")
+            }
             guard (1...65535).contains(bundle.leaderPort), !bundle.sharedSecret.isEmpty,
                   let enrollment = bundle.credentialEnrollment else {
                 return (false, "Generate a new Join Code on the Primary to approve this failover for credentials.")

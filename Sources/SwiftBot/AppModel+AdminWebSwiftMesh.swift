@@ -85,7 +85,22 @@ extension AppModel {
                 canRun: settings.clusterMode == .leader && registeredWorkersDebugCount > 0 && !isTestPending
             ),
             nodes: nodes,
-            iconOptions: SwiftMeshNodeIconCatalog.all.map { .init(symbol: $0.symbol, label: $0.label) }
+            iconOptions: SwiftMeshNodeIconCatalog.all.map { .init(symbol: $0.symbol, label: $0.label) },
+            witness: await adminWebSwiftMeshWitness()
+        )
+    }
+
+    private func adminWebSwiftMeshWitness() async -> AdminWebSwiftMeshPayload.Witness? {
+        guard let map = ClusterMapWitness(app: self) else { return nil }
+        let preference = meshPrimaryPreference
+        let preferredID = preference.policy?.preferredPrimaryNodeID
+        let grants = await meshCredentialStore.allGrants()
+        return .init(
+            host: map.host, health: map.health.webValue, leaseHeld: map.leaseHeld,
+            preferenceStatus: preference.status == .notConfigured ? "checking" : preference.status.rawValue,
+            preferredPrimary: preferredID.map { meshNodeName(forNodeID: $0, grants: grants) },
+            preferredIsThisMac: preferredID != nil && preferredID == meshLocalNodeID,
+            currentOwner: meshCurrentOwnerName
         )
     }
 

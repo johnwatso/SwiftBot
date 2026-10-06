@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MeshRecoveryPreferencesSection: View {
@@ -15,12 +16,33 @@ struct MeshRecoveryPreferencesSection: View {
                     .textSelection(.enabled)
             }
             LabeledContent("Ownership") {
-                Text(witness.isConfigured ? "Independent witness" : "Peer coordination")
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(witness.isConfigured ? "Ruru · \(URL(string: witness.endpoint)?.host ?? witness.endpoint)" : "Peer coordination")
+                        .foregroundStyle(.secondary)
+                    Button(witness.isConfigured ? "Edit Witness…" : "Set Up Ruru…") {
+                        witness = MeshWitnessSettingsStore.load()
+                        showWitnessEditor = true
+                    }
+                }
             }
-            Button("Configure Ownership Witness…") {
-                witness = MeshWitnessSettingsStore.load()
-                showWitnessEditor = true
+            if witness.isConfigured {
+                // Ruru's Preferred Primary is intent; Current Owner is who
+                // holds ownership now. They can differ, e.g. after a failover.
+                LabeledContent("Current Owner") {
+                    Text(app.meshCurrentOwnerName).foregroundStyle(.secondary)
+                }
+                LabeledContent("Preferred Primary") {
+                    Text(app.meshPreferredPrimaryText(grants: grants)).foregroundStyle(.secondary)
+                }
+                if !app.meshLocalNodeID.isEmpty {
+                    // What Ruru's Choose Primary → Enter Node ID expects for this Mac.
+                    LabeledContent("This Mac's node ID") {
+                        Text(app.meshLocalNodeID)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
             }
             if let synced = app.meshLastSuccessfulSync {
                 LabeledContent("Last shared-state sync", value: synced.formatted(.relative(presentation: .named)))
@@ -46,7 +68,7 @@ struct MeshRecoveryPreferencesSection: View {
             Text("""
                 Use a dedicated backup hostname and tunnel on this Mac. Pairing shares Discord sign-in and bot state.
                 Tunnel credentials, companion apps, browser sessions, and passkeys stay local.
-                An independent witness prevents both nodes acquiring ownership during a network partition.
+                A Ruru witness prevents both nodes acquiring ownership during a network partition.
                 """)
         }
         .task { grants = await app.meshCredentialStore.allGrants() }
@@ -61,41 +83,117 @@ struct MeshRecoveryPreferencesSection: View {
 
 private struct MeshWitnessEditor: View {
     @Environment(\.dismiss) private var dismiss
-    @State var configuration: MeshWitnessConfiguration
-    @State private var error: String?
+    /// The saved settings. Advanced edits a copy, so Cancel or a failed
+    /// import leaves them untouched.
+    let existing: MeshWitnessConfiguration
     let onSave: (MeshWitnessConfiguration) -> Void
+    @State private var manual: MeshWitnessConfiguration
+    @State private var pastedCode = ""
+    @State private var pairing: RuruPairingCode?
+    @State private var showAdvanced = false
+    @State private var error: String?
+
+    init(configuration: MeshWitnessConfiguration, onSave: @escaping (MeshWitnessConfiguration) -> Void) {
+        existing = configuration
+        self.onSave = onSave
+        _manual = State(initialValue: configuration)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Ownership Witness").font(.title2)
-            Text("""
-                Run the witness independently of both bot Macs. Use the same cluster ID and bearer token on trusted failover nodes.
-                These settings are saved in Keychain and included in new failover Join Codes.
-                """)
+            Text("Set Up Ruru").font(.title2)
+            Text("Run Ruru on a Mac separate from both bot Macs. In Ruru, copy this service’s pairing code, then paste it here.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Form {
-                TextField("HTTPS endpoint", text: $configuration.endpoint)
-                TextField("Cluster ID", text: $configuration.clusterID)
-                SecureField("Bearer token", text: $configuration.token)
+
+            if let pairing {
+                Form {
+                    LabeledContent("Service", value: pairing.serviceName ?? "Unnamed service")
+                    LabeledContent("Address") {
+                        Text(pairing.configuration.endpoint).textSelection(.enabled)
+                    }
+                    LabeledContent("Cluster ID", value: pairing.configuration.clusterID)
+                }
+                .formStyle(.grouped)
+                .scrollDisabled(true)
+                .fixedSize(horizontal: false, vertical: true)
+                Button("Use a Different Code") { self.pairing = nil; error = nil }
+            } else {
+                HStack {
+                    Button("Paste Pairing Code") { pasteFromClipboard() }
+                        .controlSize(.large)
+                    SecureField("or paste it here", text: $pastedCode)
+                        .onSubmit { importCode(pastedCode) }
+                        .onChange(of: pastedCode) { _, code in
+                            if !code.isEmpty { importCode(code) }
+                        }
+                }
             }
-            if let error { Text(error).foregroundStyle(.red) }
+
+            if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+
+            DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Form {
+                        TextField("HTTPS endpoint", text: $manual.endpoint)
+                        TextField("Cluster ID", text: $manual.clusterID)
+                        SecureField("Bearer token", text: $manual.token)
+                    }
+                    HStack {
+                        Spacer()
+                        Button("Save Manual Settings") { commit(manual) }
+                            .disabled(!manual.isValid || manual == existing)
+                    }
+                }
+                .padding(.top, 8)
+            }
+
+            Text("""
+                Settings are saved in this Mac’s Keychain and included in new failover Join Codes.
+                Failovers that are already paired keep their old settings: set up Ruru on each one, or pair it again with a new Join Code.
+                """)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             HStack {
-                Button("Remove Witness", role: .destructive) { commit(.init()) }
+                if existing.isConfigured {
+                    Button("Remove Witness", role: .destructive) { commit(.init()) }
+                }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { commit(configuration) }
+                Button("Connect") { if let pairing { commit(pairing.configuration) } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!configuration.isValid)
+                    .disabled(pairing == nil)
             }
         }
         .padding(24)
         .frame(width: 540)
     }
 
+    private func pasteFromClipboard() {
+        guard let code = NSPasteboard.general.string(forType: .string) else {
+            error = RuruPairingCode.DecodeError.empty.localizedDescription
+            return
+        }
+        importCode(code)
+    }
+
+    /// Decodes for review only; nothing is saved until Connect.
+    private func importCode(_ code: String) {
+        do {
+            pairing = try RuruPairingCode.decode(code)
+            error = nil
+        } catch {
+            pairing = nil
+            self.error = error.localizedDescription
+        }
+        pastedCode = ""
+    }
+
     private func commit(_ value: MeshWitnessConfiguration) {
         guard MeshWitnessSettingsStore.save(value) else {
-            error = "The witness settings could not be saved to Keychain."
+            error = "The witness settings could not be saved to Keychain. Your previous settings are unchanged."
             return
         }
         onSave(value)

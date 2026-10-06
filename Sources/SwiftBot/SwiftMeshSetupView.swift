@@ -162,6 +162,11 @@ struct SwiftMeshSetupView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                if let witness = bundle?.witness {
+                    Label("Ownership witness: Ruru at \(URL(string: witness.endpoint)?.host ?? witness.endpoint)", systemImage: "checkmark.shield")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 16)
 

@@ -50,7 +50,20 @@ final class ThirdPartyNoticesTests: XCTestCase {
         // not just a reference to it.
         XCTAssertTrue(notices.contains("Appendix A: Apache License 2.0"))
         XCTAssertTrue(notices.contains("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"))
-        XCTAssertTrue(notices.contains("Applies to: SwiftNIO"))
+        // The generator lists Apache users in its package order, so check
+        // membership rather than position.
+        let appendix = try XCTUnwrap(notices.range(of: "## Appendix A: Apache License 2.0"))
+        let appliesLine = try XCTUnwrap(
+            notices[appendix.upperBound...]
+                .split(separator: "\n")
+                .first { $0.hasPrefix("Applies to: ") },
+            "Apache appendix has no \"Applies to:\" line"
+        )
+        let users = appliesLine
+            .dropFirst("Applies to: ".count)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .components(separatedBy: ", ")
+        XCTAssertTrue(users.contains("SwiftNIO"), "Apache appendix does not cover SwiftNIO: \(appliesLine)")
     }
 
     func testLibdaveIsRecordedAsUnresolvedRatherThanAsserted() throws {

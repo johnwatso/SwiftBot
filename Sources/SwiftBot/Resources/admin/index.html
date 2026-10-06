@@ -1964,9 +1964,12 @@
     }
     .mesh-map-layout.is-solo { grid-template-columns: minmax(0, 240px); justify-content: center; }
     .mesh-map-others { display: grid; gap: 14px; }
+    /* Ruru sits above the Primary, which holds its ownership lease. */
+    .mesh-map-primary { display: grid; gap: 30px; }
+    .mesh-map-layout .mesh-node.mesh-witness { border-style: dashed; }
     @media (max-width: 640px) {
       .mesh-map-layout { gap: 22px; padding: 18px 14px; grid-template-columns: minmax(0, 1fr); }
-      .mesh-map-layout .mesh-node.leader { width: 70%; }
+      .mesh-map-layout .mesh-node.leader, .mesh-map-layout .mesh-node.mesh-witness { width: 70%; }
       .mesh-map-others { padding-left: 24%; }
     }
 
@@ -2537,14 +2540,26 @@
     }
 
     .message {
-      margin-top: 14px;
-      min-height: 20px;
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      z-index: 1100; /* above #modalOverlay (1000): dialog actions report here */
+      max-width: min(560px, calc(100vw - 32px));
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--mesh-node-stroke);
+      background: var(--mesh-node-solid);
+      box-shadow: var(--shadow);
       font-size: 14px;
-      color: var(--muted);
+      line-height: 1.4;
+      color: var(--text);
+      cursor: pointer;
     }
+    .message:empty { display: none; }
 
-    .message.success { color: var(--success); }
-    .message.error { color: var(--error); }
+    .message.success { border-color: color-mix(in srgb, var(--success) 55%, transparent); }
+    .message.error { border-color: color-mix(in srgb, var(--error) 65%, transparent); color: var(--error); }
 
     .utility-row {
       display: flex;
@@ -6539,7 +6554,6 @@
           <div id="overviewHiddenPlumbing" style="display:none;">
             <div id="clusterInfo"></div>
             <button id="swiftMeshButton" type="button"></button>
-            <div id="message"></div>
           </div>
         </section>
 
@@ -7772,10 +7786,18 @@
       });
     }
 
+    // A toast at the bottom of the window. Errors stay longer than other
+    // messages; clicking dismisses it.
+    let messageTimer = null;
     function setMessage(text, kind) {
       const node = document.getElementById('message');
+      if (!node) return;
+      clearTimeout(messageTimer);
       node.textContent = text || '';
       node.className = 'message' + (kind ? ` ${kind}` : '');
+      node.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+      node.onclick = () => setMessage('', '');
+      if (text) messageTimer = setTimeout(() => { node.textContent = ''; }, kind === 'error' ? 10000 : 5000);
     }
 
     function showDashboard() {
@@ -17098,7 +17120,30 @@
     // Laid out with CSS so it fits any width; the curves are redrawn from
     // the cards' positions whenever the map resizes.
     let meshMapObserver = null;
-    function renderSwiftMeshClusterMap(container, nodes) {
+    const MESH_WITNESS_STATUS = {
+      ready: { label: 'Ready', status: 'healthy' },
+      recovering: { label: 'Recovering', status: 'degraded' },
+      unreachable: { label: 'Unreachable', status: 'disconnected' },
+      checking: { label: 'Checking', status: '' }
+    };
+    function meshWitnessCard(witness) {
+      const state = MESH_WITNESS_STATUS[witness.health] || MESH_WITNESS_STATUS.checking;
+      const label = witness.leaseHeld && witness.health === 'ready' ? 'Lease held' : state.label;
+      return `
+          <article class="mesh-node mesh-witness${state.status === 'disconnected' ? ' is-off' : ''}" style="--role:#ff9f0a;" title="Ownership witness at ${escapeHTML(witness.host)}">
+            <div class="mesh-node-header">
+              <span class="mesh-node-icon"><i class="lucide" data-lucide="shield-check"></i></span>
+              <span class="mesh-node-name">Ruru</span>
+              <span class="mesh-node-role">Witness</span>
+            </div>
+            <div class="mesh-node-sub">
+              <span class="mesh-status-dot" style="background:${state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span>
+              <span>${escapeHTML(label)}</span><span>·</span><span>${escapeHTML(witness.host)}</span>
+            </div>
+          </article>`;
+    }
+
+    function renderSwiftMeshClusterMap(container, nodes, witness) {
       if (!container) return;
       const all = nodes || [];
       const leader = all.find(node => String(node.role || '').toLowerCase() === 'leader') || all[0];
@@ -17123,7 +17168,7 @@
       container.innerHTML = `
         <svg class="mesh-map-svg" aria-hidden="true"></svg>
         <div class="mesh-map-layout${others.length ? '' : ' is-solo'}">
-          <div class="mesh-map-col">${card(leader, true)}</div>
+          <div class="mesh-map-col mesh-map-primary">${witness ? meshWitnessCard(witness) : ''}${card(leader, true)}</div>
           ${others.length ? `<div class="mesh-map-col mesh-map-others">${others.map(node => card(node, false)).join('')}</div>` : ''}
         </div>`;
 
@@ -17142,7 +17187,12 @@
         const y1 = from.top + from.height / 2 - box.top;
         const leaderEdge = from.right - box.left;
         const calm = prefersReducedMotion();
-        svg.innerHTML = others.map((node, index) => {
+        // Ruru → Primary: solid while this Mac holds the lease, dashed otherwise.
+        const ruru = container.querySelector('.mesh-node.mesh-witness')?.getBoundingClientRect();
+        const witnessLink = ruru && witness
+          ? `<path class="mesh-link${witness.leaseHeld ? '' : ' is-off'}" d="M ${x1} ${ruru.bottom - box.top} L ${x1} ${from.top - box.top}" style="stroke:${witness.leaseHeld ? meshRoleColor('leader') : 'var(--muted)'}"/>`
+          : '';
+        svg.innerHTML = witnessLink + others.map((node, index) => {
           const el = container.querySelector(`.mesh-node[data-node-id="${CSS.escape(node.id)}"]`);
           if (!el) return '';
           const to = el.getBoundingClientRect();
@@ -17483,6 +17533,7 @@
                   : 'Pair with a Mac that already runs SwiftBot. This one stays in sync and takes over if it goes down.'}</span>
               </button>`).join('')}
           </div>
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="shield-check"></i> Optional: add Ruru, an ownership witness on a third Mac, so the Primary and Fail Over can never both run the bot during a network split. Set it up in SwiftBot under SwiftMesh → Recovery and Pairing.</p>
         </section>
         ${group('This Mac', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
@@ -17500,19 +17551,46 @@
           <div class="ub-group-head">
             <h2>Nodes · ${nodes.length}</h2>
             <div class="mesh-join-actions">
-              ${isLeader && mesh.runtimeMode === 'Leader' && currentUser?.role === 'admin' && currentUser?.signInMethod !== 'password' ? '<button id="meshPair" class="primary-action" type="button"><i class="lucide" data-lucide="link"></i> Pair this Mac</button>' : ''}
+              ${isLeader && mesh.runtimeMode === 'Leader' && currentUser?.role === 'admin' && currentUser?.signInMethod !== 'password' ? '<button id="meshPair" class="primary-action" type="button"><i class="lucide" data-lucide="link"></i> Pair SwiftBot</button>' : ''}
               <button id="meshRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
             </div>
           </div>
           ${nodes.length ? `<div class="ub-list glass">${nodeRows}</div>` : `
-            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Open this page on the Mac you want to add, then click Pair this Mac.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
+            <div class="ub-empty glass"><div class="ub-empty-title">No nodes yet</div><div class="ub-empty-sub">${isLeader ? 'Open this page on the Mac you want to add as a Fail Over, then click Pair SwiftBot.' : 'Waiting to reach the Primary at ' + escapeHTML(mesh.leaderAddress || 'its address') + '.'}</div></div>`}
         </section>
+        ${group('Ownership', (() => {
+          const w = mesh.witness;
+          const state = w ? (MESH_WITNESS_STATUS[w.health] || MESH_WITNESS_STATUS.checking) : null;
+          const value = !w ? 'Not set up' : (w.leaseHeld && w.health === 'ready' ? 'Lease held' : state.label);
+          const desc = w
+            ? `Ruru at ${escapeHTML(w.host)} grants one Mac at a time permission to run the bot. If it can't be reached, the bot pauses rather than risk two Primaries.`
+            : 'Optional. Without Ruru, a network split between the Macs can leave both running the bot.';
+          const witnessRow = row(`<span class="mesh-status-dot" style="background:${!w ? 'var(--muted)' : state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span> Ruru ownership witness`, desc,
+            `<span class="ub-row-value">${escapeHTML(value)}</span>`);
+          if (!w) return witnessRow;
+          // Preferred Primary is Ruru's intent; Current Owner is who runs the bot now.
+          const preferred = w.preferredPrimary ? w.preferredPrimary + (w.preferredIsThisMac ? ' (this Mac)' : '') : null;
+          const preferredValue = {
+            current: preferred || 'None set in Ruru',
+            unsupported: 'Not supported by this Ruru',
+            unavailable: preferred ? `Unavailable (last: ${preferred})` : 'Unavailable',
+            checking: 'Checking…'
+          }[w.preferenceStatus] || 'Checking…';
+          const preferredDesc = w.preferenceStatus === 'current' && preferred
+            ? 'Chosen in Ruru. When it is healthy and caught up, it takes Primary back through a coordinated handover. If it is offline, failover still works.'
+            : w.preferenceStatus === 'unsupported' ? 'This Ruru is older; the configured Primary reclaims as before.'
+            : 'Choose one in Ruru under Guarding → Preferred Primary.';
+          return witnessRow
+            + valueRow('Current Owner', w.currentOwner || 'None', 'The Mac running the bot right now.')
+            + valueRow('Preferred Primary', preferredValue, preferredDesc);
+        })())}
+        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Change' : 'Set up'} Ruru in SwiftBot on the Mac itself, under SwiftMesh → Recovery and Pairing. Its bearer token never passes through the web interface.</p>
         ${isLeader ? group('Work sharing', `
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
           ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
         `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
-        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Pair this Mac opens SwiftBot on the Mac where you are browsing. Confirm joining in the app to connect it to this Primary. The pairing link holds the mesh secret, so it needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
+        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Pair SwiftBot opens SwiftBot on the Mac you are browsing from, so it can join as a Fail Over. Confirm joining in the app to connect it to this Primary' + (mesh.witness ? ' and Ruru' : '') + '. The pairing link holds the mesh secret, so it needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
         ${group('Configuration', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
             <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
@@ -17536,7 +17614,7 @@
       const mapNode = panels.querySelector('#meshTopologyMap');
       if (mapNode) {
           if (!nodes.length) panels.querySelector('.mesh-map-group')?.classList.add('hidden');
-        else renderSwiftMeshClusterMap(mapNode, nodes);
+        else renderSwiftMeshClusterMap(mapNode, nodes, mesh.witness);
       }
 
       const act = async (action, node) => {
@@ -17584,8 +17662,9 @@
           if (typeof result.joinURL !== 'string' || !result.joinURL.startsWith('swiftmesh://join?')) {
             throw new Error('Invalid pairing response');
           }
-          showModal('Pair this Mac with SwiftMesh', `
-            <p class="ub-help">Open SwiftBot on this Mac, then confirm joining this Primary in the app. SwiftBot must be installed.</p>
+          showModal('Pair SwiftBot', `
+            <p class="ub-help">Open SwiftBot on the Mac you're browsing from, then confirm joining this Primary in the app. SwiftBot must be installed there.</p>${mesh.witness ? `
+            <p class="ub-help">The Join Code also carries this Primary's Ruru ownership witness (${escapeHTML(mesh.witness.host)}), so the Fail Over uses it too.</p>` : ''}
             <p class="ub-help">If the browser cannot open SwiftBot, copy the Join Code and paste it into SwiftMesh in the app.</p>`, `
             <button class="secondary-action" type="button" data-action="hideModal">Close</button>
             <button id="meshCopyPairCode" class="secondary-action" type="button">Copy Join Code</button>
@@ -17600,13 +17679,12 @@
               await navigator.clipboard.writeText(result.joinURL);
               copyButton.textContent = 'Copied';
             } catch {
-              setMessage('Clipboard access failed. Use Open SwiftBot to pair this Mac.', 'error');
+              setMessage('Clipboard access failed. Use Open SwiftBot instead.', 'error');
             }
           });
         } catch (error) {
           // Refusals carry a readable `message`, e.g. sign in again or use https.
-          const info = gtCredentialError(error);
-          setMessage(info.message || 'Could not prepare pairing. Check that this server is the active Primary.', 'error');
+          setMessage(requestErrorText(error, 'Could not prepare pairing. Check that this server is the active Primary.'), 'error');
         } finally {
           button.disabled = false;
         }
@@ -19696,5 +19774,8 @@
       <div class="modal-footer" id="modalFooter"></div>
     </div>
   </div>
+  <!-- Every setMessage() result. It used to sit in the hidden Overview
+       plumbing, so errors on other pages (e.g. SwiftMesh pairing) never showed. -->
+  <div id="message" class="message" role="status" aria-live="polite"></div>
 </body>
 </html>

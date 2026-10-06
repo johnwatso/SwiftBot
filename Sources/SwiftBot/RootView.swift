@@ -290,6 +290,8 @@ struct SwiftMeshJoinConfirmationSheet: View {
                     detailRow("Primary host(s)", pending.bundle.leaderAddresses.joined(separator: ", "))
                     detailRow("Port", String(pending.bundle.leaderPort))
                     detailRow("Shared secret", String(repeating: "•", count: 24))
+                    detailRow("Ownership", pending.bundle.witness.map { "Ruru · " + (URL(string: $0.endpoint)?.host ?? $0.endpoint) }
+                        ?? "Peer coordination (no Ruru)")
                 }
                 .padding(.vertical, 4)
             }

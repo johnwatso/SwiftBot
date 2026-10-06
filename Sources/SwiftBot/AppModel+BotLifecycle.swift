@@ -451,7 +451,7 @@ extension AppModel {
         botAvatarHash = nil
         settings.cachedBotIdentity = CachedBotIdentity()
         Task { await pluginManager.removeAll() }
-        Task { await cluster.stopAll() }
+        Task { await cluster.stopAll(); await meshDidStop() }
         status = .stopped
         // Step 3: secure token erase — empty token triggers KeychainHelper.deleteToken() in ConfigStore.
         settings.token = ""

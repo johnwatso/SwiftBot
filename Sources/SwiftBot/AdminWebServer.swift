@@ -143,6 +143,23 @@ struct AdminWebSwiftMeshPayload: Codable {
     let handover: Handover
     let nodes: [Node]
     var iconOptions: [IconOption] = []
+    /// Ruru, the ownership witness: display state only. Its endpoint path,
+    /// cluster ID and bearer token stay in this Mac's Keychain.
+    struct Witness: Codable {
+        let host: String
+        /// "checking", "ready", "recovering" or "unreachable".
+        let health: String
+        /// This Mac holds an unexpired lease.
+        let leaseHeld: Bool
+        /// Ruru's Preferred Primary: "checking", "current", "unsupported" or
+        /// "unavailable". Intent only; `currentOwner` is who runs the bot.
+        var preferenceStatus: String = "checking"
+        /// Display name of the preferred node; nil when none is set.
+        var preferredPrimary: String?
+        var preferredIsThisMac = false
+        var currentOwner: String = ""
+    }
+    var witness: Witness?
 }
 
 /// GET /api/member/replay: a member's own Replay for one of their servers.

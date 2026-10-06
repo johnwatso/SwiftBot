@@ -244,7 +244,11 @@ struct MeshPreferencesView: View {
 
             // MARK: - Auto-Reclaim (Leader only)
 
-            if app.settings.clusterMode == .leader && shouldShowConfigurationDetails {
+            // With Ruru, its Preferred Primary decides which Mac reclaims, so
+            // a Fail Over it prefers needs these controls too.
+            if shouldShowConfigurationDetails,
+               app.settings.clusterMode == .leader
+                || (app.settings.clusterMode == .standby && app.meshPrimaryPreference.status != .notConfigured) {
                 Section {
                     Toggle(
                         "Reclaim Primary automatically after failover",
@@ -266,10 +270,7 @@ struct MeshPreferencesView: View {
                 } header: {
                     Label("Auto-Reclaim", systemImage: "arrow.uturn.up.circle")
                 } footer: {
-                    Text("""
-                    Return this Mac to Primary after stable health and catchup. Leave off to keep the current owner. \
-                    Manual promotion also checks state and ownership.
-                    """)
+                    Text(autoReclaimFooter)
                 }
             }
 
@@ -551,6 +552,26 @@ struct MeshPreferencesView: View {
         case 20..<80: return .secondary
         case 80..<200: return .orange
         default: return .red
+        }
+    }
+}
+
+extension MeshPreferencesView {
+    /// Who reclaims depends on Ruru: its Preferred Primary replaces this Mac's
+    /// configured role. The switch and delay above still apply either way.
+    var autoReclaimFooter: String {
+        let base = "Manual promotion also checks state and ownership."
+        switch app.meshPrimaryPreference.status {
+        case .current where app.meshPrimaryPreference.policy?.preferredPrimaryNodeID != nil:
+            let preferred = app.meshPrimaryPreference.policy?.preferredPrimaryNodeID == app.meshLocalNodeID
+            return (preferred
+                ? "Ruru prefers this Mac, so it takes Primary back after stable health and catchup. "
+                : "Ruru prefers another Mac, so this one won't reclaim automatically, even as the configured Primary. ")
+                + "Turning this off keeps the current owner. " + base
+        case .checking, .unavailable:
+            return "Waiting for Ruru's Preferred Primary; no automatic reclaim starts until it's known. Failover still works. " + base
+        default:
+            return "Return this Mac to Primary after stable health and catchup. Leave off to keep the current owner. " + base
         }
     }
 }
