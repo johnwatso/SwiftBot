@@ -126,6 +126,8 @@ struct PipelineContext {
 
 `"discord-token"` · `"openai-api-key"` · `"cluster-shared-secret"` · `"admin-discord-client-secret"` · `"admin-web-cloudflare-token"` · `"swiftbot.admin.web.passkeys"` (WebAuthn credentials and Discord refresh grants)
 
+Automation webhook URLs (which usually embed the webhook's token) are `"automation-webhook.<credential ID>"`, owned by `AutomationWebhookVault` in `AutomationStore.swift`. Rules everywhere else (memory, `automations.json`, the execution journal, mesh snapshots, the WebUI) carry only `Step.webhookCredentialId`. The WebUI field is write-only: blank keeps the saved URL. Standbys pull the URLs through `MeshCredentialsResponse.automationWebhookURLs`.
+
 ---
 
 ## 4. SwiftMesh Cluster Rules
@@ -158,6 +160,7 @@ struct PipelineContext {
 - Credential fetches require an approved node's Ed25519 signature as well as mesh authentication. Replicated approvals contain only public verification keys; private signing keys remain in Keychain and their own Join Codes.
 - Credential endpoints require a node enrollment proof in addition to mesh HMAC. Treat a Failover Join Code as a secret.
 - Handback freezes/drains the current owner, catches up state, then closes the old owner before promotion. The optional independent witness expires output with a monotonic deadline.
+- With Ruru, only a refused renewal (`MeshOwnershipRenewal.lost`) or a passed local deadline demotes; an unanswered renewal is retried. A witness-backed configured or preferred Primary with no leader to watch keeps acquiring (`startOwnershipRecoveryIfNeeded`). A Standby whose Ruru fingerprint (`MeshNodeHealth.ownershipWitness`) differs from the owner's never promotes or hands back.
 - Automation checkpoints hold ambiguous actions for review; compute jobs use durable IDs and outbound polling. No exactly-once Discord or lossless Gateway claim.
 - See `SWIFTMESH_RELIABILITY.md` for setup, protocol boundaries, and rollout limits.
 
@@ -197,6 +200,8 @@ Simulate (`/api/automations/simulate`, `AutomationService.simulate`).
 
 - **Validation:** Save/Create button is gated by rule name non-emptiness and presence of at least 1 action step (`rule.steps.isEmpty == false`).
 - **Variables:** message, log and webhook fields offer insertable chips for the context tokens the trigger supports (e.g. `{username}`, `{channelName}`).
+- **Live dispatch:** every live source (messages, voice, members, media, reactions, automation slash commands) goes through `AutomationService.dispatch`, which runs moderation first and skips ordinary automations after a destructive moderation step. A run returns at its first pending delay and continues in its own task, so the Gateway receive loop is never held for a wait.
+- **Reactions and slash commands:** `MESSAGE_REACTION_ADD` becomes a `reactionAdded` event (`AppModel.automationReactionEvent`). Enabled `slashCommand` rules are registered as guild commands unless a built-in or Lookup command owns the name, and are acknowledged privately before they run (`handleAutomationSlash`).
 
 ---
 

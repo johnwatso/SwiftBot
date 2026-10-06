@@ -29,7 +29,7 @@ extension AppModel {
                     await self.updateMeshOwnershipDeadline(await self.meshWitnessClient.leaseDeadline() ?? ContinuousClock.now)
                     return grant
                 }, renew: { [weak self] term in
-                    guard let self else { return false }
+                    guard let self else { return .lost }
                     let renewed = await self.meshWitnessClient.renew(term: term)
                     await self.updateMeshOwnershipDeadline(await self.meshWitnessClient.leaseDeadline() ?? ContinuousClock.now)
                     return renewed
@@ -37,14 +37,15 @@ extension AppModel {
                     guard let self else { return }
                     await self.service.setOutputAllowed(false)
                     await self.meshWitnessClient.release(term: term)
-                })
+                }, witnessFingerprint: witness.ownershipFingerprint)
             } else {
                 await cluster.setOwnershipHandlers(acquire: nil, renew: nil, release: nil)
                 await updateMeshOwnershipDeadline(nil)
             }
         } catch {
             if await Self.loadWitnessSettingsOffMain().isConfigured && settings.clusterMode != .standalone {
-                await cluster.setOwnershipHandlers(acquire: { _ in nil }, renew: { _ in false }, release: { _ in })
+                await cluster.setOwnershipHandlers(acquire: { _ in nil }, renew: { _ in .lost }, release: { _ in },
+                                                   witnessFingerprint: (await Self.loadWitnessSettingsOffMain()).ownershipFingerprint)
                 await updateMeshOwnershipDeadline(ContinuousClock.now)
             }
             logs.append("SwiftMesh credential setup failed: \(error.localizedDescription)")

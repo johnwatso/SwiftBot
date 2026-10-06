@@ -198,14 +198,23 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
         private(set) var owner: String?
         private(set) var term = 0
         private(set) var events: [String] = []
+        /// False models Ruru being unreachable or in its restart quarantine.
+        private(set) var available = true
+        func setAvailable(_ value: Bool) { available = value }
+        /// A Ruru restart: no current-epoch lease survives it.
+        func restart() { owner = nil; events.append("restart") }
         func acquire(_ node: String, minimumTerm: Int) -> Int? {
+            guard available else { return nil }
             guard owner == nil || owner == node else { events.append("refused:\(node)"); return nil }
             term = max(term + 1, minimumTerm)
             owner = node
             events.append("acquire:\(node):\(term)")
             return term
         }
-        func renew(_ node: String, term: Int) -> Bool { owner == node && self.term == term }
+        func renew(_ node: String, term: Int) -> MeshOwnershipRenewal {
+            guard available else { return .unreachable(stillValid: false) }
+            return owner == node && self.term == term ? .renewed : .lost
+        }
         func release(_ node: String, term: Int) {
             guard owner == node, self.term == term else { return }
             owner = nil
@@ -219,36 +228,57 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
         MeshPrimaryPreference(status: .current, policy: .init(preferredPrimaryNodeID: id, revision: 1), receivedAt: .now, authorityReady: ready)
     }
 
-    private func useAuthority(_ authority: FakeAuthority, node: ClusterCoordinator, id: String) async {
+    private func useAuthority(_ authority: FakeAuthority, node: ClusterCoordinator, id: String, witness: String? = nil) async {
         await node.setOwnershipHandlers(
             acquire: { await authority.acquire(id, minimumTerm: $0) },
             renew: { await authority.renew(id, term: $0) },
-            release: { await authority.release(id, term: $0) }
+            release: { await authority.release(id, term: $0) },
+            witnessFingerprint: witness
         )
     }
 
-    private func pair(port: Int, approveB: Bool = true) async -> (owner: ClusterCoordinator, returning: ClusterCoordinator, authority: FakeAuthority) {
+    private func pair(
+        approveB: Bool = true, ownerWitness: String? = nil, returningWitness: String? = nil,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async -> (owner: ClusterCoordinator, returning: ClusterCoordinator, authority: FakeAuthority) {
+        let ownerPort = MeshTestPorts.free()
+        let returningPort = MeshTestPorts.free()
         let owner = ClusterCoordinator()
         let returning = ClusterCoordinator()
         let authority = FakeAuthority()
         let publicB = keyB.publicKey.rawRepresentation.base64EncodedString()
         await owner.configureHandlers(aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil }, onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil }, conversationFetcher: { _, _ in ([], false) })
         await owner.setHandbackDrainHandler { true }
-        await owner.applySettings(mode: .leader, nodeName: "Owner", leaderAddress: "", listenPort: port, sharedSecret: "mesh", leaderTerm: 4)
+        await owner.applySettings(mode: .leader, nodeName: "Owner", leaderAddress: "", listenPort: ownerPort, sharedSecret: "mesh", leaderTerm: 4)
         await owner.setCredentialAuthorization(provider: { approveB && $0 == "node-b" ? publicB : nil }, localNodeID: "node-a", localToken: "")
-        await useAuthority(authority, node: owner, id: "node-a")
+        await useAuthority(authority, node: owner, id: "node-a", witness: ownerWitness)
+        // The Standby registers as soon as it is configured; with the owner
+        // already listening, the first attempt succeeds instead of backing off.
+        let ownerListening = await owner.waitUntilListeningForTesting()
+        XCTAssertTrue(ownerListening, "Owner never listened on :\(ownerPort)", file: file, line: line)
         await returning.configureHandlers(aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil }, onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil }, conversationFetcher: { _, _ in ([], false) })
         await returning.setHandbackCatchupHandler { _, _ in true }
-        await returning.applySettings(mode: .standby, nodeName: "Returning", leaderAddress: "http://127.0.0.1:\(port)", listenPort: port + 1, sharedSecret: "mesh", leaderTerm: 4)
+        await returning.applySettings(mode: .standby, nodeName: "Returning", leaderAddress: "http://127.0.0.1:\(ownerPort)", listenPort: returningPort, sharedSecret: "mesh", leaderTerm: 4)
         await returning.setCredentialAuthorization(provider: { _ in nil }, localNodeID: "node-b", localToken: keyB.rawRepresentation.base64EncodedString())
         await returning.setAutoReclaimPolicy(isConfiguredPrimary: false, afterHours: 0, automaticHandbackEnabled: true)
-        await useAuthority(authority, node: returning, id: "node-b")
-        try? await Task.sleep(for: .milliseconds(400))  // registration with the owner
+        await useAuthority(authority, node: returning, id: "node-b", witness: returningWitness)
+        // The owner only prepares a handback for a registered target. A fixed
+        // wait here made the handback tests flaky under load.
+        for _ in 0..<60 where !(await owner.registeredWorkerNamesForTesting()).contains("Returning") {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let returningListening = await returning.waitUntilListeningForTesting()
+        XCTAssertTrue(returningListening, "Returning never listened on :\(returningPort)", file: file, line: line)
+        if approveB {
+            let registered = await owner.registeredWorkerNamesForTesting().contains("Returning")
+            let diagnostics = await returning.currentSnapshot().diagnostics
+            XCTAssertTrue(registered, "Returning never registered: \(diagnostics)", file: file, line: line)
+        }
         return (owner, returning, authority)
     }
 
     func testPreferredStandbyTakesBackThroughCoordinatedHandback() async {
-        let (owner, returning, authority) = await pair(port: 48201)
+        let (owner, returning, authority) = await pair()
         await owner.setPrimaryPreference(preference("node-b"))
         await returning.setPrimaryPreference(preference("node-b"))
         let startTerm = await authority.term
@@ -273,7 +303,7 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
     }
 
     func testNonPreferredStandbyCannotReclaimAutomatically() async {
-        let (owner, returning, authority) = await pair(port: 48203)
+        let (owner, returning, authority) = await pair()
         // The owner is the preferred node; a configured Primary elsewhere must not oscillate it away.
         await owner.setPrimaryPreference(preference("node-a"))
         await returning.setAutoReclaimPolicy(isConfiguredPrimary: true, afterHours: 0, automaticHandbackEnabled: true)
@@ -294,7 +324,7 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
     }
 
     func testAutomaticHandbackNeedsVerifiedStableIdentity() async {
-        let (owner, returning, authority) = await pair(port: 48205, approveB: false)
+        let (owner, returning, authority) = await pair(approveB: false)
         await owner.setPrimaryPreference(preference("node-b"))
         await returning.setPrimaryPreference(preference("node-b"))
         let result = await returning.requestCoordinatedHandback(automatic: true)
@@ -310,7 +340,7 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
     func testPreferenceChangeDuringTransferAbortsAndOwnerResumes() async {
         actor Flag { var set = false; func mark() { set = true } }
         let resumed = Flag()
-        let (owner, returning, authority) = await pair(port: 48207)
+        let (owner, returning, authority) = await pair()
         await owner.setHandbackResumeHandler { await resumed.mark() }
         await owner.setPrimaryPreference(preference("node-b"))
         await returning.setPrimaryPreference(preference("node-b"))
@@ -334,7 +364,7 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
     }
 
     func testRuruQuarantineOrUnavailablePolicyStartsNoHandback() async {
-        let (owner, returning, _) = await pair(port: 48209)
+        let (owner, returning, _) = await pair()
         await owner.setPrimaryPreference(preference("node-b"))
         await returning.setPrimaryPreference(preference("node-b", ready: false))
         let quarantined = await returning.requestCoordinatedHandback(automatic: true)
@@ -364,6 +394,141 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
         XCTAssertEqual(holder, "node-b")
         XCTAssertGreaterThan(term, 2)
         await standby.stopAll()
+    }
+
+    // MARK: - Keeping and recovering the lease
+
+    /// A configured Primary with no leader address, as in production.
+    private func lonePrimary(port: Int, authority: FakeAuthority) async -> ClusterCoordinator {
+        let node = ClusterCoordinator()
+        await node.setOwnershipTimingForTesting(renewal: .milliseconds(100), retry: .milliseconds(50), recovery: .milliseconds(100))
+        await node.applySettings(mode: .leader, nodeName: "Lone", leaderAddress: "", listenPort: port, sharedSecret: "mesh", leaderTerm: 4)
+        await node.setCredentialAuthorization(provider: { _ in nil }, localNodeID: "node-a", localToken: "")
+        return node
+    }
+
+    private func settle(_ node: ClusterCoordinator, until owns: Bool) async -> Bool {
+        for _ in 0..<40 {
+            if await node.hasActiveOwnership() == owns { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return await node.hasActiveOwnership() == owns
+    }
+
+    /// One slow renewal used to demote at once, with most of the lease left.
+    func testUnansweredRenewalKeepsTheLeaseWhileItIsValid() async {
+        actor Replies { var queue: [MeshOwnershipRenewal] = [.unreachable(stillValid: true), .unreachable(stillValid: true)]
+            func next() -> MeshOwnershipRenewal { queue.isEmpty ? .renewed : queue.removeFirst() } }
+        let replies = Replies()
+        let authority = FakeAuthority()
+        let node = await lonePrimary(port: 48221, authority: authority)
+        await node.setOwnershipHandlers(
+            acquire: { await authority.acquire("node-a", minimumTerm: $0) },
+            renew: { _ in await replies.next() },
+            release: { await authority.release("node-a", term: $0) })
+        try? await Task.sleep(for: .milliseconds(600))
+        let owns = await node.hasActiveOwnership()
+        let mode = await node.currentSnapshot().mode
+        let events = await authority.events
+        XCTAssertTrue(owns)
+        XCTAssertEqual(mode, .leader)
+        XCTAssertFalse(events.contains { $0.hasPrefix("release") }, "The lease is never given up for an unanswered renewal")
+        await node.stopAll()
+    }
+
+    /// Ruru restarting ends the lease. A lone Primary used to stay demoted.
+    func testLonePrimaryRecoversAfterRuruRestarts() async {
+        let authority = FakeAuthority()
+        let node = await lonePrimary(port: 48223, authority: authority)
+        await node.setAutoReclaimPolicy(isConfiguredPrimary: true, afterHours: 0, automaticHandbackEnabled: true)
+        await useAuthority(authority, node: node, id: "node-a")
+        let startTerm = await authority.term
+        await authority.setAvailable(false)
+        await authority.restart()
+        let demoted = await settle(node, until: false)
+        await authority.setAvailable(true)
+        let recovered = await settle(node, until: true)
+
+        let holder = await authority.owner
+        let term = await authority.term
+        XCTAssertTrue(demoted, "Output closes once the lease can no longer be confirmed")
+        XCTAssertTrue(recovered)
+        XCTAssertEqual(holder, "node-a")
+        XCTAssertGreaterThan(term, startTerm, "Recovery takes a new term")
+        await node.stopAll()
+    }
+
+    /// Ruru unreachable or quarantined at startup used to leave the Primary passive.
+    func testPrimaryStartedWithoutALeaseAcquiresOneWhenRuruReturns() async {
+        let authority = FakeAuthority()
+        await authority.setAvailable(false)
+        let node = await lonePrimary(port: 48225, authority: authority)
+        await useAuthority(authority, node: node, id: "node-a")
+        let startedPassive = await node.currentSnapshot().mode == .standby
+        // The configured-Primary policy arrives after the first refusal, as at launch.
+        await node.setAutoReclaimPolicy(isConfiguredPrimary: true, afterHours: 0, automaticHandbackEnabled: true)
+        await authority.setAvailable(true)
+        let recovered = await settle(node, until: true)
+        XCTAssertTrue(startedPassive)
+        XCTAssertTrue(recovered)
+        await node.stopAll()
+    }
+
+    func testLostLeaseToAnotherMacIsNotTakenBack() async {
+        let authority = FakeAuthority()
+        let node = await lonePrimary(port: 48227, authority: authority)
+        await node.setAutoReclaimPolicy(isConfiguredPrimary: true, afterHours: 0, automaticHandbackEnabled: true)
+        await useAuthority(authority, node: node, id: "node-a")
+        await authority.restart()
+        _ = await authority.acquire("node-b", minimumTerm: 0)
+        let demoted = await settle(node, until: false)
+        try? await Task.sleep(for: .milliseconds(400))
+        let holder = await authority.owner
+        let owns = await node.hasActiveOwnership()
+        XCTAssertTrue(demoted)
+        XCTAssertFalse(owns)
+        XCTAssertEqual(holder, "node-b", "Retries are refused while another Mac holds the lease")
+        await node.stopAll()
+    }
+
+    // MARK: - Matching Ruru settings
+
+    func testStandbyWithoutTheOwnersRuruCannotTakeOver() async {
+        let (owner, returning, authority) = await pair(ownerWitness: "swiftmesh@ruru.example.com")
+        await returning.promoteToLeader()
+        let handback = await returning.requestCoordinatedHandback()
+        let diagnostics = await returning.currentSnapshot().diagnostics
+        let returningMode = await returning.currentSnapshot().mode
+        let ownerOwns = await owner.hasActiveOwnership()
+        let holder = await authority.owner
+        XCTAssertFalse(handback)
+        XCTAssertEqual(returningMode, .standby)
+        XCTAssertTrue(diagnostics.contains("no Ruru"), diagnostics)
+        XCTAssertTrue(ownerOwns, "The owner was never frozen")
+        XCTAssertEqual(holder, "node-a")
+        await returning.stopAll()
+        await owner.stopAll()
+    }
+
+    func testStandbyWithADifferentRuruCannotTakeOver() async {
+        let (owner, returning, _) = await pair(ownerWitness: "swiftmesh@ruru.example.com", returningWitness: "swiftmesh@other.example.com")
+        let handback = await returning.requestCoordinatedHandback()
+        let diagnostics = await returning.currentSnapshot().diagnostics
+        XCTAssertFalse(handback)
+        XCTAssertTrue(diagnostics.contains("differs"), diagnostics)
+        await returning.stopAll()
+        await owner.stopAll()
+    }
+
+    func testMatchingRuruStillHandsBack() async {
+        let fingerprint = "swiftmesh@ruru.example.com"
+        let (owner, returning, authority) = await pair(ownerWitness: fingerprint, returningWitness: fingerprint)
+        let handback = await returning.requestCoordinatedHandback()
+        let holder = await authority.owner
+        XCTAssertTrue(handback)
+        XCTAssertEqual(holder, "node-b")
+        await returning.stopAll()
+        await owner.stopAll()
     }
 
     func testWorkerSelectedAsPreferredIsNeverPromotedByIt() async {

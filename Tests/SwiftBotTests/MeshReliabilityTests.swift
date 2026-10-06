@@ -93,7 +93,7 @@ final class MeshReliabilityTests: XCTestCase {
     func testWitnessRefusalPreventsPromotion() async {
         let node = ClusterCoordinator()
         await node.applySettings(mode: .standby, nodeName: "DeniedOwner", leaderAddress: "http://127.0.0.1:48100", listenPort: 48104, sharedSecret: "mesh")
-        await node.setOwnershipHandlers(acquire: { _ in nil }, renew: { _ in false }, release: { _ in })
+        await node.setOwnershipHandlers(acquire: { _ in nil }, renew: { _ in .lost }, release: { _ in })
         await node.promoteToLeader()
         let snapshot = await node.currentSnapshot()
         XCTAssertEqual(snapshot.mode, .standby)
@@ -117,16 +117,24 @@ final class MeshReliabilityTests: XCTestCase {
             func append(_ value: String) { events.append(value) }
         }
         let order = Order()
+        let sourcePort = MeshTestPorts.free()
+        let targetPort = MeshTestPorts.free()
         let source = ClusterCoordinator()
         let target = ClusterCoordinator()
         await source.configureHandlers(aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil }, onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil }, conversationFetcher: { _, _ in ([], false) })
         await source.setHandbackDrainHandler { await order.append("freeze"); return true }
         await source.setDemotionHandler { await order.append("source-closed") }
-        await source.applySettings(mode: .leader, nodeName: "Temporary", leaderAddress: "", listenPort: 48106, sharedSecret: "mesh", leaderTerm: 4)
+        await source.applySettings(mode: .leader, nodeName: "Temporary", leaderAddress: "", listenPort: sourcePort, sharedSecret: "mesh", leaderTerm: 4)
+        let sourceListening = await source.waitUntilListeningForTesting()
+        XCTAssertTrue(sourceListening)
         await target.configureHandlers(aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil }, onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil }, conversationFetcher: { _, _ in ([], false) }, onPromotion: { await order.append("target-open") })
         await target.setHandbackCatchupHandler { _, term in await order.append("catchup"); return term == 4 }
-        await target.applySettings(mode: .standby, nodeName: "Preferred", leaderAddress: "http://127.0.0.1:48106", listenPort: 48107, sharedSecret: "mesh", leaderTerm: 4)
-        try? await Task.sleep(for: .milliseconds(400))
+        await target.applySettings(mode: .standby, nodeName: "Preferred", leaderAddress: "http://127.0.0.1:\(sourcePort)", listenPort: targetPort, sharedSecret: "mesh", leaderTerm: 4)
+        let targetListening = await target.waitUntilListeningForTesting()
+        XCTAssertTrue(targetListening)
+        for _ in 0..<60 where !(await source.registeredWorkerNamesForTesting()).contains("Preferred") {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
         let result = await target.requestCoordinatedHandback()
         let sourceRole = await source.currentSnapshot().mode
         let targetRole = await target.currentSnapshot().mode
@@ -139,17 +147,44 @@ final class MeshReliabilityTests: XCTestCase {
         await source.stopAll()
     }
 
+    /// A Standby that starts before its Primary is listening must not wait out
+    /// the 30 s registration heartbeat once the Primary comes up.
+    func testStandbyRegistersSoonAfterPrimaryStartsListening() async {
+        let primaryPort = MeshTestPorts.free()
+        let primary = ClusterCoordinator()
+        let standby = ClusterCoordinator()
+        await standby.applySettings(mode: .standby, nodeName: "Early", leaderAddress: "http://127.0.0.1:\(primaryPort)", listenPort: MeshTestPorts.free(), sharedSecret: "mesh", leaderTerm: 1)
+        try? await Task.sleep(for: .milliseconds(300))
+        await primary.applySettings(mode: .leader, nodeName: "Late", leaderAddress: "", listenPort: primaryPort, sharedSecret: "mesh", leaderTerm: 1)
+        var registered = false
+        for _ in 0..<100 where !registered {
+            registered = await primary.registeredWorkerNamesForTesting().contains("Early")
+            if !registered { try? await Task.sleep(for: .milliseconds(50)) }
+        }
+        XCTAssertTrue(registered)
+        await standby.stopAll()
+        await primary.stopAll()
+    }
+
     func testFailedCatchupUnfreezesCurrentOwner() async {
         actor Resume { var called = false; func mark() { called = true } }
         let resume = Resume()
+        let sourcePort = MeshTestPorts.free()
+        let targetPort = MeshTestPorts.free()
         let source = ClusterCoordinator()
         let target = ClusterCoordinator()
         await source.setHandbackDrainHandler { true }
         await source.setHandbackResumeHandler { await resume.mark() }
-        await source.applySettings(mode: .leader, nodeName: "Current", leaderAddress: "", listenPort: 48108, sharedSecret: "mesh", leaderTerm: 2)
+        await source.applySettings(mode: .leader, nodeName: "Current", leaderAddress: "", listenPort: sourcePort, sharedSecret: "mesh", leaderTerm: 2)
+        let sourceListening = await source.waitUntilListeningForTesting()
+        XCTAssertTrue(sourceListening)
         await target.setHandbackCatchupHandler { _, _ in false }
-        await target.applySettings(mode: .standby, nodeName: "Returning", leaderAddress: "http://127.0.0.1:48108", listenPort: 48109, sharedSecret: "mesh", leaderTerm: 2)
-        try? await Task.sleep(for: .milliseconds(400))
+        await target.applySettings(mode: .standby, nodeName: "Returning", leaderAddress: "http://127.0.0.1:\(sourcePort)", listenPort: targetPort, sharedSecret: "mesh", leaderTerm: 2)
+        let targetListening = await target.waitUntilListeningForTesting()
+        XCTAssertTrue(targetListening)
+        for _ in 0..<60 where !(await source.registeredWorkerNamesForTesting()).contains("Returning") {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
         let handedBack = await target.requestCoordinatedHandback()
         let resumed = await resume.called
         let owns = await source.hasActiveOwnership()
@@ -161,16 +196,19 @@ final class MeshReliabilityTests: XCTestCase {
     }
 
     func testOffloadWorksWhenWorkerCannotBeReachedInbound() async {
+        let primaryPort = MeshTestPorts.free()
         let primary = ClusterCoordinator()
         let backup = ClusterCoordinator()
         await primary.configureHandlers(aiHandler: { _, _, _, _ in "local-fallback" }, wikiHandler: { _, _ in nil },
             onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil }, conversationFetcher: { _, _ in ([], false) })
         await backup.configureHandlers(aiHandler: { _, _, _, _ in "outbound-worker-result" }, wikiHandler: { _, _ in nil },
             onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil }, conversationFetcher: { _, _ in ([], false) })
-        await primary.applySettings(mode: .leader, nodeName: "Dispatch", leaderAddress: "", listenPort: 48110, sharedSecret: "mesh", leaderTerm: 1)
+        await primary.applySettings(mode: .leader, nodeName: "Dispatch", leaderAddress: "", listenPort: primaryPort, sharedSecret: "mesh", leaderTerm: 1)
+        let primaryListening = await primary.waitUntilListeningForTesting()
+        XCTAssertTrue(primaryListening)
         await primary.setOffloadPolicy(workerOffloadEnabled: true, aiReplies: true, wikiLookups: false)
         await backup.setPublicMeshAddress("https://127.0.0.1:1")
-        await backup.applySettings(mode: .standby, nodeName: "OutboundOnly", leaderAddress: "http://127.0.0.1:48110", listenPort: 48111, sharedSecret: "mesh", leaderTerm: 1)
+        await backup.applySettings(mode: .standby, nodeName: "OutboundOnly", leaderAddress: "http://127.0.0.1:\(primaryPort)", listenPort: MeshTestPorts.free(), sharedSecret: "mesh", leaderTerm: 1)
         for _ in 0..<100 {
             if !(await primary.registeredNodeInfo()).isEmpty { break }
             try? await Task.sleep(for: .milliseconds(20))
@@ -280,10 +318,45 @@ final class MeshReliabilityTests: XCTestCase {
         let afterRename = await client.leaseDeadline()
         XCTAssertEqual(afterRename, before)
         let renewed = await client.renew(term: 4)
-        XCTAssertTrue(renewed)
+        XCTAssertEqual(renewed, .renewed)
         await client.release(term: 4)
         let afterRelease = await client.leaseDeadline()
         XCTAssertNil(afterRelease)
+    }
+
+    /// Ruru refusing ends the lease; no answer (or its restart quarantine)
+    /// only does once this Mac's own deadline has passed.
+    func testRenewalSeparatesRefusalFromNoAnswer() async {
+        final class Status: @unchecked Sendable { var renewal = 200 }
+        let status = Status()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [WitnessNameURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel(); WitnessNameURLProtocol.setHandler(nil) }
+        WitnessNameURLProtocol.setHandler { request in
+            let code = request.url!.lastPathComponent == "renew" ? status.renewal : 200
+            let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+            let body = code == 200 ? #"{"ownerNodeID":"stable-node-id","term":4,"expiresInSeconds":30}"# : #"{"error":"x"}"#
+            return (response, Data(body.utf8))
+        }
+        let client = MeshWitnessClient(session: session)
+        await client.configure(MeshWitnessConfiguration(endpoint: "https://witness.example.com", clusterID: "cluster",
+                                                        token: String(repeating: "t", count: 32)), nodeID: "stable-node-id")
+        _ = await client.acquire(minimumTerm: 3)
+        status.renewal = 503
+        let quarantined = await client.renew(term: 4)
+        XCTAssertEqual(quarantined, .unreachable(stillValid: true))
+        status.renewal = 409
+        let refused = await client.renew(term: 4)
+        XCTAssertEqual(refused, .lost)
+        let otherTerm = await client.renew(term: 9)
+        XCTAssertEqual(otherTerm, .lost)
+    }
+
+    func testRuruFingerprintOmitsTheToken() {
+        let witness = MeshWitnessConfiguration(endpoint: "https://Ruru.Example.com/", clusterID: "swiftmesh", token: String(repeating: "s", count: 40))
+        XCTAssertEqual(witness.ownershipFingerprint, "swiftmesh@ruru.example.com")
+        XCTAssertNil(MeshWitnessConfiguration().ownershipFingerprint)
     }
 
     func testInvalidWitnessDisplayNameIsOmittedWithoutBlockingOwnership() async {
@@ -341,4 +414,44 @@ private final class WitnessNameURLProtocol: URLProtocol {
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
+}
+
+/// Two-node mesh tests used fixed listen ports, and `-test-iterations` rebinds
+/// them while the previous iteration's listener may still hold the port. The
+/// standby's first registration also races the owner's listener start. These
+/// helpers give each pair fresh ports and let a test wait until a node is
+/// actually listening, so registration doesn't depend on retry timing.
+enum MeshTestPorts {
+    /// A port the kernel just handed out as free. Binding and closing an
+    /// unconnected socket leaves no TIME_WAIT behind.
+    static func free() -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        precondition(fd >= 0, "socket() failed")
+        defer { close(fd) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = INADDR_ANY
+        address.sin_port = 0
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, length) == 0 && getsockname(fd, $0, &length) == 0
+            }
+        }
+        precondition(bound, "bind()/getsockname() failed")
+        return Int(UInt16(bigEndian: address.sin_port))
+    }
+}
+
+extension ClusterCoordinator {
+    /// Polls until the mesh listener reports ready. Returns false on timeout.
+    func waitUntilListeningForTesting(timeout: Duration = .seconds(3)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if currentSnapshot().serverState == .listening { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return currentSnapshot().serverState == .listening
+    }
 }

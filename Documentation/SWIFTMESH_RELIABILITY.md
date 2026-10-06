@@ -67,6 +67,10 @@ client's current lease and deadline and never determines Primary preference.
 
 The witness grants one owner per cluster, uses monotonically increasing terms, and refuses expired renewals. Live expiry uses a monotonic clock. After a witness restart with outstanding leases, it waits a full 30-second lease before new acquisitions; a wall-clock change or reboot cannot prematurely release the previous owner's lease. The owner renews every five seconds. SwiftBot's Discord output gate and WebUI write gate check a local monotonic lease deadline even if the renewal task stalls. Loss of the witness stops bot output instead of permitting both Macs to operate. This trades availability for exclusive ownership when the authority is unavailable.
 
+A renewal Ruru doesn't answer (a timeout, a network drop, or its restart quarantine) is retried every two seconds while the local deadline holds. The owner demotes, closing its Discord gateway, only when Ruru refuses the renewal or that deadline passes. A configured Primary, or Ruru's Preferred Primary, with no other Primary to watch keeps trying to acquire a lease every five seconds. That is how it recovers after losing its lease, after starting while Ruru was unreachable, or after Ruru restarts. Ruru arbitrates these attempts, so they never take ownership from another Mac. A Ruru restart, including installing a Ruru update, therefore pauses the bot for about 30–40 seconds rather than forcing a failover.
+
+Both Macs must use the same Ruru service. Each node reports its Ruru fingerprint (cluster ID and endpoint host, never the token) in its mesh health, and a Standby remembers the owner's. A Standby with no Ruru, or a different one, refuses to take over or hand back, and SwiftMesh shows why. Set up Ruru on the Failover with the same pairing code before relying on failover. Builds from before this check report no fingerprint and are not held to it.
+
 The protocol fences ownership decisions; already-sent Discord HTTP requests can still complete. Discord does not enforce SwiftMesh fencing tokens. This is not a guarantee of exactly-once external effects.
 
 ## What is shared

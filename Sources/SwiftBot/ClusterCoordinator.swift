@@ -39,6 +39,8 @@ actor ClusterCoordinator {
         let term: Int
         let leaderAddress: String
         let knownPeers: [String: String]
+        /// The owner's Ruru fingerprint when last seen. Absent from older files.
+        var leaderWitness: String?
     }
     private let recoveryURL: URL?
     private var recoveredLeaderAddress = ""
@@ -53,6 +55,7 @@ actor ClusterCoordinator {
             leaderTerm = max(0, saved.term)
             recoveredLeaderAddress = saved.leaderAddress
             knownPeerAddresses = saved.knownPeers
+            leaderWitnessRequirement = saved.leaderWitness
         }
     }
 
@@ -60,7 +63,8 @@ actor ClusterCoordinator {
     private func persistRecoveryState() -> Bool {
         guard let recoveryURL else { return true }
         do {
-            let saved = RecoveryState(term: leaderTerm, leaderAddress: leaderAddress, knownPeers: knownPeerAddresses)
+            let saved = RecoveryState(term: leaderTerm, leaderAddress: leaderAddress, knownPeers: knownPeerAddresses,
+                                      leaderWitness: leaderWitnessRequirement)
             try encoder.encode(saved).write(to: recoveryURL, options: .atomic)
             return true
         } catch { return false }
@@ -110,6 +114,10 @@ actor ClusterCoordinator {
     /// the old 4s interval caused excessive load on the primary and overlapping
     /// requests that contributed to CFNetwork timer races.
     private let workerRegistrationIntervalNanoseconds: UInt64 = 30_000_000_000
+    /// First retry after a failed registration, doubling up to the heartbeat
+    /// interval. A Standby that started before its Primary was listening used
+    /// to wait the full 30s heartbeat before registering.
+    private let workerRegistrationRetryNanoseconds: UInt64 = 1_000_000_000
     private let registrationStaleAfter: TimeInterval = 90
     static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
@@ -266,9 +274,22 @@ actor ClusterCoordinator {
     private var handbackDrainHandler: (@Sendable () async -> Bool)?
     private var handbackResumeHandler: (@Sendable () async -> Void)?
     private var ownershipAcquire: (@Sendable (Int) async -> Int?)?
-    private var ownershipRenew: (@Sendable (Int) async -> Bool)?
+    private var ownershipRenew: (@Sendable (Int) async -> MeshOwnershipRenewal)?
     private var ownershipRelease: (@Sendable (Int) async -> Void)?
     private var ownershipTask: Task<Void, Never>?
+    /// Retries `acquire` while this Mac should own the bot but has no leader
+    /// to watch: a configured Primary that lost its lease or started without one.
+    private var ownershipRecoveryTask: Task<Void, Never>?
+    private var ownershipRecoveryGeneration = 0
+    private var ownershipRenewalInterval: Duration = .seconds(5)
+    private var ownershipRetryInterval: Duration = .seconds(2)
+    private var ownershipRecoveryInterval: Duration = .seconds(5)
+    /// This Mac's Ruru fingerprint (`MeshWitnessConfiguration.ownershipFingerprint`),
+    /// nil without a witness.
+    private var localWitnessFingerprint: String?
+    /// The owner's fingerprint from its health, persisted so it still applies
+    /// once the owner is gone. nil when the owner has no witness or is older.
+    private var leaderWitnessRequirement: String?
     private var ownershipGranted = false
     private var promotionInProgress = false
     private var handbackInProgress = false
@@ -302,6 +323,7 @@ actor ClusterCoordinator {
     func setPrimaryPreference(_ preference: MeshPrimaryPreference) {
         if preference != primaryPreference { standbyHealthySince = nil }
         primaryPreference = preference
+        if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
     }
 
     func currentPrimaryPreference() -> MeshPrimaryPreference { primaryPreference }
@@ -332,6 +354,7 @@ actor ClusterCoordinator {
 
     func setDesiredBotRunning(_ running: Bool) {
         desiredBotRunning = running
+        if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
     }
 
     func setServiceHealthProvider(_ provider: @escaping @Sendable () async -> Bool) {
@@ -343,19 +366,24 @@ actor ClusterCoordinator {
     }
 
     /// Install all three closures only when an independent witness is configured.
-    /// A rejected renewal closes output immediately, without assuming a network
-    /// partition means the other Mac failed.
+    /// A refused renewal closes output immediately; an unanswered one keeps the
+    /// lease until its local deadline, without assuming a network partition
+    /// means the other Mac failed.
     func setOwnershipHandlers(
         acquire: (@Sendable (Int) async -> Int?)?,
-        renew: (@Sendable (Int) async -> Bool)?,
-        release: (@Sendable (Int) async -> Void)?
+        renew: (@Sendable (Int) async -> MeshOwnershipRenewal)?,
+        release: (@Sendable (Int) async -> Void)?,
+        witnessFingerprint: String? = nil
     ) async {
         ownershipAcquire = acquire
         ownershipRenew = renew
         ownershipRelease = release
+        localWitnessFingerprint = acquire == nil ? nil : witnessFingerprint
         if acquire == nil {
             ownershipTask?.cancel()
             ownershipTask = nil
+            ownershipRecoveryTask?.cancel()
+            ownershipRecoveryTask = nil
             ownershipGranted = mode == .leader
         } else if mode == .leader {
             ownershipGranted = false
@@ -406,24 +434,87 @@ actor ClusterCoordinator {
         ownershipTask = nil
         guard ownershipRenew != nil, mode == .leader, ownershipGranted else { return }
         ownershipTask = Task { [weak self] in
+            var delay = await self?.ownershipRenewalInterval ?? .seconds(5)
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: delay)
                 guard !Task.isCancelled, let self else { return }
-                await self.renewOwnership()
+                delay = await self.renewOwnership()
             }
         }
     }
 
-    private func renewOwnership() async {
-        guard mode == .leader, ownershipGranted, let renew = ownershipRenew else { return }
+    /// Renews the lease and returns how long to wait before the next attempt.
+    /// One slow or failed request is not a lost lease: an unanswered renewal is
+    /// retried sooner until the local deadline passes, and only Ruru refusing,
+    /// or the deadline passing, demotes. Output is closed at that deadline by
+    /// `DiscordService.outputAllowed` even if this task stalls.
+    private func renewOwnership() async -> Duration {
+        guard mode == .leader, ownershipGranted, let renew = ownershipRenew else { return ownershipRenewalInterval }
         let expectedTerm = leaderTerm
-        let renewed = await renew(expectedTerm)
-        guard mode == .leader, leaderTerm == expectedTerm else { return }
-        if !renewed {
-            await demoteToStandby(observedTerm: expectedTerm, newLeaderAddress: nil)
-            snapshot.diagnostics = "Ownership renewal failed; bot output and writes paused"
+        let result = await renew(expectedTerm)
+        guard mode == .leader, leaderTerm == expectedTerm else { return ownershipRenewalInterval }
+        switch result {
+        case .renewed:
+            return ownershipRenewalInterval
+        case .unreachable(stillValid: true):
+            snapshot.diagnostics = "Ruru did not answer a lease renewal; retrying while the lease is still valid"
             await publishSnapshot()
+            return ownershipRetryInterval
+        case .lost, .unreachable(stillValid: false):
+            await demoteToStandby(observedTerm: expectedTerm, newLeaderAddress: nil)
+            snapshot.diagnostics = result == .lost
+                ? "Ruru ended this Mac's lease; bot output and writes paused"
+                : "Ruru unreachable until the lease expired; bot output and writes paused"
+            await publishSnapshot()
+            return ownershipRenewalInterval
         }
+    }
+
+    #if DEBUG
+    func registeredWorkerNamesForTesting() -> [String] { registeredWorkers.values.map(\.nodeName) }
+
+    func setOwnershipTimingForTesting(renewal: Duration, retry: Duration, recovery: Duration) {
+        ownershipRenewalInterval = renewal
+        ownershipRetryInterval = retry
+        ownershipRecoveryInterval = recovery
+    }
+    #endif
+
+    /// Why this Mac may not take over from an owner that uses Ruru, or nil.
+    /// Without the same lease authority, a takeover during a partition could
+    /// leave two Macs running the bot.
+    private func witnessMismatchReason() -> String? {
+        guard let required = leaderWitnessRequirement, required != localWitnessFingerprint else { return nil }
+        return localWitnessFingerprint == nil
+            ? "the Primary uses Ruru (\(required)) but this Mac has no Ruru set up"
+            : "this Mac's Ruru (\(localWitnessFingerprint ?? "")) differs from the Primary's (\(required))"
+    }
+
+    /// Whether this Standby should keep trying to acquire the lease itself.
+    /// Only without a leader to monitor, which otherwise drives promotion.
+    private func shouldRecoverOwnership() -> Bool {
+        guard mode == .standby, ownershipAcquire != nil, desiredBotRunning, !handbackInProgress else { return false }
+        let preferred = primaryPreference.freshPreferredNodeID(at: .now)
+        return isConfiguredPrimary || (!credentialNodeID.isEmpty && preferred == credentialNodeID)
+    }
+
+    private func startOwnershipRecoveryIfNeeded() {
+        guard ownershipRecoveryTask == nil, shouldRecoverOwnership() else { return }
+        ownershipRecoveryGeneration += 1
+        let generation = ownershipRecoveryGeneration
+        ownershipRecoveryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, await self.shouldRecoverOwnership() else { break }
+                await self.promoteToLeader()
+                guard !Task.isCancelled, await self.mode == .standby else { break }
+                try? await Task.sleep(for: await self.ownershipRecoveryInterval)
+            }
+            await self?.clearOwnershipRecoveryTask(generation)
+        }
+    }
+
+    private func clearOwnershipRecoveryTask(_ generation: Int) {
+        if generation == ownershipRecoveryGeneration { ownershipRecoveryTask = nil }
     }
 
     /// Read-only catchup precedes a transfer. The active owner stays frozen until
@@ -436,6 +527,14 @@ actor ClusterCoordinator {
               desiredBotRunning, let catchup = handbackCatchupHandler,
               let baseURL = normalizedBaseURL(leaderAddress), !baseURL.isEmpty else { return false }
         if automatic, !mayReclaimAutomatically() { return false }
+        // Checked against the owner's current health before it freezes, and
+        // again before commit: once the owner commits, it has already closed.
+        if let health = await fetchMeshNodeHealth(baseURL) { observeLeaderHealth(health) }
+        if let reason = witnessMismatchReason() {
+            snapshot.diagnostics = "Handback blocked: \(reason)"
+            await publishSnapshot()
+            return false
+        }
         handbackInProgress = true
         defer { handbackInProgress = false }
         let request = HandbackTransfer(
@@ -455,6 +554,12 @@ actor ClusterCoordinator {
               await promotionReadinessHandler?() == nil else {
             _ = await postHandback(prepared, phase: "abort", baseURL: baseURL)
             snapshot.diagnostics = "Handback deferred: catchup or readiness failed; current Primary retained"
+            await publishSnapshot()
+            return false
+        }
+        if let reason = witnessMismatchReason() {
+            _ = await postHandback(prepared, phase: "abort", baseURL: baseURL)
+            snapshot.diagnostics = "Handback blocked: \(reason)"
             await publishSnapshot()
             return false
         }
@@ -729,6 +834,8 @@ actor ClusterCoordinator {
         self.autoReclaimAfterSeconds = nextSeconds
         // Any policy change resets the healthy clock — start clean.
         self.standbyHealthySince = nil
+        // Startup demotes before this policy arrives; recover now if needed.
+        if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
     }
 
     /// Phase 4: time remaining (seconds) until auto-reclaim, or `nil` if
@@ -1583,6 +1690,8 @@ actor ClusterCoordinator {
         meshLogger.notice("Stopping all cluster services")
         ownershipTask?.cancel()
         ownershipTask = nil
+        ownershipRecoveryTask?.cancel()
+        ownershipRecoveryTask = nil
         handbackTimeoutTask?.cancel()
         handbackTimeoutTask = nil
         pendingHandback = nil
@@ -2367,7 +2476,8 @@ actor ClusterCoordinator {
                 nodeName: nodeName, mode: mode.rawValue, leaderTerm: leaderTerm,
                 desiredBotRunning: desiredBotRunning,
                 gatewayConnected: await serviceHealthProvider?() ?? (mode == .leader),
-                advertisedAddress: localWorkerAdvertisedBaseURL()
+                advertisedAddress: localWorkerAdvertisedBaseURL(),
+                ownershipWitness: localWitnessFingerprint
             )
             return httpResponse(status: "200 OK", body: (try? encoder.encode(payload)) ?? Data())
         case ("POST", "/v1/mesh/handback/prepare"):
@@ -2662,13 +2772,23 @@ actor ClusterCoordinator {
         standbyHealthMisses = 0
         standbyHealthySince = nil
 
-        guard mode == .standby else { return }
-        guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty else {
+        guard mode == .standby else {
+            ownershipRecoveryTask?.cancel()
+            ownershipRecoveryTask = nil
             return
         }
+        guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty,
+              !isSelfClusterEndpoint(leaderBaseURL) else {
+            startOwnershipRecoveryIfNeeded()
+            return
+        }
+        ownershipRecoveryTask?.cancel()
+        ownershipRecoveryTask = nil
 
         meshLogger.debug("Starting standby health monitor for \(leaderBaseURL, privacy: .public)")
         standbyMonitorTask = Task {
+            // Learn the owner's Ruru requirement now rather than after 15 s.
+            if let health = await self.fetchMeshNodeHealth(leaderBaseURL) { await self.observeLeaderHealth(health) }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(Self.standbyHealthInterval * 1_000_000_000))
                 if Task.isCancelled { break }
@@ -2682,6 +2802,7 @@ actor ClusterCoordinator {
         guard mode == .standby else { return }
 
         let nodeHealth = await fetchMeshNodeHealth(leaderBaseURL)
+        if let nodeHealth { observeLeaderHealth(nodeHealth) }
         var isHealthy = nodeHealth?.mode == ClusterMode.leader.rawValue
         if nodeHealth == nil { isHealthy = await isWorkerReachable(leaderBaseURL) }
         // Bug-2 fix: a single failed probe is not enough to count a miss. Network
@@ -2776,6 +2897,19 @@ actor ClusterCoordinator {
         }
     }
 
+    /// Records the owner's Ruru fingerprint, and reports a mismatch while it
+    /// is still reachable rather than only when a takeover is refused.
+    private func observeLeaderHealth(_ health: MeshNodeHealth) {
+        guard mode == .standby, health.mode == ClusterMode.leader.rawValue,
+              health.ownershipWitness != leaderWitnessRequirement else { return }
+        leaderWitnessRequirement = health.ownershipWitness
+        persistRecoveryState()
+        if let reason = witnessMismatchReason() {
+            snapshot.diagnostics = "Takeover unavailable: \(reason)"
+            meshLogger.error("SwiftMesh takeover unavailable: \(reason, privacy: .public)")
+        }
+    }
+
     /// Called immediately before `promoteToLeader()`. Performs:
     /// 1. A final, generous-timeout health probe (retried twice) to filter long
     ///    network blips that beat the per-cycle confirm-retry above. If the
@@ -2832,6 +2966,13 @@ actor ClusterCoordinator {
             return
         }
         guard mode == .standby, pendingHandback == nil else { return }
+        // A committed handback (`grantedTerm`) was checked before commit, and
+        // its owner has already closed: refusing now would leave no owner.
+        if grantedTerm == nil, let reason = witnessMismatchReason() {
+            snapshot.diagnostics = "Takeover blocked: \(reason)"
+            await publishSnapshot()
+            return
+        }
         let nextTerm = max(leaderTerm + 1, grantedTerm ?? 0)
         guard await acquireOwnership(minimumTerm: nextTerm), mode == .standby else {
             snapshot.diagnostics = "Takeover blocked: exclusive ownership unavailable"
@@ -3107,22 +3248,30 @@ actor ClusterCoordinator {
 
         meshLogger.debug("Starting worker registration to \(normalizedLeader, privacy: .public)")
         workerRegistrationTask = Task {
+            var retryDelay = workerRegistrationRetryNanoseconds
             while !Task.isCancelled {
-                await registerWithLeader(normalizedLeader)
-                try? await Task.sleep(nanoseconds: workerRegistrationIntervalNanoseconds)
+                if await registerWithLeader(normalizedLeader) {
+                    retryDelay = workerRegistrationRetryNanoseconds
+                    try? await Task.sleep(nanoseconds: workerRegistrationIntervalNanoseconds)
+                } else {
+                    try? await Task.sleep(nanoseconds: retryDelay)
+                    retryDelay = min(retryDelay * 2, workerRegistrationIntervalNanoseconds)
+                }
             }
             meshLogger.debug("Worker registration task exited")
         }
     }
 
-    private func registerWithLeader(_ leaderBaseURL: String) async {
-        guard mode == .worker || mode == .standby else { return }
+    /// Returns whether the Primary accepted the registration.
+    @discardableResult
+    private func registerWithLeader(_ leaderBaseURL: String) async -> Bool {
+        guard mode == .worker || mode == .standby else { return false }
         guard let url = URL(string: leaderBaseURL + "/cluster/register") else {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Invalid Primary address"
             snapshot.diagnostics = "Invalid registration URL: \(leaderBaseURL)"
             await publishSnapshot()
-            return
+            return false
         }
 
         let payload = WorkerRegistrationRequest(
@@ -3153,7 +3302,7 @@ actor ClusterCoordinator {
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? "-"
                 snapshot.diagnostics = "Registration failed: POST \(describeEndpoint(url)) status=\(code) body=\(String(bodySnippet.prefix(180)))"
                 await publishSnapshot()
-                return
+                return false
             }
 
             let ack = try? decoder.decode(WorkerRegistrationResponse.self, from: data)
@@ -3171,9 +3320,10 @@ actor ClusterCoordinator {
             // Auto-pull Discord token after a successful handshake. AppModel
             // sets onDiscordTokenFetched only when the local node has no
             // token; the helper is a no-op otherwise. Failure is silent —
-            // the next registration cycle (every ~4s) will retry.
+            // the next registration heartbeat will retry.
             await pullDiscordTokenFromLeaderIfNeeded(leaderBaseURL: leaderBaseURL)
             await runInitialSyncAfterRegistrationIfNeeded(leaderBaseURL: leaderBaseURL)
+            return true
         } catch {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Primary unavailable"
@@ -3183,6 +3333,7 @@ actor ClusterCoordinator {
                 snapshot.diagnostics = "Registration request failed: POST \(describeEndpoint(url)) reason=\(error.localizedDescription)"
             }
             await publishSnapshot()
+            return false
         }
     }
 

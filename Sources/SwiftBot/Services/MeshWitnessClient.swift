@@ -15,6 +15,14 @@ struct MeshWitnessConfiguration: Codable, Equatable, Sendable {
 
     /// HTTPS, or plain HTTP to loopback for development; never credentials,
     /// query or fragment in the URL.
+    /// Which Ruru service this Mac's ownership depends on, without the token:
+    /// cluster ID and endpoint host. Nodes compare fingerprints so a Mac set
+    /// up differently cannot take over without the same lease authority.
+    var ownershipFingerprint: String? {
+        guard isValid, let host = URL(string: endpoint)?.host?.lowercased() else { return nil }
+        return clusterID.trimmingCharacters(in: .whitespacesAndNewlines) + "@" + host
+    }
+
     static func isValidEndpoint(_ endpoint: String) -> Bool {
         guard let url = URL(string: endpoint), let host = url.host,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return false }
@@ -180,6 +188,18 @@ enum MeshWitnessHealth: Equatable, Sendable {
     }
 }
 
+/// The outcome of renewing a lease. Ruru answering "no" is different from
+/// not hearing from Ruru: only the first means another Mac may now own it.
+enum MeshOwnershipRenewal: Equatable, Sendable {
+    case renewed
+    /// Ruru refused: the lease expired, changed owner, or the token was rejected.
+    case lost
+    /// No usable answer (network, timeout, 503 during Ruru's restart
+    /// quarantine). `stillValid` is whether this Mac's local deadline has
+    /// not yet passed, so it may keep the lease and retry.
+    case unreachable(stillValid: Bool)
+}
+
 actor MeshWitnessClient {
     struct Grant: Codable, Sendable {
         let ownerNodeID: String
@@ -257,13 +277,20 @@ actor MeshWitnessClient {
     }
 
     func acquire(minimumTerm: Int) async -> Int? {
-        guard let grant = await request("acquire", term: minimumTerm), grant.term >= minimumTerm else { return nil }
+        guard case .granted(let grant) = await request("acquire", term: minimumTerm), grant.term >= minimumTerm else { return nil }
         return grant.term
     }
 
-    func renew(term: Int) async -> Bool {
-        guard currentTerm == term, let grant = await request("renew", term: term) else { return false }
-        return grant.term == term
+    func renew(term: Int) async -> MeshOwnershipRenewal {
+        guard currentTerm == term else { return .lost }
+        switch await request("renew", term: term) {
+        case .granted(let grant):
+            return grant.term == term ? .renewed : .lost
+        case .refused:
+            return .lost
+        case .unreachable:
+            return .unreachable(stillValid: deadline.map { ContinuousClock.now < $0 } ?? false)
+        }
     }
 
     func release(term: Int) async {
@@ -277,9 +304,16 @@ actor MeshWitnessClient {
         if currentTerm == term { currentTerm = nil; deadline = nil }
     }
 
-    private func request(_ action: String, term: Int) async -> Grant? {
+    private enum LeaseResponse {
+        case granted(Grant)
+        /// A definite answer from Ruru: 401, 403 or 409.
+        case refused
+        case unreachable
+    }
+
+    private func request(_ action: String, term: Int) async -> LeaseResponse {
         guard config.isValid, !nodeID.isEmpty,
-              let url = URL(string: config.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/lease/\(action)") else { return nil }
+              let url = URL(string: config.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/lease/\(action)") else { return .refused }
         let began = ContinuousClock.now
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -288,17 +322,19 @@ actor MeshWitnessClient {
         request.httpBody = try? JSONEncoder().encode(Request(clusterID: config.clusterID, nodeID: nodeID, term: term, nodeName: nodeName))
         do {
             let (data, response) = try await session.data(for: request)
-            guard let response = response as? HTTPURLResponse, response.statusCode == 200,
+            guard let response = response as? HTTPURLResponse else { return .unreachable }
+            if [401, 403, 409].contains(response.statusCode) { return .refused }
+            guard response.statusCode == 200,
                   let grant = try? JSONDecoder().decode(Grant.self, from: data),
                   grant.ownerNodeID == nodeID, grant.term >= 0,
-                  grant.expiresInSeconds >= 3, grant.expiresInSeconds <= 60 else { return nil }
+                  grant.expiresInSeconds >= 3, grant.expiresInSeconds <= 60 else { return .unreachable }
             // Start the local deadline before the HTTP request, with a safety
             // margin. Slow requests can never extend our permission to act.
             let expires = began.advanced(by: .milliseconds(Int64((grant.expiresInSeconds - 2) * 1000)))
-            guard ContinuousClock.now < expires else { return nil }
+            guard ContinuousClock.now < expires else { return .unreachable }
             currentTerm = grant.term
             deadline = expires
-            return grant
-        } catch { return nil }
+            return .granted(grant)
+        } catch { return .unreachable }
     }
 }

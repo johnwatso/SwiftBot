@@ -1120,4 +1120,7 @@ struct MeshNodeHealth: Codable, Sendable {
     let desiredBotRunning: Bool
     let gatewayConnected: Bool
     let advertisedAddress: String
+    /// The node's Ruru fingerprint (cluster ID and host), nil without one or
+    /// from an older build. A Standby without the same one cannot take over.
+    var ownershipWitness: String? = nil
 }
