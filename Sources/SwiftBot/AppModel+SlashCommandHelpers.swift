@@ -34,6 +34,7 @@ extension AppModel {
                 ])
             }
         }
+        definitions += automationSlashCommandDefinitions()
         return definitions
     }
 

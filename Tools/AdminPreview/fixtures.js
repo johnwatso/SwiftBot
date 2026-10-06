@@ -434,12 +434,15 @@ const serverContext = { guildName: 'Preview Server', guildId: '1001', textChanne
 const rule = (id, name, category, trigger, step, enabled = true) =>
   ({ id, name, enabled, category, trigger: { kind: trigger }, filterLogic: 'all', filters: [], steps: [{ id: `${id.slice(0, 24)}00000000000a`, ...step }] });
 const automationRules = {
+  events: [],
   automation: [
     rule('a1a1a1a1-0000-4000-8000-000000000001', 'Welcome to voice', 'automation', 'userJoinedVoice', { kind: 'sendMessage', sendTarget: 'replyToTrigger', content: 'Hey {username}!' }),
     rule('a1a1a1a1-0000-4000-8000-000000000002', 'Sleepy react', 'automation', 'messageCreated', { kind: 'sendMessage', sendTarget: 'replyToTrigger', content: '😴' }, false)
   ],
   moderation: [
-    rule('b2b2b2b2-0000-4000-8000-000000000001', 'Block spam links', 'moderation', 'messageCreated', { kind: 'modifyMessage', messageOp: 'delete' })
+    { ...rule('b2b2b2b2-0000-4000-8000-000000000001', 'Block spam links', 'moderation', 'messageCreated', { kind: 'modifyMessage', messageOp: 'delete' }), filters: [{ id: 'spam-filter', kind: 'messageContainsSpamLink' }] },
+    { ...rule('b2b2b2b2-0000-4000-8000-000000000002', 'Mention spam timeout', 'moderation', 'messageCreated', { kind: 'modifyMember', memberOp: 'timeout', timeoutSeconds: 600 }), filters: [{ id: 'mention-filter', kind: 'messageMentionsCount', intValue: 5 }] },
+    { ...rule('b2b2b2b2-0000-4000-8000-000000000003', 'Ban for a blocked link', 'moderation', 'messageCreated', { kind: 'modifyMember', memberOp: 'ban', kickReason: 'Blocked link in #{channelName}', banDeleteMessageSeconds: 0 }, false), filters: [{ id: 'link-filter', kind: 'messageContains', text: 'example.com/blocked-link' }] }
   ]
 };
 // Templates are read from the Swift catalog so the preview always shows the
@@ -456,12 +459,19 @@ const automationTemplates = (() => {
     const category = /category: \.moderation/.test(block) ? 'moderation' : 'automation';
     const trigger = (block.match(/Trigger\(kind: \.(\w+)/) || [])[1] || 'messageCreated';
     const stepKind = (block.match(/Step\(\s*kind: \.(\w+)/) || [])[1] || 'log';
+    const step = { kind: stepKind };
+    if (stepKind === 'modifyMember') {
+      step.memberOp = (block.match(/memberOp: \.(\w+)/) || [])[1] || 'addRole';
+      step.kickReason = field('kickReason');
+      step.banDeleteMessageSeconds = Number((block.match(/banDeleteMessageSeconds: (\d+)/) || [])[1] || 0);
+      step.timeoutSeconds = Number((block.match(/timeoutSeconds: (\d+)/) || [])[1] || 60);
+    }
     const id = field('id');
     if (!id) return;
     catalogs[category].push({
       id, title: field('title'), subtitle: field('subtitle'), symbol: field('symbol'),
       tint: (block.match(/tint: \.(\w+)/) || [])[1] || 'blue',
-      rule: rule(`c3c3c3c3-0000-4000-8000-${String(index).padStart(12, '0')}`, field('title'), category, trigger, { kind: stepKind })
+      rule: rule(`c3c3c3c3-0000-4000-8000-${String(index).padStart(12, '0')}`, field('title'), category, trigger, step, !/enabled: false/.test(block))
     });
   });
   return catalogs;
@@ -471,7 +481,16 @@ const automations = (category, rules = automationRules[category] || []) => ({
   rules,
   templates: automationTemplates[category] || [],
   serverContext,
-  metrics: { total: rules.length, enabled: rules.filter(r => r.enabled).length, triggerKinds: new Set(rules.map(r => r.trigger.kind)).size }
+  servers: [{id:'1001', name:'Preview Server'}],
+  textChannelsByServer: {'1001':textChannels},
+  scheduledEvents: [{id:'season12',guild_id:'1001',name:'The Finals Season 12',description:'A new season of THE FINALS begins.',scheduled_start_time:new Date(Date.now()+86400000).toISOString(),status:1}],
+  eventErrors: {}, history: [], diagnostics: [],
+  metrics: { total: rules.length, enabled: rules.filter(r => r.enabled).length, triggerKinds: new Set(rules.map(r => r.trigger.kind)).size },
+  recentModeration: category === 'moderation' ? [
+    { id: 'moderation-preview-1', time: minutesAgo(4), source: 'Moderation', actor: 'Automation', action: 'Timed out member', detail: 'Alex · General · 600s', level: 'warning' },
+    { id: 'moderation-preview-2', time: minutesAgo(7), source: 'Moderation', actor: 'Automation', action: 'Deleted message', detail: 'Spam link removed from General', level: 'warning' },
+    { id: 'moderation-preview-3', time: minutesAgo(14), source: 'Moderation', actor: 'Automation', action: 'Moderation rule failed', detail: 'Mention spam timeout · Discord refused the timeout: missing permissions', level: 'error' }
+  ] : []
 });
 
 const welcomeFlow = {

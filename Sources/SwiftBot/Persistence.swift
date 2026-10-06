@@ -37,7 +37,8 @@ enum SwiftBotStorage {
     }()
 
     static func folderURL() -> URL {
-        if isRunningUnderXCTest { return testFolderURL }
+        // Screenshot demo mode is kept away from real data the same way.
+        if isRunningUnderXCTest || ScreenshotDemo.isEnabled { return testFolderURL }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let folder = appSupport.appendingPathComponent(appFolderName, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -540,7 +541,7 @@ enum MeshBotConfiguration {
 enum MeshSnapshotDisk {
     static let fileNames: Set<String> = [
         SwiftBotStorage.settingsFileName, SwiftBotStorage.rulesFileName, "automations.json",
-        "automation-executions.json", "bot-command-cooldowns.json",
+        "automation-executions.json", "bot-command-cooldowns.json", "automation-memory.json",
         SwiftBotStorage.voiceActiveSessionsFileName, SwiftBotStorage.voiceSessionHistoryFileName,
         SwiftBotStorage.gameTrackingStateFileName, SwiftBotStorage.communityStatsFileName
     ]
@@ -570,6 +571,8 @@ enum MeshSnapshotDisk {
                   records.allSatisfy({ $0.nextStep >= 0 && $0.nextStep <= $0.rule.steps.count }) else {
                 throw CocoaError(.fileReadCorruptFile)
             }
+        case AutomationMemory.fileName:
+            _ = try JSONDecoder().decode(AutomationMemory.self, from: data)
         case "bot-command-cooldowns.json":
             _ = try JSONDecoder().decode([String: Date].self, from: data)
         default: break

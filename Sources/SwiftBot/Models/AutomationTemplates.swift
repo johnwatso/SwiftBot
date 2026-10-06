@@ -26,6 +26,7 @@ struct AutomationTemplate: Identifiable, Hashable {
         switch category {
         case .automation: return automationCatalog
         case .moderation: return moderationCatalog
+        case .events: return []
         }
     }
 
@@ -371,11 +372,30 @@ struct AutomationTemplate: Identifiable, Hashable {
     // MARK: - Moderation catalog
     //
     // Focus on templates that map cleanly to moderation actions the engine
-    // can execute today: delete, DM, timeout, kick, and local audit logging.
-    // Avoid role-filter examples until member role state is plumbed through
-    // SwiftBotEvent; those filters are currently informational in the UI.
+    // can execute today: delete, DM, timeout, kick, ban, and local audit logging.
 
     static let moderationCatalog: [AutomationTemplate] = [
+
+        AutomationTemplate(
+            id: "mod-blocked-link-ban",
+            title: "Ban for a blocked link",
+            subtitle: "Ban senders of a link you specify. Starts off until you review it; preserves message history.",
+            symbol: "hand.raised.fill",
+            tint: .red,
+            rule: Automations.Rule(
+                name: "Ban for a blocked link",
+                enabled: false,
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .fromBot, boolValue: false),
+                    Automations.Filter(kind: .messageContains, text: "example.com/blocked-link")
+                ],
+                steps: [
+                    Automations.Step(kind: .modifyMember, memberOp: .ban, kickReason: "Blocked link posted in #{channelName}", banDeleteMessageSeconds: 0)
+                ]
+            )
+        ),
 
         AutomationTemplate(
             id: "mod-banned-link-cleanup",

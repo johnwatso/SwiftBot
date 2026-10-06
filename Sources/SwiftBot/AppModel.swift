@@ -39,6 +39,11 @@ final class AppModel: ObservableObject {
     @Published var auditLog: [AuditLogEntry] = []
     private let auditLogCap = 500
 
+    var automationScheduleTask: Task<Void, Never>?
+    var scheduledDiscordEvents: [DiscordScheduledEvent] = []
+    var scheduledEventErrors: [String: String] = [:]
+    var scheduledEventsRefreshedAt: Date?
+    var scheduledEventsRefreshing = false
     @Published var automationLog: [AutomationLogEntry] = []
     private let automationLogCap = 500
 
@@ -481,6 +486,9 @@ final class AppModel: ObservableObject {
     @Published var mediaPlaybackUniqueItemCount = 0
     var lastSlashRegistrationAt: Date?
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
+    /// Automation command names in the last registration, so a rule edit that
+    /// changes them re-registers straight away.
+    var registeredAutomationSlashCommandNames: [String] = []
     var clearedGlobalSlashCommands = false
     var lastSlashCommandsEnabledState: Bool?
     var pendingMusicSelectionsByUserID: [String: PendingMusicSelection] = [:]
@@ -640,6 +648,12 @@ final class AppModel: ObservableObject {
                 hasLoadedSettings = true
                 return
             }
+            #if DEBUG
+            guard !ScreenshotDemo.isEnabled else {
+                applyScreenshotDemo()
+                return
+            }
+            #endif
 
             await startRateLimitCleanupTask()
 
@@ -708,7 +722,7 @@ final class AppModel: ObservableObject {
             }
 
             await service.setAutomationService(automationService, store: automationStore)
-            await MainActor.run { automationStore.load() }
+            await MainActor.run { automationStore.load(); startAutomationScheduler() }
             await service.setHistoryProvider { [weak self] scope in
                 guard let self else { return [] }
                 let (messages, _) = await self.aiMessagesForScope(
@@ -1072,6 +1086,7 @@ final class AppModel: ObservableObject {
 
     func handleRuleStorePersisted() async {
         await notifyConfigFilesChangedIfLeader()
+        await refreshAutomationSlashCommandsIfChanged()
     }
 
     func notifyConfigFilesChangedIfLeader() async {

@@ -71,6 +71,15 @@ enum SwiftBotEvent: Codable, Sendable {
         let content: String
         let isDirectMessage: Bool
         let authorIsBot: Bool
+        var isReply: Bool?
+        var automationTrigger: Automations.TriggerKind?
+        /// Identifies this occurrence when `messageId` alone does not, such
+        /// as each member's reaction to the same message.
+        var occurrenceId: String?
+        var eventName: String?
+        var eventDescription: String?
+        var eventURL: String?
+        var eventStart: String?
 
         init(
             guildId: String,
@@ -248,6 +257,18 @@ enum SwiftBotEvent: Codable, Sendable {
         case .mediaAdded(let p): return p.nodeName
         default: return nil
         }
+    }
+
+    var occurrenceId: String? {
+        if case .message(let p) = self { return p.occurrenceId }
+        return nil
+    }
+
+    /// A real Discord message to reply to: a posted or reacted-to message, not
+    /// a schedule or a slash command's interaction.
+    var hasReplyableMessage: Bool {
+        guard case .message(let p) = self else { return false }
+        return p.automationTrigger == nil || p.automationTrigger == .reactionAdded
     }
 
     var triggerMessageId: String? {

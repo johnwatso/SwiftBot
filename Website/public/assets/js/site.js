@@ -94,9 +94,35 @@ document.addEventListener('DOMContentLoaded', () => {
         lockObserver.observe(privacyLock);
     }
 
+    // Web UI tour: one screenshot at a time, switched by the tab row.
+    // Arrow keys move between tabs, as the WAI-ARIA tabs pattern expects.
+    document.querySelectorAll('[data-tour]').forEach(tour => {
+        const tabs = Array.from(tour.querySelectorAll('[role="tab"]'));
+        const select = (tab, focus) => {
+            tabs.forEach(t => {
+                const selected = t === tab;
+                t.setAttribute('aria-selected', String(selected));
+                t.tabIndex = selected ? 0 : -1;
+                document.getElementById(t.getAttribute('aria-controls')).hidden = !selected;
+            });
+            if (focus) tab.focus();
+        };
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => select(tab, false));
+            tab.addEventListener('keydown', (event) => {
+                const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+                if (event.key === 'Home' || event.key === 'End' || step) {
+                    event.preventDefault();
+                    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + step + tabs.length) % tabs.length;
+                    select(tabs[next], true);
+                }
+            });
+        });
+    });
+
     let particlesReady = false;
     
-    const screenshotAssetVersion = '20260625';
+    const screenshotAssetVersion = '20261006';
 
     function applyTheme(isLight) {
         const theme = isLight ? 'light' : 'dark';
@@ -110,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Swap screenshots based on mode
         document.querySelectorAll('img[data-screenshot]').forEach(img => {
             const type = img.getAttribute('data-screenshot');
-            img.src = `./assets/landing/${type}-${isLight ? 'light' : 'dark'}.png?v=${screenshotAssetVersion}`;
+            img.src = `./assets/landing/${type}-${isLight ? 'light' : 'dark'}.webp?v=${screenshotAssetVersion}`;
         });
 
         // Re-initialize particles to update their colors

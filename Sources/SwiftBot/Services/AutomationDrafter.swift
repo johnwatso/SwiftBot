@@ -228,6 +228,7 @@ final class AutomationDrafter {
              .directMessage,
              .fromBot:                  return f.boolValue != nil
         case .minVoiceDurationSeconds:  return (f.intValue ?? 0) > 0
+        case .counterAtLeast, .counterBelow: return !(f.counterName ?? "").isEmpty && f.intValue != nil
         case .messageContainsSpamLink:  return true
         case .messageCapsPercentage,
              .messageMentionsCount:     return (f.intValue ?? 0) > 0

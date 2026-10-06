@@ -19,7 +19,7 @@ extension HostDetails {
         channel = (info["ShipHookIsBetaBuild"] as? Bool) == true ? "Beta" : "Release"
         #endif
 
-        return HostDetails(
+        let details = HostDetails(
             computerName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             hardware: MacHardwareInfo.summary,
             operatingSystem: "macOS \(osVersion)",
@@ -28,5 +28,9 @@ extension HostDetails {
             buildChannel: channel,
             dataLocation: SwiftBotStorage.folderURL()
         )
+        #if DEBUG
+        if ScreenshotDemo.isEnabled { return .screenshotDemo(from: details) }
+        #endif
+        return details
     }()
 }

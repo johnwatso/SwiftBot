@@ -192,6 +192,61 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         await connection.disconnect()
     }
 
+    /// A ten-minute delay used to hold the receive loop, which awaits each
+    /// payload handler: later messages and heartbeat ACKs went unread.
+    func testDelayedAutomationDoesNotHoldTheReceiveLoop() async {
+        func message(_ id: String) -> String {
+            #"{"op":0,"s":1,"t":"MESSAGE_CREATE","d":{"id":"\#(id)","channel_id":"c","guild_id":"g","content":"hi","author":{"id":"u","username":"tester"}}}"#
+        }
+        let socket = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                .success(message("first")),
+                .success(message("second")),
+                .success(#"{"op":1,"d":null}"#),
+                .success(#"{"op":11,"d":null}"#)
+            ]
+        )
+        let sends = DispatchRecorder()
+        let engine = AutomationService(aiService: DiscordAIService(), dependencies: .init(
+            sendMessage: { _, _, _ in await sends.record("send") },
+            sendPayloadMessage: { _, _, _ in await sends.record("send") },
+            sendDM: { _, _ in }, addReaction: { _, _, _, _ in }, deleteMessage: { _, _, _ in },
+            addRole: { _, _, _, _ in }, removeRole: { _, _, _, _ in }, timeoutMember: { _, _, _, _ in },
+            kickMember: { _, _, _, _ in }, moveMember: { _, _, _, _ in }, sendWebhook: { _, _ in },
+            resolveChannelName: { _, _ in "general" }, resolveGuildName: { _ in "guild" }, log: { _ in },
+            recordAutomationRun: { _, _, _, _, _, _ in }
+        ))
+        let rule = Automations.Rule(id: "slow", name: "Slow reply", trigger: .init(kind: .messageCreated), steps: [
+            .init(kind: .delay, delaySeconds: 600),
+            .init(kind: .sendMessage, sendTarget: .sameChannel, content: "late")
+        ])
+        let handled = DispatchRecorder()
+        let recorder = EventRecorder()
+        let connection = makeConnection(factory: SocketFactoryQueue(sockets: [socket]))
+        await connection.setOnPayload { payload in
+            guard payload.t == "MESSAGE_CREATE", case let .object(map)? = payload.d, case let .string(id)? = map["id"] else { return }
+            let event = SwiftBotEvent.message(.init(guildId: "g", userId: "u", username: "tester", channelId: "c",
+                messageId: id, content: "hi", isDirectMessage: false, authorIsBot: false))
+            await engine.dispatch(event: event, rules: [rule], token: "bot-token")
+            await handled.record(id)
+        }
+        await connection.setOnHeartbeatLatency { await recorder.record(latency: $0) }
+
+        await connection.connect(token: "bot-token")
+        let caughtUp = await waitUntil {
+            let messages = await handled.values()
+            let latencies = await recorder.latencies()
+            return messages == ["first", "second"] && !latencies.isEmpty
+        }
+
+        XCTAssertTrue(caughtUp, "The second message and the heartbeat ACK must be read while the first run waits")
+        let earlySends = await sends.values()
+        XCTAssertTrue(earlySends.isEmpty, "The delay itself is still honoured")
+        _ = await engine.pauseAndDrain()
+        await connection.disconnect()
+    }
+
     private func makeConnection(
         factory: SocketFactoryQueue,
         dateProvider: @escaping @Sendable () -> Date = { Date() },
@@ -230,6 +285,12 @@ final class DiscordGatewayConnectionTests: XCTestCase {
 
 private enum SocketFailure: Error {
     case disconnected
+}
+
+private actor DispatchRecorder {
+    private var recorded: [String] = []
+    func record(_ value: String) { recorded.append(value) }
+    func values() -> [String] { recorded }
 }
 
 private actor EventRecorder {

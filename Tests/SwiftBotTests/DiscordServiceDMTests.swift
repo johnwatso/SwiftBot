@@ -22,6 +22,19 @@ final class DiscordServiceDMTests: XCTestCase {
         }
     }
 
+    func testNewModerationActionsBlockedOnStandby() async {
+        let service = DiscordService(session: makeMockSession())
+        await service.setOutputAllowed(false)
+        do {
+            try await service.banMember(guildId: "g", userId: "u", reason: "spam", deleteMessageSeconds: 0, token: "test")
+            XCTFail("Standby must not ban members")
+        } catch { XCTAssertEqual((error as NSError).code, 403) }
+        do {
+            try await service.removeTimeout(guildId: "g", userId: "u", token: "test")
+            XCTFail("Standby must not remove timeouts")
+        } catch { XCTAssertEqual((error as NSError).code, 403) }
+    }
+
     func testEditOriginalInteractionResponseBlockedOnStandby() async {
         let service = DiscordService(session: makeMockSession())
         await service.setOutputAllowed(false)

@@ -27,6 +27,12 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
             removeRole: { _, _, _, _ in },
             timeoutMember: { _, _, _, _ in },
             kickMember: { _, _, _, _ in },
+            banMember: { guild, user, reason, seconds, _ in
+                localAccumulator.appendLog(line: "ban:\(guild):\(user):\(reason):\(seconds)")
+            },
+            removeTimeout: { guild, user, _ in
+                localAccumulator.appendLog(line: "removeTimeout:\(guild):\(user)")
+            },
             moveMember: { _, _, _, _ in },
             sendWebhook: { _, _ in },
             resolveChannelName: { _, _ in "test-channel" },
@@ -307,6 +313,149 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
     }
 
     // MARK: - Operational Separation & Precedence Tests
+
+    func testBanExecutesWithRenderedReasonAndBypassesOrdinaryAutomations() async {
+        let banRule = Automations.Rule(id: "ban-rule", name: "Ban", category: .moderation,
+            trigger: .init(kind: .messageCreated), steps: [
+                .init(kind: .modifyMember, memberOp: .ban, kickReason: "Spam from {username}", banDeleteMessageSeconds: 3600)
+            ])
+        let greeting = Automations.Rule(id: "greeting", name: "Greeting", trigger: .init(kind: .messageCreated), steps: [
+            .init(kind: .sendMessage, sendTarget: .directMessage, content: "hello")
+        ])
+        model.automationStore.setRulesForTesting([greeting, banRule])
+        let event = SwiftBotEvent.message(.init(guildId: "g", userId: "u", username: "tester", channelId: "c", messageId: "ban-event", content: "spam", isDirectMessage: false, authorIsBot: false))
+        await model.fireAutomations(for: event)
+        XCTAssertEqual(accumulator.mockLogs, ["ban:g:u:Spam from tester:3600"])
+        XCTAssertTrue(accumulator.mockDMs.isEmpty)
+    }
+
+    /// Live messages reach rules through DiscordService, not `fireAutomations`.
+    /// The reply rule is stored first, which used to make it run before the ban.
+    func testLiveMessagePathAppliesModerationPrecedence() async throws {
+        let banRule = Automations.Rule(id: "ban-rule", name: "Ban", category: .moderation,
+            trigger: .init(kind: .messageCreated), steps: [
+                .init(kind: .modifyMember, memberOp: .ban, kickReason: "Spam from {username}", banDeleteMessageSeconds: 3600)
+            ])
+        let greeting = Automations.Rule(id: "greeting", name: "Greeting", trigger: .init(kind: .messageCreated), steps: [
+            .init(kind: .sendMessage, sendTarget: .directMessage, content: "hello")
+        ])
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = AutomationStore(fileURL: folder.appendingPathComponent("automations.json"))
+        store.setRulesForTesting([greeting, banRule])
+        let service = DiscordService(session: URLSession(configuration: .ephemeral))
+        await service.setOutputAllowed(true)
+        await service.setBotTokenForTesting("bot-token-999")
+        await service.setAutomationService(automationService, store: store)
+
+        let message = GatewayMessageCreateEvent(
+            rawMap: [:], content: "spam", author: ["id": .string("u"), "username": .string("tester")],
+            username: "tester", displayName: "tester", channelID: "c", userID: "u",
+            guildID: "g", messageID: "live-ban-event", isBot: false, avatarHash: nil)
+        await service.processMessageRuleEvent(event: message, channelType: 0)
+
+        XCTAssertEqual(accumulator.mockLogs, ["ban:g:u:Spam from tester:3600"])
+        XCTAssertTrue(accumulator.mockDMs.isEmpty, "The ordinary reply must not run once moderation bans the author")
+    }
+
+    // MARK: - Live reaction and slash-command triggers
+
+    private func gatewayJSON(_ text: String) throws -> DiscordJSON {
+        try JSONDecoder().decode(DiscordJSON.self, from: Data(text.utf8))
+    }
+
+    private func reactionPayload(user: String, emoji: String) throws -> DiscordJSON {
+        try gatewayJSON(#"""
+        {"user_id":"\#(user)","channel_id":"chan-9","message_id":"msg-9","guild_id":"guild-123",
+         "member":{"roles":["role-1"],"user":{"id":"\#(user)","username":"name-\#(user)"}},
+         "emoji":{"id":null,"name":"\#(emoji)"}}
+        """#)
+    }
+
+    func testReactionGatewayPayloadRunsTheStarredMessagesTemplate() async throws {
+        var starred = try XCTUnwrap(AutomationTemplate.catalog(for: .automation).first { $0.id == "star-reaction-log" }).rule
+        starred.id = "starred"
+        model.automationStore.setRulesForTesting([starred])
+
+        // Discord sends the star without the variation selector the template carries.
+        let first = try XCTUnwrap(AppModel.automationReactionEvent(from: try reactionPayload(user: "user-1", emoji: "⭐"), botUserId: "bot"))
+        await model.fireAutomations(for: first)
+        let second = try XCTUnwrap(AppModel.automationReactionEvent(from: try reactionPayload(user: "user-2", emoji: "⭐️"), botUserId: "bot"))
+        await model.fireAutomations(for: second)
+        let other = try XCTUnwrap(AppModel.automationReactionEvent(from: try reactionPayload(user: "user-3", emoji: "👍"), botUserId: "bot"))
+        await model.fireAutomations(for: other)
+
+        XCTAssertEqual(accumulator.mockLogs, [
+            "name-user-1 starred a message in #test-channel",
+            "name-user-2 starred a message in #test-channel"
+        ], "Each member's star on the same message is its own run")
+        XCTAssertNil(AppModel.automationReactionEvent(from: try reactionPayload(user: "bot", emoji: "⭐"), botUserId: "bot"),
+                     "The bot's own reactions never trigger rules")
+    }
+
+    func testSlashInteractionRunsTheAutomationCommand() async throws {
+        let report = Automations.Rule(id: "report", name: "/report command", trigger: .init(kind: .slashCommand, commandName: "report"),
+            steps: [.init(kind: .log, logText: "Report from {username}: {message}")])
+        model.automationStore.setRulesForTesting([report])
+        let raw = try gatewayJSON(#"""
+        {"id":"interaction-1","token":"interaction-token","type":2,"guild_id":"guild-123","channel_id":"chan-9",
+         "member":{"roles":[],"user":{"id":"user-1","username":"reporter"}},
+         "data":{"name":"report","options":[{"type":3,"name":"text","value":"someone is spamming"}]}}
+        """#)
+        guard case let .object(map) = raw, case let .object(data)? = map["data"] else { return XCTFail("fixture") }
+        let interaction = GatewayInteractionCreateEvent(
+            interactionID: "interaction-1", interactionToken: "interaction-token", interactionType: 2,
+            commandName: "report", data: data, rawMap: map)
+
+        await model.fireAutomations(for: AppModel.automationSlashEvent(from: interaction, name: "report"))
+
+        XCTAssertEqual(accumulator.mockLogs, ["Report from reporter: /report someone is spamming"])
+    }
+
+    func testAutomationSlashCommandsAreRegisteredWithoutTakingBuiltInNames() {
+        let rules = Automations.Rule(id: "rules", name: "/rules command", trigger: .init(kind: .slashCommand, commandName: "Rules"), steps: [])
+        let clash = Automations.Rule(id: "clash", name: "Clash", trigger: .init(kind: .slashCommand, commandName: "help"), steps: [])
+        var disabled = rules
+        disabled.id = "off"
+        disabled.enabled = false
+        disabled.trigger.commandName = "offline"
+        model.automationStore.setRulesForTesting([rules, clash, disabled])
+
+        XCTAssertEqual(model.automationSlashCommandNames(), ["rules"])
+        let names = model.allSlashCommandDefinitions().compactMap { $0["name"] as? String }
+        XCTAssertEqual(names.filter { $0 == "rules" }.count, 1)
+        XCTAssertEqual(names.filter { $0 == "help" }.count, 1, "The built-in /help keeps its name")
+        XCTAssertFalse(names.contains("offline"))
+    }
+
+    func testRemoveTimeoutExecutesWithoutSuppressingOrdinaryAutomations() async {
+        let release = Automations.Rule(id: "release", name: "Release", category: .moderation,
+            trigger: .init(kind: .messageCreated), steps: [.init(kind: .modifyMember, memberOp: .removeTimeout)])
+        let greeting = Automations.Rule(id: "greeting", name: "Greeting", trigger: .init(kind: .messageCreated), steps: [
+            .init(kind: .sendMessage, sendTarget: .directMessage, content: "hello")
+        ])
+        model.automationStore.setRulesForTesting([release, greeting])
+        let event = SwiftBotEvent.message(.init(guildId: "g", userId: "u", username: "tester", channelId: "c", messageId: "release-event", content: "hello", isDirectMessage: false, authorIsBot: false))
+        await model.fireAutomations(for: event)
+        XCTAssertEqual(accumulator.mockLogs, ["removeTimeout:g:u"])
+        XCTAssertEqual(accumulator.mockDMs.count, 1)
+    }
+
+    func testNewModerationActionsSimulateWithoutCallingLiveDependencies() async {
+        let rule = Automations.Rule(name: "Simulated enforcement", category: .moderation,
+            trigger: .init(kind: .messageCreated), steps: [
+                .init(kind: .modifyMember, memberOp: .ban, kickReason: "Spam by {username}", banDeleteMessageSeconds: 0),
+                .init(kind: .modifyMember, memberOp: .removeTimeout)
+            ])
+        let event = SwiftBotEvent.message(.init(guildId: "g", userId: "u", username: "tester", channelId: "c", messageId: "sim-event", content: "hello", isDirectMessage: false, authorIsBot: false))
+        let result = await automationService.simulate(rule: rule, event: event)
+        XCTAssertTrue(result.triggerMatched && result.filtersMatched)
+        XCTAssertEqual(result.stepTraces.count, 2)
+        XCTAssertTrue(result.stepTraces[0].detail.contains("Would ban user u"))
+        XCTAssertTrue(result.stepTraces[0].detail.contains("Spam by tester"))
+        XCTAssertTrue(result.stepTraces[1].detail.contains("Would remove timeout"))
+        XCTAssertTrue(accumulator.mockLogs.isEmpty)
+    }
 
     func testDestructiveModerationBypassesAutomationRules() async {
         // Build a destructive moderation rule: delete spam messages

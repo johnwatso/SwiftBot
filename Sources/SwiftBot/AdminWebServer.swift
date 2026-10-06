@@ -1223,10 +1223,19 @@ struct AdminWebAIMemoryClearPatch: Codable {
 /// frontend needs to render one tab's worth of UI.
 struct AdminWebAutomationsPayload: Codable {
     let category: String                              // "automation" or "moderation"
-    let rules: [Automations.Rule]
+    var rules: [Automations.Rule]
     let templates: [AdminWebAutomationTemplate]
     let serverContext: AdminWebAutomationServerContext
     let metrics: AdminWebAutomationMetrics
+    /// Populated for the admin-only moderation page, newest first.
+    var recentModeration: [AuditLogEntry] = []
+    var scheduledEvents: [DiscordScheduledEvent] = []
+    var servers: [AdminWebSimpleOption] = []
+    var textChannelsByServer: [String: [AdminWebSimpleOption]] = [:]
+    var eventErrors: [String: String] = [:]
+    var history: [AutomationLogEntry] = []
+    var diagnostics: [AutomationRunDiagnostic] = []
+
 }
 
 struct AdminWebAutomationTemplate: Codable {
@@ -2480,6 +2489,18 @@ actor AdminWebServer {
         "/api/media/playback"
     ]
 
+    /// What a viewer may see of a rule: webhook steps lose their URL and body,
+    /// which can carry the webhook's credential or private data.
+    static func viewerProjection(_ rule: Automations.Rule) -> Automations.Rule {
+        var projected = rule
+        for index in projected.steps.indices where projected.steps[index].kind == .webhook {
+            projected.steps[index].webhookUrl = nil
+            projected.steps[index].webhookContent = nil
+            projected.steps[index].webhookCredentialId = nil
+        }
+        return projected
+    }
+
     private static func isMemberRoute(method: String, path: String) -> Bool {
         if path.hasPrefix("/api/member/") { return true }
         if path.hasPrefix("/auth/") { return true }
@@ -3029,13 +3050,22 @@ actor AdminWebServer {
             return jsonResponse(["ok": true])
         // /api/actions/* (legacy block-builder rule endpoints) retired; the
         // current automations + moderation surfaces live under /api/automations.
-        case ("GET", "/api/automations"):
-            guard authenticatedSession(for: request) != nil else {
+        case ("GET", "/api/automations"), ("GET", "/api/events"):
+            guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
-            let category = categoryParam(from: request)
+            let category: Automations.Category = request.path == "/api/events" ? .events : categoryParam(from: request)
+            if category != .automation, !requireRole(.admin, session: session) {
+                return forbiddenResponse()
+            }
             if let provider = automationsProvider {
-                let payload = await provider(category)
+                var payload = await provider(category)
+                if !requireRole(.admin, session: session) {
+                    payload.history = []; payload.diagnostics = []
+                    payload.scheduledEvents = []; payload.eventErrors = [:]
+                    payload.servers = []; payload.textChannelsByServer = [:]
+                    payload.rules = payload.rules.map(Self.viewerProjection)
+                }
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "automations_unavailable"], status: "503 Service Unavailable")
@@ -3128,6 +3158,7 @@ actor AdminWebServer {
             guard let body = try? decoder.decode(AdminWebAutomationSimulationRequest.self, from: request.body) else {
                 return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
             }
+            do { try body.rule.validate() } catch { return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request") }
             guard let payload = await automationSimulator?(body) else {
                 return jsonResponse(["error": "simulation_unavailable"], status: "503 Service Unavailable")
             }
@@ -5428,6 +5459,12 @@ actor AdminWebServer {
     func setAutomationSimulator(_ simulator: @escaping @Sendable (AdminWebAutomationSimulationRequest) async -> AdminWebAutomationSimulationPayload?) {
         automationSimulator = simulator
     }
+
+    #if DEBUG
+    func setAutomationsProviderForTesting(_ provider: @escaping @Sendable (Automations.Category) async -> AdminWebAutomationsPayload) {
+        automationsProvider = provider
+    }
+    #endif
 
     func setActivityReportProvider(_ provider: @escaping @Sendable () async -> String) {
         activityReportProvider = provider

@@ -212,6 +212,7 @@ extension AppModel {
             gameProviderTokens: Dictionary(uniqueKeysWithValues: GameProviderID.allCases.map { ($0.rawValue, settings.gameProviders.token(for: $0)) }),
             discordOAuthClientSecret: settings.adminWebUI.discordOAuth.clientSecret,
             discordToken: settings.token,
+            automationWebhookURLs: AutomationWebhookVault.urls(for: automationStore.rules),
             authorizedCredentialGrants: grants, leaderTerm: term, configRevision: version?.revision ?? 0
         )
     }
@@ -324,6 +325,9 @@ extension AppModel {
             settings.adminWebUI.discordOAuth.clientSecret = payload.discordOAuthClientSecret ?? ""
             for id in GameProviderID.allCases {
                 settings.gameProviders.setToken(payload.gameProviderTokens[id.rawValue] ?? "", for: id)
+            }
+            for (id, url) in payload.automationWebhookURLs ?? [:] where !url.isEmpty {
+                AutomationWebhookVault.store(url, id: id)
             }
             // Companion credentials and tunnel routes belong to their host Mac.
             try await store.save(settings)

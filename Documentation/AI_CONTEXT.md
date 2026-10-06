@@ -107,7 +107,7 @@ struct PipelineContext {
 | `ClusterCoordinator.swift` | SwiftMesh cluster: leader election, health monitoring, replication, failover |
 | `Persistence.swift` | ConfigStore, RuleConfigStore, DiscordCacheStore, SwiftMeshConfigStore, MeshCursorStore (all actors). Keychain for secrets. |
 | `AdminWebServer.swift` | HTTP REST API for web admin UI. Discord OAuth. |
-| `Resources/admin/index.html` | The admin WebUI: every feature page (automations, moderation, commands, Patchy, Sweep, Lookup, Announcer, Analytics, Rewind, Game Tracker, Welcome Flow). The native app has no feature pages. |
+| `Resources/admin/index.html` | The admin WebUI: every feature page (automations, moderation, events, commands, Patchy, Sweep, Lookup, Announcer, Analytics, Rewind, Game Tracker, Welcome Flow). The native app has no feature pages. |
 | `Sources/UpdateEngine` | Standalone Swift package: vendor-agnostic update detection used by Patchy |
 
 ### Storage
@@ -115,7 +115,8 @@ struct PipelineContext {
 | Data | Path |
 |------|------|
 | Settings (non-sensitive) | `~/Library/Application Support/SwiftBot/settings.json` |
-| Rules | `~/Library/Application Support/SwiftBot/rules.json` |
+| Rules | `~/Library/Application Support/SwiftBot/automations.json` |
+| Automation checkpoints and memory | `automation-executions.json` and `automation-memory.json` in the same directory; both replicated by SwiftMesh |
 | Discord metadata cache | `~/Library/Application Support/SwiftBot/discord-cache.json` |
 | SwiftMesh config | `~/Library/Application Support/SwiftBot/swiftmesh-config.json` |
 | Mesh replication cursors | `~/Library/Application Support/SwiftBot/mesh-cursors.json` |
@@ -253,10 +254,10 @@ struct Rule: Codable, Identifiable, Hashable, Sendable, Validatable {
 }
 ```
 
-### TriggerKind (10 cases)
-`userJoinedVoice` · `userLeftVoice` · `userMovedVoice` · `messageCreated` · `memberJoined` · `memberLeft` · `reactionAdded` · `slashCommand` · `mediaAdded`
+### TriggerKind
+`userJoinedVoice` · `userLeftVoice` · `userMovedVoice` · `messageCreated` · `memberJoined` · `memberLeft` · `reactionAdded` · `slashCommand` · `mediaAdded` · `schedule` · `scheduledEvent`
 
-### FilterKind (17 cases)
+### FilterKind
 - **Scope:** `inChannel`, `directMessage`
 - **User:** `userIsOneOf`, `userHasAnyRole`, `userHasAllRoles`, `userHasNoneOfRoles`
 - **Message Content:** `messageContains`, `messageContainsAny`, `messageEquals`, `messageDoesNotContain`, `messageMatchesRegex`, `messageIsReply`
@@ -264,12 +265,47 @@ struct Rule: Codable, Identifiable, Hashable, Sendable, Validatable {
 - **Voice:** `minVoiceDurationSeconds`
 - **Reaction:** `reactionEmoji`
 - **Media:** `mediaSource`
+- **Memory:** `counterAtLeast`, `counterBelow`
 
-### StepKind (6 cases)
-`sendMessage` · `modifyMember` · `modifyMessage` · `log` · `webhook` · `delay`
+### StepKind
+`sendMessage` · `modifyMember` · `modifyMessage` · `log` · `webhook` · `delay` · `aiTransform` · `branch` · `otherwise` · `endBranch` · `incrementCounter` · `resetCounter`
 
-### MemberOp (5 cases)
-`addRole` · `removeRole` · `timeout` · `kick` · `moveVoice`
+The active pipeline is `Automations.Rule` → `AutomationService`, edited in the
+WebUI. The earlier RuleEngine/processedActions diagram above describes the legacy
+pipeline. Conditions support nested flat-ID groups using all/any/none; If/Otherwise
+steps may nest and persist their selected branch across delayed recovery. Named
+counters expire per occurrence and can be shared across rules by user/channel/guild
+scope, or isolated to one rule. Cooldowns, counter effects and schedule cursors
+persist in `automation-memory.json`; corrupt memory blocks execution.
+
+`AppModel+Automations` polls schedules every 15 seconds on the output owner.
+One-time, daily, weekly and interval schedules are supported; calendar repeats use
+an IANA time zone. Events is an admin-only WebUI page populated from Discord's
+Scheduled Events REST endpoint. Announcements are one-off and support event start, signed offsets,
+or an absolute custom time. The Events list uses a trash button to cancel/remove an
+announcement, with no enable toggle in its editor. Moving an already admitted
+event never creates another run for the same announcement. The latest occurrence catches up within five minutes;
+older occurrences are skipped. Event state is refreshed before external effects.
+Disabled, deleted or edited scheduled workflows stop before sending, and cancelled,
+removed, rescheduled or unverifiable Discord events stop with a diagnostic. Actual
+sends still use the existing ownership and output guards. In-flight effects with
+unknown outcomes require review; recovery does not promise exactly-once delivery.
+
+Simulate uses an isolated copy of live counters/cooldowns and fake output
+providers, reports selected/skipped steps, and skips real delays. Recent runs show
+saved step traces, errors, waits and recovery review state. Failure policy can
+continue or stop subsequent steps. All new rule fields are optional for old data.
+Embedded message text resolves variables and validates Discord limits before send.
+Event tokens: `{eventName}` `{eventDescription}` `{eventURL}` `{eventStart}`.
+
+### MemberOp (7 cases)
+`addRole` · `removeRole` · `timeout` · `removeTimeout` · `kick` · `ban` · `moveVoice`
+
+Ban uses `kickReason` (shared with kick) and optional `banDeleteMessageSeconds`
+(0–604800, default 0 preserves history). Timeout duration is 1–2419200 seconds;
+use `removeTimeout` to clear it explicitly. Kick/ban reasons support variables
+and reach Discord's audit log. Moderation's admin-only WebUI shows recent
+success/failure audit entries, searchable rules, and enforcement summaries.
 
 ### MessageOp (2 cases)
 `delete` · `react`

@@ -41,6 +41,9 @@ enum Automations {
 
         @Guide(description: "Ordered steps to run when the trigger fires and filters pass. Usually 1, max 3.")
         var steps: [Step]
+        var conditionGroups: [ConditionGroup]?
+        var cooldown: Cooldown?
+        var failurePolicy: FailurePolicy?
 
         init(
             id: String = UUID().uuidString,
@@ -50,7 +53,10 @@ enum Automations {
             trigger: Trigger,
             filterLogic: FilterLogic = .all,
             filters: [Filter] = [],
-            steps: [Step]
+            steps: [Step],
+            conditionGroups: [ConditionGroup]? = nil,
+            cooldown: Cooldown? = nil,
+            failurePolicy: FailurePolicy? = nil
         ) {
             self.id = id
             self.name = name
@@ -60,17 +66,54 @@ enum Automations {
             self.filterLogic = filterLogic
             self.filters = filters
             self.steps = steps
+            self.conditionGroups = conditionGroups
+            self.cooldown = cooldown
+            self.failurePolicy = failurePolicy
         }
 
         func validate() throws {
             if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw ValidationError.invalidValue("Rule name cannot be empty")
             }
+            guard !steps.isEmpty, steps.count <= 100 else {
+                throw ValidationError.invalidValue("Add between 1 and 100 steps")
+            }
+            guard Set(steps.map(\.id)).count == steps.count else { throw ValidationError.invalidValue("Each step must have a unique ID") }
             try trigger.validate()
+            try Self.validateGroups(conditionGroups ?? [])
+            try cooldown?.validate()
+            var branches: [Bool] = []
+            for step in steps {
+                switch step.kind {
+                case .branch: branches.append(false)
+                case .otherwise:
+                    guard let used = branches.last, !used else { throw ValidationError.invalidValue("Otherwise must follow an If and can appear only once") }
+                    branches[branches.count - 1] = true
+                case .endBranch:
+                    guard !branches.isEmpty else { throw ValidationError.invalidValue("End If has no matching If") }
+                    branches.removeLast()
+                default: break
+                }
+            }
+            guard branches.isEmpty else { throw ValidationError.invalidValue("Every If needs an End If") }
+            if category == .events && trigger.kind != .scheduledEvent {
+                throw ValidationError.invalidValue("Event announcements require a Discord event trigger")
+            }
             for filter in filters {
                 try filter.validate()
             }
             for step in steps {
+                if enabled, step.kind == .sendMessage, step.sendTarget == .specificChannel, (step.channelId ?? "").isEmpty {
+                    throw ValidationError.invalidValue("Choose a destination channel")
+                }
+                if trigger.kind == .schedule || trigger.kind == .scheduledEvent {
+                    if step.kind == .modifyMember || step.kind == .modifyMessage {
+                        throw ValidationError.invalidValue("Scheduled workflows do not have a triggering member or message")
+                    }
+                    if step.kind == .sendMessage, step.sendTarget != .specificChannel {
+                        throw ValidationError.invalidValue("Scheduled messages need a specific destination channel")
+                    }
+                }
                 try step.validate()
             }
         }
@@ -80,12 +123,14 @@ enum Automations {
     enum Category: String, Codable, Hashable, Sendable, CaseIterable {
         case automation
         case moderation
+        case events
     }
 
     @Generable
     enum FilterLogic: String, Codable, Hashable, Sendable, CaseIterable {
-        case all   // AND
-        case any   // OR
+        case all  // AND
+        case any  // OR
+        case none  // NOT: every condition must be false
     }
 
     // MARK: - Trigger
@@ -101,11 +146,14 @@ enum Automations {
         case reactionAdded
         case slashCommand
         case mediaAdded
+        case schedule
+        case scheduledEvent
 
         static func visibleCases(for category: Category) -> [TriggerKind] {
             switch category {
             case .automation:
                 return allCases
+            case .events: return [.scheduledEvent]
             case .moderation:
                 return [
                     .messageCreated,
@@ -115,7 +163,7 @@ enum Automations {
                     .userLeftVoice,
                     .userMovedVoice,
                     .reactionAdded,
-                    .slashCommand
+                    .slashCommand,
                 ]
             }
         }
@@ -140,8 +188,22 @@ enum Automations {
 
         @Guide(description: "For userLeftVoice: Restrict to voice duration threshold (seconds). Optional.")
         var voiceDurationThreshold: Int?
+        var guildId: String?
+        var schedule: Schedule?
+        var eventId: String?
+        var eventOffsetSeconds: Int?
+        var eventCustomTime: String?
 
         func validate() throws {
+            if kind == .schedule {
+                try schedule?.validate()
+                guard schedule != nil, !(guildId ?? "").isEmpty else { throw ValidationError.invalidValue("Choose a server and schedule") }
+            }
+            if kind == .scheduledEvent {
+                guard !(guildId ?? "").isEmpty, !(eventId ?? "").isEmpty else { throw ValidationError.invalidValue("Choose a server and Discord event") }
+                if let time = eventCustomTime, Schedule.parse(time) == nil { throw ValidationError.invalidValue("Invalid custom announcement time") }
+                if let offset = eventOffsetSeconds, offset < -2_592_000 || offset > 2_592_000 { throw ValidationError.invalidValue("Event offset must be within 30 days") }
+            }
             if kind == .slashCommand {
                 guard let name = commandName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
                     throw ValidationError.invalidValue("Command name is required for slashCommand triggers")
@@ -160,32 +222,34 @@ enum Automations {
     @Generable
     enum FilterKind: String, Codable, Hashable, Sendable, CaseIterable {
         // Scope
-        case inChannel                  // channelIds: at least one matches event.channelId
-        case directMessage              // boolValue: true = DMs only, false = guild only
+        case inChannel  // channelIds: at least one matches event.channelId
+        case directMessage  // boolValue: true = DMs only, false = guild only
         // User
-        case userIsOneOf                // userIds
-        case userHasAnyRole             // roleIds
-        case userHasAllRoles            // roleIds
-        case userHasNoneOfRoles         // roleIds
+        case userIsOneOf  // userIds
+        case userHasAnyRole  // roleIds
+        case userHasAllRoles  // roleIds
+        case userHasNoneOfRoles  // roleIds
         // Message content
-        case messageContains            // text (case-insensitive substring)
-        case messageContainsAny         // textValues (any substring matches)
-        case messageEquals              // text (exact, trimmed)
-        case messageDoesNotContain      // text
-        case messageMatchesRegex        // text
-        case messageIsReply             // boolValue: true = is reply, false = is not
+        case messageContains  // text (case-insensitive substring)
+        case messageContainsAny  // textValues (any substring matches)
+        case messageEquals  // text (exact, trimmed)
+        case messageDoesNotContain  // text
+        case messageMatchesRegex  // text
+        case messageIsReply  // boolValue: true = is reply, false = is not
         // Author
-        case fromBot                    // boolValue
+        case fromBot  // boolValue
         // Voice
-        case minVoiceDurationSeconds    // intValue
+        case minVoiceDurationSeconds  // intValue
         // Reaction
-        case reactionEmoji              // text
+        case reactionEmoji  // text
         // Media
-        case mediaSource                // text
+        case mediaSource  // text
         // Moderation
         case messageContainsSpamLink
         case messageCapsPercentage
         case messageMentionsCount
+        case counterAtLeast
+        case counterBelow
     }
 
     @Generable
@@ -219,6 +283,8 @@ enum Automations {
 
         @Guide(description: "For minVoiceDurationSeconds: integer seconds threshold.")
         var intValue: Int?
+        var counterName: String?
+        var counterScope: MemoryScope?
 
         init(
             id: String = UUID().uuidString,
@@ -229,7 +295,7 @@ enum Automations {
             text: String? = nil,
             textValues: [String]? = nil,
             boolValue: Bool? = nil,
-            intValue: Int? = nil
+            intValue: Int? = nil, counterName: String? = nil, counterScope: MemoryScope? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -240,10 +306,16 @@ enum Automations {
             self.textValues = textValues
             self.boolValue = boolValue
             self.intValue = intValue
+            self.counterName = counterName
+            self.counterScope = counterScope
         }
 
         func validate() throws {
             switch kind {
+            case .counterAtLeast, .counterBelow:
+                guard !(counterName ?? "").trimmingCharacters(in: .whitespaces).isEmpty, let value = intValue, value >= 0 else {
+                    throw ValidationError.invalidValue("A counter condition needs a name and non-negative threshold")
+                }
             case .messageMatchesRegex:
                 if let pattern = text {
                     do {
@@ -292,6 +364,11 @@ enum Automations {
         /// `aiTransform` step in a rule's pipeline contributes — running a
         /// second `aiTransform` overwrites the first.
         case aiTransform
+        case branch
+        case otherwise
+        case endBranch
+        case incrementCounter
+        case resetCounter
     }
 
     @Generable
@@ -307,7 +384,9 @@ enum Automations {
         case addRole
         case removeRole
         case timeout
+        case removeTimeout
         case kick
+        case ban
         case moveVoice
     }
 
@@ -325,7 +404,10 @@ enum Automations {
         @Guide(description: "Which kind of action to perform.")
         var kind: StepKind
 
-        @Guide(description: "For sendMessage: where to send. Default replyToTrigger for message triggers, sameChannel for voice triggers, directMessage for member triggers.")
+        @Guide(
+            description:
+                "For sendMessage: where to send. Default replyToTrigger for message triggers, sameChannel for voice triggers, directMessage for member triggers."
+        )
         var sendTarget: SendTarget?
 
         @Guide(description: "For sendMessage with sendTarget=specificChannel: the channel ID.")
@@ -346,8 +428,11 @@ enum Automations {
         @Guide(description: "For timeout: duration in seconds.")
         var timeoutSeconds: Int?
 
-        @Guide(description: "For kick: reason string.")
+        @Guide(description: "For kick or ban: reason string, with optional template variables.")
         var kickReason: String?
+
+        @Guide(description: "For ban: seconds of the user's recent messages to delete, from 0 to 604800 (7 days). Default 0 preserves message history.")
+        var banDeleteMessageSeconds: Int?
 
         @Guide(description: "For moveVoice: destination voice channel ID.")
         var targetVoiceChannelId: String?
@@ -364,11 +449,22 @@ enum Automations {
         @Guide(description: "For webhook: full HTTPS URL.")
         var webhookUrl: String?
 
+        /// Keychain reference for a saved webhook URL. Stored rules keep only
+        /// this reference; see `AutomationWebhookVault`.
+        var webhookCredentialId: String?
+
         @Guide(description: "For webhook: body content.")
         var webhookContent: String?
 
         @Guide(description: "For delay: seconds to wait before the next step.")
         var delaySeconds: Int?
+        var conditions: [Filter]?
+        var conditionGroups: [ConditionGroup]?
+        var conditionLogic: FilterLogic?
+        var counterName: String?
+        var counterScope: MemoryScope?
+        var counterLifetimeSeconds: Int?
+        var embed: Embed?
 
         init(
             id: String = UUID().uuidString,
@@ -381,13 +477,19 @@ enum Automations {
             roleId: String? = nil,
             timeoutSeconds: Int? = nil,
             kickReason: String? = nil,
+            banDeleteMessageSeconds: Int? = nil,
             targetVoiceChannelId: String? = nil,
             messageOp: MessageOp? = nil,
             reactEmoji: String? = nil,
             logText: String? = nil,
             webhookUrl: String? = nil,
             webhookContent: String? = nil,
-            delaySeconds: Int? = nil
+            webhookCredentialId: String? = nil,
+            delaySeconds: Int? = nil,
+            conditions: [Filter]? = nil, conditionGroups: [ConditionGroup]? = nil,
+            conditionLogic: FilterLogic? = nil, counterName: String? = nil,
+            counterScope: MemoryScope? = nil, counterLifetimeSeconds: Int? = nil,
+            embed: Embed? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -399,18 +501,41 @@ enum Automations {
             self.roleId = roleId
             self.timeoutSeconds = timeoutSeconds
             self.kickReason = kickReason
+            self.banDeleteMessageSeconds = banDeleteMessageSeconds
             self.targetVoiceChannelId = targetVoiceChannelId
             self.messageOp = messageOp
             self.reactEmoji = reactEmoji
             self.logText = logText
             self.webhookUrl = webhookUrl
             self.webhookContent = webhookContent
+            self.webhookCredentialId = webhookCredentialId
             self.delaySeconds = delaySeconds
+            self.conditions = conditions
+            self.conditionGroups = conditionGroups
+            self.conditionLogic = conditionLogic
+            self.counterName = counterName
+            self.counterScope = counterScope
+            self.counterLifetimeSeconds = counterLifetimeSeconds
+            self.embed = embed
         }
 
         func validate() throws {
             switch kind {
+            case .branch:
+                guard !(conditions ?? []).isEmpty || !(conditionGroups ?? []).isEmpty else { throw ValidationError.invalidValue("If needs a condition") }
+                for filter in conditions ?? [] { try filter.validate() }
+                try Rule.validateGroups(conditionGroups ?? [])
+            case .incrementCounter, .resetCounter:
+                guard !(counterName ?? "").trimmingCharacters(in: .whitespaces).isEmpty else { throw ValidationError.invalidValue("Choose a counter name") }
+                if kind == .incrementCounter, !(1...2_592_000).contains(counterLifetimeSeconds ?? 600) {
+                    throw ValidationError.invalidValue("Counter lifetime must be 1 second to 30 days")
+                }
+            case .sendMessage:
+                try embed?.validate()
             case .webhook:
+                // A saved step keeps its URL in the Keychain; an edit that leaves
+                // the URL blank keeps that saved URL.
+                if (webhookUrl ?? "").isEmpty, !(webhookCredentialId ?? "").isEmpty { break }
                 try validateSecureURL(webhookUrl)
             case .delay:
                 if let val = delaySeconds {
@@ -420,9 +545,12 @@ enum Automations {
                 }
             case .modifyMember:
                 if memberOp == .timeout, let val = timeoutSeconds {
-                    if val < 0 || val > 2419200 { // 28 days
-                        throw ValidationError.outOfRange("timeoutSeconds", min: 0, max: 2419200)
+                    if val < 1 || val > 2_419_200 {  // 28 days
+                        throw ValidationError.outOfRange("timeoutSeconds", min: 1, max: 2_419_200)
                     }
+                }
+                if memberOp == .ban, let val = banDeleteMessageSeconds, !(0...604800).contains(val) {
+                    throw ValidationError.outOfRange("banDeleteMessageSeconds", min: 0, max: 604800)
                 }
             case .aiTransform:
                 let trimmed = (aiPrompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -438,37 +566,45 @@ enum Automations {
     // MARK: - Template variables
 
     enum Variable: String, CaseIterable {
-        case username       = "{username}"
-        case userId         = "{userId}"
-        case userMention    = "{userMention}"
-        case channelName    = "{channelName}"
-        case channelId      = "{channelId}"
-        case guildName      = "{guildName}"
-        case guildId        = "{guildId}"
-        case message        = "{message}"
-        case messageId      = "{messageId}"
-        case duration       = "{duration}"
-        case mediaFile      = "{mediaFile}"
-        case mediaSource    = "{mediaSource}"
-        case aiOutput       = "{ai_output}"
+        case username = "{username}"
+        case userId = "{userId}"
+        case userMention = "{userMention}"
+        case channelName = "{channelName}"
+        case channelId = "{channelId}"
+        case guildName = "{guildName}"
+        case guildId = "{guildId}"
+        case message = "{message}"
+        case messageId = "{messageId}"
+        case duration = "{duration}"
+        case mediaFile = "{mediaFile}"
+        case mediaSource = "{mediaSource}"
+        case aiOutput = "{ai_output}"
+        case eventName = "{eventName}"
+        case eventDescription = "{eventDescription}"
+        case eventURL = "{eventURL}"
+        case eventStart = "{eventStart}"
 
         static var allTokens: [String] { allCases.map(\.rawValue) }
 
         var label: String {
             switch self {
-            case .username:    return "User's name"
-            case .userId:      return "User ID"
+            case .username: return "User's name"
+            case .userId: return "User ID"
             case .userMention: return "User @-mention"
             case .channelName: return "Channel name"
-            case .channelId:   return "Channel ID"
-            case .guildName:   return "Server name"
-            case .guildId:     return "Server ID"
-            case .message:     return "Message text"
-            case .messageId:   return "Message ID"
-            case .duration:    return "Voice session duration"
-            case .mediaFile:   return "Media file name"
+            case .channelId: return "Channel ID"
+            case .guildName: return "Server name"
+            case .guildId: return "Server ID"
+            case .message: return "Message text"
+            case .messageId: return "Message ID"
+            case .duration: return "Voice session duration"
+            case .mediaFile: return "Media file name"
             case .mediaSource: return "Media source"
-            case .aiOutput:    return "Most recent AI step output"
+            case .eventName: return "Discord event name"
+            case .eventDescription: return "Discord event description"
+            case .eventURL: return "Discord event link"
+            case .eventStart: return "Discord event start time"
+            case .aiOutput: return "Most recent AI step output"
             }
         }
 
@@ -489,6 +625,7 @@ enum Automations {
                     || kind == .userMovedVoice
             case .mediaFile, .mediaSource:
                 return kind == .mediaAdded
+            case .eventName, .eventDescription, .eventURL, .eventStart: return kind == .scheduledEvent
             case .aiOutput:
                 // Always applicable — populated at step-run time by an
                 // `aiTransform` step earlier in the same rule's pipeline.
@@ -520,5 +657,140 @@ enum Automations {
         let filtersMatched: Bool
         let filterTraces: [FilterTrace]
         let stepTraces: [StepTrace]
+        var diagnostics: [String] = []
+    }
+}
+
+extension Automations.Step {
+    /// Deletes the message or removes the member, so ordinary automations
+    /// should not also respond to the same event.
+    var isDestructiveModeration: Bool {
+        (kind == .modifyMessage && messageOp == .delete)
+            || (kind == .modifyMember && [.timeout, .kick, .ban].contains(memberOp))
+    }
+}
+
+extension Automations.Rule {
+    /// True when a run admitted under `other` would behave the same under this
+    /// rule. Only the display name may differ.
+    func isExecutionEquivalent(to other: Automations.Rule) -> Bool {
+        var renamed = self
+        renamed.name = other.name
+        return renamed == other
+    }
+}
+
+extension Automations {
+    @Generable
+    enum MemoryScope: String, Codable, Hashable, Sendable, CaseIterable { case user, channel, guild, rule }
+    @Generable
+    enum FailurePolicy: String, Codable, Hashable, Sendable, CaseIterable { case continueOnError, stopOnError }
+    @Generable
+    struct Cooldown: Codable, Hashable, Sendable, Validatable {
+        var seconds: Int
+        var scope: MemoryScope
+        func validate() throws {
+            guard (1...2_592_000).contains(seconds) else { throw ValidationError.invalidValue("Cooldown must be 1 second to 30 days") }
+        }
+    }
+    // A flat parent-ID tree keeps generated models non-recursive, while allowing nested groups.
+    @Generable
+    struct ConditionGroup: Codable, Hashable, Sendable, Identifiable {
+        var id: String
+        var parentId: String?
+        var logic: FilterLogic
+        var filters: [Filter]
+    }
+    @Generable
+    struct Embed: Codable, Hashable, Sendable, Validatable {
+        var title: String?
+        var description: String?
+        var color: Int?
+        var imageURL: String?
+        var thumbnailURL: String?
+        var footer: String?
+        func validate() throws {
+            guard !(title ?? "").isEmpty || !(description ?? "").isEmpty else { throw ValidationError.invalidValue("An embed needs a title or description") }
+            guard (title ?? "").count <= 256, (description ?? "").count <= 4096, (footer ?? "").count <= 2048,
+                (title ?? "").count + (description ?? "").count + (footer ?? "").count <= 6000
+            else { throw ValidationError.invalidValue("Embed text exceeds Discord's limits") }
+            if let color, !(0...0xFFFFFF).contains(color) { throw ValidationError.invalidValue("Invalid embed color") }
+            for value in [imageURL, thumbnailURL].compactMap({ $0 }).filter({ !$0.isEmpty }) {
+                guard let url = URL(string: value), url.scheme == "https", url.host != nil else {
+                    throw ValidationError.invalidValue("Embed images need HTTPS URLs")
+                }
+            }
+        }
+    }
+    @Generable
+    struct Schedule: Codable, Hashable, Sendable, Validatable {
+        @Generable
+        enum RepeatKind: String, Codable, Hashable, Sendable, CaseIterable { case once, daily, weekly, interval }
+        var startAt: String
+        var timeZone: String
+        var repeatKind: RepeatKind
+        var intervalSeconds: Int?
+        static func parse(_ value: String) -> Date? {
+            let format = ISO8601DateFormatter()
+            format.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return format.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        }
+        func validate() throws {
+            guard Self.parse(startAt) != nil, TimeZone(identifier: timeZone) != nil else {
+                throw ValidationError.invalidValue("Choose a valid schedule time and time zone")
+            }
+            if repeatKind == .interval, !(60...2_592_000).contains(intervalSeconds ?? 0) {
+                throw ValidationError.invalidValue("Repeat interval must be 1 minute to 30 days")
+            }
+        }
+        /// Calendar arithmetic preserves local wall-clock time across daylight-saving changes.
+        func latestOccurrence(at now: Date) -> Date? {
+            guard let start = Self.parse(startAt), start <= now else { return nil }
+            if repeatKind == .once { return start }
+            if repeatKind == .interval {
+                let interval = Double(max(60, intervalSeconds ?? 60))
+                return start.addingTimeInterval(floor(now.timeIntervalSince(start) / interval) * interval)
+            }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: timeZone) ?? .gmt
+            let component: Calendar.Component = repeatKind == .daily ? .day : .weekOfYear
+            let count = max(0, calendar.dateComponents([component], from: start, to: now).value(for: component) ?? 0)
+            guard var candidate = calendar.date(byAdding: component, value: count, to: start) else { return nil }
+            if candidate > now { candidate = calendar.date(byAdding: component, value: -1, to: candidate) ?? start }
+            if let next = calendar.date(byAdding: component, value: 1, to: candidate), next <= now { return next }
+            return candidate
+        }
+        func nextOccurrence(after now: Date) -> Date? {
+            guard let start = Self.parse(startAt) else { return nil }
+            if start > now { return start }
+            if repeatKind == .once { return nil }
+            guard let latest = latestOccurrence(at: now) else { return nil }
+            if repeatKind == .interval { return latest.addingTimeInterval(Double(max(60, intervalSeconds ?? 60))) }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: timeZone) ?? .gmt
+            return calendar.date(byAdding: repeatKind == .daily ? .day : .weekOfYear, value: 1, to: latest)
+        }
+    }
+}
+extension Automations.Rule {
+    static func validateGroups(_ groups: [Automations.ConditionGroup]) throws {
+        guard groups.count <= 32, Set(groups.map(\.id)).count == groups.count else {
+            throw ValidationError.invalidValue("Use at most 32 uniquely identified condition groups")
+        }
+        let ids = Set(groups.map(\.id))
+        for group in groups {
+            for filter in group.filters { try filter.validate() }
+            var seen: Set<String> = [group.id]
+            var parent = group.parentId
+            while let id = parent {
+                guard ids.contains(id), seen.insert(id).inserted else {
+                    throw ValidationError.invalidValue("Condition groups contain a missing parent or cycle")
+                }
+                parent = groups.first(where: { $0.id == id })?.parentId
+            }
+            guard !group.filters.isEmpty || groups.contains(where: { $0.parentId == group.id }) else {
+                throw ValidationError.invalidValue("Every condition group needs a condition")
+            }
+        }
     }
 }

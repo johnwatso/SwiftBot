@@ -713,11 +713,7 @@ actor DiscordService {
         guard let engine = automationService,
               let provider = automationSnapshotProvider else { return }
 
-        let snapshot = await provider()
-        let matches = engine.evaluate(event: event, in: snapshot)
-        for rule in matches {
-            await engine.execute(rule: rule, event: event, token: botToken)
-        }
+        await engine.dispatch(event: event, rules: await provider(), token: botToken)
     }
 
     private func makeMessageRuleEvent(
@@ -731,8 +727,7 @@ actor DiscordService {
         }()
         let isDirectMessage = (channelType == 1 || channelType == 3)
 
-        return SwiftBotEvent.message(
-            SwiftBotEvent.MessagePayload(
+        var payload = SwiftBotEvent.MessagePayload(
                 guildId: guildId,
                 userId: event.userID,
                 username: event.username,
@@ -743,7 +738,8 @@ actor DiscordService {
                 isDirectMessage: isDirectMessage,
                 authorIsBot: authorIsBot
             )
-        )
+        payload.isReply = event.rawMap["message_reference"] != nil
+        return .message(payload)
     }
 
     private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> SwiftBotEvent? {
@@ -1331,6 +1327,10 @@ actor DiscordService {
         try await guildRESTClient.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
+    func fetchScheduledEvents(guildId: String, token: String) async throws -> [DiscordScheduledEvent] {
+        try await guildRESTClient.fetchScheduledEvents(guildID: guildId, token: token)
+    }
+
     func fetchGuildInvites(guildId: String, token: String) async throws -> [WelcomeFlowService.InviteSnapshot] {
         try await guildRESTClient.fetchGuildInvites(guildID: guildId, token: token)
     }
@@ -1357,6 +1357,20 @@ actor DiscordService {
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
         try await guildRESTClient.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
+    }
+
+    func banMember(guildId: String, userId: String, reason: String, deleteMessageSeconds: Int, token: String) async throws {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        try await guildRESTClient.banMember(guildId: guildId, userId: userId, reason: reason, deleteMessageSeconds: deleteMessageSeconds, token: token)
+    }
+
+    func removeTimeout(guildId: String, userId: String, token: String) async throws {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        try await guildRESTClient.removeTimeout(guildId: guildId, userId: userId, token: token)
     }
 
     func moveMember(guildId: String, userId: String, channelId: String, token: String) async throws {

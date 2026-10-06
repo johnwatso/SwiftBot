@@ -1614,7 +1614,13 @@ extension AppModel {
                 total: rules.count,
                 enabled: enabledCount,
                 triggerKinds: triggerKinds
-            )
+            ),
+            recentModeration: category == .moderation ? Array(auditLog.filter { $0.source == .moderation }.reversed().prefix(20)) : [],
+            scheduledEvents: scheduledDiscordEvents,
+            servers: connectedServers.map { AdminWebSimpleOption(id: $0.key, name: $0.value) }.sorted { $0.name < $1.name },
+            textChannelsByServer: availableTextChannelsByServer.mapValues { $0.map { AdminWebSimpleOption(id: $0.id, name: $0.name) } },
+            eventErrors: scheduledEventErrors,
+            history: Array(automationLog.filter { entry in rules.contains { $0.id == entry.ruleId } }.reversed().prefix(100))
         )
     }
 
@@ -1864,7 +1870,12 @@ extension AppModel {
                         metrics: AdminWebAutomationMetrics(total: 0, enabled: 0, triggerKinds: 0)
                     )
                 }
-                return await MainActor.run { model.adminWebAutomationsSnapshot(category: category) }
+                if category == .events { await model.refreshScheduledEvents(force: true) }
+                var payload = await MainActor.run { model.adminWebAutomationsSnapshot(category: category) }
+                let diagnostics = await model.automationService.runDiagnostics()
+                let ids = Set(payload.rules.map(\.id))
+                payload.diagnostics = diagnostics.filter { ids.contains($0.ruleId) }
+                return payload
             },
             upsertAutomation: { [weak self] rule in
                 guard let model = self else { return false }
@@ -4045,7 +4056,7 @@ extension AppModel {
             messageContent: nonEmpty(given?.messageContent) ?? suggested.messageContent,
             voiceDurationSeconds: given?.voiceDurationSeconds.map { max(0, $0) } ?? suggested.voiceDurationSeconds
         )
-        let result = await automationService.simulate(rule: request.rule, event: input.event(for: request.rule.trigger.kind))
+        let result = await automationService.simulate(rule: request.rule, event: input.event(for: request.rule.trigger.kind, guildId: request.rule.trigger.guildId))
         return AdminWebAutomationSimulationPayload(input: input, result: result)
     }
 

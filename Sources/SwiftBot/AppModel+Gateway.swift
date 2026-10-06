@@ -442,7 +442,7 @@ extension AppModel {
     }
 
     func handleMessageReactionAdd(_ raw: DiscordJSON?) async {
-        // Archived: Bug tracking reactions handled in Archive/BugCommands.swift
+        await handleAutomationReaction(raw)
     }
 
     func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
@@ -495,6 +495,11 @@ extension AppModel {
             if !builtInSlashCommandNames().contains(slashName),
                let resolvedWiki = resolveWikiCommand(named: slashName) {
                 await handleWikiSlash(event: event, context: context, resolved: resolvedWiki)
+                return
+            }
+            if settings.commandsEnabled, settings.slashCommandsEnabled,
+               automationSlashCommandNames().contains(slashName) {
+                await handleAutomationSlash(event: event, name: slashName)
                 return
             }
 
@@ -1511,6 +1516,7 @@ extension AppModel {
             lastSlashCommandsEnabledState = slashEnabled
         }
         let allCommands = buildSlashCommandDefinitions()
+        registeredAutomationSlashCommandNames = automationSlashCommandNames()
         let wikiSources = orderedEnabledWikiSources()
         Task { await wikiLookupService.warmUp(sources: wikiSources) }
         // Commands that should also work in user DMs with the bot. Registered globally with

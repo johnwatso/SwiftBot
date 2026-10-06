@@ -127,6 +127,9 @@ struct DiscordGuildRESTClient {
     }
 
     func timeoutMember(guildId: String, userId: String, durationSeconds: Int, token: String) async throws {
+        guard (1...2419200).contains(durationSeconds) else {
+            throw ValidationError.outOfRange("durationSeconds", min: 1, max: 2419200)
+        }
         let until = Date().addingTimeInterval(TimeInterval(durationSeconds))
         let formatter = ISO8601DateFormatter()
         let body: [String: Any] = ["communication_disabled_until": formatter.string(from: until)]
@@ -144,19 +147,48 @@ struct DiscordGuildRESTClient {
     }
 
     func kickMember(guildId: String, userId: String, reason: String, token: String) async throws {
-        var components = URLComponents(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)"), resolvingAgainstBaseURL: false)
-        if !reason.isEmpty {
-            components?.queryItems = [URLQueryItem(name: "reason", value: reason)]
-        }
-        guard let url = components?.url else { return }
-
-        var req = URLRequest(url: url)
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)"))
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        setAuditReason(reason, on: &req)
         let (_, response) = try await transport.perform(req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to kick member"])
         }
+    }
+
+    func removeTimeout(guildId: String, userId: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)"))
+        req.httpMethod = "PATCH"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["communication_disabled_until": NSNull()])
+        let (_, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to remove member timeout"])
+        }
+    }
+
+    func banMember(guildId: String, userId: String, reason: String, deleteMessageSeconds: Int, token: String) async throws {
+        guard (0...604800).contains(deleteMessageSeconds) else {
+            throw ValidationError.outOfRange("deleteMessageSeconds", min: 0, max: 604800)
+        }
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/bans/\(userId)"))
+        req.httpMethod = "PUT"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        setAuditReason(reason, on: &req)
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["delete_message_seconds": deleteMessageSeconds])
+        let (_, response) = try await transport.perform(req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to ban member"])
+        }
+    }
+
+    private func setAuditReason(_ reason: String, on request: inout URLRequest) {
+        guard !reason.isEmpty else { return }
+        let encoded = String(reason.prefix(512)).addingPercentEncoding(withAllowedCharacters: .alphanumerics)
+        request.setValue(encoded, forHTTPHeaderField: "X-Audit-Log-Reason")
     }
 
     func moveMember(guildId: String, userId: String, channelId: String, token: String) async throws {
@@ -185,5 +217,44 @@ struct DiscordGuildRESTClient {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create channel"])
         }
+    }
+}
+
+struct DiscordScheduledEvent: Codable, Sendable, Identifiable, Hashable {
+    let id: String
+    let guildId: String
+    let name: String
+    let description: String?
+    let scheduledStartTime: String
+    let scheduledEndTime: String?
+    let status: Int
+    let image: String?
+    let userCount: Int?
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, status, image
+        case guildId = "guild_id"
+        case scheduledStartTime = "scheduled_start_time"
+        case scheduledEndTime = "scheduled_end_time"
+        case userCount = "user_count"
+    }
+    var startDate: Date? { Automations.Schedule.parse(scheduledStartTime) }
+    var url: String { "https://discord.com/events/" + guildId + "/" + id }
+    var imageURL: String? { image.map { "https://cdn.discordapp.com/guild-events/" + id + "/" + $0 + ".png" } }
+}
+extension DiscordGuildRESTClient {
+    func fetchScheduledEvents(guildID: String, token: String) async throws -> [DiscordScheduledEvent] {
+        guard !guildID.isEmpty, !token.isEmpty else { return [] }
+        let endpoint = restBase.appendingPathComponent("guilds/\(guildID)/scheduled-events")
+            .appending(queryItems: [URLQueryItem(name: "with_user_count", value: "true")])
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+        request.setValue("Bot " + token, forHTTPHeaderField: "Authorization")
+        let (data, response) = try await transport.perform(request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "DiscordService", code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Could not load Discord scheduled events"])
+        }
+        return try JSONDecoder().decode([DiscordScheduledEvent].self, from: data)
     }
 }

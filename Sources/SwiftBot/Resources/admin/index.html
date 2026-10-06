@@ -6382,6 +6382,7 @@
                 <span class="nav-icon"><i data-tabler="hand-stop"></i></span>
                 <span class="nav-text">Welcome Flow</span>
               </button>
+              <button class="nav-link" data-view="events" type="button"><span class="nav-icon"><i class="lucide" data-lucide="calendar-days"></i></span><span class="nav-text">Events</span></button>
               <button class="nav-link" data-view="automations" type="button">
                 <span class="nav-icon"><i data-tabler="bolt"></i></span>
                 <span class="nav-text">Automations</span>
@@ -6743,6 +6744,10 @@
           </div>
         </section>
 
+        <section id="eventsView" class="view hidden">
+          <div class="section-sticky"><div class="section-sticky-row"><div class="section-mini-title"><i class="lucide" data-lucide="calendar-days"></i> Events</div><div class="section-actions"><button id="eventsRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button></div></div></div>
+          <div id="discordEvents"></div><div id="eventsRules"></div><div id="eventsHistory"></div>
+        </section>
         <section id="automationsView" class="view hidden">
           <div class="section-sticky">
             <div class="section-sticky-row">
@@ -6752,7 +6757,7 @@
               </div>
             </div>
           </div>
-          <div id="automationsRules"></div>
+          <div id="automationsRules"></div><div id="automationHistory"></div>
         </section>
 
         <section id="moderationView" class="view hidden">
@@ -6764,7 +6769,16 @@
               </div>
             </div>
           </div>
-          <div id="moderationRules"></div>
+          <div id="moderationTop" class="ub-status glass"></div>
+          <div class="section-actions" style="margin-bottom:18px;flex-wrap:wrap;">
+            <input id="moderationSearch" class="field-input" type="search" placeholder="Search rules" aria-label="Search moderation rules" style="flex:1;min-width:180px;">
+            <select id="moderationRuleState" class="field-select" aria-label="Filter moderation rules">
+              <option value="all">All rules</option><option value="on">Enabled</option><option value="off">Disabled</option>
+            </select>
+            <button id="moderationRefresh" class="secondary-action" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
+          </div>
+          <div id="moderationRules"></div><div id="moderationHistory"></div>
+          <div id="moderationActivity" style="margin-top:24px;"></div>
         </section>
 
         <section id="welcomeView" class="view hidden">
@@ -10389,7 +10403,8 @@
     // ===== Automations / Moderation =====================================
 
     // Two parallel data stores so the views render independently.
-    const automationData = { automation: null, moderation: null };
+    const automationData = { automation: null, moderation: null, events: null };
+    let moderationRefreshTimer;
 
     const AUTO_TRIGGER_LABELS = {
       userJoinedVoice: 'Someone joins voice',
@@ -10400,7 +10415,9 @@
       memberLeft: 'A member leaves the server',
       reactionAdded: 'Someone reacts',
       slashCommand: 'A slash command runs',
-      mediaAdded: 'Media is added'
+      mediaAdded: 'Media is added',
+      schedule: 'A scheduled time arrives',
+      scheduledEvent: 'A Discord event announcement is due'
     };
     const AUTO_STEP_LABELS = {
       sendMessage: 'Send a message',
@@ -10409,13 +10426,17 @@
       log: 'Write to the log',
       webhook: 'Call a webhook',
       delay: 'Wait',
-      aiTransform: 'Transform with Apple Intelligence'
+      aiTransform: 'Transform with Apple Intelligence',
+      branch: 'If', otherwise: 'Otherwise', endBranch: 'End If',
+      incrementCounter: 'Remember an occurrence', resetCounter: 'Reset a counter'
     };
     const AUTO_MEMBER_OPS = {
       addRole: 'Add role',
       removeRole: 'Remove role',
       timeout: 'Timeout',
+      removeTimeout: 'Remove timeout',
       kick: 'Kick',
+      ban: 'Ban',
       moveVoice: 'Move voice'
     };
     const AUTO_FILTER_LABELS = {
@@ -10437,7 +10458,8 @@
       mediaSource: 'Media source',
       messageContainsSpamLink: 'Contains a spam link',
       messageCapsPercentage: 'Caps percentage ≥',
-      messageMentionsCount: 'Mentions ≥'
+      messageMentionsCount: 'Mentions ≥',
+      counterAtLeast: 'Remembered occurrences ≥', counterBelow: 'Remembered occurrences <'
     };
     const AUTO_FILTER_MENU = {
       messageCreated: ['inChannel', 'directMessage', 'messageContains', 'messageContainsAny',
@@ -10524,13 +10546,72 @@
       const data = automationData[category];
       if (!data) return;
       renderAutomationRules(category, data.rules, data.templates);
+      renderAutomationHistory(category, data);
+      if (category === 'events') renderDiscordEvents(data);
+      if (category === 'moderation') renderModerationOverview(data);
       refreshIcons();
+    }
+
+    function autoStepSummary(step) {
+      if (step.kind === 'modifyMember') {
+        const label = AUTO_MEMBER_OPS[step.memberOp] || 'Modify the member';
+        return step.memberOp === 'timeout' ? `${label} (${step.timeoutSeconds ?? 60}s)` : label;
+      }
+      if (step.kind === 'modifyMessage') return step.messageOp === 'react' ? 'React to message' : 'Delete message';
+      if (step.kind === 'sendMessage' && step.sendTarget === 'directMessage') return 'DM the user';
+      return AUTO_STEP_LABELS[step.kind] || step.kind;
+    }
+
+    function moderationRulesMatching(rules) {
+      const query = (document.getElementById('moderationSearch')?.value || '').trim().toLowerCase();
+      const state = document.getElementById('moderationRuleState')?.value || 'all';
+      return (rules || []).filter(rule =>
+        (state === 'all' || (state === 'on' ? rule.enabled : !rule.enabled)) &&
+        (!query || `${rule.name} ${(rule.steps || []).map(autoStepSummary).join(' ')} ${(rule.filters || []).map(f => AUTO_FILTER_LABELS[f.kind] || f.kind).join(' ')}`.toLowerCase().includes(query)));
+    }
+
+    function renderModerationOverview(data) {
+      clearTimeout(moderationRefreshTimer);
+      moderationRefreshTimer = setTimeout(async () => {
+        if (currentView !== 'moderation') return;
+        if (document.hidden) { renderModerationOverview(data); return; }
+        try { await loadAutomations('moderation'); if (currentView === 'moderation') renderAutomationsView('moderation'); }
+        catch { if (currentView === 'moderation') renderModerationOverview(data); }
+      }, 15000);
+      const rules = data.rules || [];
+      const enabled = rules.filter(rule => rule.enabled);
+      const recent = data.recentModeration || [];
+      document.getElementById('moderationTop').innerHTML =
+        ubStatusCell(`${enabled.length} of ${rules.length} rules on`, enabled.length ? 'Moderation runs before other automations' : 'No moderation rules are enforcing', enabled.length ? 'healthy' : 'neutral') +
+        ubStatusCell(`${enabled.filter(r => r.steps?.some(s => s.kind === 'modifyMember' && ['timeout', 'kick', 'ban'].includes(s.memberOp))).length} with member enforcement`, 'Timeout, kick or ban') +
+        ubStatusCell(`${recent.length} recent events`, 'Latest saved moderation activity');
+      const refreshRules = () => { renderAutomationRules('moderation', rules, data.templates); refreshIcons(); };
+      document.getElementById('moderationSearch').oninput = refreshRules;
+      document.getElementById('moderationRuleState').onchange = refreshRules;
+      document.getElementById('moderationRefresh').onclick = async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try { await loadAutomations('moderation'); renderAutomationsView('moderation'); }
+        catch (error) { setMessage(error.message || 'Could not refresh moderation.', 'error'); }
+        finally { button.disabled = false; }
+      };
+      document.getElementById('moderationActivity').innerHTML = `
+        <section class="ub-group">
+          <div class="ub-group-head"><h2>Recent moderation activity</h2></div>
+          ${recent.length ? `<div class="ub-list glass">${recent.map(entry => `
+            <div class="ub-item activity-row is-${escapeHTML(entry.level)}">
+              <span class="ub-item-icon" style="--brand:var(--muted);"><i class="lucide" data-lucide="${entry.level === 'error' ? 'circle-alert' : 'shield'}"></i></span>
+              <span class="ub-item-text"><span class="ub-item-title">${escapeHTML(entry.action)}</span>
+                <span class="ub-item-sub">${escapeHTML(entry.actor)}${entry.detail ? ` · ${escapeHTML(entry.detail)}` : ''}</span></span>
+              <span class="ub-item-time" title="${escapeHTML(formatTime(entry.time))}">${escapeHTML(formatTime(entry.time))}</span>
+            </div>`).join('')}</div>` : `<div class="ub-empty glass"><div class="ub-empty-title">No moderation activity yet</div><div class="ub-empty-sub">Enforcement actions and failed rule runs appear here after they happen.</div></div>`}
+        </section>`;
     }
 
     const AUTO_TRIGGER_ICONS = {
       userJoinedVoice: 'mic', userLeftVoice: 'mic-off', userMovedVoice: 'shuffle',
       messageCreated: 'message-square', memberJoined: 'user-plus', memberLeft: 'user-minus',
-      reactionAdded: 'smile-plus', slashCommand: 'slash', mediaAdded: 'film'
+      reactionAdded: 'smile-plus', slashCommand: 'slash', mediaAdded: 'film', schedule: 'clock', scheduledEvent: 'calendar-days'
     };
     const AUTO_TEMPLATE_TINTS = { blue: '#3b82f6', green: '#22c55e', purple: '#a855f7', orange: '#f97316', red: '#ef4444', indigo: '#6366f1' };
 
@@ -10580,16 +10661,25 @@
     // Rules first. Templates appear inline only while there are no rules;
     // otherwise they live behind New Rule.
     function renderAutomationRules(category, rules, templates) {
-      const root = document.getElementById(category === 'moderation' ? 'moderationRules' : 'automationsRules');
+      const root = document.getElementById(category === 'events' ? 'eventsRules' : (category === 'moderation' ? 'moderationRules' : 'automationsRules'));
       if (!root) return;
-      const noun = category === 'moderation' ? 'moderation rule' : 'automation';
+      const noun = category === 'events' ? 'announcement' : (category === 'moderation' ? 'moderation rule' : 'automation');
       rules = rules || [];
+
+      const totalRules = rules.length;
+      if (category === 'moderation' && totalRules) {
+        rules = moderationRulesMatching(rules);
+        if (!rules.length) {
+          root.innerHTML = '<div class="ub-empty glass"><div class="ub-empty-title">No matching moderation rules</div><div class="ub-empty-sub">Try another search or choose All rules.</div></div>';
+          return;
+        }
+      }
 
       if (!rules.length) {
         root.innerHTML = `
           <div class="ub-empty glass">
             <div class="ub-empty-title">No ${noun}s yet</div>
-            <div class="ub-empty-sub">Start from a template, or use <strong>New Rule</strong> to build one or describe it in plain English.</div>
+            <div class="ub-empty-sub">${category === 'events' ? 'Choose a Discord event above to schedule an announcement.' : 'Start from a template, or use New Rule to build one or describe it in plain English.'}</div>
             ${templates?.length ? `<div class="ub-tile-grid">${autoTemplateTilesHTML(templates.slice(0, 6))}</div>` : ''}
             ${templates?.length > 6 ? `<div class="ub-empty-more">${templates.length - 6} more in <strong>New Rule</strong></div>` : ''}
           </div>`;
@@ -10603,12 +10693,12 @@
       const enabled = rules.filter(r => r.enabled).length;
       root.innerHTML = `
         <section class="ub-group">
-          <div class="ub-group-head"><h2>${enabled} of ${rules.length} ${noun}${rules.length === 1 ? '' : 's'} on</h2></div>
+          <div class="ub-group-head"><h2>${category === 'events' ? `${rules.length} announcement${rules.length === 1 ? '' : 's'}` : `${enabled} of ${rules.length} ${noun}${rules.length === 1 ? '' : 's'} on`}</h2></div>
           <div class="ub-list glass">
             ${rules.map(rule => {
-              const trigger = AUTO_TRIGGER_LABELS[rule.trigger?.kind] || rule.trigger?.kind || 'Trigger';
-              const steps = (rule.steps || []).map(s => AUTO_STEP_LABELS[s.kind] || s.kind);
-              const action = steps.length ? (steps.length > 1 ? `${steps[0]} +${steps.length - 1}` : steps[0]) : 'No steps';
+              const trigger = automationTimingSummary(rule, automationData[category]);
+              const steps = (rule.steps || []).map(autoStepSummary);
+              const action = steps.length ? steps.join(' → ') : 'No steps';
               const filters = (rule.filters || []).length;
               return `
                 <div class="ub-item${rule.enabled ? '' : ' is-off'}" data-rule-id="${escapeHTML(rule.id)}">
@@ -10620,14 +10710,22 @@
                     </span>
                     <i class="lucide ub-item-chevron" data-lucide="chevron-right"></i>
                   </button>
-                  <label class="switch" title="${rule.enabled ? 'On' : 'Off'}">
+                  ${category === 'events' ? `<button class="mini-btn is-destructive" data-announcement-remove type="button" title="Remove announcement" aria-label="Remove ${escapeHTML(rule.name || 'announcement')}"><i class="lucide" data-lucide="trash-2"></i></button>` : `<label class="switch" title="${rule.enabled ? 'On' : 'Off'}">
                     <input class="auto-rule-enabled" type="checkbox" ${rule.enabled ? 'checked' : ''} aria-label="Rule enabled">
                     <span class="switch-track"><span class="switch-knob"></span></span>
-                  </label>
+                  </label>`}
                 </div>`;
             }).join('')}
           </div>
         </section>`;
+
+      if (category === 'moderation') {
+        root.insertAdjacentHTML('beforeend', `<details class="ub-group" style="margin-top:20px;"><summary class="ub-help">Add a protection from a template</summary><div class="ub-tile-grid" style="margin-top:12px;">${autoTemplateTilesHTML(templates || [])}</div></details>`);
+        root.querySelectorAll('[data-template-id]').forEach(tile => tile.addEventListener('click', () => {
+          const template = templates.find(t => t.id === tile.dataset.templateId);
+          if (template) openAutomationEditor(autoRuleFromTemplate(template, category), category, true);
+        }));
+      }
 
       root.querySelectorAll('[data-rule-id]').forEach(row => {
         const ruleID = row.dataset.ruleId;
@@ -10635,11 +10733,41 @@
         row.querySelector('[data-rule-edit]')?.addEventListener('click', () => {
           if (rule) openAutomationEditor(JSON.parse(JSON.stringify(rule)), category, false);
         });
+        row.querySelector('[data-announcement-remove]')?.addEventListener('click', () => confirmRemoveEventAnnouncement(rule));
         row.querySelector('.auto-rule-enabled')?.addEventListener('change', async () => {
-          await postJSON('/api/automations/toggle', { id: ruleID });
-          await loadAutomations(category);
-          renderAutomationsView(category);
+          const toggle = row.querySelector('.auto-rule-enabled');
+          if (toggle.checked && rule.steps?.some(s => s.kind === 'modifyMember' && s.memberOp === 'ban') && !confirm(`Enable "${rule.name}"? Matching members will be banned. Review its conditions and use Simulate first.`)) {
+            toggle.checked = false;
+            return;
+          }
+          toggle.disabled = true;
+          try {
+            await postJSON('/api/automations/toggle', { id: ruleID });
+            await loadAutomations(category);
+            renderAutomationsView(category);
+          } catch (error) {
+            toggle.checked = !!rule.enabled;
+            setMessage(error.message || 'Could not update the rule.', 'error');
+          } finally { toggle.disabled = false; }
         });
+      });
+    }
+
+    function confirmRemoveEventAnnouncement(rule) {
+      showModal('Remove announcement', `<p>Remove “${escapeHTML(rule.name || 'this announcement')}”?</p><p class="ub-help">This cancels the scheduled announcement.</p><div id="eventRemovalError" class="ub-help" role="alert"></div>`,
+        '<button class="secondary-action" type="button" data-action="hideModal">Cancel</button><button id="eventRemovalConfirm" class="primary-action is-destructive" type="button">Remove</button>');
+      document.getElementById('eventRemovalConfirm').addEventListener('click', async () => {
+        const button = document.getElementById('eventRemovalConfirm');
+        button.disabled = true;
+        try {
+          await postJSON('/api/automations/delete', {id:rule.id});
+          await loadAutomations('events');
+          renderAutomationsView('events');
+          hideModal();
+        } catch (error) {
+          button.disabled = false;
+          document.getElementById('eventRemovalError').textContent = requestErrorText(error, 'Could not remove the announcement.');
+        }
       });
     }
 
@@ -10711,8 +10839,9 @@
     let automationEditorState = { rule: null, category: 'automation', isNew: false };
 
     function openAutomationEditor(rule, category, isNew) {
+      if (category === 'events') rule.enabled = true;
       automationEditorState = { rule, category, isNew };
-      const titleText = (category === 'moderation' ? 'Moderation Rule' : 'Automation');
+      const titleText = category === 'events' ? 'Event announcement' : (category === 'moderation' ? 'Moderation Rule' : 'Automation');
       const title = (isNew ? 'New ' : 'Edit ') + titleText;
       // The simulator sits outside the editor body, which re-renders on every
       // edit, so its sample values survive changes to the rule.
@@ -10828,7 +10957,8 @@
           <span class="ub-item-icon" style="--brand:${ok ? '#22c55e' : 'var(--muted)'};"><i class="lucide" data-lucide="${ok ? 'check' : 'x'}"></i></span>
           <div class="ub-row-text"><div class="ub-row-title">${escapeHTML(title)}</div>${detail ? `<div class="ub-row-desc" style="white-space:pre-wrap;">${escapeHTML(detail)}</div>` : ''}</div>
         </div>`;
-      const summary = !r.triggerMatched ? 'The trigger didn’t match this sample event, so nothing would run.'
+      const coolingDown = (r.diagnostics||[]).some(d=>d.startsWith('Cooldown:')&&!d.includes('ready'));
+      const summary = coolingDown ? 'The cooldown is still active, so no steps would run.' : !r.triggerMatched ? 'The trigger didn’t match this sample event, so nothing would run.'
         : (!r.filtersMatched ? 'The conditions didn’t match, so no steps would run.' : 'The rule would run.');
       const input = payload.input;
       const ctx = automationData[automationEditorState.category]?.serverContext || {};
@@ -10841,6 +10971,7 @@
         <p class="ub-help">Tested as ${escapeHTML(input.username)} in ${escapeHTML(where)}${saying}.</p>
         <div class="ub-group-card glass">
           ${line(r.triggerMatched, `When: ${AUTO_TRIGGER_LABELS[rule.trigger.kind] || rule.trigger.kind}`, r.triggerMatched ? 'Matched' : 'Didn’t match')}
+          ${(r.diagnostics||[]).map(d=>`<p class="ub-help">${escapeHTML(d)}</p>`).join('')}
           ${r.filterTraces.map(f => line(f.matched, `If: ${AUTO_FILTER_LABELS[f.kind] || f.kind}`, f.detail)).join('')}
           ${r.stepTraces.map((t, i) => line(t.executed, `${i + 1}. ${AUTO_STEP_LABELS[t.kind] || t.kind}`, t.detail)).join('')}
         </div>`;
@@ -10850,12 +10981,21 @@
       const { rule, category } = automationEditorState;
       if (!rule.name?.trim()) { alert('Give the rule a name.'); return; }
       if (!rule.steps?.length) { alert('Add at least one step.'); return; }
+      if (rule.enabled && rule.steps.some(s => s.kind === 'modifyMember' && s.memberOp === 'ban') && !confirm(`Save "${rule.name}" with bans enabled? Every member matching its conditions will be banned.`)) return;
       rule.category = category;
-      await postJSON('/api/automations/upsert', { rule });
-      await loadAutomations(category);
-      renderAutomationsView(category);
-      hideModal();
-      if (automationEditorState.isNew) offerAnnouncerFollowUps(rule, category).catch(() => {});
+      const saveButton = document.getElementById('automationEditorSave');
+      if (saveButton) saveButton.disabled = true;
+      try {
+        await postJSON('/api/automations/upsert', { rule });
+        await loadAutomations(category);
+        renderAutomationsView(category);
+        hideModal();
+        if (automationEditorState.isNew) offerAnnouncerFollowUps(rule, category).catch(() => {});
+      } catch (error) {
+        let message = error.message || 'Could not save the rule.';
+        try { const detail = JSON.parse(message); message = detail.message || detail.error || message; } catch {}
+        setMessage(message, 'error');
+      } finally { if (saveButton) saveButton.disabled = false; }
     }
 
     // Join/leave announcers come in sets. After creating one, offer the rest
@@ -10989,7 +11129,8 @@
       const root = document.getElementById('automationEditorBody');
       if (!root) return;
       const { rule, category } = automationEditorState;
-      const ctx = automationData[category]?.serverContext || { textChannels: [], voiceChannels: [], roles: [] };
+      const ctx = {...(automationData[category]?.serverContext || { textChannels: [], voiceChannels: [], roles: [] })};
+      if (rule.trigger.guildId) ctx.textChannels = automationData[category]?.textChannelsByServer?.[rule.trigger.guildId] || [];
 
       root.innerHTML = `
         <div class="automation-editor-section">
@@ -10998,10 +11139,10 @@
             <label>Name</label>
             <input id="autoName" class="field-input" value="${escapeHTML(rule.name)}">
           </div>
-          <div class="automation-editor-row">
+          ${category === 'events' ? '' : `<div class="automation-editor-row">
             <label>Enabled</label>
             <input id="autoEnabled" type="checkbox" ${rule.enabled ? 'checked' : ''}>
-          </div>
+          </div>`}
         </div>
 
         <div class="automation-editor-section">
@@ -11009,10 +11150,11 @@
           <div class="automation-editor-row">
             <label>When</label>
             <select id="autoTrigger" class="field-select">
-              ${Object.entries(AUTO_TRIGGER_LABELS).map(([k, label]) =>
+              ${Object.entries(AUTO_TRIGGER_LABELS).filter(([k]) => category === 'events' ? k === 'scheduledEvent' : k !== 'scheduledEvent').map(([k, label]) =>
                 `<option value="${k}" ${rule.trigger.kind === k ? 'selected' : ''}>${label}</option>`).join('')}
             </select>
           </div>
+          ${automationTimingFields(rule, ctx)}
           ${rule.trigger.kind === 'slashCommand' ? `
             <div class="automation-editor-row">
               <label>Command</label>
@@ -11029,30 +11171,46 @@
         <div class="automation-editor-section">
           <h3><i class="lucide" data-lucide="filter"></i> IF these conditions match</h3>
           <div id="autoFiltersBody"></div>
-          <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
-            <select id="autoFilterAdd" class="field-select" style="max-width:280px;">
-              <option value="">Add condition…</option>
-              ${(AUTO_FILTER_MENU[rule.trigger.kind] || []).map(k =>
-                `<option value="${k}">${AUTO_FILTER_LABELS[k]}</option>`).join('')}
-            </select>
-          </div>
+
         </div>
 
         <div class="automation-editor-section">
           <h3><i class="lucide" data-lucide="git-branch"></i> THEN do these steps</h3>
           <div id="autoStepsBody"></div>
+          <button class="mini-btn" id="autoAddBranch" type="button">Add If / Otherwise</button>
           <button class="mini-btn" id="autoAddStep" type="button" style="margin-top:8px;">
             <i class="lucide" data-lucide="plus"></i> Add step
           </button>
         </div>
+        <div class="automation-editor-section"><h3>Execution</h3>
+          <div class="automation-editor-row"><label>On failure</label><select id="autoFailure" class="field-select"><option value="continueOnError" ${rule.failurePolicy !== 'stopOnError' ? 'selected' : ''}>Continue and report</option><option value="stopOnError" ${rule.failurePolicy === 'stopOnError' ? 'selected' : ''}>Stop remaining steps</option></select></div>
+          <div class="automation-editor-row"><label>Cooldown (seconds)</label><input id="autoCooldown" type="number" min="0" max="2592000" class="field-input" value="${rule.cooldown?.seconds || 0}"><span class="ub-help">0 disables</span></div>
+          <div class="automation-editor-row"><label>Cooldown scope</label><select id="autoCooldownScope" class="field-select">${automationScopes(rule.cooldown?.scope || (['schedule','scheduledEvent'].includes(rule.trigger.kind)?'rule':'user'))}</select></div>
+        </div>
       `;
 
+      bindAutomationTiming(root, rule);
+      root.querySelector('#autoFailure').addEventListener('change', e => { rule.failurePolicy = e.target.value; });
+      const cooldownChanged = () => { const seconds = Number(root.querySelector('#autoCooldown').value); rule.cooldown = seconds > 0 ? {seconds, scope: root.querySelector('#autoCooldownScope').value} : null; };
+      root.querySelector('#autoCooldown').addEventListener('input', cooldownChanged);
+      root.querySelector('#autoCooldownScope').addEventListener('change', cooldownChanged);
+      root.querySelector('#autoAddBranch').addEventListener('click', () => {
+        rule.steps.push({id: autoNewID(), kind:'branch', conditions:[{id:autoNewID(),kind:'counterAtLeast',counterName:'incidents',counterScope:['schedule','scheduledEvent'].includes(rule.trigger.kind)?'rule':'user',intValue:1}], conditionLogic:'all'}, {id:autoNewID(), kind:'sendMessage', content:'', sendTarget:'specificChannel'}, {id:autoNewID(),kind:'otherwise'}, {id:autoNewID(),kind:'endBranch'});
+        renderAutomationEditorBody();
+      });
       // Binders
       root.querySelector('#autoName').addEventListener('input', (e) => { rule.name = e.target.value; });
-      root.querySelector('#autoEnabled').addEventListener('change', (e) => { rule.enabled = e.target.checked; });
+      root.querySelector('#autoEnabled')?.addEventListener('change', (e) => { rule.enabled = e.target.checked; });
       root.querySelector('#autoTrigger').addEventListener('change', (e) => {
         rule.trigger.kind = e.target.value;
         rule.filters = []; // reset incompatible filters
+        rule.conditionGroups = [];
+        rule.trigger.channelId = null;
+        if (rule.trigger.kind === 'schedule') {
+          rule.trigger.guildId ||= automationData[category]?.servers?.[0]?.id || ctx.guildId;
+          rule.trigger.schedule ||= {startAt:new Date(Date.now()+3600000).toISOString(), timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone, repeatKind:'once'};
+          rule.steps.filter(s=>s.kind==='sendMessage').forEach(s=>s.sendTarget='specificChannel');
+        }
         renderAutomationEditorBody();
       });
       root.querySelector('#autoCommandName')?.addEventListener('input', (e) => {
@@ -11064,14 +11222,8 @@
         const value = parseInt(e.target.value, 10);
         rule.trigger.voiceDurationThreshold = Number.isFinite(value) ? value : null;
       });
-      root.querySelector('#autoFilterAdd').addEventListener('change', (e) => {
-        const kind = e.target.value;
-        if (!kind) return;
-        rule.filters.push(autoBlankFilter(kind));
-        renderAutomationEditorBody();
-      });
       root.querySelector('#autoAddStep').addEventListener('click', () => {
-        rule.steps.push({ id: autoNewID(), kind: 'sendMessage', sendTarget: 'replyToTrigger', content: '' });
+        rule.steps.push({ id: autoNewID(), kind: 'sendMessage', sendTarget: ['schedule','scheduledEvent'].includes(rule.trigger.kind)?'specificChannel':'replyToTrigger', content: '' });
         renderAutomationEditorBody();
       });
 
@@ -11081,45 +11233,7 @@
     }
 
     function renderAutomationFilters(ctx) {
-      const body = document.getElementById('autoFiltersBody');
-      if (!body) return;
-      const { rule } = automationEditorState;
-      if (!rule.filters.length) {
-        body.innerHTML = '<div class="placeholder" style="margin: 0;">No conditions — this rule fires every time the trigger happens.</div>';
-        return;
-      }
-      const logicSelector = rule.filters.length > 1 ? `
-        <div class="automation-editor-row" style="margin-bottom:14px;">
-          <label>Match</label>
-          <select id="autoFilterLogic" class="field-select" style="max-width:280px;">
-            <option value="all" ${rule.filterLogic === 'all' ? 'selected' : ''}>All of these (AND)</option>
-            <option value="any" ${rule.filterLogic === 'any' ? 'selected' : ''}>Any of these (OR)</option>
-          </select>
-        </div>` : '';
-
-      const cards = rule.filters.map((f, i) => `
-        <div class="automation-filter-card" data-filter-index="${i}">
-          <div class="automation-filter-header">
-            <span>${AUTO_FILTER_LABELS[f.kind]}</span>
-            <button class="mini-btn auto-filter-remove" type="button"><i class="lucide" data-lucide="x"></i></button>
-          </div>
-          ${renderAutomationFilterFields(f, i, ctx)}
-        </div>
-      `).join('');
-
-      body.innerHTML = logicSelector + cards;
-
-      body.querySelector('#autoFilterLogic')?.addEventListener('change', (e) => {
-        rule.filterLogic = e.target.value;
-      });
-      body.querySelectorAll('.auto-filter-remove').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const i = parseInt(e.target.closest('[data-filter-index]').dataset.filterIndex, 10);
-          rule.filters.splice(i, 1);
-          renderAutomationEditorBody();
-        });
-      });
-      bindAutomationFilterFieldEvents(ctx);
+      renderAutomationConditionBuilder(document.getElementById('autoFiltersBody'), automationEditorState.rule, 'filters', 'filterLogic', ctx);
     }
 
     function renderAutomationFilterFields(f, idx, ctx) {
@@ -11250,12 +11364,13 @@
         <div class="automation-step-card" data-step-index="${i}">
           <div class="automation-step-header">
             <span>Step ${i + 1}</span>
+            <button class="mini-btn auto-step-up" type="button" ${i === 0 ? 'disabled' : ''} aria-label="Move step up">↑</button><button class="mini-btn auto-step-down" type="button" ${i === rule.steps.length-1 ? 'disabled' : ''} aria-label="Move step down">↓</button><button class="mini-btn auto-step-insert" type="button">Add after</button>
             ${rule.steps.length > 1 ? `<button class="mini-btn auto-step-remove" type="button"><i class="lucide" data-lucide="x"></i></button>` : ''}
           </div>
           <div class="automation-editor-row">
             <label>Action</label>
             <select class="field-select auto-step-kind" data-step-index="${i}">
-              ${Object.entries(AUTO_STEP_LABELS).map(([k, label]) =>
+              ${Object.entries(AUTO_STEP_LABELS).filter(([k])=>!['schedule','scheduledEvent'].includes(rule.trigger.kind)||!['modifyMember','modifyMessage'].includes(k)).map(([k, label]) =>
                 `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${label}</option>`).join('')}
             </select>
           </div>
@@ -11266,7 +11381,7 @@
       body.querySelectorAll('.auto-step-kind').forEach(el => {
         el.addEventListener('change', (e) => {
           const i = parseInt(e.target.dataset.stepIndex, 10);
-          rule.steps[i] = { id: rule.steps[i].id, kind: e.target.value };
+          rule.steps[i] = { id: rule.steps[i].id, kind: e.target.value, ...(e.target.value==='sendMessage'&&['schedule','scheduledEvent'].includes(rule.trigger.kind)?{sendTarget:'specificChannel'}:{}) };
           renderAutomationEditorBody();
         });
       });
@@ -11277,6 +11392,22 @@
           renderAutomationEditorBody();
         });
       });
+      body.querySelectorAll('.auto-step-up,.auto-step-down,.auto-step-insert').forEach(btn => btn.addEventListener('click', () => {
+        const i = Number(btn.closest('[data-step-index]').dataset.stepIndex);
+        if (btn.classList.contains('auto-step-insert')) rule.steps.splice(i+1,0,{id:autoNewID(),kind:'sendMessage',sendTarget:['schedule','scheduledEvent'].includes(rule.trigger.kind)?'specificChannel':'replyToTrigger',content:''});
+        else { const j = i + (btn.classList.contains('auto-step-up') ? -1 : 1); [rule.steps[i],rule.steps[j]] = [rule.steps[j],rule.steps[i]]; }
+        renderAutomationEditorBody();
+      }));
+      rule.steps.forEach((step, i) => {
+        if (step.kind === 'branch') renderAutomationConditionBuilder(body.querySelector(`#branchConditions${i}`), step, 'conditions', 'conditionLogic', ctx);
+      });
+      body.querySelectorAll('[data-embed-field]').forEach(el => el.addEventListener('input', () => {
+        const step = rule.steps[Number(el.dataset.stepIndex)];
+        step.embed ||= {};
+        step.embed[el.dataset.embedField] = el.type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
+        body.querySelector(`[data-embed-preview="${el.dataset.stepIndex}"]`).innerHTML = automationEmbedPreview(step.embed);
+      }));
+      body.querySelectorAll('[data-embed-toggle]').forEach(el => el.addEventListener('change', () => { rule.steps[Number(el.dataset.stepIndex)].embed = el.checked ? {title:'',description:''} : null; renderAutomationEditorBody(); }));
       bindAutomationStepFieldEvents();
     }
 
@@ -11285,11 +11416,12 @@
       const voice = ['userJoinedVoice', 'userLeftVoice', 'userMovedVoice'].includes(kind);
       const noChannel = ['memberJoined', 'memberLeft', 'mediaAdded'].includes(kind);
       return [
-        '{username}', '{userMention}', '{userId}', '{guildName}', '{guildId}',
+        ...(['schedule','scheduledEvent'].includes(kind)?[]:['{username}', '{userMention}', '{userId}']), '{guildName}', '{guildId}',
         ...(noChannel ? [] : ['{channelName}', '{channelId}']),
         ...(kind === 'messageCreated' ? ['{message}', '{messageId}'] : []),
         ...(voice ? ['{duration}'] : []),
         ...(kind === 'mediaAdded' ? ['{mediaFile}', '{mediaSource}'] : []),
+        ...(kind === 'scheduledEvent' ? ['{eventName}','{eventDescription}','{eventURL}','{eventStart}'] : []),
         '{ai_output}'
       ];
     }
@@ -11310,18 +11442,24 @@
         ctx.roles.map(r => `<option value="${r.id}" ${r.id === selectedID ? 'selected' : ''}>@${escapeHTML(r.name)}</option>`).join('');
 
       switch (s.kind) {
+        case 'branch': return `<div id="branchConditions${idx}"></div>`;
+        case 'otherwise': return '<p class="ub-help">Steps below run when the matching If is false.</p>';
+        case 'endBranch': return '<p class="ub-help">Continue after both branches.</p>';
+        case 'incrementCounter':
+        case 'resetCounter': return row('Counter name', `<input class="field-input auto-step-field" data-field="counterName" data-step-index="${idx}" value="${escapeHTML(s.counterName || '')}">`) + row('Scope', `<select class="field-select auto-step-field" data-field="counterScope" data-step-index="${idx}">${automationScopes(s.counterScope || 'user')}</select>`) + (s.kind === 'incrementCounter' ? row('Remember for (seconds)', `<input type="number" min="1" max="2592000" class="field-input auto-step-field" data-field="counterLifetimeSeconds" data-step-index="${idx}" value="${s.counterLifetimeSeconds || 600}">`) : '');
         case 'sendMessage':
           return [
             row('Send to', `<select class="field-select auto-step-field" data-field="sendTarget" data-step-index="${idx}">
-              <option value="replyToTrigger" ${(s.sendTarget||'replyToTrigger')==='replyToTrigger'?'selected':''}>Reply</option>
+              ${!['schedule','scheduledEvent'].includes(automationEditorState.rule.trigger.kind)?`<option value="replyToTrigger" ${(s.sendTarget||'replyToTrigger')==='replyToTrigger'?'selected':''}>Reply</option>
               <option value="sameChannel" ${s.sendTarget==='sameChannel'?'selected':''}>Same channel</option>
-              <option value="directMessage" ${s.sendTarget==='directMessage'?'selected':''}>DM the user</option>
+              <option value="directMessage" ${s.sendTarget==='directMessage'?'selected':''}>DM the user</option>`:''}
               <option value="specificChannel" ${s.sendTarget==='specificChannel'?'selected':''}>Specific channel</option>
             </select>`),
             (s.sendTarget === 'specificChannel' ? row('Channel',
               `<select class="field-select auto-step-field" data-channel-picker data-field="channelId" data-step-index="${idx}">${channelOpts(ctx.textChannels, s.channelId)}</select>`) : ''),
             row('Message', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="content" data-step-index="${idx}" rows="3" placeholder="Hey {username}!">${escapeHTML(s.content || '')}</textarea>${automationVariableChips('content', idx)}</div>`),
-            renderAutomationAIPromptRow(s, idx)
+            renderAutomationAIPromptRow(s, idx),
+            renderAutomationEmbedFields(s, idx)
           ].join('');
         case 'modifyMember':
           return [
@@ -11333,10 +11471,16 @@
               ? row('Role', `<select class="field-select auto-step-field" data-field="roleId" data-step-index="${idx}">${roleOpts(s.roleId)}</select>`)
               : '',
             (s.memberOp === 'timeout')
-              ? row('Seconds', `<input type="number" class="field-input auto-step-field" data-field="timeoutSeconds" data-step-index="${idx}" value="${s.timeoutSeconds ?? 60}">`)
+              ? row('Seconds', `<input type="number" min="1" max="2419200" class="field-input auto-step-field" data-field="timeoutSeconds" data-step-index="${idx}" value="${s.timeoutSeconds ?? 60}"><span class="ub-help">1 second to 28 days</span>`)
               : '',
-            (s.memberOp === 'kick')
-              ? row('Reason', `<input class="field-input auto-step-field" data-field="kickReason" data-step-index="${idx}" value="${escapeHTML(s.kickReason || '')}">`)
+            (s.memberOp === 'kick' || s.memberOp === 'ban')
+              ? row('Reason', `<div style="flex:1;min-width:0;"><input class="field-input auto-step-field" data-field="kickReason" data-step-index="${idx}" maxlength="512" value="${escapeHTML(s.kickReason || '')}">${automationVariableChips('kickReason', idx)}</div>`)
+              : '',
+            (s.memberOp === 'ban')
+              ? row('Remove messages', `<div style="flex:1;min-width:0;"><input type="number" min="0" max="604800" class="field-input auto-step-field" data-field="banDeleteMessageSeconds" data-step-index="${idx}" value="${s.banDeleteMessageSeconds ?? 0}"><p class="ub-help">Seconds of recent messages to delete. 0 preserves history; maximum 604800 (7 days). Requires Ban Members and a higher bot role than the member.</p></div>`)
+              : '',
+            (s.memberOp === 'removeTimeout')
+              ? '<p class="ub-help">Clears the triggering member’s timeout. Requires Moderate Members.</p>'
               : '',
             (s.memberOp === 'moveVoice')
               ? row('Voice channel', `<select class="field-select auto-step-field" data-channel-picker data-field="targetVoiceChannelId" data-step-index="${idx}">${channelOpts(ctx.voiceChannels, s.targetVoiceChannelId)}</select>`)
@@ -11355,7 +11499,9 @@
         case 'log':
           return row('Log text', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="logText" data-step-index="${idx}" rows="2">${escapeHTML(s.logText || '')}</textarea>${automationVariableChips('logText', idx)}</div>`);
         case 'webhook':
-          return row('URL', `<input class="field-input auto-step-field" data-field="webhookUrl" data-step-index="${idx}" value="${escapeHTML(s.webhookUrl || '')}" placeholder="https://...">`) +
+          // Saved URLs stay on the Mac (they usually contain the webhook's token):
+          // the page only learns one exists, and a blank field keeps it.
+          return row('URL', `<input class="field-input auto-step-field" data-field="webhookUrl" data-step-index="${idx}" value="${escapeHTML(s.webhookUrl || '')}" placeholder="${s.webhookCredentialId ? 'Saved. Enter a new URL to replace it' : 'https://...'}" autocomplete="off">`) +
                  row('Body', `<div style="flex:1;min-width:0;"><textarea class="field-input auto-step-field" data-field="webhookContent" data-step-index="${idx}" rows="3">${escapeHTML(s.webhookContent || '')}</textarea>${automationVariableChips('webhookContent', idx)}</div>`);
         case 'delay':
           return row('Seconds', `<input type="number" class="field-input auto-step-field" data-field="delaySeconds" data-step-index="${idx}" value="${s.delaySeconds ?? 5}">`);
@@ -11439,6 +11585,118 @@
           refreshIcons();
         });
       });
+    }
+
+
+    function automationScopes(selected) {
+      return ['user','channel','guild','rule'].map(k => `<option value="${k}" ${k===selected?'selected':''}>${k==='guild'?'Server':k[0].toUpperCase()+k.slice(1)}</option>`).join('');
+    }
+    function automationLocalDate(iso) {
+      const date = iso ? new Date(iso) : new Date(Date.now()+3600000);
+      if (Number.isNaN(date.getTime())) return '';
+      return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+    }
+    function automationTimingFields(rule, ctx) {
+      const trigger = rule.trigger;
+      const data = automationData[automationEditorState.category] || {};
+      if (trigger.kind === 'schedule') {
+        trigger.schedule ||= {startAt:new Date(Date.now()+3600000).toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,repeatKind:'once',intervalSeconds:3600};
+        return `<div class="automation-editor-row"><label>Server</label><select id="autoScheduleGuild" class="field-select"><option value="">Choose a server</option>${(data.servers||[]).map(g=>`<option value="${escapeHTML(g.id)}" ${g.id===trigger.guildId?'selected':''}>${escapeHTML(g.name)}</option>`).join('')}</select></div>
+          <div class="automation-editor-row"><label>First run</label><input id="autoScheduleTime" type="datetime-local" class="field-input" value="${automationLocalDate(trigger.schedule.startAt)}"></div>
+          <p class="ub-help">Enter time in ${escapeHTML(Intl.DateTimeFormat().resolvedOptions().timeZone)}. Repeats use ${escapeHTML(trigger.schedule.timeZone)} and retain their local time across daylight saving. Editing First run uses your time zone.</p>
+          <div class="automation-editor-row"><label>Repeat</label><select id="autoScheduleRepeat" class="field-select">${['once','daily','weekly','interval'].map(k=>`<option value="${k}" ${trigger.schedule.repeatKind===k?'selected':''}>${k==='once'?'Once':k[0].toUpperCase()+k.slice(1)}</option>`).join('')}</select></div>
+          ${trigger.schedule.repeatKind==='interval'?`<div class="automation-editor-row"><label>Every (seconds)</label><input id="autoScheduleInterval" type="number" min="60" class="field-input" value="${trigger.schedule.intervalSeconds||3600}"></div>`:''}
+          <p class="ub-help">Only the active bot sends. A run missed by more than five minutes is skipped.</p>`;
+      }
+      if (trigger.kind !== 'scheduledEvent') return '';
+      const events = (data.scheduledEvents||[]).filter(e => e.guild_id === trigger.guildId);
+      return `<div class="automation-editor-row"><label>Server</label><select id="autoEventGuild" class="field-select"><option value="">Choose a server</option>${(data.servers||[]).map(g=>`<option value="${escapeHTML(g.id)}" ${g.id===trigger.guildId?'selected':''}>${escapeHTML(g.name)}</option>`).join('')}</select></div>
+        <div class="automation-editor-row"><label>Discord event</label><select id="autoEventID" class="field-select"><option value="">Choose an event</option>${events.map(e=>`<option value="${escapeHTML(e.id)}" ${e.id===trigger.eventId?'selected':''}>${escapeHTML(e.name)}</option>`).join('')}</select></div>
+        <div class="automation-editor-row"><label>Announce</label><select id="autoEventTiming" class="field-select"><option value="start" ${!trigger.eventCustomTime&&!trigger.eventOffsetSeconds?'selected':''}>At scheduled start</option><option value="offset" ${!trigger.eventCustomTime&&trigger.eventOffsetSeconds?'selected':''}>Before or after start</option><option value="custom" ${trigger.eventCustomTime?'selected':''}>Custom date and time</option></select></div>
+        ${trigger.eventCustomTime?`<div class="automation-editor-row"><label>Custom time</label><input id="autoEventCustom" type="datetime-local" class="field-input" value="${automationLocalDate(trigger.eventCustomTime)}"></div><p class="ub-help">Time zone: ${escapeHTML(Intl.DateTimeFormat().resolvedOptions().timeZone)}</p>`:trigger.eventOffsetSeconds?`<div class="automation-editor-row"><label>Offset (minutes)</label><input id="autoEventOffset" type="number" class="field-input" value="${trigger.eventOffsetSeconds/60}"><span class="ub-help">Negative = before; positive = after</span></div>`:''}
+        <p class="ub-help">Start-relative timing follows event edits. Cancelled or removed events do not send. More than five minutes late is skipped.</p>`;
+    }
+    function bindAutomationTiming(root, rule) {
+      const bind = (id, event, fn) => root.querySelector('#'+id)?.addEventListener(event,fn);
+      bind('autoScheduleGuild','change',e=>{rule.trigger.guildId=e.target.value;renderAutomationEditorBody();});
+      bind('autoScheduleTime','change',e=>{if(e.target.value) {rule.trigger.schedule.startAt=new Date(e.target.value).toISOString();rule.trigger.schedule.timeZone=Intl.DateTimeFormat().resolvedOptions().timeZone;}});
+      bind('autoScheduleRepeat','change',e=>{rule.trigger.schedule.repeatKind=e.target.value;renderAutomationEditorBody();});
+      bind('autoScheduleInterval','input',e=>{rule.trigger.schedule.intervalSeconds=Number(e.target.value);});
+      bind('autoEventGuild','change',e=>{rule.trigger.guildId=e.target.value;rule.trigger.eventId=null;renderAutomationEditorBody();});
+      bind('autoEventID','change',e=>{rule.trigger.eventId=e.target.value;});
+      bind('autoEventTiming','change',e=>{rule.trigger.eventCustomTime=e.target.value==='custom'?new Date(Date.now()+3600000).toISOString():null;rule.trigger.eventOffsetSeconds=e.target.value==='offset'?-60:0;renderAutomationEditorBody();});
+      bind('autoEventOffset','input',e=>{rule.trigger.eventOffsetSeconds=Number(e.target.value)*60;});
+      bind('autoEventCustom','change',e=>{if(e.target.value)rule.trigger.eventCustomTime=new Date(e.target.value).toISOString();});
+    }
+    function automationEmbedPreview(embed) {
+      const color = embed.color == null ? 'var(--accent)' : '#' + Math.max(0, Math.min(16777215, Number(embed.color))).toString(16).padStart(6, '0');
+      return `<div class="ub-group-card glass" style="padding:14px;border-left:4px solid ${color};"><strong>${escapeHTML(embed.title||'Embed title')}</strong><p style="white-space:pre-wrap;">${escapeHTML(embed.description||'Embed description')}</p><small>${escapeHTML(embed.footer||'')}</small></div>`;
+    }
+    function renderAutomationEmbedFields(step, i) {
+      const e = step.embed;
+      return `<div class="automation-editor-row"><label>Embed</label><input type="checkbox" data-embed-toggle data-step-index="${i}" ${e?'checked':''}></div>` + (e ? [
+        ['title','Title',256],['description','Description',4096],['imageURL','Image URL',2048],['thumbnailURL','Thumbnail URL',2048],['footer','Footer',2048]
+      ].map(([field,label,max])=>`<div class="automation-editor-row"><label>${label}</label><textarea class="field-input" data-embed-field="${field}" data-step-index="${i}" maxlength="${max}" rows="${field==='description'?3:1}">${escapeHTML(e[field]||'')}</textarea></div>`).join('') + `<div class="automation-editor-row"><label>Color (decimal)</label><input type="number" min="0" max="16777215" class="field-input" data-embed-field="color" data-step-index="${i}" value="${e.color??''}"></div><div data-embed-preview="${i}">${automationEmbedPreview(e)}</div><p class="ub-help">Event variables resolve at send time. Embed messages do not ping roles or users.</p>` : '');
+    }
+    function renderAutomationConditionBuilder(host, owner, filterKey, logicKey, ctx) {
+      if (!host) return;
+      owner[filterKey] ||= []; owner.conditionGroups ||= []; owner[logicKey] ||= 'all';
+      const refs=[];
+      const logicOptions = value => ['all','any','none'].map(k=>`<option value="${k}" ${k===value?'selected':''}>${k==='all'?'All (AND)':k==='any'?'Any (OR)':'None (NOT)'}</option>`).join('');
+      const allowed = [...(AUTO_FILTER_MENU[automationEditorState.rule.trigger.kind]||[]),'counterAtLeast','counterBelow'];
+      const leaf = (filter, list) => {
+        const i=refs.push({filter,list})-1;
+        const memory = ['counterAtLeast','counterBelow'].includes(filter.kind);
+        return `<div class="automation-filter-card" data-condition-ref="${i}"><div class="automation-filter-header"><span>${escapeHTML(AUTO_FILTER_LABELS[filter.kind]||filter.kind)}</span><button type="button" class="mini-btn" data-condition-remove="${i}" aria-label="Remove condition">×</button></div>${memory?`<div class="automation-editor-row"><label>Counter name</label><input class="field-input" data-counter-field="counterName" data-condition-ref="${i}" value="${escapeHTML(filter.counterName||'')}"></div><div class="automation-editor-row"><label>Scope</label><select class="field-select" data-counter-field="counterScope" data-condition-ref="${i}">${automationScopes(filter.counterScope||'user')}</select></div><div class="automation-editor-row"><label>Threshold</label><input type="number" min="0" class="field-input" data-counter-field="intValue" data-condition-ref="${i}" value="${filter.intValue??1}"></div>`:renderAutomationFilterFields(filter,i,ctx)}</div>`;
+      };
+      const tree = (id,depth=0) => {
+        if(depth>32)return '';
+        const group=id?owner.conditionGroups.find(g=>g.id===id):null;
+        const list=group?group.filters:owner[filterKey];
+        const children=owner.conditionGroups.filter(g=>(g.parentId||'')===(id||''));
+        return `<div style="${id?'padding:12px;margin:8px 0;border-left:2px solid var(--border);':''}"><div class="automation-editor-row"><label>${id?'Group':'Match'}</label><select class="field-select" data-condition-logic="${id||''}">${logicOptions(group?group.logic:owner[logicKey])}</select>${id?`<button class="mini-btn" type="button" data-group-remove="${id}">Remove group</button>`:''}</div>${list.map(f=>leaf(f,list)).join('')}${children.map(g=>tree(g.id,depth+1)).join('')}<div class="automation-editor-row"><select class="field-select" data-condition-add="${id||''}"><option value="">Add condition…</option>${allowed.map(k=>`<option value="${k}">${escapeHTML(AUTO_FILTER_LABELS[k])}</option>`).join('')}</select><button class="mini-btn" type="button" data-group-add="${id||''}">Add group</button></div></div>`;
+      };
+      host.innerHTML=tree(null);
+      host.querySelectorAll('[data-condition-logic]').forEach(el=>el.addEventListener('change',()=>{const id=el.dataset.conditionLogic;if(id)owner.conditionGroups.find(g=>g.id===id).logic=el.value;else owner[logicKey]=el.value;}));
+      host.querySelectorAll('[data-group-add]').forEach(el=>el.addEventListener('click',()=>{owner.conditionGroups.push({id:autoNewID(),parentId:el.dataset.groupAdd||null,logic:'all',filters:[]});renderAutomationEditorBody();}));
+      host.querySelectorAll('[data-group-remove]').forEach(el=>el.addEventListener('click',()=>{const ids=new Set([el.dataset.groupRemove]);for(let n=0;n<32;n++)owner.conditionGroups.forEach(g=>{if(ids.has(g.parentId))ids.add(g.id);});owner.conditionGroups=owner.conditionGroups.filter(g=>!ids.has(g.id));renderAutomationEditorBody();}));
+      host.querySelectorAll('[data-condition-add]').forEach(el=>el.addEventListener('change',()=>{if(!el.value)return;const id=el.dataset.conditionAdd;const list=id?owner.conditionGroups.find(g=>g.id===id).filters:owner[filterKey];const f=autoBlankFilter(el.value);if(el.value.startsWith('counter'))Object.assign(f,{counterName:'incidents',counterScope:'user',intValue:1});list.push(f);renderAutomationEditorBody();}));
+      host.querySelectorAll('[data-condition-remove]').forEach(el=>el.addEventListener('click',()=>{const ref=refs[Number(el.dataset.conditionRemove)];ref.list.splice(ref.list.indexOf(ref.filter),1);renderAutomationEditorBody();}));
+      host.querySelectorAll('.auto-filter-text,.auto-filter-bool,.auto-filter-int,.auto-filter-multi,.auto-filter-csv,[data-counter-field]').forEach(el=>{
+        const update=()=>{const ref=refs[Number(el.dataset.filterIndex??el.dataset.conditionRef)].filter;let key=el.dataset.counterField||el.dataset.field;
+          if(el.classList.contains('auto-filter-text')){key='text';ref[key]=el.value;}
+          else if(el.classList.contains('auto-filter-bool'))ref.boolValue=el.value==='true';
+          else if(el.classList.contains('auto-filter-int'))ref.intValue=Number(el.value);
+          else if(el.classList.contains('auto-filter-multi'))ref[key]=Array.from(el.selectedOptions).map(o=>o.value);
+          else if(el.classList.contains('auto-filter-csv'))ref[key]=el.value.split(',').map(v=>v.trim()).filter(Boolean);
+          else ref[key]=el.type==='number'?Number(el.value):el.value;
+        };el.addEventListener('input',update);el.addEventListener('change',update);
+      });
+    }
+    function renderDiscordEvents(data) {
+      const host=document.getElementById('discordEvents');if(!host)return;
+      const servers=data.servers||[];
+      host.innerHTML=`<section class="ub-group"><div class="ub-group-head"><h2>Server events</h2></div>${Object.entries(data.eventErrors||{}).map(([guild,error])=>`<div class="ac-note">${escapeHTML(servers.find(s=>s.id===guild)?.name||'Server')}: ${escapeHTML(error)}</div>`).join('')}<div class="ub-list glass">${(data.scheduledEvents||[]).map(e=>`<div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">${escapeHTML(e.name)}</div><div class="ub-row-desc">${escapeHTML(servers.find(g=>g.id===e.guild_id)?.name||'Server')} · ${escapeHTML(new Date(e.scheduled_start_time).toLocaleString())} · ${['','Scheduled','Active','Completed','Cancelled'][e.status]||'Unknown'}</div>${e.description?`<div class="ub-row-desc">${escapeHTML(e.description)}</div>`:''}</div><button class="secondary-action" type="button" data-event-announce="${escapeHTML(e.id)}" ${[1,2].includes(e.status)?'':'disabled'}>Add announcement</button></div>`).join('')||'<div class="placeholder">No Discord events found. Create an event in your server, then refresh.</div>'}</div></section>`;
+      host.querySelectorAll('[data-event-announce]').forEach(btn=>btn.addEventListener('click',()=>{const event=data.scheduledEvents.find(e=>e.id===btn.dataset.eventAnnounce);openAutomationEditor({id:autoNewID(),name:event.name+' announcement',enabled:true,category:'events',trigger:{kind:'scheduledEvent',guildId:event.guild_id,eventId:event.id,eventOffsetSeconds:0},filterLogic:'all',filters:[],failurePolicy:'stopOnError',steps:[{id:autoNewID(),kind:'sendMessage',sendTarget:'specificChannel',channelId:'',content:'',embed:{title:event.name+' is now live!',description:'{eventDescription}\n\n[View event]({eventURL})',imageURL:event.image?`https://cdn.discordapp.com/guild-events/${event.id}/${event.image}.png`:null}}]},'events',true);}));
+      document.getElementById('eventsRefresh').onclick=async()=>{try{await loadAutomations('events');renderAutomationsView('events');}catch(e){setMessage(requestErrorText(e,'Could not refresh events.'),'error');}};
+    }
+    function automationTimingSummary(rule, data) {
+      const trigger = rule.trigger || {};
+      if (trigger.kind === 'scheduledEvent') {
+        const event = (data?.scheduledEvents || []).find(e => e.id === trigger.eventId && e.guild_id === trigger.guildId);
+        const date = trigger.eventCustomTime || (event && new Date(new Date(event.scheduled_start_time).getTime() + (trigger.eventOffsetSeconds || 0) * 1000));
+        return (event?.name || 'Discord event') + (date ? ' · Announces ' + new Date(date).toLocaleString() : ' · Event unavailable');
+      }
+      if (trigger.kind === 'schedule' && trigger.schedule) {
+        const schedule = trigger.schedule;
+        return new Date(schedule.startAt).toLocaleString(undefined, {timeZone:schedule.timeZone}) + ' (' + schedule.timeZone + ') · ' + schedule.repeatKind;
+      }
+      return AUTO_TRIGGER_LABELS[trigger.kind] || trigger.kind || 'Trigger';
+    }
+    function renderAutomationHistory(category,data) {
+      const host=document.getElementById(category==='events'?'eventsHistory':category==='moderation'?'moderationHistory':'automationHistory');if(!host)return;
+      const records=data.diagnostics||[];
+      host.innerHTML=`<section class="ub-group" style="margin-top:24px;"><div class="ub-group-head"><h2>Recent runs</h2></div><div class="ub-list glass">${records.map(r=>`<details class="ub-row" style="display:block;"><summary>${escapeHTML(r.ruleName)} · ${escapeHTML(r.status)} · ${escapeHTML(new Date(r.updatedAt).toLocaleString())}</summary><div style="padding-top:12px;">${(r.traces||[]).map((t,i)=>`<p>${i+1}. ${escapeHTML(AUTO_STEP_LABELS[t.kind]||t.kind)}: ${escapeHTML(t.detail)}</p>`).join('')}${(r.errors||[]).map(e=>`<p class="rw-warn">${escapeHTML(e)}</p>`).join('')}</div></details>`).join('')||'<div class="placeholder">No runs yet. Use Simulate in the editor to check a workflow.</div>'}</div>${(data.history||[]).filter(r=>r.status.startsWith('Skipped')).slice(0,10).map(r=>`<p class="ub-help">${escapeHTML(r.ruleName)}: ${escapeHTML(r.status)}</p>`).join('')}</section>`;
     }
 
     // ===== Welcome Flow ================================================
@@ -12096,6 +12354,7 @@
         renderSweepView();
         return;
       }
+      if (currentView === 'events') { renderAutomationsView('events'); return; }
       if (currentView === 'automations') {
         renderAutomationsView('automation');
         return;
@@ -18005,6 +18264,7 @@
     }
 
     const viewCopy = {
+      events: { title: 'Events', icon: 'calendar-days', copy: 'Discord events and timed announcements.' },
       commands: {
         title: 'Commands',
         icon: 'terminal',
@@ -18427,6 +18687,7 @@
       const patchy = document.getElementById('patchyView');
       const sweep = document.getElementById('sweepView');
       const gametracker = document.getElementById('gametrackerView');
+      const events = document.getElementById('eventsView');
       const automations = document.getElementById('automationsView');
       const moderation = document.getElementById('moderationView');
       const welcome = document.getElementById('welcomeView');
@@ -18446,7 +18707,7 @@
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, rewind, patchy, sweep, gametracker, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
+        [overview, commands, analytics, rewind, patchy, sweep, gametracker, events, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
       hideAllViews();
@@ -18523,6 +18784,10 @@
         })();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Game Tracker';
         setMessage('', '');
+      } else if (view === 'events') {
+        events?.classList.remove('hidden');
+        loadAutomations('events').then(() => renderAutomationsView('events')).catch(e => setMessage(requestErrorText(e, 'Could not load events.'), 'error'));
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Events';
       } else if (view === 'automations') {
         automations?.classList.remove('hidden');
         (async () => {
@@ -18735,6 +19000,7 @@
       overview: ['#5ac8fa', '#007aff'],
       commands: ['#8e8e93', '#3a3a3c'],
       welcome: ['#ffd60a', '#ff9f0a'],
+      events: ['#60a5fa', '#2563eb'],
       automations: ['#ffcc00', '#ff6b00'],
       moderation: ['#ff6b6b', '#d70015'],
       announcer: ['#ff7ab6', '#c2185b'],
@@ -18820,6 +19086,7 @@
     };
     const homeFeatureFallback = {
       welcome: 'Greet new members',
+      events: 'Server events and announcements',
       automations: 'Rules and triggers',
       moderation: 'Keep servers tidy',
       gametracker: 'Who is playing what',

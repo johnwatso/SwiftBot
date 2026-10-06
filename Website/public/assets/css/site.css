@@ -364,30 +364,393 @@ html.light .hero-bird-glow {
     transform: translateY(-0.02rem);
 }
 
-.webui-showcase {
-    margin-top: 2rem;
+/* Hero screenshot: the Web UI inside a minimal browser window. */
+.browser-frame {
+    overflow: hidden;
+    border-radius: 1.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #121526;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
-.webui-showcase-layout {
+html.light .browser-frame {
+    border-color: rgba(15, 23, 42, 0.1);
+    background: #eef1f7;
+    box-shadow: 0 40px 100px rgba(15, 23, 42, 0.16);
+}
+
+.browser-frame img {
+    display: block;
+}
+
+.browser-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    height: 2.4rem;
+    padding: 0 0.95rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+html.light .browser-bar {
+    border-bottom-color: rgba(15, 23, 42, 0.07);
+}
+
+.browser-dots {
+    display: inline-flex;
+    gap: 0.45rem;
+}
+
+.browser-dots i {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 999px;
+    background: #ff5f57;
+}
+
+.browser-dots i:nth-child(2) { background: #febc2e; }
+.browser-dots i:nth-child(3) { background: #28c840; }
+.browser-dots.is-spacer { visibility: hidden; }
+
+.browser-url {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.28rem 1.4rem;
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+html.light .browser-url {
+    background: rgba(15, 23, 42, 0.06);
+    color: rgba(51, 65, 85, 0.75);
+}
+
+/* Tabler outline icons (same set as the Web UI sidebar). */
+.tb-icon {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    fill: none;
+    stroke: currentColor;
+    vertical-align: -0.125em;
+    flex-shrink: 0;
+}
+
+/* Rounded app tiles, coloured like the Web UI's sidebar icons. */
+.app-tile {
+    display: inline-flex;
+    width: 2.9rem;
+    height: 2.9rem;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.1rem;
+    border-radius: 0.85rem;
+    color: #fff;
+    font-size: 1.45rem;
+    background: linear-gradient(160deg, var(--tile-a), var(--tile-b));
+    box-shadow: 0 10px 24px -8px var(--tile-b), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.tile-orange { --tile-a: #ffb340; --tile-b: #ff8a00; }
+.tile-yellow { --tile-a: #ffd60a; --tile-b: #ffa800; }
+.tile-pink   { --tile-a: #ff6b8f; --tile-b: #ff2d55; }
+.tile-coral  { --tile-a: #ff8a65; --tile-b: #f4511e; }
+.tile-amber  { --tile-a: #ffa94d; --tile-b: #f76707; }
+.tile-green  { --tile-a: #4cd964; --tile-b: #1fa846; }
+.tile-purple { --tile-a: #c17cff; --tile-b: #8e44ec; }
+.tile-teal   { --tile-a: #4fd1c5; --tile-b: #11a3a0; }
+.tile-blue   { --tile-a: #5ac8fa; --tile-b: #0a7aff; }
+.tile-gray   { --tile-a: #9aa3b5; --tile-b: #5f6b80; }
+
+.feature-card {
+    padding: clamp(1.5rem, 2vw, 2rem);
+}
+
+.feature-card h3 {
+    margin-bottom: 0.5rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.feature-card p {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: rgba(209, 213, 219, 0.85);
+}
+
+html.light .feature-card h3 { color: #0f172a; }
+html.light .feature-card p { color: #64748b; }
+
+/* Small pill for features that are still in beta. */
+.beta-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 179, 64, 0.45);
+    background: rgba(255, 159, 10, 0.14);
+    color: #ffb340;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+    text-transform: uppercase;
+    vertical-align: 0.2em;
+}
+
+html.light .beta-badge {
+    border-color: rgba(201, 100, 0, 0.35);
+    background: rgba(255, 159, 10, 0.12);
+    color: #b45309;
+}
+
+.tour-tab .beta-badge {
+    margin-left: 0.1rem;
+    vertical-align: 0.05em;
+}
+
+.tour-tab[aria-selected="true"] .beta-badge {
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+}
+
+/* Web UI tour: tabs above one screenshot at a time. */
+.tour {
     display: grid;
     gap: 1.5rem;
+}
+
+.tour-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.tour-tab {
+    display: inline-flex;
     align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
-.webui-showcase-copy {
-    max-width: 34rem;
+.tour-tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
 }
 
-.webui-showcase-image {
-    width: min(100%, 42rem);
-    justify-self: center;
-    filter: drop-shadow(0 24px 42px rgba(0, 0, 0, 0.24));
+.tour-tab[aria-selected="true"] {
+    border-color: transparent;
+    background: linear-gradient(135deg, #5865f2, #4752c4);
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(88, 101, 242, 0.35);
 }
 
-@media (min-width: 900px) {
-    .webui-showcase-layout {
-        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-        gap: 2.5rem;
+.tour-tab:focus-visible {
+    outline: 2px solid #64d2ff;
+    outline-offset: 2px;
+}
+
+html.light .tour-tab {
+    border-color: rgba(15, 23, 42, 0.1);
+    background: rgba(255, 255, 255, 0.6);
+    color: #334155;
+}
+
+html.light .tour-tab:hover {
+    background: #fff;
+    color: #0f172a;
+}
+
+html.light .tour-tab[aria-selected="true"] {
+    color: #fff;
+}
+
+.tour-panel {
+    display: grid;
+    gap: 1.1rem;
+    justify-items: center;
+}
+
+.tour-panel[hidden] {
+    display: none;
+}
+
+.tour-caption {
+    max-width: 44rem;
+    min-height: 3em;
+    text-align: center;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #94a3b8;
+}
+
+html.light .tour-caption {
+    color: #475569;
+}
+
+.tour-image {
+    width: 100%;
+    max-width: 1280px;
+    height: auto;
+    border-radius: 1.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+}
+
+html.light .tour-image {
+    border-color: rgba(15, 23, 42, 0.1);
+    box-shadow: 0 30px 80px rgba(15, 23, 42, 0.14);
+}
+
+/* Mac host + Web UI: the Mac app's window with the phone over its corner. */
+.host-visual {
+    position: relative;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-right: clamp(0px, 11vw, 170px);
+}
+
+/* The capture includes the window's own shadow, so no frame or shadow here. */
+.host-mac {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.host-phone {
+    position: absolute;
+    right: 0;
+    bottom: -3%;
+    width: clamp(110px, 19%, 230px);
+}
+
+.host-points {
+    display: grid;
+    gap: 1.25rem;
+    max-width: 1080px;
+    margin: clamp(2rem, 4vw, 3rem) auto 0;
+}
+
+/* iPhone 17 (402 × 874 pt): an aluminium band around a thin black bezel,
+   with the Dynamic Island and status bar drawn over the screenshot. Sizes are
+   in container-query units so the whole device scales as one piece. */
+.iphone {
+    container-type: inline-size;
+    aspect-ratio: 412 / 884;
+    border-radius: 15% / 7%;
+    background: linear-gradient(145deg, #5b6070, #23262f 30%, #3a3e4a 62%, #16181e);
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+html.light .iphone {
+    background: linear-gradient(145deg, #f4f5f8, #c9ccd4 32%, #e6e8ee 64%, #b4b8c2);
+    box-shadow: 0 40px 90px rgba(15, 23, 42, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.iphone-screen {
+    /* Inset with cqw, not padding: a percentage padding on .iphone would
+       resolve against its containing block, not the phone itself. */
+    position: absolute;
+    inset: 1.25cqw;
+    overflow: hidden;
+    border: 2.4cqw solid #050506;
+    border-radius: 14.4cqw;
+    background: #050506;
+}
+
+.iphone-screen img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 12cqw;
+}
+
+.iphone-status {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 13.4cqw;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8.5cqw 0 11cqw;
+    color: #fff;
+}
+
+html.light .iphone-status {
+    color: #0b0b0f;
+}
+
+.iphone-time {
+    font-size: 4.3cqw;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.iphone-island {
+    position: absolute;
+    left: 50%;
+    top: 2.9cqw;
+    width: 31.5cqw;
+    height: 9.3cqw;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #000;
+}
+
+.iphone-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 1.6cqw;
+}
+
+.iphone-icons svg {
+    height: 3cqw;
+    width: auto;
+    fill: currentColor;
+}
+
+.iphone-icons .iphone-battery {
+    height: 3.2cqw;
+}
+
+.iphone-button {
+    position: absolute;
+    width: 1.1%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #2a2d36, #4b4f5c);
+}
+
+html.light .iphone-button {
+    background: linear-gradient(90deg, #b9bdc7, #e5e7ec);
+}
+
+.iphone-button.is-action      { left: -0.9%; top: 17%; height: 3.6%; }
+.iphone-button.is-volume-up   { left: -0.9%; top: 24%; height: 6.6%; }
+.iphone-button.is-volume-down { left: -0.9%; top: 32.5%; height: 6.6%; }
+.iphone-button.is-side        { right: -0.9%; top: 26%; height: 10%; }
+
+@media (min-width: 768px) {
+    .host-points {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 

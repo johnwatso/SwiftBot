@@ -51,6 +51,19 @@ final class AdminWebServerAuthTests: XCTestCase {
 
     // MARK: - Session authentication
 
+    func testModerationActivityRequiresAdministrator() async {
+        let server = AdminWebServer()
+        let path = "/api/automations?category=moderation"
+        let anonymous = await server.testProcessRequest(makeRequest(path: path))
+        XCTAssertEqual(statusCode(from: anonymous), 401)
+        let viewer = await server.testSeedSession(viewerRole: true)
+        let denied = await server.testProcessRequest(makeRequest(path: path, cookie: viewer.id))
+        XCTAssertEqual(statusCode(from: denied), 403)
+        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
+        let allowed = await server.testProcessRequest(makeRequest(path: path, cookie: admin.id))
+        XCTAssertEqual(statusCode(from: allowed), 503, "Admin should reach the absent moderation provider")
+    }
+
     func testSwiftMeshPairingRequiresAdminAndCSRF() async {
         let server = AdminWebServer()
         let path = "/api/swiftmesh/pair"
@@ -624,6 +637,47 @@ final class AdminWebServerAuthTests: XCTestCase {
         let calls = await recorder.calls
         XCTAssertEqual(calls.count, 1)
         XCTAssertNil(calls.first?.token)
+    }
+
+    func testEventsRequireAnAdminSession() async {
+        let server = AdminWebServer()
+        let viewer = await server.testSeedSession(viewerRole: true)
+        let admin = await server.testSeedSession()
+        for path in ["/api/events", "/api/automations?category=events"] {
+            let unauthenticated = await server.testProcessRequest(makeRequest(path: path))
+            XCTAssertEqual(statusCode(from: unauthenticated), 401)
+            let forbidden = await server.testProcessRequest(makeRequest(path: path, cookie: viewer.id))
+            XCTAssertEqual(statusCode(from: forbidden), 403)
+            let allowed = await server.testProcessRequest(makeRequest(path: path, cookie: admin.id))
+            XCTAssertEqual(statusCode(from: allowed), 503, "Authenticated admins reach the provider, which is absent in this test")
+        }
+    }
+
+    func testViewersNeverSeeWebhookURLsOrBodies() async throws {
+        let server = AdminWebServer()
+        let secretURL = "https://hooks.example.com/services/T000/B000/viewer-secret-token"
+        let rule = Automations.Rule(id: "hook", name: "Forward", trigger: .init(kind: .messageCreated), steps: [
+            .init(kind: .webhook, webhookUrl: secretURL, webhookContent: "private-body {message}", webhookCredentialId: "credential-ref")
+        ])
+        await server.setAutomationsProviderForTesting { category in
+            AdminWebAutomationsPayload(
+                category: category.rawValue, rules: [rule], templates: [],
+                serverContext: .init(guildName: nil, guildId: nil, textChannels: [], voiceChannels: [], roles: []),
+                metrics: .init(total: 1, enabled: 1, triggerKinds: 1))
+        }
+        let path = "/api/automations?category=automation"
+        let viewer = await server.testSeedSession(viewerRole: true)
+        let viewed = await server.testProcessRequest(makeRequest(path: path, cookie: viewer.id))
+        XCTAssertEqual(statusCode(from: viewed), 200)
+        let viewerBody = bodyString(from: viewed)
+        XCTAssertTrue(viewerBody.contains("Forward"), "Viewers still see the rule itself")
+        XCTAssertFalse(viewerBody.contains("viewer-secret-token"))
+        XCTAssertFalse(viewerBody.contains("private-body"))
+        XCTAssertFalse(viewerBody.contains("credential-ref"))
+
+        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
+        let full = await server.testProcessRequest(makeRequest(path: path, cookie: admin.id))
+        XCTAssertTrue(bodyString(from: full).contains("private-body"), "Admins edit the body, so they still receive it")
     }
 
     func testViewersCannotSetCredentials() async {

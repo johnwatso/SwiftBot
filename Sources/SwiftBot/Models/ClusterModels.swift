@@ -698,6 +698,8 @@ struct MeshCredentialsResponse: Codable, Sendable {
     /// whereas an empty string intentionally revokes a previously copied key.
     var discordOAuthClientSecret: String? = nil
     var discordToken: String? = nil
+    /// Webhook credential ID → URL for the Primary's automation rules.
+    var automationWebhookURLs: [String: String]? = nil
     var authorizedCredentialGrants: [MeshCredentialGrant]? = nil
     var leaderTerm: Int? = nil
     var configRevision: Int64? = nil

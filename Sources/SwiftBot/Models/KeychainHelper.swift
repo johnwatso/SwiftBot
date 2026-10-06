@@ -16,6 +16,9 @@ enum KeychainHelper {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
 
+    /// Screenshot demo mode uses the in-memory store too.
+    nonisolated private static let usesInMemoryStore = isRunningUnderXCTest || ScreenshotDemo.isEnabled
+
     private static let testStore = Mutex<[String: Data]>([:])
 
     #if DEBUG
@@ -36,7 +39,7 @@ enum KeychainHelper {
     @discardableResult
     static func save(_ value: String, account: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
-        if isRunningUnderXCTest {
+        if usesInMemoryStore {
             testStore.withLock { $0[account] = data }
             return true
         }
@@ -61,7 +64,7 @@ enum KeychainHelper {
     /// locked, say) can't lose the existing item. Used for passkeys.
     @discardableResult
     static func update(_ data: Data, account: String) -> Bool {
-        if isRunningUnderXCTest {
+        if usesInMemoryStore {
             testStore.withLock { $0[account] = data }
             return true
         }
@@ -88,7 +91,7 @@ enum KeychainHelper {
     }
 
     static func load(account: String) -> String? {
-        if isRunningUnderXCTest {
+        if usesInMemoryStore {
             return testStore.withLock { $0[account] }.flatMap { String(data: $0, encoding: .utf8) }
         }
         noteRealAccess()
@@ -119,7 +122,7 @@ enum KeychainHelper {
 
     @discardableResult
     static func delete(account: String) -> Bool {
-        if isRunningUnderXCTest {
+        if usesInMemoryStore {
             return testStore.withLock { $0.removeValue(forKey: account) } != nil
         }
         noteRealAccess()

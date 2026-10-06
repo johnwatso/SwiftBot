@@ -7,6 +7,9 @@
 // checked in a browser without building and running the macOS app.
 //
 //   node Tools/AdminPreview/server.js        → http://127.0.0.1:4179
+//   SHOWCASE=1 PORT=4180 node Tools/AdminPreview/server.js
+//                                            → tidy data for website screenshots
+//                                              (showcase.js, screenshots.mjs)
 //
 // Announcer writes are applied to the in-memory fixtures, so add/edit/toggle/
 // delete round-trip for the session. Restart to reset. This never touches
@@ -16,6 +19,10 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const fixtures = require('./fixtures');
+// SHOWCASE=1 swaps the dev fixtures for a tidy server to screenshot (showcase.js).
+const SHOWCASE = !!process.env.SHOWCASE;
+const showcase = SHOWCASE ? require('./showcase') : null;
+if (showcase) showcase(fixtures);
 const { execFile, execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '../../Sources/SwiftBot/Resources/admin');
@@ -193,15 +200,15 @@ const recapState = { channelID: 't101', monthly: true, yearly: false, lastMonthl
 let dmProgress = null;
 // Operators, shaped like AdminWebOperatorsPayload.
 const operatorState = {
-  byNode: { 'Preview Mac': '412378964087275541' },
+  byNode: { [config.swiftMesh.nodeName]: '412378964087275541' },
   alerts: { discordDisconnected: true, nodeOffline: true, recordingsUnreachable: true, errorBurst: true, roleChanges: false }
 };
 const operatorAlertTitles = { discordDisconnected: 'Discord disconnected', nodeOffline: 'Mac went offline', recordingsUnreachable: 'Recordings folder unreachable', errorBurst: 'Errors piling up', roleChanges: 'Role changes' };
 function operatorsFixture() {
-  const names = ['Preview Mac', 'Studio', 'Old MacBook'];
+  const names = [config.swiftMesh.nodeName, 'Studio', 'Old MacBook'];
   return {
-    thisNode: 'Preview Mac',
-    nodes: names.map(name => ({ name, operatorID: operatorState.byNode[name] || null, isThisNode: name === 'Preview Mac' })),
+    thisNode: config.swiftMesh.nodeName,
+    nodes: names.map(name => ({ name, operatorID: operatorState.byNode[name] || null, isThisNode: name === config.swiftMesh.nodeName })),
     alerts: Object.keys(operatorAlertTitles).map(id => ({ id, title: operatorAlertTitles[id], enabled: !!operatorState.alerts[id] })),
     members: fixtures.config.userTimezones.members
   };
@@ -226,7 +233,7 @@ function withGameFix(item) {
 const previewSteamGames = ['Call of Duty®: Black Ops 6', 'Call of Duty®: Modern Warfare® III', 'THE FINALS', 'Apex Legends™', 'Counter-Strike 2', 'Marvel Rivals', 'Helldivers™ 2', 'Overwatch® 2']
   .map((name, i) => ({ name, steamAppID: String(2_000_000 + i) }));
 // SwiftMesh: a Primary with one Fail Over, mirroring AdminWebSwiftMeshPayload.
-const meshState = { handoverScheduledAt: null, handoverEndsAt: null, lastRunAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRunOK: true, forgotten: new Set(), icons: {} };
+const meshState = { handoverScheduledAt: null, handoverEndsAt: null, lastRunAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRunOK: true, forgotten: new Set(SHOWCASE ? ['Old MacBook'] : []), icons: {} };
 function swiftMeshFixture() {
   const cfg = config.swiftMesh;
   const mode = { leader: 'Leader', standby: 'Standby', standalone: 'Standalone' }[String(cfg.mode).toLowerCase()] || cfg.mode;
@@ -386,8 +393,9 @@ async function handleAPI(req, res, pathname, query) {
       case '/api/activity/export':
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="SwiftBot-Diagnostics-preview.txt"' });
         return res.end('=== SwiftBot Diagnostic Report ===\n(preview)\n');
+      case '/api/events':
       case '/api/automations': {
-        const category = query.get('category') || 'automation';
+        const category = pathname === '/api/events' ? 'events' : query.get('category') || 'automation';
         return sendJSON(res, fixtures.automations(category, automationRules[category]));
       }
       case '/api/welcome-flow': return sendJSON(res, welcomeFlow);
@@ -696,7 +704,7 @@ async function handleAPI(req, res, pathname, query) {
     }
 
     if (pathname.startsWith('/api/automations/')) {
-      const all = () => [...automationRules.automation, ...automationRules.moderation];
+      const all = () => Object.values(automationRules).flat();
       switch (pathname) {
         case '/api/automations/toggle': {
           const target = all().find((r) => r.id === body.id);
@@ -809,7 +817,7 @@ async function handleAPI(req, res, pathname, query) {
       return sendJSON(res, { ok: true });
     }
     if (pathname === '/api/operators/test') {
-      return operatorState.byNode['Preview Mac'] ? sendJSON(res, { ok: true }) : sendJSON(res, { error: 'no_operator' }, 409);
+      return operatorState.byNode[config.swiftMesh.nodeName] ? sendJSON(res, { ok: true }) : sendJSON(res, { error: 'no_operator' }, 409);
     }
     if (pathname === '/api/swiftmesh/pair') {
       // The app's most common refusal; set PAIR_OK=1 to get a link instead.
@@ -1007,6 +1015,18 @@ const server = http.createServer(async (req, res) => {
     return handleAPI(req, res, pathname, new URLSearchParams(req.url.split('?')[1] || ''));
   }
 
+  if (SHOWCASE && pathname === '/showcase/thumb') {
+    const query = new URLSearchParams(req.url.split('?')[1] || '');
+    return showcase.sendThumb(res, query.get('game'), query.get('n') || 0);
+  }
+  if (SHOWCASE && /^\/showcase\/[\w/.-]+\.(png|jpg)$/.test(pathname) && !pathname.includes('..')) {
+    return fs.readFile(path.join(__dirname, pathname), (error, data) => {
+      if (error) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(pathname)], 'Cache-Control': 'no-store' });
+      res.end(data);
+    });
+  }
+
   // The app serves its logo from the bundle's Resources folder, one level
   // above the admin files; mirror that so the preview isn't missing it.
   if (pathname === '/assets/SwiftBird3.png') {
@@ -1035,6 +1055,11 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream',
       'Cache-Control': 'no-store'
     });
+    // The page builds the signed-in avatar from a Discord CDN hash; in
+    // showcase mode, point it at the local avatar instead.
+    if (SHOWCASE && relative === '/index.html') {
+      return res.end(String(data).replace(/const avatarURL = (user\.avatar\n[^;]*);/, 'const avatarURL = user.avatarURL || ($1);'));
+    }
     res.end(data);
   });
 });

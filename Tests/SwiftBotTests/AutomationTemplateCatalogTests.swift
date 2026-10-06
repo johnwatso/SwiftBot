@@ -2,6 +2,28 @@ import XCTest
 @testable import SwiftBot
 
 final class AutomationTemplateCatalogTests: XCTestCase {
+    func testBanTemplatesStartDisabledAndPreserveHistory() {
+        let templates = AutomationTemplate.moderationCatalog.filter { template in
+            template.rule.steps.contains { $0.memberOp == .ban }
+        }
+        XCTAssertFalse(templates.isEmpty)
+        for template in templates {
+            XCTAssertFalse(template.rule.enabled)
+            XCTAssertFalse(template.rule.filters.isEmpty)
+            XCTAssertTrue(template.rule.steps.filter { $0.memberOp == .ban }.allSatisfy { ($0.banDeleteMessageSeconds ?? 0) == 0 })
+        }
+    }
+
+    func testBanStepRoundTripsAndRejectsInvalidCleanup() throws {
+        let step = Automations.Step(kind: .modifyMember, memberOp: .ban, kickReason: "Spam", banDeleteMessageSeconds: 3600)
+        XCTAssertEqual(try JSONDecoder().decode(Automations.Step.self, from: JSONEncoder().encode(step)), step)
+        for value in [-1, 604801] {
+            XCTAssertThrowsError(try Automations.Step(kind: .modifyMember, memberOp: .ban, banDeleteMessageSeconds: value).validate())
+        }
+        let legacy = Automations.Step(kind: .modifyMember, memberOp: .kick, kickReason: "Spam")
+        XCTAssertEqual(try JSONDecoder().decode(Automations.Step.self, from: JSONEncoder().encode(legacy)), legacy)
+    }
+
     func testEveryTemplateValidates() {
         for template in AutomationTemplate.catalog {
             XCTAssertNoThrow(try template.rule.validate(), "Template \(template.id) does not validate")
