@@ -16,14 +16,16 @@ extension AppModel {
         let interval = period.interval(now: now)
         let buckets = period.buckets()
         let isOnlyGuild = connectedServers.count <= 1
+        let bots = await rewindExcludedUserIDs(guildID: guildID)
+        let chatBots = settings.rewind.includeBotMessages ? [] : bots
 
         async let messages = rewindStore.rangeSummary(
             guildID: guildID, start: interval.start, end: interval.end, buckets: buckets,
-            excludingUsers: [], filterStopWords: settings.rewind.filterStopWords
+            excludingUsers: chatBots, filterStopWords: settings.rewind.filterStopWords
         )
         async let voice = voiceSessionStore.report(
             window: interval, buckets: buckets, previous: nil,
-            guildId: guildID, excludingUsers: [], now: now, topLimit: 5
+            guildId: guildID, excludingUsers: bots, now: now, topLimit: 5
         )
         async let community = communityStatsStore.summary(buckets: buckets, in: interval)
         async let ranks = communityStatsStore.rankHistory(since: interval.start)
@@ -105,11 +107,13 @@ extension AppModel {
             periodKey: period.key,
             periodTitle: period.title()
         )
-        let messages = await rewindStore.userRangeSummary(guildID: guildID, userID: userID, start: interval.start, end: interval.end, excludingUsers: [])
+        let bots = await rewindExcludedUserIDs(guildID: guildID)
+        let chatBots = settings.rewind.includeBotMessages ? [] : bots
+        let messages = await rewindStore.userRangeSummary(guildID: guildID, userID: userID, start: interval.start, end: interval.end, excludingUsers: chatBots)
         let voice = await voiceSessionStore.userReport(userId: userID, guildId: guildID, window: interval, now: now)
         let voiceRanking = await voiceSessionStore.report(
             window: interval, buckets: [], previous: nil, guildId: guildID,
-            excludingUsers: [], now: now, topLimit: 1_000
+            excludingUsers: bots, now: now, topLimit: 1_000
         ).topUsers
         if replay.name == "Member", let name = messages.userName { replay.name = name }
         replay.messages = messages.messages
@@ -132,7 +136,7 @@ extension AppModel {
         let previousInterval = previous.interval(now: now)
         replay.previousPeriodTitle = previous.title()
         replay.previousMessages = await rewindStore.userRangeSummary(
-            guildID: guildID, userID: userID, start: previousInterval.start, end: previousInterval.end, excludingUsers: []
+            guildID: guildID, userID: userID, start: previousInterval.start, end: previousInterval.end, excludingUsers: chatBots
         ).messages
         replay.previousVoiceSeconds = await voiceSessionStore.userReport(userId: userID, guildId: guildID, window: previousInterval, now: now).seconds
         if connectedServers.count <= 1 {
@@ -393,8 +397,7 @@ extension AppModel {
             ids.formIntersection(activeChatters)
         }
         ids.subtract(settings.rewind.replayDMOptOutUserIDs)
-        ids.subtract(knownBotUserIds)
-        if let botUserId { ids.remove(botUserId) }
+        ids.subtract(await rewindExcludedUserIDs(guildID: guildID))
         return ids.sorted()
     }
 
@@ -551,6 +554,7 @@ extension AppModel {
                 for _ in 0..<30 {
                     guard let page = try? await service.rewindFetchMessagePage(guildId: guildID, channelId: channel.id, limit: 100, before: cursor),
                           !page.messages.isEmpty else { break }
+                    noteRewindBotAuthors(Set(page.messages.filter(\.isBot).map(\.authorID)), guildID: guildID)
                     let fresh = page.messages.filter { message in
                         message.createdAt >= since
                             && (includeBots || !message.isBot)

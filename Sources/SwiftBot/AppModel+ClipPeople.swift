@@ -65,15 +65,16 @@ extension AppModel {
 
         for payload in payloads {
             for item in payload.items {
-                let isLocal = payload.nodeName == localNode
+                let isLocal = payload.nodeID.map { $0 == meshLocalNodeID } ?? (payload.nodeName == localNode)
                 let length = clipDurationCache[item.id] ?? ClipPeopleMatcher.assumedClipLength
                 if isLocal, clipDurationCache[item.id] == nil { unread.append(item) }
                 let window = DateInterval(start: item.modifiedAt.addingTimeInterval(-length), end: item.modifiedAt)
                 let sessions = history.filter { $0.joinedAt < window.end && ($0.leftAt ?? now) > window.start }
                 guard !sessions.isEmpty else { continue }
-                let owner = settings.recordingSourceOwners["\(payload.nodeName)|\(item.sourceID.uuidString)"]
+                let owner = settings.recordingSourceOwners["\(payload.identity)|\(item.sourceID.uuidString)"]
+                    ?? settings.recordingSourceOwners["\(payload.nodeName)|\(item.sourceID.uuidString)"]
                 let people = ClipPeopleMatcher.people(window: window, sessions: sessions, ownerID: owner, excluding: excluded, now: now)
-                if !people.isEmpty { index["\(payload.nodeName)|\(item.id)"] = people }
+                if !people.isEmpty { index["\(payload.identity)|\(item.id)"] = people }
             }
         }
         clipPeopleCache = (now, index)
@@ -130,6 +131,7 @@ extension AppModel {
                     sizeBytes: item.sizeBytes, modifiedAt: item.modifiedAt,
                     thumbnailURL: item.thumbnailURL, streamURL: item.streamURL
                 )
+                copy.available = item.available
                 copy.people = item.people
                 copy.recordedByID = item.recordedByID
                 return copy
@@ -150,8 +152,9 @@ extension AppModel {
     /// this member was in. The web server asks before any member playback.
     func memberMayPlay(userID: String, token: String) async -> Bool {
         guard let descriptor = decodedMediaStreamToken(token) else { return false }
+        guard await recordingRoute(for: descriptor) != nil else { return false }
         let people = await clipPeopleIndex()
-        return people["\(descriptor.ownerNodeName)|\(descriptor.itemID)"]?.contains(userID) == true
+        return people["\(descriptor.ownerNodeID ?? descriptor.ownerNodeName)|\(descriptor.itemID)"]?.contains(userID) == true
     }
 
     /// Admin: who records into a folder. Empty clears it.

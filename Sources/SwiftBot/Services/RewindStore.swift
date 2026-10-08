@@ -58,6 +58,8 @@ actor RewindStore {
         var totalBigrams: [String: Int] = [:]
     }
     private var memberTermsCache: [String: MemberTerms] = [:]
+    /// Known bot and webhook author IDs per guild, loaded lazily.
+    private var botAuthors: [String: Set<String>] = [:]
 
     init(rootURL: URL = SwiftBotStorage.folderURL().appendingPathComponent("rewind", isDirectory: true)) {
         self.rootURL = rootURL
@@ -802,40 +804,104 @@ actor RewindStore {
     /// Erases one user from the archive — their message text and their entries
     /// in every aggregate. Backs `/rewind forget`.
     func purge(userID: String, guildID: String?) {
-        memberTermsCache.removeAll()
-        let manager = FileManager.default
         let guilds = guildID.map { [$0] } ?? archivedGuildIDs()
-
         for guild in guilds {
-            let folder = guildURL(guild)
-            if let files = try? manager.contentsOfDirectory(atPath: folder.path) {
-                for file in files where file.hasPrefix("messages-") && file.hasSuffix(".jsonl") {
-                    let month = String(file.dropFirst("messages-".count).dropLast(".jsonl".count))
-                    rewriteShard(ShardKey(guildID: guild, month: month)) { $0.authorID != userID }
-                }
-            }
+            removeAuthors([userID], guildID: guild, everyShard: true)
+        }
+    }
 
-            for year in availableYears(guildID: guild) {
-                let cacheKey = aggregateCacheKey(guildID: guild, year: year)
-                var days = aggregates(guildID: guild, year: year)
+    // MARK: - Bot authors
 
-                for day in Array(days.keys) {
-                    guard var aggregate = days[day],
-                          let removedMessages = aggregate.messagesByUser.removeValue(forKey: userID) else { continue }
-                    let removedWords = aggregate.wordsByUser.removeValue(forKey: userID) ?? 0
+    /// Bot accounts and webhooks seen posting in a guild. Persisted so a
+    /// webhook archived before it was recognised as one (webhook posts only
+    /// counted as bot posts from 2026-10-03) is removed once, the next time it
+    /// posts or a catch-up sees it, and stays out of Replay's voice and chat
+    /// rankings.
+    func botAuthorIDs(guildID: String) -> Set<String> {
+        if let cached = botAuthors[guildID] { return cached }
+        var ids: Set<String> = []
+        if let data = try? Data(contentsOf: botAuthorsURL(guildID)),
+           let decoded = try? decoder.decode([String].self, from: data) {
+            ids = Set(decoded)
+        }
+        botAuthors[guildID] = ids
+        return ids
+    }
+
+    /// Records bot and webhook authors and removes anything of theirs already
+    /// in the archive. Only newly seen IDs cost anything, so callers can pass
+    /// every bot author they see.
+    func excludeBotAuthors(_ ids: Set<String>, guildID: String) {
+        let known = botAuthorIDs(guildID: guildID)
+        let fresh = ids.filter { !$0.isEmpty && !known.contains($0) }
+        guard !fresh.isEmpty else { return }
+
+        let all = known.union(fresh)
+        botAuthors[guildID] = all
+        ensureDirectory(guildURL(guildID))
+        if let data = try? encoder.encode(all.sorted()) {
+            writeRestricted(data, to: botAuthorsURL(guildID))
+        }
+        flush()
+        removeAuthors(fresh, guildID: guildID, everyShard: false)
+    }
+
+    /// Drops `ids` from a guild's aggregates and message shards. With
+    /// `everyShard` false only months whose aggregates mention them are
+    /// rewritten, which is what keeps bot exclusion cheap; a privacy purge
+    /// rewrites every shard regardless.
+    private func removeAuthors(_ ids: Set<String>, guildID guild: String, everyShard: Bool) {
+        memberTermsCache.removeAll()
+        var touchedMonths: Set<String> = []
+        var touchedYears: [String] = []
+
+        for year in availableYears(guildID: guild) {
+            let cacheKey = aggregateCacheKey(guildID: guild, year: year)
+            var days = aggregates(guildID: guild, year: year)
+            var changed = false
+
+            for day in Array(days.keys) {
+                guard var aggregate = days[day],
+                      aggregate.messagesByUser.keys.contains(where: ids.contains) else { continue }
+                for id in ids {
+                    guard let removedMessages = aggregate.messagesByUser.removeValue(forKey: id) else { continue }
+                    let removedWords = aggregate.wordsByUser.removeValue(forKey: id) ?? 0
                     aggregate.messageCount = max(0, aggregate.messageCount - removedMessages)
                     aggregate.wordCount = max(0, aggregate.wordCount - removedWords)
-                    aggregate.userNames.removeValue(forKey: userID)
-                    aggregate.conversation = nil
-                    days[day] = aggregate
+                    aggregate.userNames.removeValue(forKey: id)
                 }
+                // Hour, channel and term counts can't be split by author, so
+                // the day's highlights are rebuilt from the retained text when
+                // the year is next loaded.
+                aggregate.conversation = nil
+                days[day] = aggregate
+                touchedMonths.insert(String(day.prefix(7)))
+                changed = true
+            }
 
+            if changed {
                 aggregateCache[cacheKey] = days
                 dirtyAggregates.insert(cacheKey)
+                touchedYears.append(cacheKey)
             }
         }
 
+        if everyShard {
+            let folder = guildURL(guild)
+            if let files = try? FileManager.default.contentsOfDirectory(atPath: folder.path) {
+                for file in files where file.hasPrefix("messages-") && file.hasSuffix(".jsonl") {
+                    touchedMonths.insert(String(file.dropFirst("messages-".count).dropLast(".jsonl".count)))
+                }
+            }
+        }
+        for month in touchedMonths {
+            rewriteShard(ShardKey(guildID: guild, month: month)) { !ids.contains($0.authorID) }
+        }
+
         persistDirtyAggregates()
+        // Reload on next use so the cleared highlights are recovered from the
+        // rewritten shards straight away rather than after a relaunch.
+        for cacheKey in touchedYears { aggregateCache.removeValue(forKey: cacheKey) }
     }
 
     /// Deletes everything Rewind has stored.
@@ -844,6 +910,7 @@ actor RewindStore {
         memberTermsCache.removeAll()
         aggregateCache.removeAll()
         dirtyAggregates.removeAll()
+        botAuthors.removeAll()
         try? FileManager.default.removeItem(at: rootURL)
     }
 
@@ -938,6 +1005,10 @@ actor RewindStore {
 
     private func aggregatesURL(guildID: String, year: Int) -> URL {
         guildURL(guildID).appendingPathComponent("aggregates-\(year).json")
+    }
+
+    private func botAuthorsURL(_ guildID: String) -> URL {
+        guildURL(guildID).appendingPathComponent("bot-authors.json")
     }
 
     private func ensureDirectory(_ url: URL) {

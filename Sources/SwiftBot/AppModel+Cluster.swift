@@ -1043,7 +1043,7 @@ extension AppModel {
     }
 
     /// Applies a SwiftMesh Join Code bundle to settings.
-    func applySwiftMeshJoinCode(_ rawCode: String) async -> (ok: Bool, message: String) {
+    func applySwiftMeshJoinCode(_ rawCode: String, shareRecordings: Bool? = nil) async -> (ok: Bool, message: String) {
         do {
             let bundle = try decodeSwiftMeshJoinCode(rawCode)
             // Opening Pair SwiftBot in a browser on the Primary itself would
@@ -1085,8 +1085,26 @@ extension AppModel {
                 settings.clusterNodeName = "\(name)-\(randomID)"
             }
 
+            // Recording enrollment uses the paired identity/connection without
+            // installing lease ownership handlers or starting failover work.
+            meshLocalNodeID = enrollment.nodeID
+            recordingWitnessConfiguration = await Self.loadWitnessSettingsOffMain()
+            var message = "Join code parsed successfully."
+            if let shareRecordings {
+                if !(await setRecordingSharingEnabled(shareRecordings)) {
+                    message = "Paired, but the recording sharing choice could not be saved. Retry in Recordings."
+                } else if shareRecordings {
+                    message = recordingWitnessConfiguration.isValid
+                        ? "Paired. Recording sharing is enabled; approve this Mac’s website request in Ruru when its Web Interface is configured."
+                        : "Paired. Recording sharing needs Ruru; connect it in SwiftMesh to finish setup."
+                }
+            } else {
+                await configureRecordingCoordination()
+            }
+            // Capture the chosen local preference in the ordinary save as well;
+            // an earlier snapshot must not overwrite the sharing checkpoint.
             saveSettings()
-            return (true, "Join code parsed successfully.")
+            return (true, message)
         } catch {
             return (false, error.localizedDescription)
         }
@@ -1182,6 +1200,19 @@ extension AppModel {
 }
 
 struct SwiftMeshJoinBundle: Codable {
+    /// A browser choice preselects the local confirmation only. It cannot enable
+    /// sharing until the person joining confirms in SwiftBot.
+    static func recordingSharingChoice(from rawCode: String) -> Bool? {
+        guard let components = URLComponents(string: rawCode), components.scheme == "swiftmesh", components.host == "join" else { return nil }
+        let choices = (components.queryItems ?? []).filter { $0.name == "recordings" }
+        guard choices.count == 1 else { return nil }
+        switch choices[0].value {
+        case "1": return true
+        case "0": return false
+        default: return nil
+        }
+    }
+
     let leaderAddresses: [String]
     let leaderPort: Int
     let sharedSecret: String

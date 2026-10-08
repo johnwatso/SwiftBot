@@ -33,13 +33,17 @@ public actor MediaLibraryIndexer {
             return cachedEntry.payload
         }
 
+        var unavailable: [UUID] = []
+        let items = scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL,
+                              previousItems: cachedEntry?.signature == signature ? cachedEntry?.payload.items ?? [] : [],
+                              unavailable: &unavailable)
         let payload = MediaLibraryPayload(
             nodeName: ownerNodeName,
             configFilePath: configFilePath,
             sources: sources,
-            items: scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL,
-                             previousItems: cachedEntry?.signature == signature ? cachedEntry?.payload.items ?? [] : []),
-            generatedAt: Date()
+            items: items,
+            generatedAt: Date(),
+            unavailableSourceIDs: unavailable
         )
         cachedEntry = CacheEntry(signature: signature, payload: payload, createdAt: Date())
         return payload
@@ -61,7 +65,8 @@ public actor MediaLibraryIndexer {
         sources: [MediaLibrarySource],
         ownerNodeName: String,
         ownerBaseURL: String?,
-        previousItems: [MediaLibraryItem]
+        previousItems: [MediaLibraryItem],
+        unavailable: inout [UUID]
     ) -> [MediaLibraryItem] {
         let fileManager = FileManager.default
         var items: [MediaLibraryItem] = []
@@ -79,6 +84,7 @@ public actor MediaLibraryIndexer {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants],
                 errorHandler: { _, _ in scanFailed = true; return true }
             ) else {
+                unavailable.append(source.id)
                 items.append(contentsOf: previousItems.filter { $0.sourceID == source.id })
                 continue
             }
@@ -112,6 +118,7 @@ public actor MediaLibraryIndexer {
             }
             // A disconnected volume or incomplete traversal is not a deletion.
             if scanFailed {
+                unavailable.append(source.id)
                 let discovered = Set(sourceItems.map(\.id))
                 sourceItems.append(contentsOf: previousItems.filter {
                     $0.sourceID == source.id && !discovered.contains($0.id)

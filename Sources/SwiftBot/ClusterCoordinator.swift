@@ -46,7 +46,8 @@ actor ClusterCoordinator {
     private var recoveredLeaderAddress = ""
     private var knownPeerAddresses: [String: String] = [:]
 
-    init(recoveryURL: URL? = nil) {
+    init(recoveryURL: URL? = nil, mediaSession: URLSession = RecordingRedirectPolicy.session()) {
+        self.mediaSession = mediaSession
         let isTest = NSClassFromString("XCTestCase") != nil
             || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         self.recoveryURL = recoveryURL ?? (isTest ? nil : SwiftBotStorage.folderURL().appendingPathComponent(SwiftBotStorage.clusterStateFileName))
@@ -108,6 +109,13 @@ actor ClusterCoordinator {
         config.httpMaximumConnectionsPerHost = 6
         return URLSession(configuration: config)
     }()
+    private let mediaSession: URLSession
+    private var recordingAccessProvider: (@Sendable () async -> Bool)?
+
+    func setRecordingAccessProvider(_ provider: @escaping @Sendable () async -> Bool) {
+        recordingAccessProvider = provider
+    }
+
     private let startedAt = Date()
     private let hardwareInfo = HardwareInfo.current()
     /// Registration heartbeat interval. 30s is sufficient for a healthy standby;
@@ -216,7 +224,7 @@ actor ClusterCoordinator {
     private var onJobLog: JobLogHandler?
     private var onSync: SyncHandler?
     private var meshHandler: MeshHandler?
-    private var remoteMediaLibraries: [String: (payload: MediaLibraryPayload, fetchedAt: Date, checkedAt: Date)] = [:]
+    private var remoteMediaLibraries: [String: (payload: MediaLibraryPayload, fetchedAt: ContinuousClock.Instant, checkedAt: ContinuousClock.Instant)] = [:]
     private var remoteMediaLibraryRequests: [String: Task<MediaLibraryPayload?, Never>] = [:]
     private var mediaLibraryProvider: MediaLibraryProvider?
     private var mediaPlaybackHandler: (@Sendable (String) async -> (quality: String, preparing: Bool)?)?
@@ -2457,6 +2465,17 @@ actor ClusterCoordinator {
             }
         }
 
+        if request.path.hasPrefix("/v1/media/") {
+            guard !sharedSecret.isEmpty, await recordingAccessProvider?() == true else {
+                return httpResponse(status: "403 Forbidden", body: Data(#"{"error":"recording_sharing_disabled"}"#.utf8))
+            }
+            let reads: Set<String> = ["/v1/media/library", "/v1/media/playback", "/v1/media/stream",
+                                      "/v1/media/thumbnail", "/v1/media/frame"]
+            guard request.method == "GET", reads.contains(request.path) else {
+                return httpResponse(status: "404 Not Found", body: Data())
+            }
+        }
+
         switch (request.method, request.path) {
         case ("POST", "/v1/mesh/jobs/poll"):
             guard hasActiveOwnership(), let poll = try? decoder.decode(MeshJobPollRequest.self, from: request.body),
@@ -4531,12 +4550,23 @@ actor ClusterCoordinator {
         }
     }
 
+    private func retainedMediaLibrary(_ payload: MediaLibraryPayload, fetchedAt: ContinuousClock.Instant) -> MediaLibraryPayload {
+        var copy = payload
+        copy.fresh = payload.fresh != false && fetchedAt.duration(to: .now) < .seconds(30)
+        return copy
+    }
+
     func fetchRemoteMediaLibrary(from baseURL: String) async -> MediaLibraryPayload? {
+        remoteMediaLibraries = remoteMediaLibraries.filter { $0.value.fetchedAt.duration(to: .now) < .seconds(300) }
+        if remoteMediaLibraries[baseURL] == nil, remoteMediaLibraries.count >= 16,
+           let oldest = remoteMediaLibraries.min(by: { $0.value.fetchedAt < $1.value.fetchedAt })?.key {
+            remoteMediaLibraries[oldest] = nil
+        }
         // A short network interruption must not erase a node's entire library.
         let cached = remoteMediaLibraries[baseURL]
-        if let cached, Date().timeIntervalSince(cached.checkedAt) < 30,
-           Date().timeIntervalSince(cached.fetchedAt) < 300 {
-            return cached.payload
+        if let cached, cached.checkedAt.duration(to: .now) < .seconds(30),
+           cached.fetchedAt.duration(to: .now) < .seconds(300) {
+            return retainedMediaLibrary(cached.payload, fetchedAt: cached.fetchedAt)
         }
         let request: Task<MediaLibraryPayload?, Never>
         if let existing = remoteMediaLibraryRequests[baseURL] {
@@ -4546,7 +4576,7 @@ actor ClusterCoordinator {
             remoteMediaLibraryRequests[baseURL] = request
         }
         // Revalidate in the background while a recent library is usable.
-        if let cached, Date().timeIntervalSince(cached.fetchedAt) < 300 { return cached.payload }
+        if let cached, cached.fetchedAt.duration(to: .now) < .seconds(300) { return retainedMediaLibrary(cached.payload, fetchedAt: cached.fetchedAt) }
         return await request.value
     }
 
@@ -4554,12 +4584,12 @@ actor ClusterCoordinator {
         let result = await fetchRemoteMediaLibraryAttempt(from: baseURL)
         remoteMediaLibraryRequests[baseURL] = nil
         if let result {
-            remoteMediaLibraries[baseURL] = (result, Date(), Date())
+            remoteMediaLibraries[baseURL] = (result, .now, .now)
             return result
         }
-        if let cached = remoteMediaLibraries[baseURL], Date().timeIntervalSince(cached.fetchedAt) < 300 {
-            remoteMediaLibraries[baseURL] = (cached.payload, cached.fetchedAt, Date())
-            return cached.payload
+        if let cached = remoteMediaLibraries[baseURL], cached.fetchedAt.duration(to: .now) < .seconds(300) {
+            remoteMediaLibraries[baseURL] = (cached.payload, cached.fetchedAt, .now)
+            return retainedMediaLibrary(cached.payload, fetchedAt: cached.fetchedAt)
         }
         remoteMediaLibraries[baseURL] = nil
         return nil
@@ -4572,9 +4602,9 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/v1/media/library")
             request.timeoutInterval = 8
-            let (data, response) = try await meshSession.data(for: request)
+            let (data, response) = try await mediaSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
+                  (200..<300).contains(http.statusCode), data.count <= 8 * 1024 * 1024 else {
                 return nil
             }
             return try? decoder.decode(MediaLibraryPayload.self, from: data)
@@ -4591,8 +4621,9 @@ actor ClusterCoordinator {
         request.timeoutInterval = 8
         applyMeshAuth(to: &request, path: "/v1/media/playback")
         do {
-            let (data, response) = try await meshSession.data(for: request)
+            let (data, response) = try await mediaSession.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  data.count <= 4096,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let quality = json["quality"] as? String,
                   ["original", "standard", "faststart"].contains(quality),
@@ -4602,27 +4633,15 @@ actor ClusterCoordinator {
     }
 
     func fetchRemoteMediaStream(from baseURL: String, itemID: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
-        if let response = await fetchRemoteMediaStreamAttempt(from: baseURL, itemID: itemID, rangeHeader: rangeHeader, quality: quality) {
-            return response
-        }
-        guard let fallback = alternateSchemeBaseURL(baseURL) else { return nil }
-        return await fetchRemoteMediaStreamAttempt(from: fallback, itemID: itemID, rangeHeader: rangeHeader, quality: quality)
+        await fetchRemoteMediaStreamAttempt(from: baseURL, itemID: itemID, rangeHeader: rangeHeader, quality: quality)
     }
 
     func fetchRemoteMediaThumbnail(from baseURL: String, itemID: String) async -> BinaryHTTPResponse? {
-        if let response = await fetchRemoteMediaThumbnailAttempt(from: baseURL, itemID: itemID) {
-            return response
-        }
-        guard let fallback = alternateSchemeBaseURL(baseURL) else { return nil }
-        return await fetchRemoteMediaThumbnailAttempt(from: fallback, itemID: itemID)
+        await fetchRemoteMediaThumbnailAttempt(from: baseURL, itemID: itemID)
     }
 
     func fetchRemoteMediaFrame(from baseURL: String, itemID: String, seconds: Double) async -> BinaryHTTPResponse? {
-        if let response = await fetchRemoteMediaFrameAttempt(from: baseURL, itemID: itemID, seconds: seconds) {
-            return response
-        }
-        guard let fallback = alternateSchemeBaseURL(baseURL) else { return nil }
-        return await fetchRemoteMediaFrameAttempt(from: fallback, itemID: itemID, seconds: seconds)
+        await fetchRemoteMediaFrameAttempt(from: baseURL, itemID: itemID, seconds: seconds)
     }
 
     private func fetchRemoteMediaStreamAttempt(from baseURL: String, itemID: String, rangeHeader: String?, quality: String?) async -> BinaryHTTPResponse? {
@@ -4639,9 +4658,9 @@ actor ClusterCoordinator {
             }
             applyMeshAuth(to: &request, path: "/v1/media/stream")
             request.timeoutInterval = 30
-            let (data, response) = try await meshSession.data(for: request)
+            let (data, response) = try await mediaSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return nil }
-            guard [200, 206].contains(http.statusCode) else { return nil }
+            guard [200, 206].contains(http.statusCode), data.count <= 8 * 1024 * 1024 else { return nil }
             let headers = http.allHeaderFields.reduce(into: [String: String]()) { partial, entry in
                 guard let key = entry.key as? String, let value = entry.value as? String else { return }
                 let lower = key.lowercased()
@@ -4669,9 +4688,9 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/v1/media/thumbnail")
             request.timeoutInterval = 15
-            let (data, response) = try await meshSession.data(for: request)
+            let (data, response) = try await mediaSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else { return nil }
+                  (200..<300).contains(http.statusCode), data.count <= 8 * 1024 * 1024 else { return nil }
             return BinaryHTTPResponse(
                 status: "200 OK",
                 contentType: http.value(forHTTPHeaderField: "Content-Type") ?? "image/jpeg",
@@ -4696,9 +4715,9 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/v1/media/frame")
             request.timeoutInterval = 15
-            let (data, response) = try await meshSession.data(for: request)
+            let (data, response) = try await mediaSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else { return nil }
+                  (200..<300).contains(http.statusCode), data.count <= 8 * 1024 * 1024 else { return nil }
             return BinaryHTTPResponse(
                 status: "200 OK",
                 contentType: http.value(forHTTPHeaderField: "Content-Type") ?? "image/jpeg",
@@ -4708,17 +4727,6 @@ actor ClusterCoordinator {
         } catch {
             return nil
         }
-    }
-
-    private func alternateSchemeBaseURL(_ baseURL: String) -> String? {
-        guard let url = URL(string: baseURL), let host = url.host else { return nil }
-        let scheme = (url.scheme ?? "http").lowercased()
-        let altScheme = scheme == "https" ? "http" : "https"
-        var components = URLComponents()
-        components.scheme = altScheme
-        components.host = host
-        components.port = url.port
-        return components.string
     }
 
     func startRemoteMediaClip(from baseURL: String, request: MeshMediaClipRequest) async -> MediaExportJob? {
@@ -4731,8 +4739,8 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &urlRequest, path: "/v1/media/clip")
         urlRequest.timeoutInterval = 30
         do {
-            let (data, response) = try await meshSession.data(for: urlRequest)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let (data, response) = try await mediaSession.data(for: urlRequest)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), data.count <= 8 * 1024 * 1024 else {
                 return nil
             }
             return try? decoder.decode(MediaExportJob.self, from: data)
@@ -4751,8 +4759,8 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &urlRequest, path: "/v1/media/multiview")
         urlRequest.timeoutInterval = 60
         do {
-            let (data, response) = try await meshSession.data(for: urlRequest)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let (data, response) = try await mediaSession.data(for: urlRequest)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), data.count <= 8 * 1024 * 1024 else {
                 return nil
             }
             return try? decoder.decode(MediaExportJob.self, from: data)

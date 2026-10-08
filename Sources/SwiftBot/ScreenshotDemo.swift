@@ -7,8 +7,20 @@ import Foundation
 /// starting the bot, Web Interface and SwiftMesh, storage goes to a throwaway
 /// folder, and the Keychain is in memory, so nothing touches this Mac's real
 /// configuration or secrets. The console is filled with a healthy sample host.
+/// Add `-SwiftBotScreenshotDemoScenario recording-pairing` to preview Max’s
+/// Join confirmation and sharing choice using synthetic John/Ruru details.
+/// Its Join action changes only the fixture state, without pairing or network I/O.
+/// Use `recording-onboarding` instead to preview first-launch pairing review.
 /// Release builds ignore the argument.
 enum ScreenshotDemo {
+    nonisolated static var isRecordingPairing: Bool {
+        isEnabled && UserDefaults.standard.string(forKey: "SwiftBotScreenshotDemoScenario") == "recording-pairing"
+    }
+
+    nonisolated static var isRecordingOnboarding: Bool {
+        isEnabled && UserDefaults.standard.string(forKey: "SwiftBotScreenshotDemoScenario") == "recording-onboarding"
+    }
+
     nonisolated static let isEnabled: Bool = {
         #if DEBUG
         return UserDefaults.standard.bool(forKey: "SwiftBotScreenshotDemo")
@@ -66,6 +78,21 @@ extension AppModel {
         isOnboardingComplete = true
         hasLoadedSettings = true
 
+        if ScreenshotDemo.isRecordingPairing || ScreenshotDemo.isRecordingOnboarding {
+            settings.clusterMode = .standalone
+            settings.clusterNodeName = "Max’s Mac"
+            settings.adminWebUI.publicBaseURL = "https://max.swiftbot.app"
+            clusterSnapshot.mode = .standalone
+            status = .stopped
+            adminWebPublicAccessStatus = .init(state: .enabled, publicURL: "https://max.swiftbot.app")
+            let bundle = ScreenshotDemo.recordingPairingBundle
+            if ScreenshotDemo.isRecordingOnboarding {
+                isOnboardingComplete = false
+                pendingMeshOnboardingCode = ScreenshotDemo.recordingPairingLink
+            } else {
+                pendingSwiftMeshJoin = .init(rawCode: ScreenshotDemo.recordingPairingLink, bundle: bundle)
+            }
+        }
         Task { await ScreenshotDemo.prepareMainWindow() }
     }
 }
@@ -73,6 +100,22 @@ extension AppModel {
 import AppKit
 
 extension ScreenshotDemo {
+    static var recordingPairingBundle: SwiftMeshJoinBundle {
+        SwiftMeshJoinBundle(
+            leaderAddresses: ["https://john.swiftbot.app"],
+            leaderPort: 38787,
+            sharedSecret: "preview-only",
+            witness: .init(endpoint: "https://ruru.example", clusterID: "preview-recordings", token: String(repeating: "p", count: 64))
+        )
+    }
+
+    static var recordingPairingLink: String {
+        guard var url = URLComponents(string: "swiftmesh://join"),
+              let data = try? JSONEncoder().encode(recordingPairingBundle) else { return "swiftmesh://join" }
+        url.queryItems = [.init(name: "b", value: data.base64EncodedString()), .init(name: "recordings", value: "1")]
+        return url.string ?? "swiftmesh://join"
+    }
+
     /// Sizes the main window for a screenshot and applies
     /// `-SwiftBotScreenshotDemoAppearance light|dark` when given. Capture it
     /// with `screencapture -l <window>` from a shell that has Screen Recording
@@ -87,7 +130,7 @@ extension ScreenshotDemo {
         }
         try? await Task.sleep(for: .seconds(1))
         guard let window = NSApp.windows.first(where: { $0.isVisible && $0.title == "SwiftBot" }) else { return }
-        window.setContentSize(NSSize(width: 1280, height: 860))
+        if !isRecordingPairing { window.setContentSize(NSSize(width: 1280, height: 860)) }
         window.center()
     }
 }

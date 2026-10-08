@@ -20,6 +20,7 @@ final class AdminWebServerAuthTests: XCTestCase {
         bearer: String? = nil,
         userAgent: String? = nil,
         csrf: String? = nil,
+        accept: String? = nil,
         body: Data = Data()
     ) -> Data {
         var head = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\n"
@@ -27,6 +28,7 @@ final class AdminWebServerAuthTests: XCTestCase {
         if let bearer { head += "Authorization: Bearer \(bearer)\r\n" }
         if let userAgent { head += "User-Agent: \(userAgent)\r\n" }
         if let csrf { head += "X-Admin-CSRF: \(csrf)\r\n" }
+        if let accept { head += "Accept: \(accept)\r\n" }
         if !body.isEmpty { head += "Content-Length: \(body.count)\r\n" }
         head += "\r\n"
         var data = Data(head.utf8)
@@ -50,6 +52,71 @@ final class AdminWebServerAuthTests: XCTestCase {
     private let browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15"
 
     // MARK: - Session authentication
+
+    private static func nodeStatus(managed: Bool, configuredMode: String = "Standby") -> AdminWebStatusPayload {
+        AdminWebStatusPayload(botStatus: "running", botUsername: "Example Bot", botAvatarURL: nil,
+                              connectedServerCount: 1, gatewayEventCount: 5, uptimeText: "1h",
+                              webUIEnabled: true, webUIBaseURL: "https://max.example",
+                              clusterMode: configuredMode, runtimeState: "idle", isFailoverManagedNode: managed)
+    }
+
+    func testStandbyHomepageReplacesDashboardForEverySessionAndKeepsMediaServing() async throws {
+        let server = AdminWebServer()
+        await server.testSetStatusProvider { Self.nodeStatus(managed: true) }
+        let admin = await server.testSeedSession()
+        let member = await server.testSeedSession(memberRole: true)
+        for cookie in [nil, admin.id, member.id] as [String?] {
+            for path in ["/", "/index.html"] {
+                let response = await server.testProcessRequest(makeRequest(path: path, cookie: cookie))
+                XCTAssertEqual(statusCode(from: response), 200)
+                XCTAssertTrue(bodyString(from: response).contains("data-node-page=\"standby\""))
+                XCTAssertFalse(bodyString(from: response).contains("id=\"appShell\""))
+                let wire = String(decoding: response, as: UTF8.self)
+                XCTAssertTrue(wire.contains("script-src 'self' 'nonce-"))
+                XCTAssertTrue(wire.contains("<script nonce=\""))
+                XCTAssertTrue(wire.contains("Cache-Control: no-store"))
+            }
+        }
+        let head = await server.testProcessRequest(makeRequest(method: "HEAD", path: "/index.html"))
+        XCTAssertEqual(statusCode(from: head), 200)
+        XCTAssertTrue(bodyString(from: head).isEmpty)
+        await server.setRecordingRequestHandler { _, _ in
+            Data("HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\n\r\nfixture-media".utf8)
+        }
+        let media = await server.testProcessRequest(makeRequest(path: "/v1/media/stream?id=fixture"))
+        XCTAssertEqual(statusCode(from: media), 206, "The dedicated media handler still owns authentication and serving")
+        XCTAssertEqual(bodyString(from: media), "fixture-media")
+        let edit = await server.testProcessRequest(makeRequest(method: "POST", path: "/api/config",
+                                                               cookie: admin.id, csrf: admin.csrf))
+        XCTAssertEqual(statusCode(from: edit), 409)
+        XCTAssertTrue(bodyString(from: edit).contains("failover_managed"))
+    }
+
+    func testBrowserSurfaceFollowsRuntimeOwnershipAcrossPromotionAndDemotion() async throws {
+        let server = AdminWebServer()
+        // A saved Standby can be the active Primary after a takeover.
+        await server.testSetStatusProvider { Self.nodeStatus(managed: false) }
+        let primary = await server.testProcessRequest(makeRequest(path: "/"))
+        XCTAssertTrue(bodyString(from: primary).contains("data-node-page=\"dashboard\""))
+        let live = await server.testProcessRequest(makeRequest(path: "/live", accept: "application/json"))
+        let primaryJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(bodyString(from: live).utf8)) as? [String: Any])
+        XCTAssertEqual(primaryJSON["isFailoverManagedNode"] as? Bool, false)
+        XCTAssertNil(primaryJSON["webUIBaseURL"], "The public role probe must not expose configured addresses")
+        let asset = await server.testProcessRequest(makeRequest(path: "/assets/node-role.js"))
+        XCTAssertEqual(statusCode(from: asset), 200)
+        // A saved Primary can lose ownership; the homepage and mutation gate
+        // must agree even though its configured role did not change.
+        await server.testSetStatusProvider { Self.nodeStatus(managed: true, configuredMode: "Leader") }
+        let demoted = await server.testProcessRequest(makeRequest(path: "/"))
+        XCTAssertTrue(bodyString(from: demoted).contains("data-node-page=\"standby\""))
+        let lost = await server.testProcessRequest(makeRequest(path: "/live", accept: "application/json"))
+        let lostJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(bodyString(from: lost).utf8)) as? [String: Any])
+        XCTAssertEqual(lostJSON["isFailoverManagedNode"] as? Bool, true)
+        let admin = await server.testSeedSession()
+        let denied = await server.testProcessRequest(makeRequest(method: "POST", path: "/api/config",
+                                                                 cookie: admin.id, csrf: admin.csrf))
+        XCTAssertEqual(statusCode(from: denied), 409)
+    }
 
     func testModerationActivityRequiresAdministrator() async {
         let server = AdminWebServer()

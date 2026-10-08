@@ -291,9 +291,15 @@ final class AppModel: ObservableObject {
         aiService: aiService,
         wikiLookupService: wikiLookupService
     )
-    let cluster = ClusterCoordinator()
+    let cluster: ClusterCoordinator
     let meshCredentialStore = MeshCredentialEnrollmentStore()
     let meshWitnessClient = MeshWitnessClient()
+    let recordingDirectory: RecordingDirectoryClient
+    var recordingWitnessConfiguration = MeshWitnessConfiguration()
+    var recordingCoordinationTask: Task<Void, Never>?
+    @Published var recordingCoordinationStatus = "Sharing is off."
+    var sharedRecordingLibraries: [String: MediaLibraryPayload] = [:]
+    var sharedRecordingLibraryLastSeen: [String: ContinuousClock.Instant] = [:]
     @Published var meshWritesPaused = false
     @Published var meshOwnershipDeadline: ContinuousClock.Instant?
     /// Ruru shown on the SwiftMesh map; nil when no witness is configured.
@@ -441,7 +447,7 @@ final class AppModel: ObservableObject {
     var registeredWorkersDebugSummary: String = "none"
     private var lastSettingsSaveAt: Date = .distantPast
     private var lastPersistedSettingsSnapshot: BotSettings?
-    private var lastPersistedMediaLibrarySettingsSnapshot: MediaLibrarySettings?
+    var lastPersistedMediaLibrarySettingsSnapshot: MediaLibrarySettings?
     // P1b: off-peak background mesh refresh
     var backgroundRefreshScheduler: NSBackgroundActivityScheduler?
     @Published var botUsername: String = "OnlineBot"
@@ -550,7 +556,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    init(discordRESTSession: URLSession? = nil) {
+    init(discordRESTSession: URLSession? = nil,
+         recordingDirectory: RecordingDirectoryClient = RecordingDirectoryClient(),
+         recordingCluster: ClusterCoordinator = ClusterCoordinator()) {
+        self.recordingDirectory = recordingDirectory
+        self.cluster = recordingCluster
         if let customSession = discordRESTSession {
             self.discordRESTSession = customSession
         }
@@ -1425,6 +1435,10 @@ final class AppModel: ObservableObject {
         settings.cachedBotIdentity = cached
         saveSettings()
     }
+
+    deinit {
+        recordingCoordinationTask?.cancel()
+    }
 }
 
 @MainActor
@@ -1595,4 +1609,3 @@ actor ClusterStatusPollingService {
         }
     }
 }
-

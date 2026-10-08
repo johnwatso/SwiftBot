@@ -350,6 +350,7 @@ extension AppModel {
         knownRawUsernamesById = snapshot.rawUsernamesById
         knownBotUserIds = snapshot.botUserIds
         knownGuildMemberIds = snapshot.guildMemberIds
+        excludeKnownBotsFromRewind()
         // Feed channel/role names to DiscordService so Sweep/Announcer can turn
         // raw `<#id>` / `<@&id>` markup into real #channel / @role names.
         let channelNames = flattenedChannelNames()

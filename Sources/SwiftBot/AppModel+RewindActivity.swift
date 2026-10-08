@@ -13,7 +13,8 @@ extension AppModel {
     /// member is in voice. Called for every member, ahead of Game Tracker's own
     /// linked-player filter.
     func recordRewindPresence(_ event: GatewayPresenceUpdateEvent) {
-        guard settings.rewind.isEnabled else { return }
+        guard settings.rewind.isEnabled,
+              !knownBotUserIds.contains(event.userID), event.userID != botUserId else { return }
         let store = rewindActivityStore
         let now = Date()
         Task.detached(priority: .utility) {

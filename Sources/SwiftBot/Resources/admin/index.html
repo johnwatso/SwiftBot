@@ -2716,6 +2716,27 @@
       border-top: 1px solid var(--glass-stroke);
     }
 
+    .mesh-pair-modal .modal { width: min(560px, 95vw); padding: 26px; background: var(--cv-shell-bg); }
+    .mesh-pair-intro { margin: 0; color: var(--cv-text-muted); font-size: 14px; line-height: 1.5; }
+    .mesh-pair-connections { padding: 0 16px; border-radius: 14px; background: var(--cv-surface-2); border: 1px solid var(--cv-border); }
+    .mesh-pair-connection { display: flex; align-items: center; gap: 12px; padding: 15px 0; }
+    .mesh-pair-connection + .mesh-pair-connection { border-top: 1px solid var(--cv-border); }
+    .mesh-pair-connection > svg { width: 20px; height: 20px; color: var(--cv-text-muted); flex: none; }
+    .mesh-pair-connection small { display: block; margin-bottom: 4px; color: var(--cv-text-muted); font-size: 12px; }
+    .mesh-pair-connection strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+    .mesh-pair-included { margin-left: auto; color: var(--cv-text-muted); font-size: 12px; }
+    .mesh-pair-sharing { padding: 16px; border-radius: 14px; background: var(--cv-surface-2); border: 1px solid var(--cv-border); }
+    .mesh-pair-sharing .ub-row { padding: 0; border: 0; }
+    .mesh-pair-sharing .ub-row-text { min-width: 0; }
+    .mesh-pair-sharing .ub-row-title { font-size: 14px; }
+    .mesh-pair-sharing .switch { flex: none; }
+    .mesh-pair-note { margin: 12px 0 0; color: var(--cv-text-muted); font-size: 12px; line-height: 1.5; }
+    .mesh-pair-fallback { color: var(--cv-text-muted); font-size: 12px; }
+    .mesh-pair-fallback summary { cursor: pointer; padding: 2px 0; }
+    .mesh-pair-fallback p { line-height: 1.5; }
+    .mesh-pair-modal .primary-action { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+    .mesh-pair-modal .primary-action svg { width: 16px; height: 16px; }
+
     /* ============================================================
        CANVAS DESIGN SYSTEM — admin overlay
        Premium glass/dark style with staggered fade-in animations.
@@ -6295,8 +6316,9 @@
     #opsTiles .ops-tile-value { font-size:18px; white-space:normal; overflow:visible; }
     #opsTiles .ops-tile-detail { white-space:normal; overflow:visible; min-height:2.8em; line-height:1.4; }
   </style>
+  <script src="/assets/node-role.js" defer></script>
 </head>
-<body>
+<body data-node-page="dashboard">
   <div class="bg-stream" id="bgStream" aria-hidden="true"></div>
 
   <main class="page">
@@ -17011,7 +17033,7 @@
                 <div class="ub-group-head"><h2>More recordings</h2></div>
                 <div class="media-strip">
                   ${others.map(item => `
-                    <button class="media-strip-item" type="button" data-media-switch="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}">
+                    <button class="media-strip-item" type="button" data-media-switch="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}" ${item.available === false ? 'disabled' : ''}>
                       <span class="media-thumb"><img src="${item.thumbnailURL}${accessQuery}" alt="" loading="lazy" data-fallback="next-sibling"><span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span></span>
                       <span class="media-strip-label">${escapeHTML(item.gameName || 'Recording')}</span>
                       <span class="media-subtle">${escapeHTML(relativeTime(item.modifiedAt))}</span>
@@ -17080,7 +17102,7 @@
       }
 
       const sourceOptions = [`<option value="">All sources</option>`].concat(
-        sources.map(source => `<option value="${source.id}" ${mediaFilterState.source === source.id ? 'selected' : ''}>${source.nodeName} · ${source.sourceName}</option>`)
+        sources.map(source => `<option value="${escapeHTML(source.id)}" ${mediaFilterState.source === source.id ? 'selected' : ''}>${escapeHTML(source.nodeName)} · ${escapeHTML(source.sourceName)}</option>`)
       ).join('');
       const games = mediaLibraryData.games || [];
       const gameOptions = [`<option value="">All games</option>`].concat(
@@ -17108,6 +17130,7 @@
         <div class="media-library-head">
           <div class="section-mini-title">Recordings</div>
           <span class="media-subtle">${countLabel}</span>
+          ${mediaLibraryData.coordinationStatus ? `<span class="media-subtle">${escapeHTML(mediaLibraryData.coordinationStatus)}</span>` : ''}
         </div>
         <div class="media-filters">
           <div class="segmented media-layout-toggle" role="tablist" aria-label="Library view">
@@ -17147,12 +17170,12 @@
         const isRecent = Number.isFinite(modifiedMs) && (now - modifiedMs) < oneDayMs;
         const clock = Number.isFinite(modifiedMs) ? new Date(modifiedMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
         return `
-          <button class="media-card" type="button" data-media-id="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}">
+          <button class="media-card" type="button" data-media-id="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}" ${item.available === false ? 'disabled aria-label="Recording unavailable"' : ''}>
             <span class="media-thumb">
               <img src="${item.thumbnailURL}${accessQuery}" alt="" loading="lazy" data-fallback="next-sibling">
               <span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span>
               <video class="hover-preview" muted playsinline loop preload="none"></video>
-              ${isRecent ? '<span class="media-badge is-new">New</span>' : ''}
+              ${item.available === false ? '<span class="media-badge">Unavailable</span>' : isRecent ? '<span class="media-badge is-new">New</span>' : ''}
               <span class="media-badge is-size"${isShort ? ' title="Short recording, likely only a few seconds"' : ''}>${escapeHTML(formatFileSize(item.sizeBytes))}${isShort ? ' · Short' : ''}</span>
               <span class="media-play"><i class="lucide" data-lucide="play"></i></span>
             </span>
@@ -17263,7 +17286,7 @@
       panels.querySelector('#mediaBackToGames')?.addEventListener('click', () => openGame(''));
       panels.querySelector('#mediaFixGameMatch')?.addEventListener('click', () => openFixMatch({ gameName: mediaFilterState.game }, { wholeGame: true }));
       const playItem = (item) => {
-        if (!item) return;
+        if (!item || item.available === false) return;
         selectedMediaItemID = item.id;
         mediaViewMode = 'player';
         renderRecordingsView();
@@ -17849,7 +17872,7 @@
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
           ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
         `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
-        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Pair SwiftBot opens SwiftBot on the Mac you are browsing from, so it can join as a Fail Over. Confirm joining in the app to connect it to this Primary' + (mesh.witness ? ' and Ruru' : '') + '. The pairing link holds the mesh secret, so it needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
+        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Pair SwiftBot opens SwiftBot on the Mac you are browsing from, so it can join as a Fail Over. Confirm joining in the app to connect it to this Primary' + (mesh.witness ? ' and Ruru' : '') + '. Choose recording sharing while pairing; your Ruru operator approves this Mac’s website once. Pairing needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
         ${group('Configuration', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
             <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
@@ -17922,23 +17945,40 @@
             throw new Error('Invalid pairing response');
           }
           showModal('Pair SwiftBot', `
-            <p class="ub-help">Open SwiftBot on the Mac you're browsing from, then confirm joining this Primary in the app. SwiftBot must be installed there.</p>${mesh.witness ? `
-            <p class="ub-help">The Join Code also carries this Primary's Ruru ownership witness (${escapeHTML(mesh.witness.host)}), so the Fail Over uses it too.</p>` : ''}
-            <p class="ub-help">If the browser cannot open SwiftBot, copy the Join Code and paste it into SwiftMesh in the app.</p>`, `
-            <button class="secondary-action" type="button" data-action="hideModal">Close</button>
-            <button id="meshCopyPairCode" class="secondary-action" type="button">Copy Join Code</button>
-            <a id="meshOpenPair" class="primary-action" rel="noreferrer">Open SwiftBot</a>`);
-          document.getElementById('meshOpenPair').href = result.joinURL;
+            <p class="mesh-pair-intro">Add the Mac you’re browsing from as a Fail Over. Continue in SwiftBot to review and join.</p>
+            <div class="mesh-pair-connections">
+              <div class="mesh-pair-connection"><i data-lucide="monitor"></i><div><small>Primary</small><strong>${escapeHTML(mesh.nodeName || location.host)}</strong></div><span class="mesh-pair-included">This server</span></div>
+              ${mesh.witness ? `<div class="mesh-pair-connection"><i data-lucide="shield-check"></i><div><small>Ruru</small><strong>${escapeHTML(mesh.witness.host)}</strong></div><span class="mesh-pair-included">Included</span></div>` : ''}
+            </div>
+            <div class="mesh-pair-sharing">
+              <div class="ub-row"><div class="ub-row-text"><label id="meshPairRecordingLabel" class="ub-row-title" for="meshPairRecordings">Share this Mac’s recordings</label><div class="ub-row-desc">Include its library in the combined Recordings view.</div></div>
+              <label class="switch"><input id="meshPairRecordings" type="checkbox" aria-labelledby="meshPairRecordingLabel" aria-describedby="meshPairRecordingHelp"><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+              <p id="meshPairRecordingHelp" class="mesh-pair-note">${mesh.witness ? 'SwiftBot sends this Mac’s website to Ruru automatically. Your Ruru operator approves it once. Recordings stay available on Fail Over.' : 'Requires Ruru. You can connect it later in SwiftBot; pairing works without it.'}</p>
+            </div>
+            <details class="mesh-pair-fallback"><summary>SwiftBot didn’t open?</summary><p>Install SwiftBot on this Mac, or copy the Join Code and paste it into SwiftMesh in the app.</p><button id="meshCopyPairCode" class="secondary-action" type="button">Copy Join Code</button></details>`, `
+            <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+            <a id="meshOpenPair" class="primary-action" rel="noreferrer"><i data-lucide="arrow-up-right"></i> Continue in SwiftBot</a>`, { extraClass: 'mesh-pair-modal' });
+          const sharingChoice = document.getElementById('meshPairRecordings');
+          const openPair = document.getElementById('meshOpenPair');
+          const updatePairLink = () => {
+            const url = new URL(result.joinURL);
+            url.searchParams.set('recordings', sharingChoice.checked ? '1' : '0');
+            openPair.href = url.toString();
+          };
+          sharingChoice.addEventListener('change', updatePairLink);
+          updatePairLink();
+          refreshIcons();
           modalDismissHandler = () => {
             document.getElementById('modalFooter').innerHTML = '';
+            document.getElementById('modalBody').innerHTML = '';
           };
           document.getElementById('meshCopyPairCode').addEventListener('click', async (event) => {
             const copyButton = event.currentTarget;
             try {
-              await navigator.clipboard.writeText(result.joinURL);
+              await navigator.clipboard.writeText(openPair.href);
               copyButton.textContent = 'Copied';
             } catch {
-              setMessage('Clipboard access failed. Use Open SwiftBot instead.', 'error');
+              setMessage('Clipboard access failed. Use Continue in SwiftBot instead.', 'error');
             }
           });
         } catch (error) {
@@ -18386,48 +18426,6 @@
       return hit?.value || fallback;
     }
 
-    function isFailoverWebLocked(view) {
-      if (!dashboardStatus || !dashboardStatus.isFailoverManagedNode) return false;
-      const locked = ['settings', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'aibots', 'patchy', 'sweep', 'wikibridge', 'recordings'];
-      return locked.includes(view);
-    }
-
-    function renderFailoverModeView(requestedView) {
-      const mode = dashboardConfig?.swiftMesh?.mode || 'Standby';
-      const leader = dashboardOverview?.cluster?.leader || dashboardConfig?.swiftMesh?.leaderAddress || '-';
-      const nodeName = dashboardConfig?.swiftMesh?.nodeName || '-';
-      const connectedNodes = String(dashboardOverview?.cluster?.connectedNodes || 0);
-      document.getElementById('sectionLabel').innerHTML = `<i class="lucide" data-lucide="repeat" style="width:14px;height:14px;margin-right:6px;"></i>Failover Mode`;
-      document.getElementById('sectionTitle').textContent = 'Failover Mode Active';
-      document.getElementById('sectionCopy').textContent = 'This node is standing by for promotion. Configuration edits are disabled in Web UI while synced from Primary.';
-      document.getElementById('sectionPrimaryTitle').textContent = 'Node Status';
-      document.getElementById('sectionSecondaryTitle').textContent = 'Requested View';
-      document.getElementById('sectionEventsTitle').textContent = 'Why this is locked';
-
-      renderInfoRows('sectionPrimaryInfo', [
-        { label: 'Role', value: mode },
-        { label: 'Node Name', value: nodeName },
-        { label: 'Primary', value: leader },
-        { label: 'Connected Nodes', value: connectedNodes }
-      ]);
-
-      renderInfoRows('sectionSecondaryInfo', [
-        { label: 'Tab', value: viewCopy[requestedView]?.title || requestedView || '-' },
-        { label: 'Status', value: dashboardStatus?.botStatus || '-' },
-        { label: 'Gateway Events', value: String(dashboardStatus?.gatewayEventCount || 0) }
-      ]);
-
-      renderEvents('sectionEvents', [
-        { description: 'Settings are synchronized from Primary while in Failover mode.', timeText: '' },
-        { description: 'Open SwiftMesh to promote this Mac or change its role.', timeText: '' }
-      ], '', item => `
-        <div class="event-item ok">
-          <div class="event-title">${item.description}</div>
-        </div>
-      `);
-      refreshIcons();
-    }
-
     function renderSectionView(view) {
       const selected = viewCopy[view];
       if (!selected || !dashboardStatus || !dashboardOverview || !dashboardConfig) return;
@@ -18712,12 +18710,10 @@
       };
       hideAllViews();
 
-      if (isFailoverWebLocked(view)) {
-        section.classList.remove('hidden');
-        renderFailoverModeView(view);
-        if (mobileSubtitle) mobileSubtitle.textContent = 'Failover Mode';
-        setMessage('', '');
-        setSidebarOpen(false);
+      if (dashboardStatus?.isFailoverManagedNode) {
+        // Ownership changed before the public role poll completed. The server
+        // now serves the status page for this same URL, retaining its bookmark.
+        location.reload();
         return;
       }
 

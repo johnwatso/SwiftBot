@@ -105,6 +105,7 @@ struct PipelineContext {
 | `DiscordService.swift` | Discord WebSocket gateway + REST API actor. Rule action execution. AI replies. Wiki lookup. |
 | `Sources/SwiftBot/Models/` | Directory containing modular data models: `Automations.swift` (rules), `BotSettings.swift` (config), `EventBus.swift` (pub/sub), `ClusterModels.swift` (mesh). |
 | `ClusterCoordinator.swift` | SwiftMesh cluster: leader election, health monitoring, replication, failover |
+| `Services/RecordingDirectoryClient.swift` / `AppModel+RecordingCoordination.swift` | WebUI pairing carries a local sharing choice into native confirmation, automatic website approval requests to Ruru, stable node routing and combined recordings; independent of Discord ownership. See `RECORDING_COORDINATION.md`. |
 | `Persistence.swift` | ConfigStore, RuleConfigStore, DiscordCacheStore, SwiftMeshConfigStore, MeshCursorStore (all actors). Keychain for secrets. |
 | `AdminWebServer.swift` | HTTP REST API for web admin UI. Discord OAuth. |
 | `Resources/admin/index.html` | The admin WebUI: every feature page (automations, moderation, events, commands, Patchy, Sweep, Lookup, Announcer, Analytics, Rewind, Game Tracker, Welcome Flow). The native app has no feature pages. |
@@ -157,6 +158,7 @@ Automation webhook URLs (which usually embed the webhook's token) are `"automati
 
 - Runtime ownership, rather than the configured role, gates bot output and shared writes. Ordinary settings saves preserve the elected role.
 - Each Mac owns its WebUI address and tunnel. Shared configuration uses an allowlist; Cloudflare credentials, companion apps, sessions, and passkeys remain local.
+- Managed nodes serve a small standby homepage instead of the admin dashboard. Runtime ownership controls this page and automatic browser refresh across takeover/demotion; the HTTP listener, mesh sync and opted-in recording reads stay running. Browser writes retain their server-side ownership guard.
 - Credential fetches require an approved node's Ed25519 signature as well as mesh authentication. Replicated approvals contain only public verification keys; private signing keys remain in Keychain and their own Join Codes.
 - Credential endpoints require a node enrollment proof in addition to mesh HMAC. Treat a Failover Join Code as a secret.
 - Handback freezes/drains the current owner, catches up state, then closes the old owner before promotion. The optional independent witness expires output with a monotonic deadline.

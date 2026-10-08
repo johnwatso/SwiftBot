@@ -12,6 +12,9 @@ struct SwiftMeshSetupView: View {
     @State private var bundle: SwiftMeshJoinBundle?
     @State private var autoContinueSecondsRemaining: Int = 0
     @State private var autoContinueTask: Task<Void, Never>?
+    @State private var shareRecordings = false
+    @State private var pairingMessage: String?
+    @State private var finishing = false
 
     private static let autoContinueSeconds = 10
 
@@ -46,11 +49,13 @@ struct SwiftMeshSetupView: View {
                 Text("Join SwiftMesh")
                     .font(.title2.weight(.bold))
                 
-                Text("Grab the Join Code from your Primary node — either from **SwiftMesh preferences** in the Mac app, or from the **SwiftMesh** tab in the Primary's WebUI (Copy or Open in SwiftBot). Then click **Paste & Connect** below. SwiftMesh tests both local and public WAN routes and saves the one that works.")
+                Text("Open your Primary’s Web Interface on this Mac, then choose **SwiftMesh → Pair SwiftBot**.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
+                Text("SwiftBot opens here to finish pairing. A copied Join Code can be pasted below.")
+                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 16)
             
@@ -88,7 +93,7 @@ struct SwiftMeshSetupView: View {
                 Button {
                     handlePasteAndConnect()
                 } label: {
-                    Label("Paste & Connect", systemImage: "doc.on.clipboard.fill")
+                    Label("Paste Join Code", systemImage: "doc.on.clipboard.fill")
                         .font(.headline)
                         .frame(minWidth: 220)
                 }
@@ -121,6 +126,7 @@ struct SwiftMeshSetupView: View {
         }
         .frame(maxWidth: 520)
         .onAppear {
+            shareRecordings = app.mediaLibrarySettings.sharedLibraryEnabled
             app.settings.launchMode = .swiftMeshClusterNode
             consumePendingDeepLinkCodeIfAny()
         }
@@ -167,8 +173,15 @@ struct SwiftMeshSetupView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+                if let pairingMessage {
+                    Text(pairingMessage).font(.callout).foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 16)
+
+            RecordingPairingOptions(enabled: $shareRecordings, ruruAvailable: bundle?.witness?.isValid == true)
+                .disabled(finishing)
+                .onChange(of: shareRecordings) { _, _ in cancelAutoContinue() }
 
             VStack(spacing: 8) {
                 Button {
@@ -179,6 +192,7 @@ struct SwiftMeshSetupView: View {
                         .frame(minWidth: 220)
                 }
                 .onboardingGlassButton()
+                .disabled(finishing)
 
                 if autoContinueSecondsRemaining > 0 {
                     Button("Cancel auto-continue") {
@@ -191,7 +205,9 @@ struct SwiftMeshSetupView: View {
             }
         }
         .frame(minHeight: 200)
-        .onAppear { startAutoContinueCountdown() }
+        .onAppear {
+            if !shareRecordings && bundle?.witness?.isValid != true { startAutoContinueCountdown() }
+        }
         .onDisappear { autoContinueTask?.cancel() }
     }
 
@@ -223,9 +239,28 @@ struct SwiftMeshSetupView: View {
     }
 
     private func finishOnboarding() {
+        guard !finishing else { return }
         cancelAutoContinue()
-        app.saveSettings()
-        app.completeOnboarding()
+        #if DEBUG
+        if ScreenshotDemo.isRecordingOnboarding {
+            app.mediaLibrarySettings.sharedLibraryEnabled = shareRecordings
+            app.isOnboardingComplete = true
+            if shareRecordings { app.requestedSidebarItem = .recordings }
+            return
+        }
+        #endif
+        finishing = true
+        Task {
+            guard await app.setRecordingSharingEnabled(shareRecordings) else {
+                pairingMessage = "Could not save your recording sharing choice. Try Continue again."
+                finishing = false
+                return
+            }
+            app.saveSettings()
+            app.completeOnboarding()
+            if shareRecordings { app.requestedSidebarItem = .recordings }
+            finishing = false
+        }
     }
 
     // MARK: - Helpers
@@ -263,11 +298,21 @@ struct SwiftMeshSetupView: View {
     }
 
     private func applyJoinCode(_ rawCode: String) {
+        #if DEBUG
+        if ScreenshotDemo.isRecordingOnboarding {
+            bundle = ScreenshotDemo.recordingPairingBundle
+            shareRecordings = SwiftMeshJoinBundle.recordingSharingChoice(from: rawCode) ?? false
+            app.workerConnectionTestStatus = "Connected to john.swiftbot.app."
+            step = .confirmed
+            return
+        }
+        #endif
         errorMessage = nil
 
         do {
             let decoded = try app.decodeSwiftMeshJoinCode(rawCode)
             self.bundle = decoded
+            if let choice = SwiftMeshJoinBundle.recordingSharingChoice(from: rawCode) { shareRecordings = choice }
 
             Task {
             let result = await app.applySwiftMeshJoinCode(rawCode)
@@ -278,6 +323,7 @@ struct SwiftMeshSetupView: View {
             }
 
             step = .testing
+            pairingMessage = nil
 
                 let success = await app.testWorkerJoinCodeConnection(
                     addresses: decoded.leaderAddresses,

@@ -5,6 +5,35 @@ import XCTest
 /// go through `KeychainHelper`, which is in-memory under XCTest.
 @MainActor
 final class RuruPairingCodeTests: XCTestCase {
+    func testWebPairingSharingChoiceRequiresLocalConfirmation() throws {
+        let bundle = SwiftMeshJoinBundle(leaderAddresses: ["https://john.example"], leaderPort: 38787,
+                                        sharedSecret: "example-only", witness: fixtureConfiguration)
+        let payload = try JSONEncoder().encode(bundle).base64EncodedString()
+        var link = URLComponents(string: "swiftmesh://join")!
+        link.queryItems = [.init(name: "b", value: payload), .init(name: "recordings", value: "1")]
+        let url = try XCTUnwrap(link.url)
+        let model = AppModel()
+        model.isOnboardingComplete = true
+        XCTAssertTrue(model.handleSwiftMeshDeepLink(url))
+        XCTAssertEqual(SwiftMeshJoinBundle.recordingSharingChoice(from: model.pendingSwiftMeshJoin!.rawCode), true)
+        XCTAssertFalse(model.mediaLibrarySettings.sharedLibraryEnabled, "A web handoff only preselects the confirmation")
+        model.isOnboardingComplete = false
+        link.queryItems = [.init(name: "b", value: payload), .init(name: "recordings", value: "0")]
+        XCTAssertTrue(model.handleSwiftMeshDeepLink(try XCTUnwrap(link.url)))
+        XCTAssertEqual(SwiftMeshJoinBundle.recordingSharingChoice(from: model.pendingMeshOnboardingCode!), false)
+        XCTAssertFalse(model.mediaLibrarySettings.sharedLibraryEnabled)
+        XCTAssertEqual(try model.decodeSwiftMeshJoinCode(url.absoluteString).witness, fixtureConfiguration)
+        XCTAssertEqual(try model.decodeSwiftMeshJoinCode(url.absoluteString).sharedSecret, "example-only")
+    }
+
+    func testLegacyOrAmbiguousWebSharingChoicesDoNotPreselectSharing() {
+        XCTAssertNil(SwiftMeshJoinBundle.recordingSharingChoice(from: "swiftmesh://join?b=example"))
+        XCTAssertNil(SwiftMeshJoinBundle.recordingSharingChoice(from: "swiftmesh://join?recordings=true"))
+        XCTAssertNil(SwiftMeshJoinBundle.recordingSharingChoice(from: "swiftmesh://join?recordings=1&recordings=0"))
+        XCTAssertNil(SwiftMeshJoinBundle.recordingSharingChoice(from: "https://john.example/?recordings=1"))
+        XCTAssertNil(SwiftMeshJoinBundle.recordingSharingChoice(from: "swiftmesh://other?recordings=1"))
+    }
+
     /// The synthetic fixture from `Documentation/RURU_PAIRING_CODE.md`. Ruru's
     /// exporter must produce a code this decoder accepts.
     static let documentedFixture = "RURU1:eyJ2ZXJzaW9uIjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vcnVydS5leGFtcGxlLmNvbSIsImNsdXN0ZXJJRCI6InN3aWZ0Ym90LWV4YW1wbGUiLCJ0b2tlbiI6IkVYQU1QTEUtT05MWS0wMTIzNDU2Nzg5YWJjZGVmZ2hpamtsbW5vcHFyc3R1diIsInNlcnZpY2VOYW1lIjoiU3dpZnRCb3QifQ"

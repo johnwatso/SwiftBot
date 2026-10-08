@@ -203,6 +203,30 @@ The older guidance below remains useful for semantic colors and native controls;
 its smaller titles and denser section metrics are historical, not the target for
 the new console.
 
+## SwiftMesh pairing
+
+The main entry is the Primary’s WebUI → SwiftMesh → Pair SwiftBot, opened on the
+Mac being added. The browser dialog shows the Primary, included Ruru connection,
+a local recording-sharing switch and Continue in SwiftBot. Keep copying a Join
+Code under a fallback disclosure. Carry the switch into native confirmation;
+never enable sharing just because a link arrived.
+
+Native confirmation uses the console’s quiet surfaces, a clear title, compact
+connection rows, one sharing panel and a short settings-replacement notice.
+Avoid a credential/port table or a large explanatory paragraph. The verified
+state has a compact connection result and Open Recordings when sharing was chosen.
+The Ruru operator approves the website; the joining user should see that clearly.
+
+## Standby WebUI
+
+The standby homepage is a small status surface with role, bot control, Discord
+connection and recording guidance. It has no admin sidebar, locked feature tabs
+or promotion/settings controls. Use quiet rounded surfaces and system typography
+in light/dark appearance. The active Primary's website owns administration and
+combined recording browsing; the normal WebUI returns here automatically when
+runtime ownership permits it. Status remains useful during demotion/recovery
+without claiming that this Mac is ready to send output.
+
 ## Overview
 
 SwiftBot is a native macOS control surface for running a Discord bot. The preferred visual baseline is the SwiftMesh interface: calm, dense, operational, and distinctly Apple-platform-native.

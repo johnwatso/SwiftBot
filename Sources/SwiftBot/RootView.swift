@@ -8,6 +8,23 @@ struct RootView: View {
     @State private var selection: SidebarItem = .overview
 
     var body: some View {
+        #if DEBUG
+        if ScreenshotDemo.isRecordingPairing {
+            // Render the actual dialog in its own preview window. This avoids
+            // screenshot tools scaling the parent window into a sheet capture.
+            SwiftMeshJoinConfirmationSheet(pending: app.pendingSwiftMeshJoin ?? .init(
+                rawCode: ScreenshotDemo.recordingPairingLink, bundle: ScreenshotDemo.recordingPairingBundle
+            ))
+            .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            productionRoot
+        }
+        #else
+        productionRoot
+        #endif
+    }
+
+    private var productionRoot: some View {
         currentRootView
             // Other parts of the app (deep links, menus) ask for a page here
             // rather than reaching into this view's selection.
@@ -269,98 +286,148 @@ struct SwiftMeshJoinConfirmationSheet: View {
     @State private var isApplying = false
     @State private var feedback: String?
     @State private var feedbackIsError = false
+    @State private var shareRecordings = false
+    @State private var pairingComplete = false
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                Text("Join SwiftMesh Cluster?")
-                    .font(.title3.weight(.semibold))
-            }
-
-            Text("This Mac will be configured as a **Fail Over (Standby)** node and will connect to the Primary using the credentials below. Existing cluster settings will be replaced.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 6) {
-                    detailRow("Primary host(s)", pending.bundle.leaderAddresses.joined(separator: ", "))
-                    detailRow("Port", String(pending.bundle.leaderPort))
-                    detailRow("Shared secret", String(repeating: "•", count: 24))
-                    detailRow("Ownership", pending.bundle.witness.map { "Ruru · " + (URL(string: $0.endpoint)?.host ?? $0.endpoint) }
-                        ?? "Peer coordination (no Ruru)")
-                }
-                .padding(.vertical, 4)
-            }
-
-            if let feedback {
-                Text(feedback)
-                    .font(.callout)
-                    .foregroundStyle(feedbackIsError ? .red : .green)
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    app.pendingSwiftMeshJoin = nil
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(isApplying ? "Joining…" : "Join Cluster") {
-                    apply()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(isApplying)
-            }
-        }
-        .padding(24)
-        .frame(width: 460)
+    private var primaryHost: String {
+        let address = pending.bundle.leaderAddresses.first ?? "Primary"
+        return URL(string: address)?.host ?? address
     }
 
-    @ViewBuilder
-    private func detailRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 110, alignment: .leading)
-            Text(value)
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
-                .lineLimit(2)
-                .truncationMode(.middle)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .center, spacing: 14) {
+                ConsoleIconTile(symbol: pairingComplete ? "checkmark" : "point.3.connected.trianglepath.dotted", size: 46)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(pairingComplete ? "This Mac is paired" : "Join SwiftMesh")
+                        .font(.title2.weight(.semibold))
+                    Text(pairingComplete ? "Ready as a Fail Over for \(primaryHost)." : "Add this Mac as a Fail Over.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 16) {
+                connectionRow("Primary", value: primaryHost, symbol: "desktopcomputer")
+                if let witness = pending.bundle.witness {
+                    Divider()
+                    connectionRow("Ruru", value: URL(string: witness.endpoint)?.host ?? witness.endpoint, symbol: "checkmark.shield")
+                }
+            }
+            .padding(18).consoleSurface(cornerRadius: 16)
+
+            if pairingComplete && !feedbackIsError {
+                Label("Connection verified", systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.medium)).foregroundStyle(.green)
+                if shareRecordings {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Recording sharing is enabled").font(.headline)
+                        Text(sharingNextStep)
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } else {
+                RecordingPairingOptions(enabled: $shareRecordings, ruruAvailable: pending.bundle.witness?.isValid == true)
+                    .disabled(isApplying || pairingComplete)
+            }
+
+            if let feedback, feedbackIsError {
+                Label {
+                    Text(feedback).fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                }
+                .font(.callout).foregroundStyle(.orange)
+            }
+
+            if !pairingComplete {
+                Text("Connection details are included automatically. Joining replaces this Mac’s existing SwiftMesh settings.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 12) {
+                if isApplying {
+                    ProgressView().controlSize(.small)
+                    Text("Connecting to Primary…").font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !pairingComplete {
+                    Button("Cancel", role: .cancel, action: finish)
+                        .keyboardShortcut(.cancelAction).disabled(isApplying)
+                }
+                Button(isApplying ? "Joining…" : pairingComplete ? (shareRecordings ? "Open Recordings" : "Done") : "Join Cluster") {
+                    if pairingComplete { finish() } else { apply() }
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .keyboardShortcut(.defaultAction).disabled(isApplying)
+            }
         }
+        .padding(28).frame(width: 540)
+        .onAppear {
+            shareRecordings = SwiftMeshJoinBundle.recordingSharingChoice(from: pending.rawCode)
+                ?? app.mediaLibrarySettings.sharedLibraryEnabled
+        }
+    }
+
+    private var sharingNextStep: String {
+        guard pending.bundle.witness?.isValid == true else {
+            return "Connect Ruru in SwiftMesh to combine recording libraries. Your sharing choice is saved on this Mac."
+        }
+        if RecordingDirectoryClient.origin(app.localMeshPublicAddress) == nil {
+            return "Set up this Mac’s website in Web Interface and choose its folders in Recordings. SwiftBot will request approval from your Ruru operator."
+        }
+        return "SwiftBot sends this Mac’s website to Ruru automatically. Your Ruru operator approves it once; then its library joins the combined Recordings view."
+    }
+
+    private func connectionRow(_ title: String, value: String, symbol: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(.secondary).frame(width: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                Text(value).font(.body.weight(.medium)).textSelection(.enabled)
+            }
+            Spacer()
+            if title == "Ruru" {
+                Text("Included").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func finish() {
+        if pairingComplete && shareRecordings { app.requestedSidebarItem = .recordings }
+        app.pendingSwiftMeshJoin = nil
+        dismiss()
     }
 
     private func apply() {
+        #if DEBUG
+        if ScreenshotDemo.isRecordingPairing {
+            // Only the visible fixture changes; no pairing, persistence or I/O.
+            app.settings.clusterMode = .standby
+            app.clusterSnapshot.mode = .standby
+            app.mediaLibrarySettings.sharedLibraryEnabled = shareRecordings
+            app.recordingCoordinationStatus = "Website sent to Ruru. Awaiting approval for https://max.swiftbot.app."
+            pairingComplete = true
+            return
+        }
+        #endif
         isApplying = true
         feedback = nil
         Task {
-        let result = await app.applySwiftMeshJoinCode(pending.rawCode)
-        if !result.ok {
-            feedback = result.message
-            feedbackIsError = true
-            isApplying = false
-            return
-        }
+            let result = await app.applySwiftMeshJoinCode(pending.rawCode, shareRecordings: shareRecordings)
+            guard result.ok else {
+                feedback = result.message
+                feedbackIsError = true
+                isApplying = false
+                return
+            }
             let ok = await app.testWorkerJoinCodeConnection(
                 addresses: pending.bundle.leaderAddresses,
                 port: pending.bundle.leaderPort
             )
-            await MainActor.run {
-                isApplying = false
-                feedback = ok ? "Joined successfully." : "Settings saved, but connection test failed. Review SwiftMesh preferences."
-                feedbackIsError = !ok
-                if ok {
-                    app.pendingSwiftMeshJoin = nil
-                    dismiss()
-                }
-            }
+            isApplying = false
+            pairingComplete = ok
+            feedbackIsError = !ok || app.mediaLibrarySettings.sharedLibraryEnabled != shareRecordings
+            feedback = ok ? result.message : "Pairing details saved, but the Primary could not be reached. Try again or review SwiftMesh settings."
         }
     }
 }

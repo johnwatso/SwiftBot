@@ -14,12 +14,14 @@ extension AppModel {
         let ownerNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName
-        let payload = await mediaLibraryIndexer.snapshot(
+        var payload = await mediaLibraryIndexer.snapshot(
             sources: localRecordingSources,
             ownerNodeName: ownerNodeName,
             ownerBaseURL: ownerBaseURL,
             configFilePath: configURL.path
         )
+        payload.nodeID = meshLocalNodeID.isEmpty ? nil : meshLocalNodeID
+        payload.fresh = true
         if ownerBaseURL == nil {
             let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
             recentMediaCount24h = payload.items.filter { $0.modifiedAt >= cutoff }.count
@@ -73,8 +75,8 @@ extension AppModel {
         try? FileManager.default.removeItem(at: legacyURL)
     }
 
-    private func encodedMediaStreamToken(itemID: String, ownerNodeName: String, ownerBaseURL: String?) -> String {
-        let descriptor = MediaStreamDescriptor(itemID: itemID, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL)
+    private func encodedMediaStreamToken(itemID: String, ownerNodeName: String, ownerNodeID: String?) -> String {
+        let descriptor = MediaStreamDescriptor(itemID: itemID, ownerNodeName: ownerNodeName, ownerNodeID: ownerNodeID)
         guard let data = try? JSONEncoder().encode(descriptor) else { return "" }
         return data
             .base64EncodedString()
@@ -414,11 +416,11 @@ extension AppModel {
         return payloads
             .flatMap { payload in
                 payload.items.compactMap { item in
-                    let itemKey = "\(payload.nodeName)|\(item.id)"
+                    let itemKey = "\(payload.identity)|\(item.id)"
                     if let allowed, !allowed.contains(itemKey) { return nil }
                     let itemPeople = people[itemKey] ?? []
                     if let selectedPerson, !itemPeople.contains(selectedPerson) { return nil }
-                    let sourceToken = "\(payload.nodeName)|\(item.sourceID.uuidString)"
+                    let sourceToken = "\(payload.identity)|\(item.sourceID.uuidString)"
                     if let selectedSourceID, !selectedSourceID.isEmpty, sourceToken != selectedSourceID {
                         return nil
                     }
@@ -427,7 +429,8 @@ extension AppModel {
                     }
 
                     let detectedGame = mediaGameName(for: item.fileName)
-                    let gameName = resolvedMediaGameName(itemKey: itemKey, detected: detectedGame)
+                    let legacyKey = "\(payload.nodeName)|\(item.id)"
+                    let gameName = resolvedMediaGameName(itemKey: itemKey, detected: detectedGame, legacyItemKey: legacyKey)
                     if let normalizedSelectedGame, !normalizedSelectedGame.isEmpty, normalizedGameKey(gameName) != normalizedSelectedGame {
                         return nil
                     }
@@ -435,7 +438,7 @@ extension AppModel {
                     let token = encodedMediaStreamToken(
                         itemID: item.id,
                         ownerNodeName: payload.nodeName,
-                        ownerBaseURL: item.ownerBaseURL
+                        ownerNodeID: payload.nodeID
                     )
                     var result = AdminWebMediaItemPayload(
                         id: itemKey,
@@ -450,10 +453,12 @@ extension AppModel {
                         thumbnailURL: "/api/media/thumbnail?id=\(token)",
                         streamURL: "/api/media/stream?id=\(token)"
                     )
+                    result.available = payload.isAvailable(item)
                     result.people = itemPeople.map { AdminWebSimpleOption(id: $0, name: knownUsersById[$0] ?? "Member") }
                     result.recordedByID = settings.recordingSourceOwners[sourceToken]
+                        ?? settings.recordingSourceOwners["\(payload.nodeName)|\(item.sourceID.uuidString)"]
                     result.detectedGameName = detectedGame
-                    result.gameMatch = settings.recordingGameOverrides[itemKey] != nil ? "clip"
+                    result.gameMatch = (settings.recordingGameOverrides[itemKey] ?? settings.recordingGameOverrides[legacyKey]) != nil ? "clip"
                         : gameName != detectedGame ? "detected" : nil
                     return result
                 }
@@ -486,8 +491,9 @@ extension AppModel {
 
     /// The game a clip is filed under: a Fix Match for this clip, then one
     /// for every clip detected as the same game, then the filename's game.
-    func resolvedMediaGameName(itemKey: String, detected: String) -> String {
+    func resolvedMediaGameName(itemKey: String, detected: String, legacyItemKey: String? = nil) -> String {
         if let fixed = settings.recordingGameOverrides[itemKey] { return fixed }
+        if let legacyItemKey, let fixed = settings.recordingGameOverrides[legacyItemKey] { return fixed }
         if let alias = settings.recordingGameAliases[normalizedGameKey(detected)] { return alias }
         return detected
     }
@@ -508,7 +514,7 @@ extension AppModel {
         guard itemKey.contains("|"), gameName.count <= 120 else { return false }
         guard let item = await allMediaLibraryPayloads()
             .lazy
-            .compactMap({ payload in payload.items.first { "\(payload.nodeName)|\($0.id)" == itemKey } })
+            .compactMap({ payload in payload.items.first { "\(payload.identity)|\($0.id)" == itemKey } })
             .first else { return false }
         let detectedKey = normalizedGameKey(mediaGameName(for: item.fileName))
 
@@ -541,8 +547,9 @@ extension AppModel {
 
         for payload in await allMediaLibraryPayloads() {
             for item in payload.items {
-                let itemKey = "\(payload.nodeName)|\(item.id)"
-                if let fixed = settings.recordingGameOverrides[itemKey] {
+                let itemKey = "\(payload.identity)|\(item.id)"
+                let legacyKey = "\(payload.nodeName)|\(item.id)"
+                if let fixed = settings.recordingGameOverrides[itemKey] ?? settings.recordingGameOverrides[legacyKey] {
                     if fixed == from { settings.recordingGameOverrides[itemKey] = gameName }
                     continue
                 }
@@ -602,64 +609,9 @@ extension AppModel {
         return adminWebMediaLibrarySnapshot(payloads: payloads, query: query, people: people)
     }
 
-    /// This Mac's library plus the other SwiftMesh nodes'.
+    /// All reported libraries, independent of Discord leadership.
     func allMediaLibraryPayloads() async -> [MediaLibraryPayload] {
-        let local = await localMediaLibrarySnapshot()
-        var payloads: [MediaLibraryPayload] = [local]
-
-        if settings.clusterMode == .leader {
-            let workers = await cluster.registeredNodeInfo()
-            let remotes = await withTaskGroup(of: (String, MediaLibraryPayload?).self) { group in
-                for (_, baseURL) in workers {
-                    group.addTask { [cluster] in
-                        (baseURL, await cluster.fetchRemoteMediaLibrary(from: baseURL))
-                    }
-                }
-                var results: [(String, MediaLibraryPayload?)] = []
-                for await result in group { results.append(result) }
-                return results
-            }
-            for (baseURL, remote) in remotes {
-                if let remote {
-                    payloads.append(
-                        MediaLibraryPayload(
-                            nodeName: remote.nodeName,
-                            configFilePath: remote.configFilePath,
-                            sources: remote.sources,
-                            items: remote.items.map { item in
-                                var copy = item
-                                if copy.ownerBaseURL == nil || copy.ownerBaseURL?.isEmpty == true {
-                                    copy.ownerBaseURL = baseURL
-                                }
-                                return copy
-                            },
-                            generatedAt: remote.generatedAt
-                        )
-                    )
-                }
-            }
-        } else if settings.clusterMode == .standby,
-                  let leaderBaseURL = await cluster.normalizedBaseURL(settings.clusterLeaderAddress, defaultPort: settings.clusterLeaderPort),
-                  !leaderBaseURL.isEmpty,
-                  let remote = await cluster.fetchRemoteMediaLibrary(from: leaderBaseURL) {
-            payloads.append(
-                MediaLibraryPayload(
-                    nodeName: remote.nodeName,
-                    configFilePath: remote.configFilePath,
-                    sources: remote.sources,
-                    items: remote.items.map { item in
-                        var copy = item
-                        if copy.ownerBaseURL == nil || copy.ownerBaseURL?.isEmpty == true {
-                            copy.ownerBaseURL = leaderBaseURL
-                        }
-                        return copy
-                    },
-                    generatedAt: remote.generatedAt
-                )
-            )
-        }
-
-        return payloads
+        await coordinatedMediaLibraries()
     }
 
     func adminWebMediaLibrarySnapshot(
@@ -673,11 +625,12 @@ extension AppModel {
         let sourcePayloads: [AdminWebMediaSourcePayload] = payloads.flatMap { payload in
             payload.sources.map { source in
                 AdminWebMediaSourcePayload(
-                    id: "\(payload.nodeName)|\(source.id.uuidString)",
+                    id: "\(payload.identity)|\(source.id.uuidString)",
                     nodeName: payload.nodeName,
                     sourceName: source.name,
                     itemCount: payload.items.filter { $0.sourceID == source.id }.count,
-                    ownerID: settings.recordingSourceOwners["\(payload.nodeName)|\(source.id.uuidString)"]
+                    ownerID: settings.recordingSourceOwners["\(payload.identity)|\(source.id.uuidString)"]
+                        ?? settings.recordingSourceOwners["\(payload.nodeName)|\(source.id.uuidString)"]
                 )
             }
         }
@@ -749,7 +702,8 @@ extension AppModel {
             page: clampedPage,
             pageSize: pageSize,
             totalItems: totalItems,
-            totalPages: totalPages
+            totalPages: totalPages,
+            coordinationStatus: mediaLibrarySettings.sharedLibraryEnabled ? recordingCoordinationStatus : nil
         )
     }
 
@@ -759,12 +713,12 @@ extension AppModel {
     /// made in the background for next time. Remote nodes choose their own
     /// prepared copy through the authenticated mesh route.
     func mediaPlaybackChoice(token: String) async -> (quality: String, preparing: Bool)? {
-        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        if descriptor.ownerNodeName != localMediaNodeNameForPlayback,
-           let baseURL = descriptor.ownerBaseURL, !baseURL.isEmpty {
-            return await cluster.fetchRemoteMediaPlaybackChoice(from: baseURL, itemID: descriptor.itemID) ?? ("original", false)
+        guard let descriptor = decodedMediaStreamToken(token), let route = await recordingRoute(for: descriptor) else { return nil }
+        switch route {
+        case .local: return await localMediaPlaybackChoice(itemID: descriptor.itemID)
+        case .remote(let baseURL):
+            return await cluster.fetchRemoteMediaPlaybackChoice(from: baseURL, itemID: descriptor.itemID)
         }
-        return await localMediaPlaybackChoice(itemID: descriptor.itemID)
     }
 
     func localMediaPlaybackChoice(itemID: String) async -> (quality: String, preparing: Bool)? {
@@ -781,81 +735,38 @@ extension AppModel {
         return ("original", true)
     }
 
-    private var localMediaNodeNameForPlayback: String {
-        settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Host.current().localizedName ?? "SwiftBot Node")
-            : settings.clusterNodeName
-    }
-
     func adminWebMediaStreamResponse(token: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Host.current().localizedName ?? "SwiftBot Node")
-            : settings.clusterNodeName
-
-        if descriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = descriptor.ownerBaseURL,
-           !ownerBaseURL.isEmpty {
-            return await cluster.fetchRemoteMediaStream(from: ownerBaseURL, itemID: descriptor.itemID, rangeHeader: rangeHeader, quality: quality)
+        guard let descriptor = decodedMediaStreamToken(token), let route = await recordingRoute(for: descriptor) else { return nil }
+        switch route {
+        case .local: return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader, quality: quality)
+        case .remote(let baseURL):
+            return await cluster.fetchRemoteMediaStream(from: baseURL, itemID: descriptor.itemID, rangeHeader: rangeHeader, quality: quality)
         }
-
-        return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader, quality: quality)
     }
 
     func adminWebMediaThumbnailResponse(token: String) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Host.current().localizedName ?? "SwiftBot Node")
-            : settings.clusterNodeName
-
-        if descriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = descriptor.ownerBaseURL,
-           !ownerBaseURL.isEmpty {
-            return await cluster.fetchRemoteMediaThumbnail(from: ownerBaseURL, itemID: descriptor.itemID)
+        guard let descriptor = decodedMediaStreamToken(token), let route = await recordingRoute(for: descriptor) else { return nil }
+        switch route {
+        case .local: return await localMediaThumbnailResponse(itemID: descriptor.itemID)
+        case .remote(let baseURL): return await cluster.fetchRemoteMediaThumbnail(from: baseURL, itemID: descriptor.itemID)
         }
-
-        return await localMediaThumbnailResponse(itemID: descriptor.itemID)
     }
 
     func adminWebMediaFrameResponse(token: String, atSeconds: Double) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Host.current().localizedName ?? "SwiftBot Node")
-            : settings.clusterNodeName
-
-        if descriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = descriptor.ownerBaseURL,
-           !ownerBaseURL.isEmpty {
-            return await cluster.fetchRemoteMediaFrame(from: ownerBaseURL, itemID: descriptor.itemID, seconds: atSeconds)
+        guard let descriptor = decodedMediaStreamToken(token), let route = await recordingRoute(for: descriptor) else { return nil }
+        switch route {
+        case .local: return await localMediaFrameResponse(itemID: descriptor.itemID, atSeconds: atSeconds)
+        case .remote(let baseURL): return await cluster.fetchRemoteMediaFrame(from: baseURL, itemID: descriptor.itemID, seconds: atSeconds)
         }
-
-        return await localMediaFrameResponse(itemID: descriptor.itemID, atSeconds: atSeconds)
     }
 
     func adminWebMediaHLSPlaylistResponse(token: String, accessToken: String?) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Host.current().localizedName ?? "SwiftBot Node")
-            : settings.clusterNodeName
-        // HLS packaging is local-node only. For a remote-owned recording, return
-        // nil so the browser falls back to the MP4 stream, which already proxies
-        // via the mesh in adminWebMediaStreamResponse.
-        if descriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = descriptor.ownerBaseURL, !ownerBaseURL.isEmpty {
-            return nil
-        }
+        guard let descriptor = decodedMediaStreamToken(token), case .local? = await recordingRoute(for: descriptor) else { return nil }
         return await localMediaHLSPlaylistResponse(itemID: descriptor.itemID, idToken: token, accessToken: accessToken)
     }
 
     func adminWebMediaHLSSegmentResponse(token: String, segment: String, accessToken: String?) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
-        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Host.current().localizedName ?? "SwiftBot Node")
-            : settings.clusterNodeName
-        if descriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = descriptor.ownerBaseURL, !ownerBaseURL.isEmpty {
-            return nil
-        }
+        guard let descriptor = decodedMediaStreamToken(token), case .local? = await recordingRoute(for: descriptor) else { return nil }
         return await localMediaHLSSegmentResponse(itemID: descriptor.itemID, segment: segment, idToken: token, accessToken: accessToken)
     }
 
@@ -884,20 +795,8 @@ extension AppModel {
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName
 
-        if descriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = descriptor.ownerBaseURL,
-           !ownerBaseURL.isEmpty {
-            let meshRequest = MeshMediaClipRequest(
-                itemID: descriptor.itemID,
-                startSeconds: request.startSeconds,
-                endSeconds: request.endSeconds,
-                name: request.name
-            )
-            if let job = await cluster.startRemoteMediaClip(from: ownerBaseURL, request: meshRequest) {
-                await mediaExportCoordinator.recordExternalJob(job)
-                return MediaExportJobResponse(job: job, error: nil)
-            }
-            return MediaExportJobResponse(job: nil, error: "Failed to start export on remote node.")
+        guard case .local? = await recordingRoute(for: descriptor) else {
+            return MediaExportJobResponse(job: nil, error: "Export a shared recording on the Mac that stores it.")
         }
 
         guard let item = await localMediaItem(for: descriptor.itemID) else {
@@ -922,9 +821,10 @@ extension AppModel {
             return MediaExportJobResponse(job: nil, error: "Invalid media token.")
         }
 
-        if primaryDescriptor.ownerNodeName != secondaryDescriptor.ownerNodeName ||
-            primaryDescriptor.ownerBaseURL != secondaryDescriptor.ownerBaseURL {
-            return MediaExportJobResponse(job: nil, error: "Multiview clips must be on the same node.")
+        guard primaryDescriptor.ownerNodeID == secondaryDescriptor.ownerNodeID,
+              case .local? = await recordingRoute(for: primaryDescriptor),
+              case .local? = await recordingRoute(for: secondaryDescriptor) else {
+            return MediaExportJobResponse(job: nil, error: "Export multiview recordings on the Mac that stores both files.")
         }
         if let start = request.startSeconds, let end = request.endSeconds {
             guard end > start else {
@@ -938,25 +838,6 @@ extension AppModel {
         let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName
-
-        if primaryDescriptor.ownerNodeName != localNodeName,
-           let ownerBaseURL = primaryDescriptor.ownerBaseURL,
-           !ownerBaseURL.isEmpty {
-            let meshRequest = MeshMediaMultiViewRequest(
-                primaryID: primaryDescriptor.itemID,
-                secondaryID: secondaryDescriptor.itemID,
-                layout: request.layout,
-                audioSource: request.audioSource,
-                startSeconds: request.startSeconds,
-                endSeconds: request.endSeconds,
-                name: request.name
-            )
-            if let job = await cluster.startRemoteMediaMultiView(from: ownerBaseURL, request: meshRequest) {
-                await mediaExportCoordinator.recordExternalJob(job)
-                return MediaExportJobResponse(job: job, error: nil)
-            }
-            return MediaExportJobResponse(job: nil, error: "Failed to start multiview export on remote node.")
-        }
 
         guard let primary = await localMediaItem(for: primaryDescriptor.itemID),
               let secondary = await localMediaItem(for: secondaryDescriptor.itemID) else {
@@ -1070,14 +951,14 @@ extension AppModel {
         let allItems: [(payload: MediaLibraryPayload, item: MediaLibraryItem)] = payloads.flatMap { payload in
             payload.items.map { (payload, $0) }
         }
-        let currentIDs = Set(allItems.map { "\($0.payload.nodeName)|\($0.item.id)" })
+        let currentIDs = Set(allItems.map { "\($0.payload.identity)|\($0.item.id)" })
 
         if lastSeenMediaItemIDs.isEmpty {
             lastSeenMediaItemIDs = currentIDs
             return
         }
 
-        let newItems = allItems.filter { !lastSeenMediaItemIDs.contains("\($0.payload.nodeName)|\($0.item.id)") }
+        let newItems = allItems.filter { !lastSeenMediaItemIDs.contains("\($0.payload.identity)|\($0.item.id)") }
         lastSeenMediaItemIDs = currentIDs
 
         guard !newItems.isEmpty else { return }
@@ -1132,30 +1013,14 @@ extension AppModel {
     }
 
     private func mediaPayloadsForTriggers() async -> [MediaLibraryPayload] {
-        var payloads: [MediaLibraryPayload] = [await localMediaLibrarySnapshot()]
-        guard settings.clusterMode == .leader else { return payloads }
-
-        let workers = await cluster.registeredNodeInfo()
-        for (_, baseURL) in workers {
-            if let remote = await cluster.fetchRemoteMediaLibrary(from: baseURL) {
-                payloads.append(
-                    MediaLibraryPayload(
-                        nodeName: remote.nodeName,
-                        configFilePath: remote.configFilePath,
-                        sources: remote.sources,
-                        items: remote.items.map { item in
-                            var copy = item
-                            if copy.ownerBaseURL == nil || copy.ownerBaseURL?.isEmpty == true {
-                                copy.ownerBaseURL = baseURL
-                            }
-                            return copy
-                        },
-                        generatedAt: remote.generatedAt
-                    )
-                )
-            }
+        // Only the output owner evaluates shared media automations. Serving and
+        // browsing libraries is independent of this exclusive-work permission.
+        guard runtimeClusterMode == .leader else { return [await localMediaLibrarySnapshot()] }
+        return await allMediaLibraryPayloads().map { payload in
+            var copy = payload
+            copy.items = payload.items.filter { payload.isAvailable($0) }
+            return copy
         }
-        return payloads
     }
 
     private func handleMediaAddedEvent(item: MediaLibraryItem, nodeName: String) async {

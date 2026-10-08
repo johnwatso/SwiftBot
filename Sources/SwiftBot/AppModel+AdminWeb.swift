@@ -1714,10 +1714,22 @@ extension AppModel {
     }
 
     func configureAdminWebServer() async {
+        await cluster.setRecordingAccessProvider { [weak self] in
+            guard let self else { return false }
+            return await self.canServeSharedRecordings
+        }
         await adminWebServer.setMeshRequestHandler { [weak self] request, peer in
             guard let self, await self.cluster.currentSnapshot().mode != .standalone else {
                 return Data("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
             }
+            return await self.cluster.processHTTPRequest(request, remoteHost: peer)
+        }
+        await adminWebServer.setRecordingRequestHandler { [weak self] request, peer in
+            guard let self, await self.canServeSharedRecordings else {
+                return Data("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+            }
+            // Media reads do not require current bot ownership. ClusterCoordinator
+            // still authenticates the peer through the configured mesh HMAC.
             return await self.cluster.processHTTPRequest(request, remoteHost: peer)
         }
         await cluster.setPublicMeshAddress(localMeshPublicAddress)
@@ -2586,6 +2598,7 @@ extension AppModel {
             )
         }
         adminWebResolvedBaseURL = runtimeState.publicBaseURL
+        await configureRecordingCoordination()
         adminWebIsListening = runtimeState.isListening
         updateAdminWebCertificateRenewalTask()
         await updateAdminWebPublicAccessRuntime()

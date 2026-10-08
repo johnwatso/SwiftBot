@@ -13,6 +13,26 @@ This document provides a high-level overview of the SwiftBot application archite
 
 ## Core Components
 
+Recording sharing is a local opt-in using Ruru's generic resource catalogue.
+Each Mac reports one authenticated library endpoint; SwiftBot combines full peer
+lists in Recordings and resolves playback through stable node IDs. Serving works
+on Primary and Fail Over nodes independently of Discord lease ownership. Video
+travels from its SwiftBot owner through the viewer's SwiftBot website; Ruru holds
+only the endpoint directory. WebUI SwiftMesh → Pair SwiftBot offers the local sharing
+choice and carries it into native confirmation via an optional link hint. Local
+confirmation installs the enrollment identity and inherited Ruru connection, and
+automatically proposes this Mac's HTTPS website for operator approval. Sharing
+is checkpointed independently of generic settings saves; approved directory
+origins remain the routing authority. Setup, compatibility and limits are documented in
+[Recording coordination](RECORDING_COORDINATION.md).
+
+The browser homepage is selected by runtime ownership: managed nodes serve
+`admin/standby.html`, while active Primary/Standalone nodes serve the normal
+dashboard. The lightweight public role probe refreshes open pages on promotion
+or loss of ownership without restarting the HTTP listener. Standby visitors see
+status instead of locked feature tabs; authenticated media and mesh handlers
+remain independent. Server-side write guards remain the authority for edits.
+
 ### 1. Application Layer
 - **File:** `SwiftBotApp.swift`
 - **Purpose:** SwiftUI App entry point

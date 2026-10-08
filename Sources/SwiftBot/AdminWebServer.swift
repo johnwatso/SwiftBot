@@ -47,6 +47,9 @@ struct AdminWebLivePayload: Codable {
     let runtimeState: String?
     let botUsername: String
     let generatedAt: Date
+    /// Runtime browser access, independent of the saved role. Optional for
+    /// older clients that consume this public, non-secret liveness response.
+    var isFailoverManagedNode: Bool? = nil
 }
 
 struct AdminWebMetricPayload: Codable {
@@ -1496,6 +1499,8 @@ struct AdminWebMediaItemPayload: Codable {
     /// An admin's Fix Match: "clip" for this clip alone, "detected" for
     /// every clip detected as its game; nil when the filename's game is used.
     var gameMatch: String?
+    /// Retained metadata is visible during an outage but cannot start playback.
+    var available: Bool? = nil
 }
 
 struct AdminWebMediaLibraryPayload: Codable {
@@ -1513,6 +1518,7 @@ struct AdminWebMediaLibraryPayload: Codable {
     let pageSize: Int
     let totalItems: Int
     let totalPages: Int
+    var coordinationStatus: String? = nil
 }
 
 struct AdminWebMediaGameSummary: Codable {
@@ -2519,6 +2525,11 @@ actor AdminWebServer {
     }
 
     private var meshRequestHandler: (@Sendable (Data, String?) async -> Data)?
+    private var recordingRequestHandler: (@Sendable (Data, String?) async -> Data)?
+
+    func setRecordingRequestHandler(_ handler: @escaping @Sendable (Data, String?) async -> Data) {
+        recordingRequestHandler = handler
+    }
 
     func setMeshRequestHandler(_ handler: @escaping @Sendable (Data, String?) async -> Data) {
         meshRequestHandler = handler
@@ -2529,6 +2540,16 @@ actor AdminWebServer {
             return httpResponse(status: "400 Bad Request", body: Data("Invalid request".utf8))
         }
         request.peerIP = peerIP
+        if request.path.hasPrefix("/v1/media/") {
+            // Explicit read-only allowlist: exports must never inherit the
+            // independent recording-serving permission.
+            let paths: Set<String> = ["/v1/media/library", "/v1/media/playback", "/v1/media/stream",
+                                      "/v1/media/thumbnail", "/v1/media/frame"]
+            guard request.method == "GET", paths.contains(request.path), let handler = recordingRequestHandler else {
+                return httpResponse(status: "404 Not Found", body: Data())
+            }
+            return await handler(requestData, peerIP)
+        }
         if request.path.hasPrefix("/v1/mesh/") || ["/cluster/status", "/cluster/register", "/cluster/ping"].contains(request.path) {
             guard let handler = meshRequestHandler else {
                 return httpResponse(status: "404 Not Found", body: Data())
@@ -2560,7 +2581,9 @@ actor AdminWebServer {
 
         // Members only reach the page, sign-in and their own routes. One gate
         // here, rather than trusting every admin endpoint to check the role.
-        if let session = authenticatedSession(for: request), session.role == .member,
+        let effectiveSession = authenticatedSession(for: request)
+            ?? (Self.memberPlaybackPaths.contains(request.path) ? mediaSession(for: request) : nil)
+        if let session = effectiveSession, session.role == .member,
            !Self.isMemberRoute(method: request.method, path: request.path) {
             // Playback is allowed only for clips this member is in.
             guard Self.memberPlaybackPaths.contains(request.path), ["GET", "HEAD"].contains(request.method) else {
@@ -2581,10 +2604,10 @@ actor AdminWebServer {
 
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
-            return serveIndex()
+            return await serveBrowserIndex()
         case ("HEAD", "/"), ("HEAD", "/index.html"):
             // Uptime monitors and link checkers probe with HEAD.
-            return headersOnly(serveIndex())
+            return headersOnly(await serveBrowserIndex())
         case ("GET", "/favicon.ico"), ("GET", "/favicon.png"):
             return serveAsset(named: "favicon", ext: "png")
         case ("GET", "/assets/AppIcon.png"):
@@ -2599,6 +2622,8 @@ actor AdminWebServer {
             return serveAsset(named: "hls.min", ext: "js")
         case ("GET", "/assets/tabler-icons.js"):
             return serveAsset(named: "tabler-icons", ext: "js")
+        case ("GET", "/assets/node-role.js"):
+            return serveAsset(named: "node-role", ext: "js")
         case ("GET", let path) where path.hasPrefix("/assets/games/"):
             let filename = path.replacingOccurrences(of: "/assets/games/", with: "")
             let parts = filename.split(separator: ".", maxSplits: 1).map(String.init)
@@ -2670,7 +2695,8 @@ actor AdminWebServer {
                     clusterMode: liveStatus?.clusterMode,
                     runtimeState: liveStatus?.runtimeState,
                     botUsername: botName,
-                    generatedAt: Date()
+                    generatedAt: Date(),
+                    isFailoverManagedNode: liveStatus?.isFailoverManagedNode
                 ))
             }
 
@@ -4427,7 +4453,12 @@ actor AdminWebServer {
         return HTTPRequest(method: String(parts[0]), path: path, query: query, headers: headers, body: body)
     }
 
-    private func serveIndex() -> Data {
+    private func serveBrowserIndex() async -> Data {
+        let managed = (await statusProvider?())?.isFailoverManagedNode == true
+        return serveIndex(named: managed ? "standby" : "index")
+    }
+
+    private func serveIndex(named name: String = "index") -> Data {
         var candidates: [(Bundle, String)] = [
             (.main, "admin"),
             (.main, "Resources/admin")
@@ -4438,13 +4469,13 @@ actor AdminWebServer {
 #endif
 
         for (bundle, subdirectory) in candidates {
-            if let url = bundle.url(forResource: "index", withExtension: "html", subdirectory: subdirectory),
+            if let url = bundle.url(forResource: name, withExtension: "html", subdirectory: subdirectory),
                let data = try? Data(contentsOf: url) {
                 return serveIndexHTML(data)
             }
         }
 
-        if let url = Bundle.main.url(forResource: "index", withExtension: "html"),
+        if let url = Bundle.main.url(forResource: name, withExtension: "html"),
            let data = try? Data(contentsOf: url) {
             return serveIndexHTML(data)
         }
@@ -5088,14 +5119,18 @@ actor AdminWebServer {
     }
 
     private func mediaAccessAuthorized(_ request: HTTPRequest) -> Bool {
-        if authenticatedSession(for: request) != nil { return true }
+        mediaSession(for: request) != nil
+    }
+
+    private func mediaSession(for request: HTTPRequest) -> Session? {
+        if let session = authenticatedSession(for: request) { return session }
         guard let token = request.query["token"], !token.isEmpty,
               let boundSessionID = validateMediaAccessToken(token),
               let session = sessions[boundSessionID],
               session.expiresAt > Date() else {
-            return false
+            return nil
         }
-        return true
+        return session
     }
 
     private func validateCSRF(session: Session, request: HTTPRequest) -> Bool {
@@ -6399,6 +6434,10 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
 // tests drive real HTTP bytes through the real router and assert on real
 // responses, so they keep holding after a refactor of anything behind them.
 extension AdminWebServer {
+    func testSetStatusProvider(_ provider: @escaping @Sendable () async -> AdminWebStatusPayload) {
+        statusProvider = provider
+    }
+
     func testSetSwiftMeshJoinCodeProvider(_ provider: @escaping @Sendable () async -> String?) {
         swiftMeshJoinCodeProvider = provider
     }

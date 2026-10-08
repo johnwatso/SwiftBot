@@ -860,6 +860,20 @@ actor MediaLibraryConfigStore {
     }
 
     func save(_ settings: MediaLibrarySettings) throws {
+        var next = settings
+        // Ordinary queued settings snapshots cannot change the separately
+        // committed local sharing choice, including after pairing completes.
+        if FileManager.default.fileExists(atPath: url.path) {
+            next.sharedLibraryEnabled = load().sharedLibraryEnabled
+        }
+        try write(next)
+    }
+
+    func saveSharingChoice(_ settings: MediaLibrarySettings) throws {
+        try write(settings)
+    }
+
+    private func write(_ settings: MediaLibrarySettings) throws {
         let data = try encoder.encode(settings)
         try data.write(to: url, options: .atomic)
     }

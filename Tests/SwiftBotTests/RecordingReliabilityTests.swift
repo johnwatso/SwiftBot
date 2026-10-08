@@ -4,6 +4,23 @@ import XCTest
 @testable import SwiftBot
 
 final class RecordingReliabilityTests: XCTestCase {
+    func testQueuedSettingsSnapshotsCannotOverwriteCommittedLocalSharingChoice() async throws {
+        let store = MediaLibraryConfigStore(filename: "recording-preference-test-\(UUID()).json")
+        let url = await store.fileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let original = MediaLibrarySettings()
+        try await store.save(original)
+        var enabled = original
+        enabled.sharedLibraryEnabled = true
+        try await store.saveSharingChoice(enabled)
+        try await store.save(original)
+        let retained = await store.load()
+        XCTAssertTrue(retained.sharedLibraryEnabled)
+        try await store.saveSharingChoice(original)
+        try await store.save(enabled)
+        let disabled = await store.load()
+        XCTAssertFalse(disabled.sharedLibraryEnabled, "A delayed snapshot cannot revive sharing after opt-out")
+    }
     func testBrowserOpenEndedAndSuffixRanges() {
         let initial = AppModel.parseByteRange("bytes=0-", fileSize: 20_000_000)
         XCTAssertEqual(initial?.offset, 0)
@@ -43,6 +60,8 @@ final class RecordingReliabilityTests: XCTestCase {
         try FileManager.default.moveItem(at: root, to: offline)
         let unavailable = await snapshot()
         XCTAssertEqual(unavailable.items, initial.items)
+        XCTAssertEqual(unavailable.unavailableSourceIDs, [source.id])
+        XCTAssertFalse(unavailable.isAvailable(try XCTUnwrap(unavailable.items.first)))
         try FileManager.default.moveItem(at: offline, to: root)
         try FileManager.default.removeItem(at: root.appendingPathComponent("clip.mp4"))
         let deleted = await snapshot()
@@ -50,6 +69,7 @@ final class RecordingReliabilityTests: XCTestCase {
         try Data().write(to: root.appendingPathComponent("new.mp4"))
         let restored = await snapshot()
         XCTAssertEqual(restored.items.map(\.fileName), ["new.mp4"])
+        XCTAssertTrue(restored.isAvailable(try XCTUnwrap(restored.items.first)))
         source.isEnabled = false
         let disabled = await snapshot()
         XCTAssertTrue(disabled.items.isEmpty)

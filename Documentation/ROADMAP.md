@@ -9,6 +9,131 @@
 
 ## Recent Engineering Log
 
+### 2026-10-07 — Simple standby WebUI
+
+- [x] Managed nodes now serve a separate status homepage at `/` and
+  `/index.html`, including HEAD probes and anonymous/admin/member visits. It
+  shows role, bot-control and Discord connection status plus recording guidance,
+  with no admin sidebar or locked feature tabs. Page selection uses the same
+  runtime access guard as browser writes, so saved Standby nodes regain the full
+  WebUI on takeover and saved Primary nodes lose it when ownership is lost.
+- [x] A small same-origin, no-credential `/live` JSON probe checks every ten
+  seconds in visible tabs and refreshes across role changes, preserving the
+  bookmarked page and existing session. Missing legacy flags leave the page
+  alone; failed probes show unavailable status. Only the runtime access flag is
+  added to public liveness. The HTTP listener, mesh and authenticated recording
+  routes stay independent; lease/output guards, credentials and mutations keep
+  their existing authorization. Removed the old locked-tab renderer.
+- [x] XcodeGen and Debug build passed. 89 focused tests passed, including two
+  new HTTP tests for visitor roles, GET/HEAD, CSP/nonces, public probe data,
+  takeover/demotion, denied edits and retained media forwarding, plus existing
+  recording coordination, authentication and pairing suites. After the final UI
+  cleanup, the nine homepage/WebUI copy tests also passed. Final WebUI scripts
+  parse and diff checks pass. Checked standby appearance and automatic dashboard
+  restoration to a bookmark, then demotion with an admin dialog open, using the
+  isolated AdminPreview server. Preview retained in the sibling Ruru checkout
+  under `.artifacts/standby-webui`. No live multi-Mac takeover, actual tunnels,
+  Discord, deployment or production credentials/settings changes.
+
+### 2026-10-07 — WebUI-first SwiftMesh pairing
+
+- [x] Made **Web Interface → SwiftMesh → Pair SwiftBot** the main joining path.
+  Its redesigned dialog offers a local recordings choice and **Continue in
+  SwiftBot**. Copy Join Code sits under the fallback disclosure and retains that
+  choice. The optional `recordings=1|0` URL hint preselects the native review;
+  it cannot enable sharing without local confirmation. Legacy and ambiguous
+  hints keep the local default. Existing pairing authentication and lease
+  contracts are unchanged.
+- [x] Rebuilt native Join confirmation with compact connection cards, a clear
+  sharing switch, this Mac's website, and a paired/Open Recordings state. First
+  launch carries the same WebUI choice. Copy names the Ruru operator's one-time
+  website approval and the remaining website/folder setup when needed.
+- [x] XcodeGen, latest Debug build, inline JavaScript syntax and diff checks
+  passed. 87 focused tests passed with zero failures, including two new WebUI
+  handoff/default tests, recording coordination, pairing, self-join and WebUI
+  authentication/copy. Checked the actual native dialog in dark/light appearance,
+  its sharing switch and paired state, first-launch review, and the WebUI dialog
+  plus copy/cancel behavior in isolated fixtures. Screenshots are retained in
+  the sibling Ruru checkout under `.artifacts/max-pairing`. No live John/Max
+  pairing, real Discord sign-in or website approval was exercised; nothing
+  deployed and no production credentials or settings changed.
+
+### 2026-10-07 — Max-side recording pairing preview
+
+- [x] Added a Debug-only `recording-pairing` scenario to the existing isolated
+  screenshot mode. It shows the actual native Join confirmation with synthetic
+  John/Max websites and Ruru connection details. Join changes only visible fixture
+  state; it never applies a code, saves credentials or contacts a server.
+- [x] XcodeGen and Debug build passed. Checked the sharing toggle, own website
+  guidance and paired/Done state in a temporary separately identified app bundle;
+  screenshots retained for review. Real settings/Keychain/services remain isolated
+  by the existing screenshot mode. No production UI flow changed, no additional
+  tests were needed, and first-launch onboarding/live pairing were not exercised.
+
+### 2026-10-07 — Recording sharing as part of SwiftMesh pairing
+
+- [x] Join confirmation and the first-launch Paired screen offer **Share this
+  Mac's recordings**, including automatic deep-link pairing. It remains a local
+  opt-in; pairing succeeds without sharing. A successful pair immediately installs
+  its stable enrollment identity and inherited Keychain-backed Ruru connection
+  for recording discovery without changing lease ownership handlers.
+- [x] The recording directory client proposes this Mac's configured HTTPS website
+  through Ruru's generic origin enrollment route. Ruru shows it for exact-origin
+  approval, persists the policy and enables reporting. SwiftBot publishes only
+  after capability discovery confirms its allowed origin, while pending/declined
+  status explains the next step. Revoked routes clear before enrollment awaits;
+  opt-out withdraws pending requests and library reports. Older Ruru retains
+  manual setup compatibility. No tunnels/DNS, primary website copying, bot
+  credentials or lease requests are part of recording enrollment.
+- [x] Explicit sharing persistence now has its own checkpoint operation. Delayed
+  generic settings snapshots preserve the current persisted choice, preventing
+  both accidental re-enabling and loss of a new opt-in. Setup and architectural
+  guidance updated; media still flows owning SwiftBot → website SwiftBot → viewer
+  and never through Ruru.
+- [x] XcodeGen and the Debug Xcode build/test invocation passed 101 focused tests,
+  zero failures: 12 recording coordination, three recording reliability, pairing,
+  cluster settings, Keychain isolation, public media authentication, failover and
+  self-join checks. New coverage exercises pending/approval/rejection, old Ruru,
+  revoked routing, real Join import with synthetic isolated credentials, and
+  stale settings snapshots. Ruru passed its full 97-test suite and its native
+  approval UI was checked in an isolated preview. SwiftBot pairing UI visuals,
+  live John/Max connectivity, real Discord and mixed deployed builds were not
+  exercised. No real Keychain, deployment, signing or version changes.
+
+### 2026-10-07 — Combined recording libraries through Ruru
+
+- [x] Added local opt-in under native Recordings → Shared Library. A dedicated
+  client reports one library endpoint per Mac through Ruru's existing generic
+  catalogue and discovers service-scoped, allowed HTTPS origins. Reporting runs
+  every 25–35 seconds independently of lease renewal and Discord/failover tasks.
+  Monotonic freshness, complete revision-checked paging, bounded remembered
+  libraries, withdrawals and explicit revocation prevent retained metadata from
+  becoming playback authority. Rich peer lists remain on SwiftBot.
+- [x] Recordings combines local/remote libraries regardless of saved or runtime
+  bot role. Public and mesh routes admit only HMAC-authenticated, opted-in media
+  reads, including on Fail Over; exports/mutations do not inherit that permission.
+  Stable node IDs replace names/browser-supplied destinations. Peer responses
+  cannot choose authenticated URLs; recording sessions refuse redirects and HTTP
+  fallback. Existing member clip permissions also apply to media access tokens.
+- [x] Missing folders and stale remote lists retain clips marked unavailable.
+  Browser cards disable starting them and show status. Legacy local links,
+  settings and named game/source preferences remain compatible. Moving files,
+  replication, remote HLS/exports and direct browser-to-owner grants remain
+  future work. Playback is owning SwiftBot → website SwiftBot → viewer;
+  Ruru sees neither recording lists nor media bytes. Setup and limits are in
+  `RECORDING_COORDINATION.md`; architecture and agent context updated.
+- [x] XcodeGen and the Debug Xcode build/test invocation passed 101 focused
+  tests with zero failures: nine new coordination tests, recording reliability,
+  WebUI authentication/copy, mesh failover/preference/security, clip people and
+  storage isolation. A 201-clip fixture proves complete aggregation with shared
+  display names and playback while Max remains Standby; outage, revocation,
+  restart, paging conflict, tampered destinations and range preservation are
+  exercised. Real loopback redirects verify that bearer and mesh authentication
+  never follow another origin. Inline admin JavaScript parses and diff checks
+  pass. Existing unrelated repository warnings remain. Native/WebUI visuals,
+  live John/Max playback through their tunnels and a complete SwiftBot suite were
+  not checked. Nothing deployed; versions, credentials and DNS remain unchanged.
+
 ### 2026-10-07 — 2.0 code review (`d8b6334` plus working tree)
 
 - [x] Recorded six release-readiness findings in `Documentation/CODE_REVIEW_2_0.md`: Gateway blocking by delayed rules, live moderation precedence, viewer webhook disclosure, webhook secret persistence, unwired reaction/slash triggers, and incomplete scheduled-edit cancellation. Debug and unsigned Release builds and all 857 Xcode tests passed; findings remain open. Created `2.0-prep` at the user's request, preserving all uncommitted changes. Review only, with no implementation or version changes.

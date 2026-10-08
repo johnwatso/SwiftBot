@@ -39,6 +39,7 @@ struct RecordingsPage: View {
             )
         } content: {
             SettingsForm {
+                RecordingSharingSection()
                 LocalRecordingsPreferencesSection(folderStatuses: folderStatuses)
             }
         }
@@ -97,6 +98,88 @@ struct RecordingsPage: View {
         let snapshot = await app.localMediaLibrarySnapshot()
         guard !Task.isCancelled else { return }
         library = snapshot
+    }
+}
+
+/// The local choice is reviewed in SwiftBot, including after a WebUI handoff.
+struct RecordingPairingOptions: View {
+    @EnvironmentObject private var app: AppModel
+    @Binding var enabled: Bool
+    var ruruAvailable = true
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "play.rectangle").font(.title3).foregroundStyle(.secondary)
+                Toggle(isOn: $enabled) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Share this Mac’s recordings").font(.body.weight(.medium))
+                        Text("Include its library in the combined Recordings view.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+                .accessibilityLabel("Share this Mac’s recordings")
+                .accessibilityHint("Include its library in the combined Recordings view.")
+            }
+            if enabled {
+                Divider()
+                if !ruruAvailable {
+                    Text("Requires Ruru. Your sharing choice is saved on this Mac; connect Ruru in SwiftMesh when ready.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                } else if let origin = RecordingDirectoryClient.origin(app.localMeshPublicAddress) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("This Mac’s website").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Text(origin).font(.callout).textSelection(.enabled)
+                    }
+                    Text("Your Ruru operator approves this website once. Recordings stay available while this Mac is on Fail Over.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("After pairing, set up this Mac’s website in Web Interface and choose its recording folders. SwiftBot sends the website to your Ruru operator for approval.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(18).frame(maxWidth: .infinity, alignment: .leading).consoleSurface(cornerRadius: 16)
+    }
+}
+
+private struct RecordingSharingSection: View {
+    @EnvironmentObject private var app: AppModel
+    @State private var enabled = false
+    @State private var saving = false
+
+    var body: some View {
+        Section {
+            Toggle("Combine recording libraries through Ruru", isOn: $enabled)
+                .disabled(saving)
+            Text("Show recordings from every sharing Mac in one Web Interface. "
+                 + "This Mac can serve recordings while its bot is on Fail Over. "
+                 + "Ruru carries library locations; video stays on the SwiftBot servers.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            ConsoleSettingRow(title: "Coordination", symbol: "point.3.connected.trianglepath.dotted",
+                              subtitle: app.recordingCoordinationStatus)
+            HStack {
+                Text("Pair each Mac with the same Ruru service. This Mac sends its configured HTTPS website to Ruru for approval.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(saving ? "Saving…" : "Save") {
+                    saving = true
+                    Task {
+                        if !(await app.setRecordingSharingEnabled(enabled)) {
+                            enabled = app.mediaLibrarySettings.sharedLibraryEnabled
+                        }
+                        saving = false
+                    }
+                }
+                .disabled(saving || enabled == app.mediaLibrarySettings.sharedLibraryEnabled)
+            }
+        } header: {
+            Text("Shared Library")
+        }
+        .onAppear { enabled = app.mediaLibrarySettings.sharedLibraryEnabled }
     }
 }
 

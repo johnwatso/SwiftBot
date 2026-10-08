@@ -10,6 +10,7 @@ extension AppModel {
     /// Install recovery hooks before applying the configured placement. The
     /// coordinator, rather than saved preferences, owns the live output role.
     func configureMeshRecovery() async {
+        recordingWitnessConfiguration = .init()
         do {
             let enrollment = try await meshCredentialStore.loadOrCreateLocalEnrollment()
             if settings.clusterMode == .leader {
@@ -19,6 +20,7 @@ extension AppModel {
                 await self?.meshCredentialStore.authorizedPublicKey(nodeID: id)
             }, localNodeID: enrollment.nodeID, localToken: enrollment.token)
             let witness = await Self.loadWitnessSettingsOffMain()
+            recordingWitnessConfiguration = witness
             await meshWitnessClient.configure(witness, nodeID: enrollment.nodeID, nodeName: settings.clusterNodeName)
             meshLocalNodeID = enrollment.nodeID
             updateMeshWitnessMonitoring(witness)
@@ -74,6 +76,7 @@ extension AppModel {
             afterHours: settings.clusterAutoReclaimAfterHours,
             automaticHandbackEnabled: settings.clusterAutomaticHandbackEnabled
         )
+        await configureRecordingCoordination()
     }
 
     /// Polls Ruru's `/health` for the SwiftMesh map. Display only: ownership

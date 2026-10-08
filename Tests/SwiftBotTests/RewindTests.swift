@@ -388,6 +388,35 @@ final class RewindTests: XCTestCase {
         XCTAssertFalse(summary.topUsers.contains { $0.userID == "john" })
     }
 
+    /// Webhook posts archived as people before they were recognised as bots
+    /// are dropped once the webhook is seen, and highlights are rebuilt.
+    func testExcludeBotAuthorsRemovesLegacyWebhookPosts() async {
+        let store = makeStore()
+        let day = Date(timeIntervalSince1970: 1_767_225_600)
+
+        await store.record(message(id: "1", author: "john", text: "gg guys", at: day), retainContent: true)
+        await store.record(message(id: "2", author: "webhook-9", text: "new release shipped", at: day), retainContent: true)
+        await store.flush()
+
+        await store.excludeBotAuthors(["webhook-9"], guildID: "guild-1")
+
+        let known = await store.botAuthorIDs(guildID: "guild-1")
+        XCTAssertEqual(known, ["webhook-9"])
+        let summary = await store.yearSummary(guildID: "guild-1", year: 2026, filterStopWords: false)
+        XCTAssertEqual(summary.totalMessages, 1)
+        XCTAssertEqual(summary.topUsers.map(\.userID), ["john"])
+        XCTAssertFalse(summary.topWords.contains { $0.term == "release" })
+        XCTAssertTrue(summary.topWords.contains { $0.term == "guys" })
+
+        let report = await store.phraseReport(
+            guildID: "guild-1",
+            phrase: "release",
+            start: day.addingTimeInterval(-3_600),
+            end: day.addingTimeInterval(3_600)
+        )
+        XCTAssertEqual(report.totalOccurrences, 0)
+    }
+
     func testUserSummaryReportsRank() async {
         let store = makeStore()
         let day = Date(timeIntervalSince1970: 1_767_225_600)

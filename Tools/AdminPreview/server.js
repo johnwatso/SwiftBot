@@ -27,6 +27,19 @@ const { execFile, execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '../../Sources/SwiftBot/Resources/admin');
 const PORT = Number(process.env.PORT || 4179);
+// Isolated standby preview. A test-owned file can change the runtime role
+// without adding promotion controls to the production status page.
+const STANDBY = process.env.STANDBY === '1';
+const NODE_ROLE_FILE = process.env.NODE_ROLE_FILE;
+function previewNodeStatus() {
+  if (!STANDBY) return { ...fixtures.status, isFailoverManagedNode: !!fixtures.status.isFailoverManagedNode };
+  let role = 'standby';
+  if (NODE_ROLE_FILE) {
+    try { role = fs.readFileSync(NODE_ROLE_FILE, 'utf8').trim(); } catch {}
+  }
+  return { ...fixtures.status, clusterMode: 'Standby', runtimeState: role === 'paused' ? 'recovering' : 'idle',
+    isFailoverManagedNode: role !== 'primary', botStatus: role === 'offline' ? 'stopped' : 'running' };
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -338,7 +351,7 @@ async function handleAPI(req, res, pathname, query) {
       }
       case '/api/auth/options': return sendJSON(res, { ...fixtures.authOptions, botOnline: true });
       case '/api/overview': return sendJSON(res, fixtures.overview);
-      case '/api/status': return sendJSON(res, fixtures.status);
+      case '/api/status': return sendJSON(res, previewNodeStatus());
       case '/api/updates': return sendJSON(res, fixtures.updates);
       case '/api/bot/permissions': return sendJSON(res, { ...fixtures.botPermissions, checkedAt: new Date().toISOString() });
       case '/api/analytics': return sendJSON(res, { ...fixtures.analytics, period: analyticsPeriodFixture(query.get('period')) });
@@ -1037,7 +1050,17 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  const relative = pathname === '/' ? '/index.html' : pathname;
+  if (pathname === '/live') {
+    const status = previewNodeStatus();
+    return sendJSON(res, {
+      status: status.botStatus !== 'running' ? 'offline' : status.isFailoverManagedNode ? 'passive' : 'online',
+      discordConnected: status.botStatus === 'running', clusterMode: status.clusterMode,
+      runtimeState: status.runtimeState, botUsername: status.botUsername,
+      generatedAt: new Date().toISOString(), isFailoverManagedNode: status.isFailoverManagedNode
+    });
+  }
+  const browserIndex = pathname === '/' || pathname === '/index.html';
+  const relative = browserIndex ? (previewNodeStatus().isFailoverManagedNode ? '/standby.html' : '/index.html') : pathname;
   const filePath = path.join(ROOT, relative);
 
   // Keep the served tree inside the admin resources directory.

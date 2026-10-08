@@ -13,11 +13,13 @@ public struct MediaStreamDescriptor: Codable, Hashable, Sendable {
     public var itemID: String
     public var ownerNodeName: String
     public var ownerBaseURL: String?
+    public var ownerNodeID: String?
 
-    public init(itemID: String, ownerNodeName: String, ownerBaseURL: String? = nil) {
+    public init(itemID: String, ownerNodeName: String, ownerBaseURL: String? = nil, ownerNodeID: String? = nil) {
         self.itemID = itemID
         self.ownerNodeName = ownerNodeName
         self.ownerBaseURL = ownerBaseURL
+        self.ownerNodeID = ownerNodeID
     }
 }
 
@@ -28,6 +30,7 @@ public struct MediaLibrarySettings: Codable, Hashable, Sendable {
     public var exportSourceID: UUID?
     public var fastStartOptimizationEnabled: Bool
     public var fastStartOutputPath: String
+    public var sharedLibraryEnabled: Bool
 
     public init(
         sources: [MediaLibrarySource] = [],
@@ -35,7 +38,8 @@ public struct MediaLibrarySettings: Codable, Hashable, Sendable {
         exportIncludeInLibrary: Bool = true,
         exportSourceID: UUID? = nil,
         fastStartOptimizationEnabled: Bool = false,
-        fastStartOutputPath: String = ""
+        fastStartOutputPath: String = "",
+        sharedLibraryEnabled: Bool = false
     ) {
         self.sources = sources
         self.exportRootPath = exportRootPath
@@ -43,6 +47,7 @@ public struct MediaLibrarySettings: Codable, Hashable, Sendable {
         self.exportSourceID = exportSourceID
         self.fastStartOptimizationEnabled = fastStartOptimizationEnabled
         self.fastStartOutputPath = fastStartOutputPath
+        self.sharedLibraryEnabled = sharedLibraryEnabled
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -52,6 +57,7 @@ public struct MediaLibrarySettings: Codable, Hashable, Sendable {
         case exportSourceID
         case fastStartOptimizationEnabled
         case fastStartOutputPath
+        case sharedLibraryEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -62,6 +68,7 @@ public struct MediaLibrarySettings: Codable, Hashable, Sendable {
         self.exportSourceID = try container.decodeIfPresent(UUID.self, forKey: .exportSourceID)
         self.fastStartOptimizationEnabled = try container.decodeIfPresent(Bool.self, forKey: .fastStartOptimizationEnabled) ?? false
         self.fastStartOutputPath = try container.decodeIfPresent(String.self, forKey: .fastStartOutputPath) ?? ""
+        self.sharedLibraryEnabled = try container.decodeIfPresent(Bool.self, forKey: .sharedLibraryEnabled) ?? false
     }
 }
 
@@ -146,19 +153,35 @@ public struct MediaLibraryPayload: Codable, Hashable, Sendable {
     public var sources: [MediaLibrarySource]
     public var items: [MediaLibraryItem]
     public var generatedAt: Date
+    public var nodeID: String?
+    public var unavailableSourceIDs: [UUID]?
+    public var fresh: Bool?
 
     public init(
         nodeName: String,
         configFilePath: String,
         sources: [MediaLibrarySource],
         items: [MediaLibraryItem],
-        generatedAt: Date
+        generatedAt: Date,
+        nodeID: String? = nil,
+        unavailableSourceIDs: [UUID]? = nil,
+        fresh: Bool? = nil
     ) {
         self.nodeName = nodeName
         self.configFilePath = configFilePath
         self.sources = sources
         self.items = items
         self.generatedAt = generatedAt
+        self.nodeID = nodeID
+        self.unavailableSourceIDs = unavailableSourceIDs
+        self.fresh = fresh
+    }
+
+    /// Names are display hints; use the stable node ID for new shared libraries.
+    public var identity: String { nodeID ?? nodeName }
+
+    public func isAvailable(_ item: MediaLibraryItem) -> Bool {
+        fresh != false && !(unavailableSourceIDs ?? []).contains(item.sourceID)
     }
 }
 

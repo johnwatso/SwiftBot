@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Node status · SwiftBot</title>
+  <link rel="icon" href="/favicon.png">
+  <style>
+    :root { color-scheme: light dark; --background: #f5f5f7; --surface: #fff; --inset: #f5f5f7; --text: #1d1d1f; --muted: #6e6e73; --border: rgba(0,0,0,.08); --accent: #007aff; }
+    @media (prefers-color-scheme: dark) { :root { --background: #151517; --surface: #1c1c1e; --inset: #242426; --text: #f5f5f7; --muted: #a1a1aa; --border: rgba(255,255,255,.08); --accent: #0a84ff; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--background); color: var(--text); font: 15px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+    main { width: min(640px, 100%); margin: 10vh auto; padding: 24px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; font-weight: 600; }
+    header img { width: 40px; height: 40px; object-fit: contain; }
+    .panel { padding: 32px; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); }
+    .badge { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 20px; background: var(--inset); color: var(--muted); font-size: 12px; font-weight: 600; }
+    .badge::before { content: ''; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
+    h1 { font-size: 30px; line-height: 1.2; letter-spacing: -.5px; margin: 18px 0 10px; }
+    p { color: var(--muted); margin: 0; }
+    dl { margin: 28px 0; padding: 0 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--inset); }
+    dl div { padding: 16px 0; }
+    dl div + div { border-top: 1px solid var(--border); }
+    dt { font-weight: 600; font-size: 14px; }
+    dd { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    .footnote { font-size: 13px; }
+    #freshness { display: block; margin-top: 20px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 480px) { main { margin: 4vh auto; padding: 18px; } .panel { padding: 24px; } h1 { font-size: 27px; } }
+  </style>
+  <script src="/assets/node-role.js" defer></script>
+</head>
+<body data-node-page="standby">
+  <main>
+    <header><img src="/assets/SwiftBird3.png" alt=""><span id="botName">SwiftBot</span></header>
+    <section class="panel" aria-labelledby="statusTitle">
+      <span class="badge" id="roleBadge">Fail Over</span>
+      <h1 id="statusTitle">Standing by</h1>
+      <p id="statusDescription">This Mac is a backup for the Primary. Bot administration is handled on the Primary’s website.</p>
+      <dl>
+        <div><dt>Bot control</dt><dd id="controlDescription">Waiting to take over when needed.</dd></div>
+        <div id="discordRow"><dt>Discord connection</dt><dd id="discordDescription">Checking connection…</dd></div>
+        <div><dt>Recordings</dt><dd>When sharing is enabled, this Mac’s recordings remain available through the Primary’s Recordings view.</dd></div>
+      </dl>
+      <p class="footnote">The full dashboard appears here automatically when this Mac becomes Primary.</p>
+      <span id="freshness" role="status">Checking node status…</span>
+    </section>
+  </main>
+  <script>
+    document.addEventListener('swiftbot-node-status', ({ detail: status }) => {
+      document.getElementById('botName').textContent = status.botUsername || 'SwiftBot';
+      const worker = status.clusterMode === 'Worker';
+      const paused = status.clusterMode !== 'Standby' || ['promoting', 'demoting', 'isolated', 'recovering'].includes(status.runtimeState);
+      document.getElementById('roleBadge').textContent = worker ? 'Worker' : paused ? 'Control paused' : 'Fail Over';
+      document.getElementById('statusTitle').textContent = worker ? 'Worker node' : paused ? 'Bot control paused' : 'Standing by';
+      document.getElementById('statusDescription').textContent = worker
+        ? 'This Mac supports the Primary. Bot administration is handled on the Primary’s website.'
+        : paused ? 'This Mac does not currently have permission to control the bot. Use the active Primary’s website for administration.'
+        : 'This Mac is a backup for the Primary. Bot administration is handled on the Primary’s website.';
+      document.getElementById('controlDescription').textContent = worker ? 'Managed by the Primary.'
+        : paused ? 'Waiting for ownership to be confirmed.' : 'Waiting to take over when needed.';
+      document.getElementById('discordRow').hidden = worker;
+      document.getElementById('discordDescription').textContent = status.discordConnected
+        ? 'Connected. Bot output is paused on this Mac.' : 'Disconnected. Check SwiftBot on this Mac.';
+      document.getElementById('freshness').textContent = 'Status updated just now';
+      document.title = `${document.getElementById('statusTitle').textContent} · ${status.botUsername || 'SwiftBot'}`;
+    });
+    document.addEventListener('swiftbot-node-status-unavailable', () => {
+      document.getElementById('freshness').textContent = 'Status unavailable. Retrying automatically…';
+    });
+  </script>
+</body>
+</html>

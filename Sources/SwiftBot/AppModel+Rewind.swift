@@ -21,6 +21,9 @@ extension AppModel {
         // they do for Sweep, so they stay out of word counts and leaderboards.
         var isBot = event.isBot
         if case .string? = event.rawMap["webhook_id"] { isBot = true }
+        if isBot && !settings.includeBotMessages {
+            noteRewindBotAuthors([event.userID], guildID: guildID)
+        }
         guard settings.collects(userID: event.userID, isBot: isBot) else { return }
 
         // Attachment-, sticker- and poll-only posts are kept for their metadata;
@@ -50,6 +53,36 @@ extension AppModel {
         }
     }
 
+    /// Remembers bot and webhook authors for a guild and drops anything of
+    /// theirs the archive already holds. Webhook posts were archived as people
+    /// before 2026-10-03, so this is also how that older data gets cleaned up.
+    func noteRewindBotAuthors(_ ids: Set<String>, guildID: String) {
+        guard !ids.isEmpty, settings.rewind.isEnabled, !settings.rewind.includeBotMessages else { return }
+        let store = rewindStore
+        Task.detached(priority: .utility) {
+            await store.excludeBotAuthors(ids, guildID: guildID)
+        }
+    }
+
+    /// Bot accounts from the member cache plus SwiftBot itself, applied to
+    /// every connected guild. Called when the member cache refreshes.
+    func excludeKnownBotsFromRewind() {
+        let ids = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
+        for guildID in connectedServers.keys {
+            noteRewindBotAuthors(ids, guildID: guildID)
+        }
+    }
+
+    /// Everyone Replay leaves out of its rankings: bot accounts, SwiftBot and
+    /// any webhook seen posting. Bots sit in voice too (SwiftBot joins to
+    /// record), so this applies to voice whatever `includeBotMessages` says.
+    func rewindExcludedUserIDs(guildID: String) async -> Set<String> {
+        var ids = knownBotUserIds
+        if let botUserId { ids.insert(botUserId) }
+        ids.formUnion(await rewindStore.botAuthorIDs(guildID: guildID))
+        return ids
+    }
+
     /// Starts the archive's periodic flush and its retention sweep. Called from
     /// bot startup.
     func startRewindIfNeeded() {
@@ -61,6 +94,7 @@ extension AppModel {
             await store.setBackupExclusion(excludeFromBackups)
             await store.start()
         }
+        excludeKnownBotsFromRewind()
         startRewindActivityIfNeeded()
 
         guard rewindRetentionTask == nil else { return }
@@ -309,6 +343,7 @@ extension AppModel {
 
                     guard !page.messages.isEmpty else { break }
                     pulled += page.messages.count
+                    self.noteRewindBotAuthors(Set(page.messages.filter(\.isBot).map(\.authorID)), guildID: guildID)
 
                     let keep = page.messages.filter { message in
                         if message.isBot && !includeBots { return false }
