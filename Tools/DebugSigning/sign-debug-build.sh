@@ -31,7 +31,10 @@ fi
 REQUIREMENT="designated => identifier \"$BUNDLE_ID\" and certificate leaf = H\"$CERT_SHA1\""
 # --deep reaches the embedded frameworks and the debug dylib; the app itself
 # is then re-signed with the pinned requirement. Entitlements are kept from
-# Xcode's signature (get-task-allow, so the debugger can still attach).
-codesign --force --deep --preserve-metadata=entitlements,flags --sign "$IDENTITY" --timestamp=none "$APP"
-codesign --force --preserve-metadata=entitlements,flags --sign "$IDENTITY" --timestamp=none --requirements "=$REQUIREMENT" "$APP"
+# Xcode's signature (get-task-allow, so the debugger can still attach). Clear
+# hardened runtime flags explicitly: this local certificate has no Apple Team
+# ID, so library validation would reject RecordingsKit even after re-signing
+# both the app and framework. This also repairs older Debug build signatures.
+codesign --force --deep --preserve-metadata=entitlements --options=0 --sign "$IDENTITY" --timestamp=none "$APP"
+codesign --force --preserve-metadata=entitlements --options=0 --sign "$IDENTITY" --timestamp=none --requirements "=$REQUIREMENT" "$APP"
 echo "Signed $(basename "$APP") with '$IDENTITY'."

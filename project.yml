@@ -162,6 +162,12 @@ targets:
           - "@executable_path/../Frameworks"
         STRING_CATALOG_GENERATE_SYMBOLS: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+      configs:
+        Debug:
+          # Ad-hoc and self-signed local identities have no Apple Team ID, so
+          # hardened runtime library validation rejects our embedded frameworks.
+          # Release archives keep hardened runtime and Developer ID signing.
+          ENABLE_HARDENED_RUNTIME: NO
       debug:
         CODE_SIGNING_ALLOWED: NO
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG

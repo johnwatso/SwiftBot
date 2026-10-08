@@ -9,6 +9,26 @@
 
 ## Recent Engineering Log
 
+### 2026-10-08 — Local launch signing repair
+
+- [x] `_working-tree_`: Fixed the supplied DYLD launch failure: the installed
+  ad-hoc app enabled hardened runtime but had no Apple Team ID, so library
+  validation rejected its embedded RecordingsKit. Disabled hardened runtime
+  for Debug through XcodeGen's `settings.configs.Debug` and made the local
+  signing post-action explicitly clear signature flags while retaining
+  entitlements and its stable designated requirement. Release keeps hardened
+  runtime and the Debug script remains a no-op for Release.
+- [x] XcodeGen, Debug build and two hosted KeychainIsolation tests passed.
+  A native framework fixture reproduced the crash before signing repair,
+  launched afterward, and confirmed the Release no-op. The installed app was
+  backed up, stripped only of signing-blocking Finder/resource-fork metadata,
+  and repaired with the existing local development identity. Both installed
+  and rebuilt apps passed strict recursive signature verification and survived
+  isolated eight-second launch checks without loading live bot configuration.
+  Existing source/lint warnings remain. Verified built Info.plist version/build
+  and Sparkle URL/key; local and live feeds still match 1.27.3 / 2026100422.
+  No release preparation, version bump, publication or source commit.
+
 ### 2026-10-07 — Simple standby WebUI
 
 - [x] Managed nodes now serve a separate status homepage at `/` and
