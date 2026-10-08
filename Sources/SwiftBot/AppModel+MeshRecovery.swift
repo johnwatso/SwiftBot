@@ -102,6 +102,15 @@ extension AppModel {
                 // Automatic handback waits for Ruru to be ready (not in restart quarantine).
                 self?.meshPrimaryPreferenceTracker.setAuthorityReady(health == .ready)
                 await self?.publishMeshPrimaryPreference()
+                guard !Task.isCancelled else { return }
+                let role: MeshWitnessClient.ParticipantRole
+                switch self?.runtimeClusterMode {
+                case .leader: role = self?.meshOwnershipExpired == false ? .active : .unknown
+                case .standby: role = .standby
+                case .worker: role = .worker
+                default: role = .unknown
+                }
+                await client.reportPresence(role: role)
                 try? await Task.sleep(for: .seconds(15))
             }
         }

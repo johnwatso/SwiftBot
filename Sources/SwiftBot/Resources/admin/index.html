@@ -17866,13 +17866,13 @@
             + valueRow('Current Owner', w.currentOwner || 'None', 'The Mac running the bot right now.')
             + valueRow('Preferred Primary', preferredValue, preferredDesc);
         })())}
-        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Change' : 'Set up'} Ruru in SwiftBot on the Mac itself, under SwiftMesh → Recovery and Pairing. Its bearer token never passes through the web interface.</p>
+        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Manage' : 'Set up'} Ruru on the Primary in SwiftMesh → Recovery and Pairing. Its connection is included automatically when you pair a backup.</p>
         ${isLeader ? group('Work sharing', `
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
           ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
         `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
-        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Pair SwiftBot opens SwiftBot on the Mac you are browsing from, so it can join as a Fail Over. Confirm joining in the app to connect it to this Primary' + (mesh.witness ? ' and Ruru' : '') + '. Choose recording sharing while pairing; your Ruru operator approves this Mac’s website once. Pairing needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
+        ${isLeader ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="laptop"></i> Open this page on the backup Mac and click Pair SwiftBot. SwiftBot configures the backup and syncs bot settings and credentials automatically' + (mesh.witness ? ', including this service’s Ruru connection. No separate Ruru setup is needed' : '') + '. Recording sharing is optional; your Ruru operator approves its website separately. Pairing needs a Discord sign-in from the last 15 minutes over https.</p>' : ''}
         ${group('Configuration', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
             <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
@@ -17945,10 +17945,10 @@
             throw new Error('Invalid pairing response');
           }
           showModal('Pair SwiftBot', `
-            <p class="mesh-pair-intro">Add the Mac you’re browsing from as a Fail Over. Continue in SwiftBot to review and join.</p>
+            <p class="mesh-pair-intro">Set up the Mac you’re browsing from as a backup. SwiftBot configures it and syncs bot settings and credentials automatically.</p>
             <div class="mesh-pair-connections">
               <div class="mesh-pair-connection"><i data-lucide="monitor"></i><div><small>Primary</small><strong>${escapeHTML(mesh.nodeName || location.host)}</strong></div><span class="mesh-pair-included">This server</span></div>
-              ${mesh.witness ? `<div class="mesh-pair-connection"><i data-lucide="shield-check"></i><div><small>Ruru</small><strong>${escapeHTML(mesh.witness.host)}</strong></div><span class="mesh-pair-included">Included</span></div>` : ''}
+              ${mesh.witness ? `<div class="mesh-pair-connection"><i data-lucide="shield-check"></i><div><small>Ruru</small><strong>${escapeHTML(mesh.witness.host)}</strong></div><span class="mesh-pair-included">Automatic</span></div><p class="mesh-pair-note">Your Primary’s Ruru connection is included. No separate Ruru code, token or approval is needed to set up the backup.</p>` : ''}
             </div>
             <div class="mesh-pair-sharing">
               <div class="ub-row"><div class="ub-row-text"><label id="meshPairRecordingLabel" class="ub-row-title" for="meshPairRecordings">Share this Mac’s recordings</label><div class="ub-row-desc">Include its library in the combined Recordings view.</div></div>

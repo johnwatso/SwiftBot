@@ -1096,6 +1096,11 @@ struct ClusterSnapshot: Hashable {
     /// is `.idle`; non-idle values flag in-flight transitions and are
     /// surfaced in the dashboard sidebar and on `/live`.
     var runtimeState: ClusterRuntimeState = .idle
+    /// The local health-watch task is running; independent of Discord's gateway.
+    var isFailoverWatchActive: Bool = false
+    /// A returning Primary is retrying its lease while another owner or Ruru
+    /// recovery prevents activation. This is distinct from a stopped watch.
+    var isOwnershipRecoveryActive: Bool = false
     /// When set, a Handover Test is queued to begin at this timestamp. The
     /// Primary publishes this so the Failover can show a heads-up banner via
     /// the regular mesh-sync pull (works through NAT, unlike the inbound

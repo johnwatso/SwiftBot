@@ -9,6 +9,7 @@ struct HostSummaryCard: View {
     let status: HostStatus
     let details: HostDetails
     let meshRole: String
+    var uptimeTitle: String = "Uptime"
     var onReviewIssue: (ConsoleServiceKind) -> Void
 
     var body: some View {
@@ -69,7 +70,7 @@ struct HostSummaryCard: View {
             Divider()
             HostFact(title: "Node") { Text(details.computerName) }
             Divider()
-            HostFact(title: "Uptime") { UptimeText(startedAt: status.startedAt) }
+            HostFact(title: uptimeTitle) { UptimeText(startedAt: status.startedAt) }
         }
         .fixedSize()
     }

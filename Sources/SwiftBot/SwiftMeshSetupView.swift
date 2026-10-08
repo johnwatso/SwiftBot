@@ -15,11 +15,13 @@ struct SwiftMeshSetupView: View {
     @State private var shareRecordings = false
     @State private var pairingMessage: String?
     @State private var finishing = false
+    @State private var pendingJoinCode: String?
+    @State private var pairingProgress = ""
 
     private static let autoContinueSeconds = 10
 
     private enum MeshStep {
-        case setup, testing, confirmed, failed
+        case setup, review, testing, confirmed, failed
     }
 
     var body: some View {
@@ -30,6 +32,9 @@ struct SwiftMeshSetupView: View {
                     .transition(.opacity)
             case .testing:
                 testingView
+                    .transition(.opacity)
+            case .review:
+                reviewView
                     .transition(.opacity)
             case .confirmed:
                 confirmedView
@@ -72,7 +77,6 @@ struct SwiftMeshSetupView: View {
                         Text(errorMsg)
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                            .lineLimit(3)
                     }
                     Spacer()
                 }
@@ -90,6 +94,11 @@ struct SwiftMeshSetupView: View {
             }
             
             VStack(spacing: 12) {
+                if step == .failed, pendingJoinCode != nil {
+                    Button("Retry Setup", action: pairBackup)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                }
                 Button {
                     handlePasteAndConnect()
                 } label: {
@@ -140,12 +149,37 @@ struct SwiftMeshSetupView: View {
             ProgressView()
                 .controlSize(.large)
             
-            Text(app.workerConnectionTestStatus)
+            Text(pairingProgress)
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(minHeight: 200)
+    }
+
+    private var reviewView: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Set Up Backup").font(.title2.weight(.semibold))
+            Text("SwiftBot will configure this Mac and sync the bot’s settings and credentials automatically.")
+                .foregroundStyle(.secondary)
+            if let bundle {
+                LabeledContent("Primary", value: bundle.leaderAddresses.first ?? "Primary")
+                if let witness = bundle.witness {
+                    LabeledContent("Ruru", value: URL(string: witness.endpoint)?.host ?? witness.endpoint)
+                    Text("Ruru is included. No separate code or setup is needed.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            RecordingPairingOptions(enabled: $shareRecordings, ruruAvailable: bundle?.witness?.isValid == true)
+            HStack {
+                Button("Cancel") { pendingJoinCode = nil; step = .setup }
+                Spacer()
+                Button("Set Up Backup", action: pairBackup)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .frame(maxWidth: 520)
     }
 
     private var confirmedView: some View {
@@ -161,10 +195,10 @@ struct SwiftMeshSetupView: View {
             }
 
             VStack(spacing: 8) {
-                Text("SwiftMesh Paired!")
+                Text("Backup ready")
                     .font(.title3.weight(.bold))
 
-                Text(app.workerConnectionTestStatus)
+                Text(pairingMessage ?? "Bot settings and credentials are synced.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -172,9 +206,6 @@ struct SwiftMeshSetupView: View {
                     Label("Ownership witness: Ruru at \(URL(string: witness.endpoint)?.host ?? witness.endpoint)", systemImage: "checkmark.shield")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                }
-                if let pairingMessage {
-                    Text(pairingMessage).font(.callout).foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 16)
@@ -206,7 +237,7 @@ struct SwiftMeshSetupView: View {
         }
         .frame(minHeight: 200)
         .onAppear {
-            if !shareRecordings && bundle?.witness?.isValid != true { startAutoContinueCountdown() }
+            if !shareRecordings { startAutoContinueCountdown() }
         }
         .onDisappear { autoContinueTask?.cancel() }
     }
@@ -256,8 +287,9 @@ struct SwiftMeshSetupView: View {
                 finishing = false
                 return
             }
-            app.saveSettings()
-            app.completeOnboarding()
+            // Pairing already persisted auto-start and started the passive
+            // monitor. Do not start a second runtime from the Done button.
+            app.isOnboardingComplete = true
             if shareRecordings { app.requestedSidebarItem = .recordings }
             finishing = false
         }
@@ -302,8 +334,8 @@ struct SwiftMeshSetupView: View {
         if ScreenshotDemo.isRecordingOnboarding {
             bundle = ScreenshotDemo.recordingPairingBundle
             shareRecordings = SwiftMeshJoinBundle.recordingSharingChoice(from: rawCode) ?? false
-            app.workerConnectionTestStatus = "Connected to john.swiftbot.app."
-            step = .confirmed
+            pendingJoinCode = rawCode
+            step = .review
             return
         }
         #endif
@@ -314,29 +346,32 @@ struct SwiftMeshSetupView: View {
             self.bundle = decoded
             if let choice = SwiftMeshJoinBundle.recordingSharingChoice(from: rawCode) { shareRecordings = choice }
 
-            Task {
-            let result = await app.applySwiftMeshJoinCode(rawCode)
-            guard result.ok else {
-                errorMessage = result.message
-                step = .failed
-                return
-            }
-
-            step = .testing
-            pairingMessage = nil
-
-                let success = await app.testWorkerJoinCodeConnection(
-                    addresses: decoded.leaderAddresses,
-                    port: decoded.leaderPort
-                )
-
-                await MainActor.run {
-                    step = success ? .confirmed : .failed
-                }
-            }
+            pendingJoinCode = rawCode
+            step = .review
         } catch {
             errorMessage = error.localizedDescription
             step = .failed
+        }
+    }
+
+    private func pairBackup() {
+        guard let rawCode = pendingJoinCode else { return }
+        #if DEBUG
+        if ScreenshotDemo.isRecordingOnboarding {
+            pairingMessage = "Backup ready. Ruru is connected, and bot settings and credentials are synced."
+            step = .confirmed
+            return
+        }
+        #endif
+        step = .testing
+        pairingMessage = nil
+        Task {
+            let result = await app.pairSwiftMeshFailover(rawCode, shareRecordings: shareRecordings) {
+                pairingProgress = $0
+            }
+            pairingMessage = result.message
+            errorMessage = result.ok ? nil : result.message
+            step = result.ok ? .confirmed : .failed
         }
     }
 }

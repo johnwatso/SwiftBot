@@ -515,26 +515,8 @@ struct MeshPreferencesView: View {
         isApplyingJoinCode = true
         defer { isApplyingJoinCode = false }
 
-        do {
-            let decoded = try app.decodeSwiftMeshJoinCode(raw)
-            let applied = await app.applySwiftMeshJoinCode(raw)
-            guard applied.ok else {
-                joinCodeFeedback = JoinCodeFeedback(ok: false, message: applied.message)
-                return
-            }
-            let reachable = await app.testWorkerJoinCodeConnection(
-                addresses: decoded.leaderAddresses,
-                port: decoded.leaderPort
-            )
-            joinCodeFeedback = JoinCodeFeedback(
-                ok: reachable,
-                message: reachable
-                    ? "Join Code accepted and connection verified."
-                    : "Settings saved, but the Primary node didn't respond. Check that it's running and reachable."
-            )
-        } catch {
-            joinCodeFeedback = JoinCodeFeedback(ok: false, message: error.localizedDescription)
-        }
+        let result = await app.pairSwiftMeshFailover(raw)
+        joinCodeFeedback = JoinCodeFeedback(ok: result.ok, message: result.message)
     }
 
     private func latencyLabel(_ ms: Int) -> String {

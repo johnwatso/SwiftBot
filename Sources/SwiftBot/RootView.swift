@@ -288,6 +288,7 @@ struct SwiftMeshJoinConfirmationSheet: View {
     @State private var feedbackIsError = false
     @State private var shareRecordings = false
     @State private var pairingComplete = false
+    @State private var pairingProgress = ""
 
     private var primaryHost: String {
         let address = pending.bundle.leaderAddresses.first ?? "Primary"
@@ -299,7 +300,7 @@ struct SwiftMeshJoinConfirmationSheet: View {
             HStack(alignment: .center, spacing: 14) {
                 ConsoleIconTile(symbol: pairingComplete ? "checkmark" : "point.3.connected.trianglepath.dotted", size: 46)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(pairingComplete ? "This Mac is paired" : "Join SwiftMesh")
+                    Text(pairingComplete ? "Backup ready" : "Set Up Backup")
                         .font(.title2.weight(.semibold))
                     Text(pairingComplete ? "Ready as a Fail Over for \(primaryHost)." : "Add this Mac as a Fail Over.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -316,7 +317,7 @@ struct SwiftMeshJoinConfirmationSheet: View {
             .padding(18).consoleSurface(cornerRadius: 16)
 
             if pairingComplete && !feedbackIsError {
-                Label("Connection verified", systemImage: "checkmark.circle.fill")
+                Label(pending.bundle.witness == nil ? "Bot settings and credentials synced" : "Ruru connected · Bot settings and credentials synced", systemImage: "checkmark.circle.fill")
                     .font(.callout.weight(.medium)).foregroundStyle(.green)
                 if shareRecordings {
                     VStack(alignment: .leading, spacing: 6) {
@@ -340,21 +341,21 @@ struct SwiftMeshJoinConfirmationSheet: View {
             }
 
             if !pairingComplete {
-                Text("Connection details are included automatically. Joining replaces this Mac’s existing SwiftMesh settings.")
+                Text("SwiftBot configures the backup and syncs bot settings and credentials automatically\(pending.bundle.witness == nil ? "." : ", including Ruru.") This replaces this Mac’s existing SwiftMesh settings.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 12) {
                 if isApplying {
                     ProgressView().controlSize(.small)
-                    Text("Connecting to Primary…").font(.callout).foregroundStyle(.secondary)
+                    Text(pairingProgress).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if !pairingComplete {
                     Button("Cancel", role: .cancel, action: finish)
                         .keyboardShortcut(.cancelAction).disabled(isApplying)
                 }
-                Button(isApplying ? "Joining…" : pairingComplete ? (shareRecordings ? "Open Recordings" : "Done") : "Join Cluster") {
+                Button(isApplying ? "Setting Up…" : pairingComplete ? (shareRecordings ? "Open Recordings" : "Done") : "Set Up Backup") {
                     if pairingComplete { finish() } else { apply() }
                 }
                 .buttonStyle(.borderedProminent).controlSize(.large)
@@ -362,6 +363,7 @@ struct SwiftMeshJoinConfirmationSheet: View {
             }
         }
         .padding(28).frame(width: 540)
+        .interactiveDismissDisabled(isApplying)
         .onAppear {
             shareRecordings = SwiftMeshJoinBundle.recordingSharingChoice(from: pending.rawCode)
                 ?? app.mediaLibrarySettings.sharedLibraryEnabled
@@ -413,21 +415,13 @@ struct SwiftMeshJoinConfirmationSheet: View {
         isApplying = true
         feedback = nil
         Task {
-            let result = await app.applySwiftMeshJoinCode(pending.rawCode, shareRecordings: shareRecordings)
-            guard result.ok else {
-                feedback = result.message
-                feedbackIsError = true
-                isApplying = false
-                return
+            let result = await app.pairSwiftMeshFailover(pending.rawCode, shareRecordings: shareRecordings) {
+                pairingProgress = $0
             }
-            let ok = await app.testWorkerJoinCodeConnection(
-                addresses: pending.bundle.leaderAddresses,
-                port: pending.bundle.leaderPort
-            )
             isApplying = false
-            pairingComplete = ok
-            feedbackIsError = !ok || app.mediaLibrarySettings.sharedLibraryEnabled != shareRecordings
-            feedback = ok ? result.message : "Pairing details saved, but the Primary could not be reached. Try again or review SwiftMesh settings."
+            pairingComplete = result.ok
+            feedbackIsError = !result.ok || app.mediaLibrarySettings.sharedLibraryEnabled != shareRecordings
+            feedback = result.message
         }
     }
 }

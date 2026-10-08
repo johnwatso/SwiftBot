@@ -16,6 +16,125 @@ import XCTest
 ///      output (via the demotion handler) before it can send anything stale.
 final class MeshFailoverIntegrationTests: XCTestCase {
 
+    func testRecoveryActivationSurvivesSettingsRestartingItsPollingTask() async {
+        actor State {
+            var acquisitions = 0
+            var activated = false
+            func acquire(_ term: Int) -> Int? {
+                acquisitions += 1
+                return acquisitions == 1 ? nil : term + 1
+            }
+            func recordActivation(_ value: Bool) { activated = value }
+        }
+        let state = State()
+        let node = ClusterCoordinator()
+        let activation = expectation(description: "Discord activation callback finishes")
+        await node.configureHandlers(
+            aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil },
+            onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil },
+            conversationFetcher: { _, _ in ([], false) },
+            onPromotion: {
+                // Simulate token validation while the term save restarts polls.
+                try? await Task.sleep(for: .milliseconds(100))
+                await state.recordActivation(!Task.isCancelled)
+                activation.fulfill()
+            }
+        )
+        await node.setOwnershipHandlers(acquire: { await state.acquire($0) }, renew: { _ in .renewed }, release: { _ in })
+        await node.setAutoReclaimPolicy(isConfiguredPrimary: true, afterHours: 0)
+        await node.setTermChangedHandler { _ in
+            Task {
+                await node.applySettings(mode: .leader, nodeName: "Activation", leaderAddress: "", listenPort: 0, sharedSecret: "mesh")
+            }
+        }
+        await node.applySettings(mode: .leader, nodeName: "Activation", leaderAddress: "", listenPort: 0, sharedSecret: "mesh")
+        await fulfillment(of: [activation], timeout: 3)
+        let activated = await state.activated
+        XCTAssertTrue(activated, "Restarting recovery must not cancel the granted owner's Discord startup")
+        let owns = await node.hasActiveOwnership()
+        XCTAssertTrue(owns)
+        await node.stopAll()
+    }
+
+    func testReinstallingSameWitnessPreservesGrantedOwnership() async {
+        actor Calls {
+            var count = 0
+            func acquire(_ term: Int) -> Int { count += 1; return term + 1 }
+        }
+        let calls = Calls()
+        let node = ClusterCoordinator()
+        await node.applySettings(mode: .leader, nodeName: "StableOwner", leaderAddress: "", listenPort: 0, sharedSecret: "mesh")
+        for _ in 0..<2 {
+            await node.setOwnershipHandlers(acquire: { await calls.acquire($0) }, renew: { _ in .renewed }, release: { _ in }, witnessFingerprint: "same-authority")
+        }
+        let count = await calls.count
+        let owns = await node.hasActiveOwnership()
+        XCTAssertEqual(count, 1, "A settings refresh must not temporarily withdraw a valid lease")
+        XCTAssertTrue(owns)
+        await node.stopAll()
+    }
+
+    func testExplicitStopCancelsActivationAndClearsTransition() async {
+        actor State {
+            var cancelled = false
+            func record(_ value: Bool) { cancelled = value }
+        }
+        let state = State()
+        let node = ClusterCoordinator()
+        let activating = expectation(description: "Activation has begun")
+        await node.configureHandlers(
+            aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil },
+            onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil },
+            conversationFetcher: { _, _ in ([], false) },
+            onPromotion: {
+                activating.fulfill()
+                try? await Task.sleep(for: .seconds(5))
+                await state.record(Task.isCancelled)
+            }
+        )
+        await node.applySettings(mode: .standby, nodeName: "StopActivation", leaderAddress: "", listenPort: 0, sharedSecret: "mesh")
+        let promotion = Task { await node.promoteToLeader() }
+        await fulfillment(of: [activating], timeout: 3)
+        await node.setDesiredBotRunning(false)
+        await node.stopAll()
+        await promotion.value
+        let cancelled = await state.cancelled
+        let snapshot = await node.currentSnapshot()
+        let owns = await node.hasActiveOwnership()
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(snapshot.runtimeState, .idle)
+        XCTAssertFalse(owns)
+    }
+
+    func testReturningPrimaryReportsRecoveryUntilStopped() async {
+        let node = ClusterCoordinator()
+        await node.setOwnershipHandlers(acquire: { _ in nil }, renew: { _ in .lost }, release: { _ in })
+        await node.setAutoReclaimPolicy(isConfiguredPrimary: true, afterHours: 0)
+        await node.applySettings(mode: .leader, nodeName: "Returning", leaderAddress: "", listenPort: 0, sharedSecret: "mesh", leaderTerm: 9)
+        let waiting = await node.currentSnapshot()
+        XCTAssertEqual(waiting.mode, .standby)
+        XCTAssertTrue(waiting.isOwnershipRecoveryActive)
+        XCTAssertFalse(waiting.isFailoverWatchActive)
+        XCTAssertEqual(waiting.leaderTerm, 9)
+        await node.setDesiredBotRunning(false)
+        await node.stopAll()
+        let stopped = await node.currentSnapshot()
+        XCTAssertFalse(stopped.isOwnershipRecoveryActive)
+    }
+
+    func testRestoredTermAppearsInSnapshotWhenSettingsHaveTheSameTerm() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("recovery.json")
+        try Data(#"{"term":9,"leaderAddress":"","knownPeers":{}}"#.utf8).write(to: url)
+        let node = ClusterCoordinator(recoveryURL: url)
+        await node.applySettings(mode: .standby, nodeName: "Restored", leaderAddress: "", listenPort: 0, sharedSecret: "mesh", leaderTerm: 9)
+        let snapshot = await node.currentSnapshot()
+        XCTAssertEqual(snapshot.leaderTerm, 9)
+        await node.stopAll()
+    }
+
     // MARK: - Test 1: Registration-triggered immediate resync
 
     /// A Standby that successfully registers with a Primary must trigger the

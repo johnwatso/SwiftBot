@@ -1048,7 +1048,9 @@ extension AppModel {
             let bundle = try decodeSwiftMeshJoinCode(rawCode)
             // Opening Pair SwiftBot in a browser on the Primary itself would
             // otherwise turn the Primary into a Fail Over of itself.
-            if settings.clusterMode == .leader, !bundle.sharedSecret.isEmpty,
+            let runtimeMode = await cluster.currentSnapshot().mode
+            let isPrimary = settings.clusterMode == .leader || runtimeMode == .leader
+            if isPrimary, !bundle.sharedSecret.isEmpty,
                bundle.sharedSecret == settings.clusterSharedSecret {
                 return (false, "This Mac is the Primary that made this Join Code. Open Pair SwiftBot on the Mac you want to add.")
             }
@@ -1056,8 +1058,24 @@ extension AppModel {
                   let enrollment = bundle.credentialEnrollment else {
                 return (false, "Generate a new Join Code on the Primary to approve this failover for credentials.")
             }
+            guard !bundle.leaderAddresses.isEmpty, bundle.leaderAddresses.allSatisfy({
+                normalizedSwiftMeshBaseURL(from: $0, defaultPort: bundle.leaderPort) != nil
+            }) else {
+                return (false, "The pairing link has no valid Primary address. Generate a new link on the Primary.")
+            }
+            if let witness = bundle.witness, !witness.isValid {
+                return (false, "The Primary’s Ruru settings are incomplete. Connect Ruru on the Primary and generate a new pairing link.")
+            }
+            guard MeshPrimaryPolicy.isValidNodeID(enrollment.nodeID),
+                  let signingKey = Data(base64Encoded: enrollment.token), signingKey.count == 32 else {
+                return (false, "The pairing link has no valid credential approval. Generate a new link on the Primary.")
+            }
+            // Close the previous Gateway and release its ownership before
+            // installing another service's identity or lease authority.
+            await service.setOutputAllowed(false)
+            await stopBot()
             try await meshCredentialStore.saveLocalEnrollment(enrollment)
-            if let witness = bundle.witness, !MeshWitnessSettingsStore.save(witness) {
+            if !MeshWitnessSettingsStore.save(bundle.witness ?? .init()) {
                 return (false, "Could not save the ownership witness configuration.")
             }
 
@@ -1072,9 +1090,10 @@ extension AppModel {
             }
 
             settings.clusterLeaderPort = bundle.leaderPort
-            settings.clusterListenPort = bundle.leaderPort // Keep them aligned by default
+            // The remote port belongs to the Primary. Keep this Mac's listener
+            // address independent, just like its WebUI and tunnel settings.
             settings.clusterSharedSecret = bundle.sharedSecret
-            settings.clusterLeaderTerm = max(0, bundle.leaderTerm)
+            settings.clusterLeaderTerm = max(settings.clusterLeaderTerm, bundle.leaderTerm, await cluster.currentLeaderTerm())
             settings.clusterMode = .standby
             settings.launchMode = .swiftMeshClusterNode
 
@@ -1101,9 +1120,19 @@ extension AppModel {
             } else {
                 await configureRecordingCoordination()
             }
-            // Capture the chosen local preference in the ordinary save as well;
-            // an earlier snapshot must not overwrite the sharing checkpoint.
-            saveSettings()
+            // Pairing must not use the ordinary throttled, asynchronous save:
+            // the first sync reloads these files and must see the new identity.
+            try await store.save(settings)
+            try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+            await configureMeshRecovery()
+            await cluster.applySettings(
+                mode: .standby, nodeName: settings.clusterNodeName,
+                leaderAddress: settings.clusterLeaderAddress, leaderPort: settings.clusterLeaderPort,
+                listenPort: settings.clusterListenPort, sharedSecret: settings.clusterSharedSecret,
+                leaderTerm: settings.clusterLeaderTerm
+            )
+            clusterSnapshot = await cluster.currentSnapshot()
+            lastPublishedRole = clusterSnapshot.mode
             return (true, message)
         } catch {
             return (false, error.localizedDescription)
@@ -1111,7 +1140,7 @@ extension AppModel {
     }
 
     /// Asynchronously tests each address in the Join Code (tries local LAN IPs first, then falls back to public WAN IP) and binds to the winner.
-    func testWorkerJoinCodeConnection(addresses: [String], port: Int) async -> Bool {
+    func connectToSwiftMeshPrimary(addresses: [String], port: Int) async -> Bool {
         await MainActor.run {
             self.workerConnectionTestInProgress = true
             self.workerConnectionTestIsSuccess = false
@@ -1140,14 +1169,20 @@ extension AppModel {
             }
         }
 
-        let success = workingAddress != nil
+        var success = workingAddress != nil
+        if let winner = workingAddress {
+            settings.clusterLeaderAddress = winner
+            do {
+                try await store.save(settings)
+                try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+            } catch {
+                success = false
+                finalOutcome = WorkerConnectionTestOutcome(message: "Could not save the Primary connection. Try pairing again.", isSuccess: false)
+            }
+        }
         let statusMessage = finalOutcome?.message ?? "Connection failed."
 
         await MainActor.run {
-            if let winner = workingAddress {
-                self.settings.clusterLeaderAddress = winner
-                self.saveSettings()
-            }
             self.workerConnectionTestInProgress = false
             self.workerConnectionTestIsSuccess = success
             self.workerConnectionTestStatus = success ? "Success! Bound to \(workingAddress ?? "")" : statusMessage
@@ -1159,11 +1194,72 @@ extension AppModel {
         return success
     }
 
+    /// One WebUI handoff completes both mesh and Ruru setup. Keep automatic
+    /// takeover disabled until credentials and the first shared snapshot pass
+    /// the same readiness checks used for a real promotion.
+    func pairSwiftMeshFailover(
+        _ rawCode: String,
+        shareRecordings: Bool? = nil,
+        progress: (String) -> Void = { _ in }
+    ) async -> (ok: Bool, message: String) {
+        guard !meshPairingInProgress else { return (false, "Backup setup is already in progress.") }
+        meshPairingInProgress = true
+        defer { meshPairingInProgress = false }
+        do {
+            let bundle = try decodeSwiftMeshJoinCode(rawCode)
+            progress("Configuring this Mac as a backup…")
+            let applied = await applySwiftMeshJoinCode(rawCode, shareRecordings: shareRecordings)
+            guard applied.ok else { return applied }
+
+            progress("Connecting to Primary…")
+            guard await connectToSwiftMeshPrimary(addresses: bundle.leaderAddresses, port: bundle.leaderPort) else {
+                return (false, "The Primary could not be reached. Check its connection and try again; the pairing details are saved.")
+            }
+            if bundle.witness != nil {
+                progress("Connecting to Ruru…")
+                guard await meshWitnessClient.verifyServiceConnection() else {
+                    return (false, """
+                        Ruru could not verify this service. Check that Ruru is online and try again.
+                        If it is already online, generate a fresh pairing link on the Primary. No separate Ruru pairing is needed.
+                        """)
+                }
+            }
+
+            progress("Syncing bot settings and credentials…")
+            await applyClusterSettingsRuntime(
+                mode: .standby, nodeName: settings.clusterNodeName,
+                leaderAddress: settings.clusterLeaderAddress, leaderPort: settings.clusterLeaderPort,
+                listenPort: settings.clusterListenPort, sharedSecret: settings.clusterSharedSecret
+            )
+            if let problem = await cluster.pairingPrimaryProblem() { return (false, problem) }
+            guard await pullMeshConfiguration(), await syncMeshCredentials() else {
+                return (false, "The initial bot sync did not finish. Keep the Primary running and try again. You do not need to enter a Discord token or Ruru settings.")
+            }
+            progress("Checking backup readiness…")
+            if let problem = await meshPromotionReadiness() {
+                return (false, "Backup setup is incomplete: \(problem). Try pairing again.")
+            }
+            await pullWikiCacheFromLeader()
+            await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
+            settings.autoStart = true
+            try await store.save(settings)
+            try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+            await cluster.setDesiredBotRunning(true)
+            clusterSnapshot = await cluster.currentSnapshot()
+            lastPublishedRole = clusterSnapshot.mode
+            configureMeshSync()
+            startMediaMonitor()
+            return (true, bundle.witness == nil ? "Backup ready. Bot settings and credentials are synced." : "Backup ready. Ruru is connected, and bot settings and credentials are synced.")
+        } catch {
+            return (false, "Could not finish backup setup: \(error.localizedDescription)")
+        }
+    }
+
     /// Decodes an incoming `swiftmesh://join?b=...` deep link and routes it to
     /// the right surface:
     ///
     /// - Mid-onboarding: stash the raw code so `OnboardingRootView` can switch
-    ///   to the SwiftMesh setup step and auto-apply it — no extra window.
+    ///   to the backup setup review — no extra window.
     /// - Post-onboarding: stash a pending request so `RootView` shows a
     ///   confirmation sheet before applying. Never auto-apply post-onboarding;
     ///   a malicious link could otherwise silently repoint this node.

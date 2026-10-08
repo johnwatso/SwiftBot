@@ -294,6 +294,7 @@ final class AppModel: ObservableObject {
     let cluster: ClusterCoordinator
     let meshCredentialStore = MeshCredentialEnrollmentStore()
     let meshWitnessClient = MeshWitnessClient()
+    var meshPairingInProgress = false
     let recordingDirectory: RecordingDirectoryClient
     var recordingWitnessConfiguration = MeshWitnessConfiguration()
     var recordingCoordinationTask: Task<Void, Never>?
@@ -1002,6 +1003,9 @@ final class AppModel: ObservableObject {
     }
 
     func saveSettings() {
+        // Pairing owns ordered persistence and its onboarding result. A term
+        // update must not launch a competing save/runtime reload mid-setup.
+        guard !meshPairingInProgress else { return }
         let now = Date()
         let throttleInterval: TimeInterval = 3
         if now.timeIntervalSince(lastSettingsSaveAt) < throttleInterval {

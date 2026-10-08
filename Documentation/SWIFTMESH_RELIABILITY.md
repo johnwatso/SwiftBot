@@ -4,6 +4,17 @@ SwiftMesh keeps one active Discord bot, a preferred Primary Mac, and a paired Fa
 
 ## Pairing and addresses
 
+For an automatically configured backup, connect the Primary to Ruru first. On
+the backup Mac, open the Primary's WebUI and choose **SwiftMesh → Pair SwiftBot**,
+then **Continue in SwiftBot → Set Up Backup**. This installs the same Ruru service,
+credential enrollment and Primary connection and verifies the first bot sync
+before reporting **Backup ready**. No separate Ruru pairing or Discord token entry
+is needed. The backup remains passive throughout setup. See
+[the pairing workflow](RURU_PAIRING_CODE.md#adding-a-backup-from-the-primarys-webui).
+
+The addresses below concern each Mac's own WebUI and remote handover/access;
+they are not additional forms in the backup pairing flow.
+
 1. Configure the preferred Primary normally. Enable its WebUI and public address, for example `https://swiftbot.example.com`.
 2. Configure the backup Mac's WebUI with its own address, for example `https://swiftbot2.example.com`, and a separate Cloudflare tunnel. A backup tunnel carries only that Mac's local services.
 3. Generate a fresh SwiftMesh Join Code on the Primary, then paste it on the Failover. New codes include a unique credential enrollment in addition to the shared mesh transport key. Old codes must be regenerated to enable credential sync.

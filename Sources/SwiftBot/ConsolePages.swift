@@ -164,34 +164,56 @@ struct DiscordPage: View {
 struct ConsolePageHeader<Accessory: View>: View {
     let title: String
     let subtitle: String
+    var accessoriesBesideTitle = false
     @ViewBuilder var accessory: Accessory
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
-                heading
-                Spacer(minLength: 24)
-                accessory
-                    .fixedSize(horizontal: true, vertical: false)
+        if accessoriesBesideTitle {
+            VStack(alignment: .leading, spacing: 6) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        titleLabel
+                        Spacer(minLength: 24)
+                        accessory.fixedSize(horizontal: true, vertical: false)
+                    }
+                    VStack(alignment: .leading, spacing: 16) {
+                        titleLabel
+                        accessory
+                    }
+                }
+                subtitleLabel
             }
-            VStack(alignment: .leading, spacing: 16) {
-                heading
-                accessory
+            .controlSize(.large)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    heading
+                    Spacer(minLength: 24)
+                    accessory
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                VStack(alignment: .leading, spacing: 16) {
+                    heading
+                    accessory
+                }
             }
+            .controlSize(.large)
         }
-        .controlSize(.large)
     }
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.largeTitle.weight(.bold))
-                .accessibilityAddTraits(.isHeader)
-            Text(subtitle)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            titleLabel
+            subtitleLabel
         }
+    }
+
+    private var titleLabel: some View {
+        Text(title).font(.largeTitle.weight(.bold)).accessibilityAddTraits(.isHeader)
+    }
+
+    private var subtitleLabel: some View {
+        Text(subtitle).font(.title3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 }
 

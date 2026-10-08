@@ -187,6 +187,13 @@ actor ClusterCoordinator {
     // SwiftMesh failover state
     var leaderTerm: Int = 0
     private var standbyMonitorTask: Task<Void, Never>?
+    /// Activation must outlive the polling task that requested it. Settings
+    /// refreshes restart those polls, including while Discord is connecting.
+    private var promotionTask: Task<Void, Never>?
+    private var promotionGeneration = 0
+    /// Keep the last activation refusal visible when registration/listener
+    /// updates arrive concurrently with a takeover attempt.
+    private var promotionBlockReason: String?
     var standbyHealthMisses: Int = 0
     /// Standby health probe interval. 15s balances fast failover detection with
     /// avoiding request storms on the primary.
@@ -362,6 +369,7 @@ actor ClusterCoordinator {
 
     func setDesiredBotRunning(_ running: Bool) {
         desiredBotRunning = running
+        if !running { promotionTask?.cancel() }
         if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
     }
 
@@ -383,6 +391,8 @@ actor ClusterCoordinator {
         release: (@Sendable (Int) async -> Void)?,
         witnessFingerprint: String? = nil
     ) async {
+        let keepsOwnership = ownershipGranted && ownershipAcquire != nil && acquire != nil
+            && localWitnessFingerprint == witnessFingerprint
         ownershipAcquire = acquire
         ownershipRenew = renew
         ownershipRelease = release
@@ -394,6 +404,10 @@ actor ClusterCoordinator {
             ownershipRecoveryTask = nil
             ownershipGranted = mode == .leader
         } else if mode == .leader {
+            if keepsOwnership {
+                if ownershipTask == nil { startOwnershipRenewal() }
+                return
+            }
             ownershipGranted = false
             if await acquireOwnership(minimumTerm: leaderTerm) {
                 startOwnershipRenewal()
@@ -1599,6 +1613,7 @@ actor ClusterCoordinator {
         }
         
         if placementChanged && handoverTestTask == nil {
+            promotionBlockReason = nil
             configuredMode = mode
             configuredLeaderAddress = normalizedConfiguredAddress
             self.mode = await startupReconciledMode(requestedMode: mode)
@@ -1696,6 +1711,9 @@ actor ClusterCoordinator {
 
     func stopAll() async {
         meshLogger.notice("Stopping all cluster services")
+        desiredBotRunning = false
+        promotionTask?.cancel()
+        promotionBlockReason = nil
         ownershipTask?.cancel()
         ownershipTask = nil
         ownershipRecoveryTask?.cancel()
@@ -1728,6 +1746,7 @@ actor ClusterCoordinator {
         registeredWorkers.removeAll()
         standbyHealthMisses = 0
         snapshot.serverState = .stopped
+        snapshot.runtimeState = .idle
         snapshot.serverStatusText = "Stopped"
         snapshot.workerState = .inactive
         snapshot.workerStatusText = "Stopped"
@@ -1737,7 +1756,11 @@ actor ClusterCoordinator {
     }
 
     func currentSnapshot() -> ClusterSnapshot {
-        snapshot
+        snapshot.leaderTerm = leaderTerm
+        if mode == .standby, let reason = promotionBlockReason { snapshot.diagnostics = reason }
+        snapshot.isFailoverWatchActive = mode == .standby && standbyMonitorTask != nil
+        snapshot.isOwnershipRecoveryActive = mode == .standby && ownershipRecoveryTask != nil
+        return snapshot
     }
 
     func currentLeaderTerm() -> Int {
@@ -2929,6 +2952,21 @@ actor ClusterCoordinator {
         }
     }
 
+    /// A saved invitation may predate an ownership-authority change. Read the
+    /// actual Primary's authenticated health before advertising backup readiness.
+    func pairingPrimaryProblem() async -> String? {
+        guard mode == .standby,
+              let base = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
+              let health = await fetchMeshNodeHealth(base), health.mode == ClusterMode.leader.rawValue else {
+            return "The Primary is no longer available. Keep it running and try again."
+        }
+        observeLeaderHealth(health)
+        if let reason = witnessMismatchReason() {
+            return "Generate a new pairing link on the Primary: \(reason)."
+        }
+        return nil
+    }
+
     /// Called immediately before `promoteToLeader()`. Performs:
     /// 1. A final, generous-timeout health probe (retried twice) to filter long
     ///    network blips that beat the per-cycle confirm-retry above. If the
@@ -2976,28 +3014,50 @@ actor ClusterCoordinator {
         return true
     }
     func promoteToLeader(grantedTerm: Int? = nil) async {
+        if let task = promotionTask {
+            await task.value
+            return
+        }
+        promotionGeneration += 1
+        let generation = promotionGeneration
+        let task = Task { await self.performPromotion(grantedTerm: grantedTerm) }
+        promotionTask = task
+        await task.value
+        if promotionGeneration == generation { promotionTask = nil }
+    }
+
+    private func performPromotion(grantedTerm: Int?) async {
         guard mode == .standby, !promotionInProgress, !handbackInProgress, desiredBotRunning, leaderTerm < Int.max else { return }
         promotionInProgress = true
         defer { promotionInProgress = false }
         if let failure = await promotionReadinessHandler?() {
             snapshot.diagnostics = "Takeover blocked: \(failure)"
+            promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return
         }
-        guard mode == .standby, pendingHandback == nil else { return }
+        guard !Task.isCancelled, desiredBotRunning, mode == .standby, pendingHandback == nil else { return }
         // A committed handback (`grantedTerm`) was checked before commit, and
         // its owner has already closed: refusing now would leave no owner.
         if grantedTerm == nil, let reason = witnessMismatchReason() {
             snapshot.diagnostics = "Takeover blocked: \(reason)"
+            promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return
         }
         let nextTerm = max(leaderTerm + 1, grantedTerm ?? 0)
         guard await acquireOwnership(minimumTerm: nextTerm), mode == .standby else {
             snapshot.diagnostics = "Takeover blocked: exclusive ownership unavailable"
+            promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return
         }
+        guard !Task.isCancelled, desiredBotRunning else {
+            ownershipGranted = false
+            await ownershipRelease?(leaderTerm)
+            return
+        }
+        promotionBlockReason = nil
 
         // Capture the leader address we're about to replace so a temp-Primary
         // (handover test) knows where to send the "end" signal when its
@@ -3017,12 +3077,14 @@ actor ClusterCoordinator {
         meshLogger.critical("Node promoted to Primary — term \(self.leaderTerm, privacy: .public), node \(self.nodeName, privacy: .public)")
         snapshot.workerState = .connected
         snapshot.workerStatusText = "Primary (Promoted)"
+        startOwnershipRenewal()
         // Persist the new term immediately so a restart cannot emit a stale term.
         await jobLedger.observeLeadership(term: leaderTerm)
         await outboundJobs.observeLeadership(term: leaderTerm)
         restartOutboundPolling()
         await onTermChanged?(leaderTerm)
         // Notify AppModel to start bot services
+        guard !Task.isCancelled, desiredBotRunning, mode == .leader, ownershipGranted else { return }
         await onPromotion?()
         guard mode == .leader, ownershipGranted else { return }
         startOwnershipRenewal()
@@ -4195,7 +4257,7 @@ actor ClusterCoordinator {
     }
 
     func publishSnapshot() async {
-        await onSnapshot?(snapshot)
+        await onSnapshot?(currentSnapshot())
     }
 
     private func recordJobLog(

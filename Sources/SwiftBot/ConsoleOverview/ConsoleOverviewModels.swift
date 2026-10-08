@@ -81,11 +81,11 @@ struct ConsoleServiceStatus: Identifiable, Equatable, Sendable {
 /// The summary card's headline: is SwiftBot itself up, and if not, why.
 struct HostStatus: Equatable, Sendable {
     let health: ServiceHealth
-    /// Badge text: "Running", "Needs Attention", "Stopped".
+    /// Badge text: "Running", "Monitoring", "Needs Attention", "Stopped".
     let badge: String
     /// Subtitle under the page title.
     let headline: String
-    /// When the bot last connected; drives the live uptime readout.
+    /// When the bot last connected (the Primary's uptime on a standby).
     let startedAt: Date?
     /// Services that need attention, worst first. Empty when all is well.
     let issues: [ConsoleServiceStatus]

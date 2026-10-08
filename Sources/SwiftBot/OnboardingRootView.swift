@@ -11,14 +11,14 @@ enum SetupMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .standalone: return "Set Up Standalone Bot"
-        case .mesh: return "Set Up SwiftMesh"
+        case .mesh: return "Set Up Backup"
         }
     }
 
     var subtitle: String {
         switch self {
         case .standalone: return "Run SwiftBot locally on this Mac."
-        case .mesh: return "Join a SwiftMesh cluster."
+        case .mesh: return "Pair with your Primary’s Web Interface."
         }
     }
 
@@ -196,7 +196,7 @@ struct OnboardingRootView: View {
         case .standalone:
             return "Enter your Discord bot token to get started."
         case .mesh:
-            return "Enter your SwiftMesh connection details."
+            return "Configure this Mac automatically from your Primary."
         }
     }
 }

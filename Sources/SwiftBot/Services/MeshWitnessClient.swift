@@ -88,6 +88,14 @@ enum MeshOwnershipRenewal: Equatable, Sendable {
 }
 
 actor MeshWitnessClient {
+    enum ParticipantRole: String, Encodable { case active, standby, worker, unknown }
+    private struct ParticipantReport: Encodable {
+        let version = 1
+        let clusterID: String
+        let nodeID: String
+        let nodeName: String?
+        let role: ParticipantRole
+    }
     struct Grant: Codable, Sendable {
         let ownerNodeID: String
         let term: Int
@@ -104,6 +112,8 @@ actor MeshWitnessClient {
     private var nodeName: String?
     private var currentTerm: Int?
     private var deadline: ContinuousClock.Instant?
+    private var presenceCapability: (supported: Bool, checked: ContinuousClock.Instant)?
+    private var configurationGeneration = UUID()
     private let session: URLSession
 
     init(session: URLSession? = nil) {
@@ -121,11 +131,81 @@ actor MeshWitnessClient {
         guard config != configuration || self.nodeID != nodeID else { return }
         config = configuration
         self.nodeID = nodeID
+        configurationGeneration = UUID()
+        presenceCapability = nil
         currentTerm = nil
         deadline = nil
     }
 
     func leaseDeadline() -> ContinuousClock.Instant? { deadline }
+
+    /// Reports this Mac even while it is standby. This neither requests nor
+    /// extends ownership. Feature detection keeps earlier Ruru versions usable.
+    @discardableResult
+    func reportPresence(role: ParticipantRole) async -> Bool {
+        guard config.isValid, !nodeID.isEmpty, !Task.isCancelled else { return false }
+        let generation = configurationGeneration
+        let configuration = config
+        let endpoint = configuration.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let needsDiscovery = presenceCapability.map { ContinuousClock.now - $0.checked >= .seconds(60) } ?? true
+        if needsDiscovery {
+            guard let url = URL(string: endpoint + "/v1/service") else { return false }
+            var discovery = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 5)
+            discovery.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
+            guard let (data, response) = try? await session.data(for: discovery),
+                  generation == configurationGeneration, !Task.isCancelled,
+                  (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 4096,
+                  let service = try? JSONDecoder().decode(ServiceDescription.self, from: data),
+                  service.version == 1, service.authority == "Ruru", service.clusterID == configuration.clusterID else { return false }
+            presenceCapability = (service.capabilities["participantPresence"]?.version == 1 &&
+                                  service.capabilities["participantPresence"]?.enabled == true, .now)
+        }
+        guard presenceCapability?.supported == true, generation == configurationGeneration, !Task.isCancelled,
+              let url = URL(string: endpoint + "/v1/participants/report") else { return false }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 5)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ParticipantReport(clusterID: configuration.clusterID,
+                                                                     nodeID: nodeID, nodeName: nodeName, role: role))
+        guard let (data, response) = try? await session.data(for: request),
+              generation == configurationGeneration, !Task.isCancelled,
+              (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 4096,
+              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              reply["version"] as? Int == 1, reply["accepted"] as? Bool == true else { return false }
+        return true
+    }
+
+    /// Verify the imported service token without competing with the Primary
+    /// for its lease. Public `/health` alone cannot verify service access.
+    func verifyServiceConnection() async -> Bool {
+        guard config.isValid,
+              let url = URL(string: config.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/service") else { return false }
+        let expectedClusterID = config.clusterID
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData)
+        request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              data.count <= 4096,
+              let service = try? JSONDecoder().decode(ServiceDescription.self, from: data),
+              service.version == 1, service.authority == "Ruru",
+              service.clusterID == expectedClusterID,
+              service.capabilities["lease"]?.version == 1,
+              service.capabilities["lease"]?.enabled == true else { return false }
+        return await health() == .ready
+    }
+
+    private struct ServiceDescription: Decodable {
+        let version: Int
+        let authority: String
+        let clusterID: String
+        let capabilities: [String: Capability]
+
+        struct Capability: Decodable {
+            let version: Int
+            let enabled: Bool
+        }
+    }
 
     /// Reads Ruru's Preferred Primary with this service's bearer token. Returns
     /// nil when no valid witness is configured. Read-only on Ruru's side, and

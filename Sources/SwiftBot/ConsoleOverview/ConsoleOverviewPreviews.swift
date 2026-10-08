@@ -14,22 +14,29 @@ private enum ConsoleOverviewPreviewData {
         dataLocation: URL(filePath: NSHomeDirectory()).appending(path: "Library/Application Support/SwiftBot")
     )
 
-    static func snapshot(webListening: Bool = true, tunnel: AdminWebPublicAccessRuntimeStatus.State = .enabled) -> ConsoleOverviewSnapshot {
+    static func snapshot(
+        webListening: Bool = true,
+        tunnel: AdminWebPublicAccessRuntimeStatus.State = .enabled,
+        standby: Bool = false
+    ) -> ConsoleOverviewSnapshot {
         ConsoleOverviewSnapshot(.init(
-            botStatus: .running,
+            botStatus: standby ? .stopped : .running,
             hasToken: true,
             botUsername: "SwiftBot - Dev",
             connectedServerCount: 1,
             lastGatewayCloseCode: nil,
             uptimeStartedAt: Date().addingTimeInterval(-(4 * 86_400 + 7 * 3_600 + 12 * 60)),
-            clusterMode: .leader,
+            clusterMode: standby ? .standby : .leader,
             clusterServerState: .connected,
             clusterNodeCount: 2,
             clusterUnhealthyNodeCount: 0,
-            webEnabled: true,
+            failoverWatchActive: standby,
+            clusterWorkerState: .connected,
+            primaryName: "DevMini",
+            webEnabled: !standby,
             webListening: webListening,
             webAddress: "https://test.swiftbot.dev",
-            tunnelEnabled: true,
+            tunnelEnabled: !standby,
             tunnelStatus: .init(state: tunnel, publicURL: "https://test.swiftbot.dev", detail: "cloudflared exited (code 1)")
         ))
     }
@@ -48,17 +55,24 @@ private struct ConsoleOverviewPreviewPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
+                ConsolePageHeader(title: "Overview", subtitle: snapshot.host.headline, accessoriesBesideTitle: true) {
+                    if snapshot.isMonitoringFailover {
+                        Button("View Failover Watch", systemImage: "point.3.connected.trianglepath.dotted") {}
+                            .buttonStyle(.glass)
+                    }
+                }
                 HostSummaryCard(
                     botName: "SwiftBot - Dev",
                     status: snapshot.host,
                     details: ConsoleOverviewPreviewData.details,
-                    meshRole: "Primary",
+                    meshRole: snapshot.isMonitoringFailover ? "Fail Over" : "Primary",
+                    uptimeTitle: snapshot.isMonitoringFailover ? "Primary Uptime" : "Uptime",
                     onReviewIssue: { _ in }
                 )
                 ServiceStatusSection(services: snapshot.services, summary: snapshot.servicesSummary, onSelect: { _ in })
                 HStack(alignment: .top, spacing: 28) {
                     QuickActionsSection(actions: ConsoleOverviewPreviewData.actions)
-                    SystemDetailsSection(details: ConsoleOverviewPreviewData.details, meshRole: "Primary")
+                    SystemDetailsSection(details: ConsoleOverviewPreviewData.details, meshRole: snapshot.isMonitoringFailover ? "Fail Over" : "Primary")
                 }
             }
             .padding(36)
@@ -74,5 +88,9 @@ private struct ConsoleOverviewPreviewPage: View {
 
 #Preview("Overview · Needs Attention") {
     ConsoleOverviewPreviewPage(snapshot: ConsoleOverviewPreviewData.snapshot(webListening: false, tunnel: .error))
+}
+
+#Preview("Overview · Failover Monitoring") {
+    ConsoleOverviewPreviewPage(snapshot: ConsoleOverviewPreviewData.snapshot(tunnel: .disabled, standby: true))
 }
 #endif

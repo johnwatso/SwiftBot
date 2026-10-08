@@ -39,8 +39,8 @@ extension AppModel {
         )
         configureMeshSync()
 
-        let runtimeMode = await cluster.currentSnapshot().mode
-        if runtimeMode == .standby {
+        let runtime = await cluster.currentSnapshot()
+        if runtime.mode == .standby {
             // Failover mode: skip the Discord gateway IDENTIFY entirely. Two
             // bots IDENTIFY'ing with the same token would fight for the
             // single allowed session per token-per-shard; we previously
@@ -51,7 +51,11 @@ extension AppModel {
             // does a real IDENTIFY for the first time.
             await service.setOutputAllowed(false)
             status = .stopped
-            logs.append("Fail Over mode active. Discord gateway NOT opened — dashboard data syncs from Primary via mesh. Will IDENTIFY only on promotion.")
+            if runtime.isOwnershipRecoveryActive {
+                logs.append("Startup is waiting for exclusive Ruru ownership. Discord stays disconnected while ownership retries continue.")
+            } else {
+                logs.append("Fail Over mode active. Discord gateway NOT opened — dashboard data syncs from Primary via mesh. Will IDENTIFY only on promotion.")
+            }
             startMediaMonitor()
             return
         }
@@ -139,7 +143,8 @@ extension AppModel {
         // inside ClusterCoordinator.confirmLeaderDeadAndResync() before
         // promotion was committed, so by the time we get here our local
         // state contains everything we could pull from the prior leader.
-        await service.setOutputAllowed(await cluster.hasActiveOwnership())
+        guard !Task.isCancelled, !meshOwnershipExpired, await cluster.hasActiveOwnership() else { return }
+        await service.setOutputAllowed(true)
 
         if status == .running {
             // Rare path — possibly a stale connection lingering from a
@@ -176,6 +181,7 @@ extension AppModel {
         }
 
         let tokenValidation = await identityRESTClient.validateBotTokenRich(token)
+        guard !Task.isCancelled else { return }
         lastTokenValidationResult = tokenValidation
         guard tokenValidation.isValid else {
             status = .stopped
@@ -183,6 +189,11 @@ extension AppModel {
             return
         }
         applyBotIdentity(from: tokenValidation)
+
+        guard !meshOwnershipExpired, await cluster.hasActiveOwnership() else {
+            status = .stopped
+            return
+        }
 
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())

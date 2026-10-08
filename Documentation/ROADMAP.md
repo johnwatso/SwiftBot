@@ -9,6 +9,47 @@
 
 ## Recent Engineering Log
 
+### 2026-10-08 — Report standby presence to Ruru
+
+- [x] `_working-tree_`: SwiftBot reports its stable node ID, display name and
+  runtime role to Ruru every monitoring cycle (15-second interval), including
+  Standby and Worker nodes. Authenticated `participantPresence` v1 discovery is
+  cached for one minute and reset on configuration changes. Reports neither
+  acquire nor renew leases, and failures do not alter ownership deadlines or
+  output permission. Older Ruru versions remain compatible.
+- [x] Tests cover a named standby report without acquisition, unsupported
+  discovery, rejected reports and preservation of an existing lease deadline.
+  Selected mesh/Ruru settings tests passed (36 tests); the final isolated build
+  and all 21 MeshReliabilityTests passed. Intermediate shared-folder runs hit
+  simultaneous console changes/stale test linkage and a build-directory lock;
+  the isolated check includes the latest sources. Deployment to the real pair of
+  Macs is unverified.
+
+### 2026-10-08 — Automatic WebUI backup and Ruru setup
+
+- [x] `_working-tree_`: **Pair SwiftBot → Continue in SwiftBot → Set Up Backup**
+  now completes configuration, credential enrollment, inherited Ruru setup,
+  authenticated service verification and first bot sync in one flow. Fresh and
+  existing installations share the same runtime routine; copied codes remain a
+  fallback. Progress and retry replace success based only on a ping. Local review
+  preserves the recording-sharing choice and requires no second Ruru code or
+  operator approval for bot failover.
+- [x] Pairing closes previous output before replacing identity, preserves terms
+  and the local listener port, installs ownership handlers before runtime starts,
+  and keeps automatic takeover disabled until promotion readiness succeeds.
+  Primary health detects stale invitations missing its Ruru authority. Ordered,
+  awaited persistence bypasses settings throttling and suppresses competing
+  runtime saves during setup. Ready backups persist auto-start and keep Discord
+  disconnected until promotion. WebUI/tunnel and optional recordings setup stay
+  local; recording website approval remains separate.
+- [x] Debug build, 109 focused tests and WebUI script syntax checks passed.
+  Added read-only Ruru authentication/capability tests, inherited-setting and
+  monotonic-term tests, and local HTTP integration tests for first sync,
+  missing credential approval and mismatched Ruru invitations. Existing lint and
+  unrelated compiler warnings remain. Checked the WebUI dialog and native
+  review/ready layouts in isolated previews; no live two-Mac/Ruru/Discord drill,
+  production settings changes, version bump or deployment.
+
 ### 2026-10-08 — Local launch signing repair
 
 - [x] `_working-tree_`: Fixed the supplied DYLD launch failure: the installed
@@ -775,6 +816,18 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 ---
 
 ## Session log
+
+### 2026-10-08 — Takeover activation and returning Primary status
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Separated promotion/Discord activation from cancellable watch and recovery polls so a term-triggered settings save cannot cancel startup after Ruru grants ownership. Ordinary witness-handler refreshes preserve a valid lease and its renewal schedule; Stop still cancels activation, and Discord rechecks ownership/deadline after validation. Returning Primaries show Waiting for Ownership, Retry Start and Stop Recovery; activation shows Taking Over instead of Stopped. Preserved takeover refusal diagnostics against listener/registration updates and corrected restored terms in snapshots. Overview buttons stay beside the title on wide windows. Debug app build, 94 focused tests and a temporary light/dark rendering check passed using a local signing override. No live two-Mac/Ruru/Discord drill; supplied logs cover the returning Primary only. No version bump, release metadata edit or publication. |
+
+### 2026-10-08 — Overview failover monitoring status
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Overview derives failover activity from the coordinator's actual watch task and runtime role. Active standbys show Monitoring, the watched Primary, Discord Standing By, Primary Uptime and View Failover Watch, with Stop Failover Watch available in the menu. Stopped watches and connection problems remain visible; ownership and Discord output gates are unchanged. Debug app build, 33 focused Overview/failover tests and a temporary offscreen light/dark render check passed. Tests used a command-line signing override for the local unsigned test bundle; existing unrelated warnings remain. No live two-Mac drill, release metadata changes or publication. |
 
 ### 2026-10-04 — Music link embed presentation
 
