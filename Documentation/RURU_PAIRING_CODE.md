@@ -1,106 +1,41 @@
-# Ruru pairing code format (version 1)
+# Pairing SwiftBot with Ruru
 
-A Ruru pairing code hands one guarded service's witness connection to
-SwiftBot in a single paste. SwiftBot imports it under SwiftMesh →
-**Recovery and Pairing** → **Set Up Ruru…**. The decoder is
-`RuruPairingCode` in `Sources/SwiftBot/Services/MeshWitnessClient.swift`.
-Ruru's exporter has not been written yet. It must produce codes that this
-decoder accepts.
+SwiftBot pairs with a Ruru service using Ruru's single-use **pairing codes**,
+such as `7KQ4-M2XP`. A code carries no credentials, so it is safe to read out
+or type. Ruru releases the service's connection details only after its operator
+approves the request in Ruru. (Earlier pre-release builds used `RURU1:` codes
+that embedded the bearer token; that format has been removed.)
 
-> **The code contains a secret.** It carries the service's bearer token in
-> plain base64url. Base64url only encodes the bytes; it does not encrypt
-> them. Treat a pairing code like a password: don't log it, post it, or
-> leave it in shared notes.
+## In Ruru
 
-## Layout
+Open the SwiftBot service's **Connection Details → Pair a Server → Create
+Code**. The code expires after 10 minutes and can be used once. Ruru notifies
+the operator when a server requests pairing, and shows **Approve** and
+**Reject** on the service page and in Connection Details.
 
-```
-RURU1:<base64url(UTF-8 JSON)>
-```
+## In SwiftBot
 
-- The prefix is exactly `RURU1:`. It is case-sensitive, with no spaces.
-- The body is base64url (RFC 4648 §5): the alphabet is `A–Z a–z 0–9 - _`,
-  with **no `=` padding**. Any other character is rejected, including
-  padding, `+`, `/` and whitespace inside the body.
-- The whole code, prefix included, must be at most **4096 characters**.
-  SwiftBot trims leading and trailing whitespace before checking.
+SwiftMesh → Recovery and Pairing → **Set Up Ruru…**:
 
-## JSON payload
+1. Enter the code (any case, spaces or a dash; alphabet
+   `23456789ABCDEFGHJKMNPQRSTVWXYZ`) and Ruru's HTTPS address.
+2. **Request Pairing** runs `RuruShortCodePairing.pair`
+   (`Services/MeshWitnessClient.swift`):
+   - `POST /v1/pair` with `{"code","nodeID","nodeName"}` and no bearer token.
+     The node ID is this Mac's SwiftMesh enrollment ID. Ruru uses the code up
+     and returns 202 with a `pairingID`.
+   - SwiftBot polls `POST /v1/pair/status` while showing "Waiting for approval
+     in Ruru…" (cancellable).
+3. On approval (200 with `clusterID` and `token`) SwiftBot shows the address
+   and cluster ID for review. Nothing is saved until **Connect**, which stores
+   them in Keychain through `MeshWitnessSettingsStore`.
 
-```json
-{
-  "version": 1,
-  "endpoint": "https://ruru.swiftbot.dev",
-  "clusterID": "<service cluster ID>",
-  "token": "<service bearer token>",
-  "serviceName": "SwiftBot"
-}
-```
+404 `invalid_code` means wrong, used or expired; any other 404 means the Ruru
+predates pairing codes. 403 is a rejection, 410 an expiry, 429 too many wrong
+codes. Requests time out after 10 minutes. Errors never include the token.
 
-| Field | Required | Rules |
-|---|---|---|
-| `version` | yes | Integer, must be `1`. Other values fail with an "update SwiftBot" message. |
-| `endpoint` | yes | Ruru's app-wide address. Must be `https://`, or `http://` to `127.0.0.1`, `localhost` or `::1` for development. No user info, query or fragment, and no surrounding whitespace. A path is allowed. SwiftBot appends `/v1/lease/{acquire,renew,release}`. |
-| `clusterID` | yes | 1–128 UTF-8 bytes, with no leading or trailing whitespace and no control characters. Spaces inside are allowed. Unique to each guarded service. Matches Ruru's own `GuardedService` and `WitnessRouter` checks. |
-| `token` | yes | 32–512 UTF-8 bytes, with no whitespace or control characters. The service's own bearer token. Ruru generates 43-character unpadded base64url tokens from 32 random bytes and rejects tokens over 512 bytes. |
-| `serviceName` | no | Display metadata only. Trimmed. SwiftBot ignores it, rather than rejecting the code, when it is blank, longer than 64 characters or contains control characters. |
+**Advanced** keeps manual entry of the endpoint, cluster ID and bearer token.
+Saved settings are carried to failovers in new SwiftMesh Join Codes.
 
-SwiftBot ignores unknown fields, so later fields can be added without
-breaking version 1. A change that breaks older readers must use a new
-`version`, and the prefix should change with it (`RURU2:`).
-
-Never put these in a pairing code: Ruru's Cloudflare API token, tunnel
-credentials, or another service's token.
-
-## Ruru's current Copy output
-
-Until Ruru's exporter exists, its **Guarding → Connection Details → Copy**
-(`WitnessAppModel.copyConnectionDetails`) puts bare JSON on the clipboard:
-
-```json
-{"clusterID":"swiftmesh-1a2b3c4d","endpoint":"https://witness.example.com","token":"<43 characters>"}
-```
-
-SwiftBot accepts this as well. It is any input starting with `{`, with no
-`version` or with `"version":1`, and the same field rules apply. Once Ruru
-copies `RURU1:` codes, this fallback can stay for older Ruru builds.
-
-## Synthetic fixture
-
-These values are not real credentials. The same string is the
-`documentedFixture` in `Tests/SwiftBotTests/RuruPairingCodeTests.swift`.
-
-Payload, compact JSON, keys in this order:
-
-```json
-{"version":1,"endpoint":"https://ruru.example.com","clusterID":"swiftbot-example","token":"EXAMPLE-ONLY-0123456789abcdefghijklmnopqrstuv","serviceName":"SwiftBot"}
-```
-
-Code:
-
-```
-RURU1:eyJ2ZXJzaW9uIjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vcnVydS5leGFtcGxlLmNvbSIsImNsdXN0ZXJJRCI6InN3aWZ0Ym90LWV4YW1wbGUiLCJ0b2tlbiI6IkVYQU1QTEUtT05MWS0wMTIzNDU2Nzg5YWJjZGVmZ2hpamtsbW5vcHFyc3R1diIsInNlcnZpY2VOYW1lIjoiU3dpZnRCb3QifQ
-```
-
-Key order and JSON whitespace don't matter to the decoder. An exporter can
-check itself by decoding its output, or by encoding the payload above
-byte for byte and comparing the result with the code.
-
-## What SwiftBot does with it
-
-1. It decodes and validates the code. Nothing is saved until the user has
-   reviewed the service name, address and cluster ID and clicked
-   **Connect**.
-2. It saves the endpoint, cluster ID and token through
-   `MeshWitnessSettingsStore` to the Keychain account
-   `swiftbot.mesh.witness`. It writes nothing to settings files and never
-   logs the code or the token.
-3. It runs the existing `configureMeshRecovery()` path. Lease requests,
-   expiry, fencing and Discord output gating are unchanged.
-4. New SwiftMesh Failover Join Codes carry the saved witness settings.
-   Failovers that are already paired keep their old settings until Ruru is
-   set up on them too, or until they are paired again.
-
-If decoding or saving fails, the previous witness settings stay in place.
-The manual endpoint, cluster ID and token fields remain under **Advanced**
-for installations without a pairing code.
+Lease grants of 3–300 seconds are accepted, matching Ruru's per-service lease
+lengths (10–300 seconds).

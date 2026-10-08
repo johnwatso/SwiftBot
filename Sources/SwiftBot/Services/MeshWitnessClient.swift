@@ -30,119 +30,6 @@ struct MeshWitnessConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-/// A Ruru pairing code: `RURU1:` followed by unpadded base64url UTF-8 JSON
-/// carrying one guarded service's endpoint, cluster ID and bearer token.
-/// The code contains a secret and is not encrypted. Format reference:
-/// `Documentation/RURU_PAIRING_CODE.md`. Errors never echo the code or token.
-struct RuruPairingCode: Equatable, Sendable {
-    static let prefix = "RURU1:"
-    static let supportedVersion = 1
-    static let maximumLength = 4096
-    /// Limits match Ruru's server (`WitnessRouter`): UTF-8 bytes, not characters.
-    static let maximumClusterIDBytes = 128
-    static let maximumTokenBytes = 512
-    static let maximumServiceNameLength = 64
-
-    let configuration: MeshWitnessConfiguration
-    /// Display metadata only; dropped when blank, too long or unprintable.
-    let serviceName: String?
-
-    enum DecodeError: LocalizedError, Equatable {
-        case empty, tooLong, joinCode, wrongPrefix, invalidEncoding, invalidJSON
-        case missingVersion, unsupportedVersion(Int), missingField(String)
-        case invalidEndpoint, invalidClusterID, invalidToken
-
-        var errorDescription: String? {
-            switch self {
-            case .empty: "Paste a Ruru pairing code."
-            case .tooLong: "This code is too long to be a Ruru pairing code."
-            case .joinCode: "This is a SwiftMesh Join Code. Paste the pairing code from Ruru instead."
-            case .wrongPrefix: "This isn't a Ruru pairing code. Ruru pairing codes start with RURU1:."
-            case .invalidEncoding: "The pairing code is damaged. Copy it from Ruru again."
-            case .invalidJSON: "The pairing code's contents can't be read. Copy it from Ruru again."
-            case .missingVersion: "The pairing code has no format version. Update Ruru and copy a new code."
-            case .unsupportedVersion(let version): "This pairing code uses format version \(version). Update SwiftBot to use it."
-            case .missingField(let name): "The pairing code is missing its \(name)."
-            case .invalidEndpoint: "The pairing code's address must be an HTTPS URL without credentials, query or fragment."
-            case .invalidClusterID: "The pairing code's cluster ID is empty, too long, or has leading or trailing spaces."
-            case .invalidToken: "The pairing code's bearer token must be 32 to 512 characters without spaces."
-            }
-        }
-    }
-
-    private struct Payload: Codable {
-        var version: Int?
-        var endpoint: String?
-        var clusterID: String?
-        var token: String?
-        var serviceName: String?
-    }
-
-    static func decode(_ rawCode: String) throws -> RuruPairingCode {
-        guard rawCode.utf8.count <= maximumLength * 2 else { throw DecodeError.tooLong }
-        let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty else { throw DecodeError.empty }
-        guard code.utf8.count <= maximumLength else { throw DecodeError.tooLong }
-        let payload: Payload
-        if code.hasPrefix(prefix) {
-            guard let data = base64URLDecode(String(code.dropFirst(prefix.count))) else { throw DecodeError.invalidEncoding }
-            guard let decoded = try? JSONDecoder().decode(Payload.self, from: data) else { throw DecodeError.invalidJSON }
-            guard let version = decoded.version else { throw DecodeError.missingVersion }
-            guard version == supportedVersion else { throw DecodeError.unsupportedVersion(version) }
-            payload = decoded
-        } else if code.hasPrefix("{") {
-            // Ruru's current Connection Details → Copy output: bare
-            // `{"endpoint","clusterID","token"}` JSON with no version.
-            guard let decoded = try? JSONDecoder().decode(Payload.self, from: Data(code.utf8)),
-                  decoded.version == nil || decoded.version == supportedVersion else { throw DecodeError.invalidJSON }
-            payload = decoded
-        } else {
-            throw code.lowercased().hasPrefix("swiftmesh://") ? DecodeError.joinCode : DecodeError.wrongPrefix
-        }
-        guard let endpoint = payload.endpoint else { throw DecodeError.missingField("address") }
-        guard let clusterID = payload.clusterID else { throw DecodeError.missingField("cluster ID") }
-        guard let token = payload.token else { throw DecodeError.missingField("bearer token") }
-
-        guard MeshWitnessConfiguration.isValidEndpoint(endpoint),
-              endpoint == endpoint.trimmingCharacters(in: .whitespacesAndNewlines) else { throw DecodeError.invalidEndpoint }
-        guard !clusterID.isEmpty, clusterID.utf8.count <= maximumClusterIDBytes,
-              clusterID == clusterID.trimmingCharacters(in: .whitespacesAndNewlines),
-              clusterID.rangeOfCharacter(from: .controlCharacters) == nil else { throw DecodeError.invalidClusterID }
-        guard (32...maximumTokenBytes).contains(token.utf8.count),
-              token.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil else { throw DecodeError.invalidToken }
-        let configuration = MeshWitnessConfiguration(endpoint: endpoint, clusterID: clusterID, token: token)
-
-        let name = payload.serviceName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let serviceName = !name.isEmpty && name.count <= maximumServiceNameLength
-            && name.rangeOfCharacter(from: .controlCharacters) == nil ? name : nil
-        return RuruPairingCode(configuration: configuration, serviceName: serviceName)
-    }
-
-    /// The exporter's half of the format, used by tests and kept here so both
-    /// directions stay in step.
-    static func encode(_ configuration: MeshWitnessConfiguration, serviceName: String? = nil) -> String? {
-        let payload = Payload(version: supportedVersion, endpoint: configuration.endpoint,
-                              clusterID: configuration.clusterID, token: configuration.token, serviceName: serviceName)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        guard let data = try? encoder.encode(payload) else { return nil }
-        let body = data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-        return prefix + body
-    }
-
-    /// Strict unpadded base64url: only `A–Z a–z 0–9 - _`.
-    private static func base64URLDecode(_ text: String) -> Data? {
-        let alphabet = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-        guard !text.isEmpty, text.unicodeScalars.allSatisfy(alphabet.contains), text.count % 4 != 1 else { return nil }
-        var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
-        return Data(base64Encoded: base64)
-    }
-}
-
 enum MeshWitnessSettingsStore {
     private static let account = "swiftbot.mesh.witness"
     static func load() -> MeshWitnessConfiguration {
@@ -327,7 +214,8 @@ actor MeshWitnessClient {
             guard response.statusCode == 200,
                   let grant = try? JSONDecoder().decode(Grant.self, from: data),
                   grant.ownerNodeID == nodeID, grant.term >= 0,
-                  grant.expiresInSeconds >= 3, grant.expiresInSeconds <= 60 else { return .unreachable }
+                  // Ruru allows per-service lease lengths of 10–300 seconds.
+                  grant.expiresInSeconds >= 3, grant.expiresInSeconds <= 300 else { return .unreachable }
             // Start the local deadline before the HTTP request, with a safety
             // margin. Slow requests can never extend our permission to act.
             let expires = began.advanced(by: .milliseconds(Int64((grant.expiresInSeconds - 2) * 1000)))
@@ -336,5 +224,97 @@ actor MeshWitnessClient {
             deadline = expires
             return .granted(grant)
         } catch { return .unreachable }
+    }
+}
+
+/// Ruru's pairing codes (`7KQ4-M2XP`). A code carries no secret: SwiftBot
+/// exchanges it with Ruru for a pending
+/// request, and Ruru releases this service's connection details only after
+/// its operator approves the request. Codes are single-use and expire after
+/// 10 minutes. Protocol: Ruru's `POST /v1/pair` and `POST /v1/pair/status`.
+enum RuruShortCodePairing {
+    /// Ruru's code alphabet: no 0/1/I/L/O/U.
+    private static let alphabet = Set("23456789ABCDEFGHJKMNPQRSTVWXYZ")
+
+    enum Failure: LocalizedError, Equatable {
+        case invalidAddress, missingNodeID, invalidCode, rejected, expired, throttled, unsupported
+        case unavailable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidAddress: "Enter Ruru’s HTTPS address, such as https://ruru.example.com."
+            case .missingNodeID: "This Mac’s SwiftMesh identity isn’t ready yet. Try again in a moment."
+            case .invalidCode: "Ruru didn’t accept this code. It may be mistyped, already used, or expired; create a new one in Ruru."
+            case .rejected: "The request was rejected in Ruru."
+            case .expired: "Nobody approved the request in time. Create a new code in Ruru and try again."
+            case .throttled: "Ruru received too many wrong codes. Wait a minute, then try again."
+            case .unsupported: "This Ruru is too old to pair with a code. Update Ruru, or enter the details under Advanced."
+            case .unavailable(let detail): "Ruru couldn’t be reached: \(detail)"
+            }
+        }
+    }
+
+    /// "7kq4 m2xp" → "7KQ4-M2XP"; nil if the text isn't a short code.
+    static func normalized(_ text: String) -> String? {
+        let cleaned = text.uppercased().filter { $0 != "-" && $0 != " " && !$0.isNewline }
+        guard cleaned.count == 8, cleaned.allSatisfy(alphabet.contains) else { return nil }
+        return String(cleaned.prefix(4)) + "-" + String(cleaned.suffix(4))
+    }
+
+    /// Requests pairing and waits up to 10 minutes for approval in Ruru.
+    /// Cancelling the calling task stops waiting. Saves nothing: the caller
+    /// reviews and stores the returned configuration.
+    static func pair(endpoint rawEndpoint: String, code: String, nodeID: String, nodeName: String,
+                     session: URLSession = .shared) async throws -> MeshWitnessConfiguration {
+        let endpoint = rawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard MeshWitnessConfiguration.isValidEndpoint(endpoint) else { throw Failure.invalidAddress }
+        guard !nodeID.isEmpty else { throw Failure.missingNodeID }
+        guard let code = normalized(code) else { throw Failure.invalidCode }
+        var claim = ["code": code, "nodeID": nodeID]
+        let name = nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { claim["nodeName"] = name }
+        let pending = try await post(endpoint + "/v1/pair", claim, session)
+        guard let pairingID = pending["pairingID"] as? String, !pairingID.isEmpty else {
+            throw Failure.unavailable("unexpected response")
+        }
+        let deadline = ContinuousClock.now + .seconds(600)
+        while ContinuousClock.now < deadline {
+            try Task.checkCancellation()
+            let reply = try await post(endpoint + "/v1/pair/status", ["pairingID": pairingID], session)
+            if reply["status"] as? String == "approved",
+               let clusterID = reply["clusterID"] as? String, let token = reply["token"] as? String {
+                let configuration = MeshWitnessConfiguration(endpoint: endpoint, clusterID: clusterID, token: token)
+                guard configuration.isValid else { throw Failure.unavailable("Ruru sent incomplete details") }
+                return configuration
+            }
+            let wait = min(10, max(1, (reply["retryAfter"] as? Double) ?? 2))
+            try await Task.sleep(for: .seconds(wait))
+        }
+        throw Failure.expired
+    }
+
+    private static func post(_ address: String, _ body: [String: String], _ session: URLSession) async throws -> [String: Any] {
+        guard let url = URL(string: address) else { throw Failure.invalidAddress }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        let data: Data, response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch is CancellationError { throw CancellationError() }
+        catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+        catch { throw Failure.unavailable(error.localizedDescription) }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        switch (status, object["error"] as? String) {
+        case (200, _), (202, _): return object
+        case (404, "invalid_code"): throw Failure.invalidCode
+        case (404, _): throw Failure.unsupported
+        case (403, _): throw Failure.rejected
+        case (410, _): throw Failure.expired
+        case (429, _): throw Failure.throttled
+        default: throw Failure.unavailable("HTTP \(status)")
+        }
     }
 }

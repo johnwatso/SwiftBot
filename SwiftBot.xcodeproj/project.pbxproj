@@ -238,6 +238,7 @@
 		B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */; };
 		B0A3A295C27D6377473DDCB1 /* PatchySwiftMinerCampaignRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCE98B0A1EEFDAEC5B73641 /* PatchySwiftMinerCampaignRouterTests.swift */; };
 		B0BD06AC033143EEC3DE6882 /* VoiceRecoveryBackoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D2C5438BC5D7ADA800D3BEE /* VoiceRecoveryBackoff.swift */; };
+		B10643570F51371D811B57C0 /* RuruShortCodePairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCC054868683F6723F3CA7F /* RuruShortCodePairingTests.swift */; };
 		B1552231505CD506C147838B /* AIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F3065C21B6561766DDCC3D /* AIModels.swift */; };
 		B23ABA377CFF8532D52C9EDC /* HLSPackager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461288CB1D75C69008CE6DC6 /* HLSPackager.swift */; };
 		B2B6451DDB5F2D0EC38DE781 /* AppModel+Patchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F82A36670864C3BDF5174E7 /* AppModel+Patchy.swift */; };
@@ -675,6 +676,7 @@
 		F8CD01CE25D38844A11A258B /* ACMEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEClient.swift; sourceTree = "<group>"; };
 		F94B83AF3053919D12718F35 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
 		FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DMTimeoutTests.swift; sourceTree = "<group>"; };
+		FBCC054868683F6723F3CA7F /* RuruShortCodePairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuruShortCodePairingTests.swift; sourceTree = "<group>"; };
 		FC10B84C8C60F7A3A54D4FFF /* GamePresenceSessionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePresenceSessionTracker.swift; sourceTree = "<group>"; };
 		FCA255F9E94E14B609E723CA /* WikiLookupUsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupUsageStore.swift; sourceTree = "<group>"; };
 		FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -827,6 +829,7 @@
 				AF7615AAA21211EEAFA89879 /* RewindActivityTests.swift */,
 				803EAE97D6A0E7EF802071F0 /* RewindTests.swift */,
 				13B066D1D7BCDE5069C970FC /* RuruPairingCodeTests.swift */,
+				FBCC054868683F6723F3CA7F /* RuruShortCodePairingTests.swift */,
 				C7546575978DE7338211F7EB /* SidebarLayoutTests.swift */,
 				84B6B49FA18802E05DBE3D1E /* StorageIsolationTests.swift */,
 				B2922384BFA43EAB861DA445 /* SweepSuggestionEngineTests.swift */,
@@ -1597,6 +1600,7 @@
 				0AC0EC5A4960C3EC68772224 /* RewindActivityTests.swift in Sources */,
 				CC9D6634C1B265CCB11BDDD0 /* RewindTests.swift in Sources */,
 				4E02716B2D7DD6F877D6FBEC /* RuruPairingCodeTests.swift in Sources */,
+				B10643570F51371D811B57C0 /* RuruShortCodePairingTests.swift in Sources */,
 				A4EC1095AD148E360010B10A /* SidebarLayoutTests.swift in Sources */,
 				16882893D707E35D14590F57 /* StorageIsolationTests.swift in Sources */,
 				0255D73E95941A26DB3EF5B4 /* SweepSuggestionEngineTests.swift in Sources */,

@@ -73,7 +73,8 @@ struct MeshRecoveryPreferencesSection: View {
         }
         .task { grants = await app.meshCredentialStore.allGrants() }
         .sheet(isPresented: $showWitnessEditor) {
-            MeshWitnessEditor(configuration: witness) { saved in
+            MeshWitnessEditor(configuration: witness, nodeID: app.meshLocalNodeID,
+                              nodeName: app.settings.clusterNodeName) { saved in
                 witness = saved
                 Task { await app.configureMeshRecovery() }
             }
@@ -84,49 +85,72 @@ struct MeshRecoveryPreferencesSection: View {
 private struct MeshWitnessEditor: View {
     @Environment(\.dismiss) private var dismiss
     /// The saved settings. Advanced edits a copy, so Cancel or a failed
-    /// import leaves them untouched.
+    /// pairing leaves them untouched.
     let existing: MeshWitnessConfiguration
+    let nodeID: String
+    let nodeName: String
     let onSave: (MeshWitnessConfiguration) -> Void
     @State private var manual: MeshWitnessConfiguration
-    @State private var pastedCode = ""
-    @State private var pairing: RuruPairingCode?
+    @State private var typedCode = ""
+    @State private var address: String
+    /// Connection details Ruru released after approval, shown for review.
+    @State private var approved: MeshWitnessConfiguration?
+    @State private var waiting: Task<Void, Never>?
     @State private var showAdvanced = false
     @State private var error: String?
 
-    init(configuration: MeshWitnessConfiguration, onSave: @escaping (MeshWitnessConfiguration) -> Void) {
+    init(configuration: MeshWitnessConfiguration, nodeID: String, nodeName: String,
+         onSave: @escaping (MeshWitnessConfiguration) -> Void) {
         existing = configuration
+        self.nodeID = nodeID
+        self.nodeName = nodeName
         self.onSave = onSave
         _manual = State(initialValue: configuration)
+        _address = State(initialValue: configuration.endpoint)
+    }
+
+    private var code: String? { RuruShortCodePairing.normalized(typedCode) }
+    private var trimmedAddress: String {
+        address.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Set Up Ruru").font(.title2)
-            Text("Run Ruru on a Mac separate from both bot Macs. In Ruru, copy this service’s pairing code, then paste it here.")
+            Text("Run Ruru on a Mac separate from both bot Macs. In Ruru, open this service’s Connection Details → Pair a Server → Create Code, then enter the code here. You’ll approve the request in Ruru; no token is copied.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let pairing {
+            if let approved {
                 Form {
-                    LabeledContent("Service", value: pairing.serviceName ?? "Unnamed service")
-                    LabeledContent("Address") {
-                        Text(pairing.configuration.endpoint).textSelection(.enabled)
-                    }
-                    LabeledContent("Cluster ID", value: pairing.configuration.clusterID)
+                    LabeledContent("Address") { Text(approved.endpoint).textSelection(.enabled) }
+                    LabeledContent("Cluster ID", value: approved.clusterID)
                 }
                 .formStyle(.grouped)
                 .scrollDisabled(true)
                 .fixedSize(horizontal: false, vertical: true)
-                Button("Use a Different Code") { self.pairing = nil; error = nil }
+                Button("Pair Again") { self.approved = nil; error = nil }
             } else {
+                Form {
+                    TextField("Pairing code", text: $typedCode, prompt: Text("7KQ4-M2XP"))
+                        .font(.body.monospaced())
+                    TextField("Ruru address", text: $address, prompt: Text("https://ruru.example.com"))
+                }
+                .formStyle(.grouped)
+                .scrollDisabled(true)
+                .fixedSize(horizontal: false, vertical: true)
+                .disabled(waiting != nil)
                 HStack {
-                    Button("Paste Pairing Code") { pasteFromClipboard() }
-                        .controlSize(.large)
-                    SecureField("or paste it here", text: $pastedCode)
-                        .onSubmit { importCode(pastedCode) }
-                        .onChange(of: pastedCode) { _, code in
-                            if !code.isEmpty { importCode(code) }
-                        }
+                    if waiting != nil {
+                        ProgressView().controlSize(.small)
+                        Text("Waiting for approval in Ruru…").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Stop Waiting") { cancelWaiting() }
+                    } else {
+                        Spacer()
+                        Button("Request Pairing", action: requestPairing)
+                            .disabled(code == nil || !MeshWitnessConfiguration.isValidEndpoint(trimmedAddress))
+                    }
                 }
             }
 
@@ -161,34 +185,39 @@ private struct MeshWitnessEditor: View {
                     Button("Remove Witness", role: .destructive) { commit(.init()) }
                 }
                 Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Connect") { if let pairing { commit(pairing.configuration) } }
+                Button("Cancel") { cancelWaiting(); dismiss() }
+                Button("Connect") { if let approved { commit(approved) } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(pairing == nil)
+                    .disabled(approved == nil)
             }
         }
         .padding(24)
         .frame(width: 540)
+        .onDisappear { cancelWaiting() }
     }
 
-    private func pasteFromClipboard() {
-        guard let code = NSPasteboard.general.string(forType: .string) else {
-            error = RuruPairingCode.DecodeError.empty.localizedDescription
-            return
+    /// Sends the code to Ruru and waits for approval there. Nothing is saved
+    /// until the operator reviews the result and chooses Connect.
+    private func requestPairing() {
+        guard let code else { return }
+        error = nil
+        let address = trimmedAddress, nodeID = nodeID, nodeName = nodeName
+        waiting = Task {
+            do {
+                approved = try await RuruShortCodePairing.pair(endpoint: address, code: code,
+                                                              nodeID: nodeID, nodeName: nodeName)
+                typedCode = ""
+            } catch is CancellationError {
+            } catch {
+                self.error = error.localizedDescription
+            }
+            waiting = nil
         }
-        importCode(code)
     }
 
-    /// Decodes for review only; nothing is saved until Connect.
-    private func importCode(_ code: String) {
-        do {
-            pairing = try RuruPairingCode.decode(code)
-            error = nil
-        } catch {
-            pairing = nil
-            self.error = error.localizedDescription
-        }
-        pastedCode = ""
+    private func cancelWaiting() {
+        waiting?.cancel()
+        waiting = nil
     }
 
     private func commit(_ value: MeshWitnessConfiguration) {
