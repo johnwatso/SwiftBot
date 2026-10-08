@@ -9,6 +9,19 @@
 
 ## Recent Engineering Log
 
+### 2026-10-09 — Report this Mac's Web UI to Ruru
+
+- [x] `192827d`: Participant presence reports now carry this Mac's
+  optional HTTPS website origin so Ruru can link to the new owner's Web UI in
+  failover/recovery alerts. Invalid URLs, credentials, queries and fragments
+  are omitted; disabling the local Web UI withdraws the address. This uses the
+  existing bounded reporting loop and does not acquire/renew ownership or depend
+  on recording sharing. Earlier Ruru versions ignore the optional field.
+- [x] Build and 22 MeshReliabilityTests passed, including a named standby's
+  website report and invalid/credential-bearing URL omission. The final build
+  and 22-test rerun also passed; existing unrelated lint warnings remain. No deployment
+  or live two-Mac/Ruru/Discord failover drill was performed.
+
 ### 2026-10-08 — Report standby presence to Ruru
 
 - [x] `_working-tree_`: SwiftBot reports its stable node ID, display name and
