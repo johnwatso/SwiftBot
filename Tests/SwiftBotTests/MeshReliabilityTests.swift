@@ -377,6 +377,7 @@ final class MeshReliabilityTests: XCTestCase {
                 XCTAssertEqual(body["nodeID"] as? String, "stable-backup")
                 XCTAssertEqual(body["nodeName"] as? String, "JohnBook Pro")
                 XCTAssertEqual(body["role"] as? String, "standby")
+                XCTAssertEqual(body["webUIURL"] as? String, "https://failover.website.example")
                 XCTAssertNil(body["term"])
                 reply = #"{"version":1,"accepted":true}"#
             default:
@@ -388,10 +389,20 @@ final class MeshReliabilityTests: XCTestCase {
         let client = MeshWitnessClient(session: session)
         await client.configure(.init(endpoint: "https://ruru.example.com", clusterID: "cluster", token: String(repeating: "t", count: 32)),
                                nodeID: "stable-backup", nodeName: "JohnBook Pro")
-        let accepted = await client.reportPresence(role: .standby)
+        let accepted = await client.reportPresence(role: .standby, webUIURL: "https://Failover.Website.Example:443/")
         XCTAssertTrue(accepted)
         let deadline = await client.leaseDeadline()
         XCTAssertNil(deadline)
+    }
+
+    func testPresenceWebsiteOmitsCredentialsAndInvalidAddresses() {
+        XCTAssertEqual(MeshWitnessClient.reportedWebUIURL("https://Failover.Example.com:443/"), "https://failover.example.com")
+        for value in ["http://example.com", "https://user:secret@example.com", "https://example.com?token=secret",
+                      "https://example.com#secret", "https://example.com/login", "https://example.com)/[link]",
+                      "https://example.com\n", String(repeating: "a", count: 257)] {
+            XCTAssertNil(MeshWitnessClient.reportedWebUIURL(value), value)
+        }
+        XCTAssertNil(MeshWitnessClient.reportedWebUIURL(nil))
     }
 
     func testUnsupportedOrUnauthorizedPresenceDoesNotChangeLease() async throws {

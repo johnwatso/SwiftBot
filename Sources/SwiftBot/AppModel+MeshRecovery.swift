@@ -110,7 +110,7 @@ extension AppModel {
                 case .worker: role = .worker
                 default: role = .unknown
                 }
-                await client.reportPresence(role: role)
+                await client.reportPresence(role: role, webUIURL: self?.localMeshPublicAddress)
                 try? await Task.sleep(for: .seconds(15))
             }
         }

@@ -95,6 +95,7 @@ actor MeshWitnessClient {
         let nodeID: String
         let nodeName: String?
         let role: ParticipantRole
+        let webUIURL: String?
     }
     struct Grant: Codable, Sendable {
         let ownerNodeID: String
@@ -142,7 +143,7 @@ actor MeshWitnessClient {
     /// Reports this Mac even while it is standby. This neither requests nor
     /// extends ownership. Feature detection keeps earlier Ruru versions usable.
     @discardableResult
-    func reportPresence(role: ParticipantRole) async -> Bool {
+    func reportPresence(role: ParticipantRole, webUIURL: String? = nil) async -> Bool {
         guard config.isValid, !nodeID.isEmpty, !Task.isCancelled else { return false }
         let generation = configurationGeneration
         let configuration = config
@@ -166,14 +167,34 @@ actor MeshWitnessClient {
         request.httpMethod = "POST"
         request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(ParticipantReport(clusterID: configuration.clusterID,
-                                                                     nodeID: nodeID, nodeName: nodeName, role: role))
+        let report = ParticipantReport(
+            clusterID: configuration.clusterID, nodeID: nodeID, nodeName: nodeName,
+            role: role, webUIURL: Self.reportedWebUIURL(webUIURL)
+        )
+        request.httpBody = try? JSONEncoder().encode(report)
         guard let (data, response) = try? await session.data(for: request),
               generation == configurationGeneration, !Task.isCancelled,
               (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 4096,
               let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               reply["version"] as? Int == 1, reply["accepted"] as? Bool == true else { return false }
         return true
+    }
+
+    /// Only advertise this Mac's credential-free HTTPS website origin.
+    nonisolated static func reportedWebUIURL(_ value: String?) -> String? {
+        guard let value, !value.isEmpty, value.utf8.count <= 256,
+              value.utf8.allSatisfy({ $0 > 32 && $0 < 127 && $0 != 92 }),
+              let components = URLComponents(string: value), components.scheme == "https",
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil, components.query == nil, components.fragment == nil,
+              components.path.isEmpty || components.path == "/",
+              components.port.map({ (1...65535).contains($0) }) != false, components.url != nil,
+              host.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) ||
+                  (48...57).contains($0) || [45, 46, 58, 91, 93].contains($0) }) else { return nil }
+        var origin = URLComponents()
+        origin.scheme = "https"; origin.host = host.lowercased()
+        origin.port = components.port == 443 ? nil : components.port
+        return origin.string
     }
 
     /// Verify the imported service token without competing with the Primary

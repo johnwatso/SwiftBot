@@ -32,6 +32,10 @@ dashboard. The lightweight public role probe refreshes open pages on promotion
 or loss of ownership without restarting the HTTP listener. Standby visitors see
 status instead of locked feature tabs; authenticated media and mesh handlers
 remain independent. Server-side write guards remain the authority for edits.
+Ruru participant reports include this Mac's optional credential-free HTTPS Web
+UI origin, independently of recording sharing. Ruru can link to the fresh new
+owner's website in failover/recovery alerts; an advertised URL is not a
+reachability test and never changes ownership permission.
 
 ### 1. Application Layer
 - **File:** `SwiftBotApp.swift`
