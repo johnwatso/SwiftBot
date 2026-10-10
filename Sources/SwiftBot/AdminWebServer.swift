@@ -1836,6 +1836,8 @@ actor AdminWebServer {
     private var memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)?
     private var memberMayPlay: (@Sendable (String, String) async -> Bool)?
     private var mediaPlaybackChoiceProvider: (@Sendable (String) async -> (quality: String, preparing: Bool)?)?
+    private var recordingCommentsProvider: (@Sendable (String) async throws -> [RecordingComment]?)?
+    private var recordingCommentWriter: (@Sendable (String, UUID, String, String, String) async throws -> RecordingComment?)?
     private var operatorsProvider: (@Sendable () async -> AdminWebOperatorsPayload?)?
     private var updateOperators: (@Sendable (AdminWebOperatorsPatch) async -> Bool)?
     private var sendOperatorTest: (@Sendable () async -> String?)?
@@ -1977,6 +1979,8 @@ actor AdminWebServer {
         memberClipsProvider: (@Sendable (String, [String: String]) async -> AdminWebMediaLibraryPayload?)? = nil,
         memberMayPlay: (@Sendable (String, String) async -> Bool)? = nil,
         mediaPlaybackChoiceProvider: (@Sendable (String) async -> (quality: String, preparing: Bool)?)? = nil,
+        recordingCommentsProvider: (@Sendable (String) async throws -> [RecordingComment]?)? = nil,
+        recordingCommentWriter: (@Sendable (String, UUID, String, String, String) async throws -> RecordingComment?)? = nil,
         operatorsProvider: (@Sendable () async -> AdminWebOperatorsPayload?)? = nil,
         updateOperators: (@Sendable (AdminWebOperatorsPatch) async -> Bool)? = nil,
         sendOperatorTest: (@Sendable () async -> String?)? = nil,
@@ -2081,6 +2085,8 @@ actor AdminWebServer {
         self.memberClipsProvider = memberClipsProvider
         self.memberMayPlay = memberMayPlay
         self.mediaPlaybackChoiceProvider = mediaPlaybackChoiceProvider
+        self.recordingCommentsProvider = recordingCommentsProvider
+        self.recordingCommentWriter = recordingCommentWriter
         self.operatorsProvider = operatorsProvider
         self.updateOperators = updateOperators
         self.sendOperatorTest = sendOperatorTest
@@ -2262,8 +2268,8 @@ actor AdminWebServer {
                         let tlsHandler = NIOSSLServerHandler(context: sslContext)
                         let httpHandler = AdminWebNIOHTTPHandler(
                             maxHTTPRequestSize: self.maxHTTPRequestSize,
-                            processor: { requestData in
-                                return await self.process(requestData, peerIP: peerIP)
+                            processor: { requestData, streamSender in
+                                return await self.process(requestData, peerIP: peerIP, streamSender: streamSender)
                             }
                         )
                         try channel.pipeline.syncOperations.addHandlers(tlsHandler, httpHandler)
@@ -2361,8 +2367,10 @@ actor AdminWebServer {
             let requestData = try await withReadTimeout(connection: connection) {
                 try await self.receiveHTTPRequest(from: connection)
             }
-            let response = await process(requestData, peerIP: peerIP)
-            try await send(response, over: connection)
+            let response = await process(requestData, peerIP: peerIP, streamSender: { data in
+                try await self.send(data, over: connection)
+            })
+            if !response.isEmpty { try await send(response, over: connection) }
         } catch {
             let response = httpResponse(
                 status: "400 Bad Request",
@@ -2489,8 +2497,66 @@ actor AdminWebServer {
         return 0
     }
 
+    private struct RecordingCommentPatch: Decodable {
+        let id: UUID
+        let text: String
+    }
+
+    private struct RecordingCommentsPayload: Encodable {
+        let comments: [RecordingComment]
+        let canComment: Bool
+    }
+
+    private func handleRecordingComments(_ request: HTTPRequest) async -> Data {
+        // Comments require a real signed-in session, never a video URL grant.
+        guard let session = authenticatedSession(for: request) else { return unauthorizedResponse() }
+        guard let token = request.query["id"], !token.isEmpty, token.utf8.count <= 4096 else {
+            return jsonResponse(["error": "invalid_recording"], status: "400 Bad Request")
+        }
+        if session.role == .member, await memberMayPlay?(session.userID, token) != true {
+            return jsonResponse(["error": "not_your_clip"], status: "403 Forbidden")
+        }
+        do {
+            if request.method == "GET" {
+                guard let provider = recordingCommentsProvider else {
+                    return jsonResponse(["error": "comments_unavailable"], status: "503 Service Unavailable")
+                }
+                guard let comments = try await provider(token) else {
+                    return jsonResponse(["error": "recording_not_found"], status: "404 Not Found")
+                }
+                return codableResponse(RecordingCommentsPayload(comments: comments, canComment: session.role != .viewer))
+            }
+            guard session.role != .viewer else { return forbiddenResponse() }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard request.body.count <= 16 * 1024,
+                  let patch = try? decoder.decode(RecordingCommentPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            let text = patch.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text.utf16.count <= 2000 else { throw RecordingCommentError.invalidText }
+            guard let writer = recordingCommentWriter else {
+                return jsonResponse(["error": "comments_unavailable"], status: "503 Service Unavailable")
+            }
+            guard let comment = try await writer(token, patch.id, session.userID, session.globalName ?? session.username, text) else {
+                return jsonResponse(["error": "recording_not_found"], status: "404 Not Found")
+            }
+            await logger?("Recording comment saved: \(comment.id.uuidString) by \(session.userID)")
+            return codableResponse(comment)
+        } catch RecordingCommentError.invalidText {
+            return jsonResponse(["error": "invalid_comment", "message": "Enter a comment of up to 2,000 characters."], status: "400 Bad Request")
+        } catch RecordingCommentError.full {
+            return jsonResponse(["error": "comments_full", "message": "The comment log is full. Existing comments have been kept."], status: "409 Conflict")
+        } catch RecordingCommentError.conflictingRetry {
+            return jsonResponse(["error": "comment_conflict", "message": "This comment ID has already been used."], status: "409 Conflict")
+        } catch {
+            return jsonResponse(["error": "comment_storage_failed", "message": "Comments couldn’t be read or saved. Try again shortly."], status: "503 Service Unavailable")
+        }
+    }
+
     private static let memberPlaybackPaths: Set<String> = [
-        "/api/media/stream", "/api/media/hls", "/api/media/hls-segment",
+        "/api/media/stream", "/api/media/download", "/api/media/hls", "/api/media/hls-segment",
         "/api/media/thumbnail", "/api/media/frame", "/api/media/game-art", "/api/media/game-details",
         "/api/media/playback"
     ]
@@ -2508,6 +2574,7 @@ actor AdminWebServer {
     }
 
     private static func isMemberRoute(method: String, path: String) -> Bool {
+        if path == "/api/media/comments", ["GET", "POST"].contains(method) { return true }
         if path.hasPrefix("/api/member/") { return true }
         if path.hasPrefix("/auth/") { return true }
         switch path {
@@ -2535,7 +2602,8 @@ actor AdminWebServer {
         meshRequestHandler = handler
     }
 
-    private func process(_ requestData: Data, peerIP: String? = nil) async -> Data {
+    private func process(_ requestData: Data, peerIP: String? = nil,
+                         streamSender: (@Sendable (Data) async throws -> Void)? = nil) async -> Data {
         guard var request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data("Invalid request".utf8))
         }
@@ -2544,7 +2612,7 @@ actor AdminWebServer {
             // Explicit read-only allowlist: exports must never inherit the
             // independent recording-serving permission.
             let paths: Set<String> = ["/v1/media/library", "/v1/media/playback", "/v1/media/stream",
-                                      "/v1/media/thumbnail", "/v1/media/frame"]
+                                      "/v1/media/thumbnail", "/v1/media/frame", "/v1/media/hls", "/v1/media/hls-segment"]
             guard request.method == "GET", paths.contains(request.path), let handler = recordingRequestHandler else {
                 return httpResponse(status: "404 Not Found", body: Data())
             }
@@ -2565,7 +2633,7 @@ actor AdminWebServer {
         // but the WebUI has no such acknowledgement flow, so it is strictly
         // read-only on standby and worker nodes. Keep this at the router
         // boundary so new mutation endpoints cannot accidentally omit it.
-        if request.method != "GET",
+        if !["GET", "HEAD"].contains(request.method),
            request.path.hasPrefix("/api/") {
             if let status = await statusProvider?(), status.isFailoverManagedNode {
                 return jsonResponse(
@@ -3815,6 +3883,8 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "media_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/media/comments"), ("POST", "/api/media/comments"):
+            return await handleRecordingComments(request)
         case ("GET", "/api/media/ffmpeg"), ("GET", "/api/media/export-status"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -3917,6 +3987,12 @@ actor AdminWebServer {
                 return jsonResponse(["error": "unknown_item"], status: "404 Not Found")
             }
             return jsonResponse(["quality": choice.quality, "preparing": choice.preparing])
+        case ("GET", "/api/media/download"), ("HEAD", "/api/media/download"):
+            guard mediaAccessAuthorized(request) else { return unauthorizedResponse() }
+            guard let token = request.query["id"], !token.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            return await transferOriginalRecording(request: request, token: token, streamSender: streamSender)
         case ("GET", "/api/media/stream"):
             guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()
@@ -6196,6 +6272,69 @@ actor AdminWebServer {
         return httpResponse(status: "302 Found", body: Data(), headers: finalHeaders)
     }
 
+    /// The playback provider intentionally caps each read at 8 MiB. Downloads
+    /// send those bounded reads sequentially as one full HTTP file response.
+    private func transferOriginalRecording(request: HTTPRequest, token: String,
+                                          streamSender: (@Sendable (Data) async throws -> Void)?) async -> Data {
+        func header(_ response: BinaryHTTPResponse, _ name: String) -> String? {
+            response.headers.first { $0.key.lowercased() == name.lowercased() }?.value
+        }
+        func range(_ response: BinaryHTTPResponse) -> (start: UInt64, end: UInt64, size: UInt64)? {
+            guard response.status == "206 Partial Content", let value = header(response, "Content-Range"), value.hasPrefix("bytes ") else { return nil }
+            let parts = value.dropFirst(6).split(separator: "/")
+            guard parts.count == 2, let size = UInt64(parts[1]), size > 0 else { return nil }
+            let bounds = parts[0].split(separator: "-")
+            guard bounds.count == 2, let start = UInt64(bounds[0]), let end = UInt64(bounds[1]), start <= end, end < size,
+                  end - start + 1 == UInt64(response.body.count), response.body.count <= 8 * 1024 * 1024 else { return nil }
+            return (start, end, size)
+        }
+        guard let first = await mediaStreamProvider?(token, "bytes=0-0", "original"),
+              let source = range(first), source.start == 0, source.end == 0 else {
+            return jsonResponse(["error": "download_unavailable"], status: "404 Not Found")
+        }
+        let revision = header(first, "ETag")
+        let rangeHeader: String?
+        if let validator = request.headers["if-range"], validator != revision { rangeHeader = nil }
+        else { rangeHeader = request.headers["range"] }
+        let requested = AppModel.parseByteRange(rangeHeader, fileSize: source.size)
+        if rangeHeader != nil && requested == nil {
+            return httpResponse(status: "416 Range Not Satisfiable", body: Data(), headers: ["Content-Range": "bytes */\(source.size)"])
+        }
+        let offset = requested?.offset ?? 0
+        let length = requested?.length ?? source.size
+        let lastByte = offset + length - 1
+        var headers = ["Content-Length": "\(length)", "Accept-Ranges": "bytes", "Connection": "close", "Cache-Control": "private, no-store"]
+        // This filename comes from the original owner, never a cache filename.
+        if let disposition = header(first, "Content-Disposition"), let separator = disposition.firstIndex(of: ";") {
+            headers["Content-Disposition"] = "attachment" + disposition[separator...]
+        } else { headers["Content-Disposition"] = "attachment; filename=\"recording\"" }
+        if let revision { headers["ETag"] = revision }
+        if requested != nil { headers["Content-Range"] = "bytes \(offset)-\(lastByte)/\(source.size)" }
+        let head = httpResponse(status: requested == nil ? "200 OK" : "206 Partial Content", body: Data(), contentType: first.contentType, headers: headers)
+        if request.method == "HEAD" { return head }
+        guard let streamSender else { return jsonResponse(["error": "stream_transport_unavailable"], status: "503 Service Unavailable") }
+        do {
+            try await streamSender(head)
+            var cursor = offset
+            while cursor <= lastByte {
+                try Task.checkCancellation()
+                guard mediaAccessAuthorized(request) else { break }
+                if let session = mediaSession(for: request), session.role == .member,
+                   await memberMayPlay?(session.userID, token) != true { break }
+                let chunkEnd = min(lastByte, cursor + 8 * 1024 * 1024 - 1)
+                guard let chunk = await mediaStreamProvider?(token, "bytes=\(cursor)-\(chunkEnd)", "original"),
+                      let received = range(chunk), received.start == cursor, received.end <= chunkEnd, received.size == source.size,
+                      revision == nil || header(chunk, "ETag") == revision else { break }
+                try await streamSender(chunk.body)
+                cursor = received.end + 1
+            }
+        } catch {
+            // Headers are already sent: close the transfer without inventing a
+            // successful shorter file. Content-Length makes truncation detectable.
+        }
+        return Data()
+    }
+
     private func httpResponse(
         status: String,
         body: Data,
@@ -6267,7 +6406,7 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
     )
 
     private let maxHTTPRequestSize: Int
-    private let processor: @Sendable (Data) async -> Data
+    private let processor: @Sendable (Data, @escaping @Sendable (Data) async throws -> Void) async -> Data
     private var buffer = Data()
     private var isProcessing = false
     private var hasWrittenResponse = false
@@ -6277,7 +6416,7 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
         let value: ChannelHandlerContext
     }
 
-    init(maxHTTPRequestSize: Int, processor: @escaping @Sendable (Data) async -> Data) {
+    init(maxHTTPRequestSize: Int, processor: @escaping @Sendable (Data, @escaping @Sendable (Data) async throws -> Void) async -> Data) {
         self.maxHTTPRequestSize = maxHTTPRequestSize
         self.processor = processor
     }
@@ -6289,7 +6428,8 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
         }
 
         guard buffer.count <= maxHTTPRequestSize else {
-            writeResponse(Self.badRequestResponse, context: context, closeAfterWrite: true)
+            if hasWrittenResponse { context.close(promise: nil) }
+            else { writeResponse(Self.badRequestResponse, context: context, closeAfterWrite: true) }
             return
         }
 
@@ -6312,10 +6452,21 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
         let eventLoop = context.eventLoop
         let processor = processor
         processorTask = Task { [weak self] in
-            let response = await processor(requestData)
-            let serverRequestedClose = Self.responseRequestsClose(response)
+            let streamingHandler = self
+            let response = await processor(requestData, { data in
+                let promise = eventLoop.makePromise(of: Void.self)
+                eventLoop.execute {
+                    streamingHandler?.hasWrittenResponse = true
+                    var chunk = contextBox.value.channel.allocator.buffer(capacity: data.count)
+                    chunk.writeBytes(data)
+                    contextBox.value.writeAndFlush(NIOAny(chunk), promise: promise)
+                }
+                try await promise.futureResult.get()
+            })
+            let serverRequestedClose = response.isEmpty || Self.responseRequestsClose(response)
             eventLoop.execute { [weak self] in
                 guard let handler = self else { return }
+                if response.isEmpty { contextBox.value.close(promise: nil); return }
                 handler.writeResponse(
                     response,
                     context: contextBox.value,
@@ -6470,8 +6621,64 @@ extension AdminWebServer {
 
     /// Feeds raw request bytes through the same entry point the NIO and Network
     /// listeners use, and hands back the raw response bytes.
-    func testProcessRequest(_ raw: Data, peerIP: String? = nil) async -> Data {
-        await process(raw, peerIP: peerIP)
+    func testProcessRequest(_ raw: Data, peerIP: String? = nil,
+                            streamSender: (@Sendable (Data) async throws -> Void)? = nil) async -> Data {
+        await process(raw, peerIP: peerIP, streamSender: streamSender)
+    }
+
+    func testSetMediaStreamProvider(_ provider: @escaping @Sendable (String, String?, String?) async -> BinaryHTTPResponse?) {
+        mediaStreamProvider = provider
+    }
+
+    func testSetRecordingComments(
+        read: @escaping @Sendable (String) async throws -> [RecordingComment]?,
+        write: @escaping @Sendable (String, UUID, String, String, String) async throws -> RecordingComment?,
+        mayPlay: @escaping @Sendable (String, String) async -> Bool = { _, _ in false }
+    ) {
+        recordingCommentsProvider = read
+        recordingCommentWriter = write
+        memberMayPlay = mayPlay
+    }
+
+    /// Exercises both production HTTP writers on ephemeral loopback sockets.
+    /// The NIO handler is the same one used behind the TLS handler in production.
+    func testStartMediaTransport(useNIO: Bool) async throws -> URL {
+        if useNIO {
+            let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+            do {
+                let channel = try await ServerBootstrap(group: group).childChannelInitializer { channel in
+                    channel.pipeline.addHandler(AdminWebNIOHTTPHandler(maxHTTPRequestSize: self.maxHTTPRequestSize, processor: { data, sender in
+                        await self.process(data, peerIP: "127.0.0.1", streamSender: sender)
+                    }))
+                }.bind(host: "127.0.0.1", port: 0).get()
+                nioGroup = group
+                nioChannel = channel
+                return URL(string: "http://127.0.0.1:\(channel.localAddress!.port!)")!
+            } catch { try? await shutdownEventLoopGroup(group); throw error }
+        }
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        let testListener = try NWListener(using: parameters, on: .any)
+        listener = testListener
+        testListener.newConnectionHandler = { connection in
+            connection.start(queue: DispatchQueue.global(qos: .utility))
+            Task { await self.handleConnection(connection) }
+        }
+        let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
+            testListener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    testListener.stateUpdateHandler = nil
+                    continuation.resume(returning: testListener.port!.rawValue)
+                case .failed(let error):
+                    testListener.stateUpdateHandler = nil
+                    continuation.resume(throwing: error)
+                default: break
+                }
+            }
+            testListener.start(queue: DispatchQueue.global(qos: .utility))
+        }
+        return URL(string: "http://127.0.0.1:\(port)")!
     }
 
     /// Mints a media access token exactly as `GET /api/media/access-token` does.

@@ -3,22 +3,18 @@ import Foundation
 import UniformTypeIdentifiers
 import os
 import CryptoKit
+import VideoToolbox
 
-/// Repackages a recording into HLS (HTTP Live Streaming) — a fragmented-MP4
-/// (CMAF) initialization segment plus media segments and a VOD `.m3u8`
-/// playlist — so the browser can start playback immediately and seek cleanly,
-/// regardless of where the source MP4 places its `moov` atom.
+/// Packages recordings into Apple HLS fMP4 segments. Streaming renditions use
+/// AVAssetReader and VideoToolbox hardware H.264/AAC encoding, with source-time
+/// reads and rebased timestamps for on-demand seeks. The legacy packaging API
+/// can pass compatible compressed tracks through without re-encoding.
 ///
-/// For H.264/HEVC + AAC sources (the OBS/game-capture norm) the audio and
-/// video are passed through without re-encoding, so packaging is fast and
-/// lossless. Output lives in `~/Library/Caches/SwiftBot/MediaHLS/<key>/` keyed
-/// by item id and source mtime — if the source recording is replaced, the next
-/// request regenerates the segments.
-///
-/// Concurrent requests for the same item share a single in-flight packaging
-/// task instead of kicking off duplicates, mirroring `MediaTranscodeCache`.
+/// Caches include source revision, quality and starting offset. Concurrent
+/// requests share an encode; at most two encoders run on a recording's Mac.
 public actor HLSPackager {
     public enum PackagingError: Error {
+        case invalidStartTime
         case noVideoTrack
         case readerSetupFailed
         case writerSetupFailed
@@ -33,6 +29,10 @@ public actor HLSPackager {
     private let logger = Logger(subsystem: "com.swiftbot.media", category: "hls")
     private var inFlight: [String: Task<URL?, Never>] = [:]
     private let targetSegmentSeconds: Double
+    private var streamingJobs: [String: Task<Void, Never>] = [:]
+    private var streamingItems: [String: String] = [:]
+    private var streamingAccess: [String: Date] = [:]
+    private var failedStreams: [String: Date] = [:]
 
     public init(cacheRoot: URL, targetSegmentSeconds: Double = 6) {
         self.cacheRoot = cacheRoot
@@ -72,8 +72,115 @@ public actor HLSPackager {
         inFlight[key] = task
         let result = await task.value
         inFlight[key] = nil
-        trimCache(protecting: Set(inFlight.keys).union([key]))
+        trimCache(protecting: Set(inFlight.keys).union(streamingJobs.keys).union([key]))
         return result
+    }
+
+    /// Starts hardware encoding directly into HLS, without first exporting a
+    /// complete MP4. At most two renditions encode concurrently on this Mac.
+    /// Partial caches left by an interrupted process are discarded on restart.
+    public func prepareStream(itemID: String, sourceURL: URL, quality: MediaTranscodeCache.Quality, startSeconds: Int = 0) {
+        guard startSeconds >= 0, startSeconds <= 604_800, let dir = streamDirectory(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds) else { return }
+        let key = dir.lastPathComponent
+        failedStreams = failedStreams.filter { Date().timeIntervalSince($0.value) < 60 }
+        touch(dir)
+        // A seek takes priority over this recording's least recently requested
+        // encode. Published chunks remain playable; its viewers can continue at
+        // their current timestamp rather than losing their already buffered video.
+        if startSeconds > 0, streamingJobs[key] == nil, streamingJobs.count >= 2,
+           failedStreams[key] == nil,
+           !streamingJobs.values.contains(where: { $0.isCancelled }),
+           !FileManager.default.fileExists(atPath: dir.appendingPathComponent(".complete").path),
+           let victim = streamingJobs.keys.filter({ streamingItems[$0] == itemID && streamingJobs[$0]?.isCancelled == false })
+            .min(by: { (streamingAccess[$0] ?? .distantPast) < (streamingAccess[$1] ?? .distantPast) }) {
+            streamingJobs[victim]?.cancel()
+        }
+        guard streamingJobs[key] == nil,
+              !FileManager.default.fileExists(atPath: dir.appendingPathComponent(".complete").path),
+              streamingJobs.count < 2,
+              failedStreams[key].map({ Date().timeIntervalSince($0) >= 60 }) ?? true else { return }
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        touch(dir)
+        streamingItems[key] = itemID
+        streamingAccess[key] = Date()
+        streamingJobs[key] = Task { [sourceURL, quality, dir, targetSegmentSeconds, startSeconds] in
+            do {
+                try await Self.package(sourceURL: sourceURL, into: dir, segmentSeconds: targetSegmentSeconds, quality: quality, startSeconds: startSeconds)
+                try Data().write(to: dir.appendingPathComponent(".complete"), options: .atomic)
+            } catch {
+                if !Task.isCancelled { logger.error("stream encode failed: \(String(describing: error), privacy: .public)") }
+                if Task.isCancelled, let raw = try? String(contentsOf: dir.appendingPathComponent(Self.playlistFileName), encoding: .utf8),
+                   raw.contains("seg0.m4s"), raw.contains("#EXT-X-ENDLIST") {
+                    // The collector froze only complete published fragments.
+                    try? Data().write(to: dir.appendingPathComponent(".complete"), options: .atomic)
+                } else {
+                    try? FileManager.default.removeItem(at: dir)
+                    if !Task.isCancelled { failedStreams[key] = Date() }
+                }
+            }
+            streamingJobs[key] = nil
+            streamingItems[key] = nil
+            streamingAccess[key] = nil
+            trimCache(protecting: Set(inFlight.keys).union(streamingJobs.keys))
+        }
+    }
+
+    /// Returns once the first playable segment is published, not at the end
+    /// of the recording. The HTTP caller can retry a busy encoder later.
+    public func streamingPlaylistURL(itemID: String, sourceURL: URL, quality: MediaTranscodeCache.Quality, startSeconds: Int = 0) async -> URL? {
+        prepareStream(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds)
+        guard startSeconds >= 0, startSeconds <= 604_800, let dir = streamDirectory(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds) else { return nil }
+        let playlist = dir.appendingPathComponent(Self.playlistFileName)
+        for _ in 0..<80 {
+            guard !Task.isCancelled, failedStreams[dir.lastPathComponent] == nil else { return nil }
+            touch(dir)
+            if (streamingJobs[dir.lastPathComponent] != nil || FileManager.default.fileExists(atPath: dir.appendingPathComponent(".complete").path)),
+               FileManager.default.fileExists(atPath: playlist.path) { return playlist }
+            if streamingJobs[dir.lastPathComponent] == nil {
+                prepareStream(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds)
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return nil
+    }
+
+    public func streamingFailed(itemID: String, sourceURL: URL, quality: MediaTranscodeCache.Quality, startSeconds: Int = 0) -> Bool {
+        guard startSeconds >= 0, startSeconds <= 604_800, let dir = streamDirectory(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds),
+              let failed = failedStreams[dir.lastPathComponent] else { return false }
+        return Date().timeIntervalSince(failed) < 60
+    }
+
+    public func streamingSegmentURL(itemID: String, sourceURL: URL, quality: MediaTranscodeCache.Quality, segment: String, startSeconds: Int = 0) -> URL? {
+        guard Self.isSegmentName(segment),
+              let dir = streamDirectory(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds),
+              streamingJobs[dir.lastPathComponent] != nil || FileManager.default.fileExists(atPath: dir.appendingPathComponent(".complete").path)
+        else { return nil }
+        touch(dir)
+        let url = dir.appendingPathComponent(segment)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    public nonisolated static func isSegmentName(_ name: String) -> Bool {
+        name == initSegmentFileName || name.range(of: #"^seg[0-9]+\.m4s$"#, options: .regularExpression) != nil
+    }
+
+    public func streamingIdentity(itemID: String, sourceURL: URL, quality: MediaTranscodeCache.Quality, startSeconds: Int = 0) -> String? {
+        streamDirectory(itemID: itemID, sourceURL: sourceURL, quality: quality, startSeconds: startSeconds)?.lastPathComponent
+    }
+
+    private func streamDirectory(itemID: String, sourceURL: URL, quality: MediaTranscodeCache.Quality, startSeconds: Int = 0) -> URL? {
+        guard (0...604_800).contains(startSeconds), let values = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
+              let modified = values[.modificationDate] as? Date,
+              let size = values[.size] as? NSNumber else { return nil }
+        let identity = "\(itemID)|\(sourceURL.path)|\(modified.timeIntervalSince1970)|\(size.int64Value)|\(quality.rawValue)|stream_v2|\(startSeconds)"
+        let key = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+        return cacheRoot.appendingPathComponent(key, isDirectory: true)
+    }
+
+    private func touch(_ directory: URL) {
+        if streamingJobs[directory.lastPathComponent] != nil { streamingAccess[directory.lastPathComponent] = Date() }
+        try? Data().write(to: directory.appendingPathComponent(".access"))
     }
 
     /// File URL of a previously-generated segment (the init segment or a media
@@ -136,9 +243,10 @@ public actor HLSPackager {
 
     // MARK: - Packaging
 
-    private static func package(sourceURL: URL, into dir: URL, segmentSeconds: Double) async throws {
-        try? FileManager.default.removeItem(at: dir)
+    private static func package(sourceURL: URL, into dir: URL, segmentSeconds: Double, quality: MediaTranscodeCache.Quality? = nil, startSeconds: Int = 0) async throws {
+        if quality == nil { try? FileManager.default.removeItem(at: dir) }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if quality != nil { try Data().write(to: dir.appendingPathComponent(".access")) }
 
         let asset = AVURLAsset(url: sourceURL)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -149,45 +257,71 @@ public actor HLSPackager {
         let videoFormat = try await videoTrack.load(.formatDescriptions).first
         let audioFormat = try await audioTrack?.load(.formatDescriptions).first ?? nil
 
-        // Reader: passthrough (compressed) sample buffers from the source.
+        // Decode for streaming, or retain compressed samples for legacy remuxing.
+        let duration = try await asset.load(.duration)
+        let startTime = CMTime(seconds: Double(startSeconds), preferredTimescale: 600)
+        guard startSeconds >= 0, startTime < duration else { throw PackagingError.invalidStartTime }
         let reader = try AVAssetReader(asset: asset)
-        let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+        reader.timeRange = CMTimeRange(start: startTime, duration: duration - startTime)
+        let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: quality == nil ? nil : [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        ])
         videoOutput.alwaysCopiesSampleData = false
         guard reader.canAdd(videoOutput) else { throw PackagingError.readerSetupFailed }
         reader.add(videoOutput)
 
         var audioOutput: AVAssetReaderTrackOutput?
         if let audioTrack {
-            let out = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+            let out = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: quality == nil ? nil : [AVFormatIDKey: kAudioFormatLinearPCM])
             out.alwaysCopiesSampleData = false
-            if reader.canAdd(out) {
-                reader.add(out)
-                audioOutput = out
-            }
+            guard reader.canAdd(out) else { throw PackagingError.readerSetupFailed }
+            reader.add(out)
+            audioOutput = out
         }
 
         // Writer: segmented fMP4 output conforming to the Apple HLS profile.
         // No output file URL — segments are delivered to the delegate.
-        let collector = HLSSegmentCollector(directory: dir)
+        let collector = HLSSegmentCollector(directory: dir, segmentSeconds: segmentSeconds, progressive: quality != nil)
         let writer = AVAssetWriter(contentType: UTType.mpeg4Movie)
         writer.outputFileTypeProfile = .mpeg4AppleHLS
-        writer.preferredOutputSegmentInterval = CMTime(seconds: segmentSeconds, preferredTimescale: 1)
+        writer.preferredOutputSegmentInterval = CMTime(seconds: segmentSeconds, preferredTimescale: 600)
         writer.initialSegmentStartTime = .zero
         writer.delegate = collector
 
-        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFormat)
+        var videoSettings: [String: Any]?
+        if let quality {
+            let size = try await videoTrack.load(.naturalSize)
+            let scale = min(1, (quality == .low ? 1280.0 : 1920.0) / max(size.width, size.height))
+            videoSettings = [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: max(2, Int(size.width * scale) / 2 * 2),
+                AVVideoHeightKey: max(2, Int(size.height * scale) / 2 * 2),
+                AVVideoEncoderSpecificationKey: [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String: true],
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: quality == .low ? 3_000_000 : 8_000_000,
+                    AVVideoMaxKeyFrameIntervalDurationKey: segmentSeconds,
+                    AVVideoAllowFrameReorderingKey: false,
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                ]
+            ]
+        }
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings, sourceFormatHint: quality == nil ? videoFormat : nil)
+        videoInput.transform = try await videoTrack.load(.preferredTransform)
         videoInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(videoInput) else { throw PackagingError.writerSetupFailed }
         writer.add(videoInput)
 
         var audioInput: AVAssetWriterInput?
         if audioOutput != nil {
-            let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormat)
+            let audioSettings: [String: Any]? = quality == nil ? nil : [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000,
+                AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 128_000
+            ]
+            let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings, sourceFormatHint: quality == nil ? audioFormat : nil)
             aIn.expectsMediaDataInRealTime = false
-            if writer.canAdd(aIn) {
-                writer.add(aIn)
-                audioInput = aIn
-            }
+            guard writer.canAdd(aIn) else { throw PackagingError.writerSetupFailed }
+            writer.add(aIn)
+            audioInput = aIn
         }
 
         guard reader.startReading() else { throw PackagingError.readerFailed(reader.error) }
@@ -197,17 +331,44 @@ public actor HLSPackager {
         }
         writer.startSession(atSourceTime: .zero)
 
+        let idleReader = QueueConfined(value: reader)
+        let idleWriter = QueueConfined(value: writer)
+        let idleMonitor = Task {
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                guard quality != nil else { continue }
+                let access = try? dir.appendingPathComponent(".access").resourceValues(forKeys: [.contentModificationDateKey])
+                if Date().timeIntervalSince(access?.contentModificationDate ?? .distantPast) > 90 {
+                    idleReader.value.cancelReading()
+                    idleWriter.value.cancelWriting()
+                    return
+                }
+            }
+        }
+        defer { idleMonitor.cancel() }
+
         // Pump video and audio concurrently; each input drains its reader output
         // on its own serial queue and marks itself finished at end-of-stream.
         // Both tracks must be appended before finishWriting so the segmenter can
         // interleave them on time boundaries.
-        await Self.pumpSamples(
-            video: (videoOutput, videoInput),
-            audio: (audioOutput != nil && audioInput != nil) ? (audioOutput!, audioInput!) : nil,
-            reader: reader, writer: writer
-        )
+        await withTaskCancellationHandler {
+            await Self.pumpSamples(
+                video: (videoOutput, videoInput),
+                audio: (audioOutput != nil && audioInput != nil) ? (audioOutput!, audioInput!) : nil,
+                reader: reader, writer: writer, sourceStart: startTime
+            )
+        } onCancel: {
+            // Let both writer-input callbacks register and drain before cancelling
+            // the writer; cancelling it here races requestMediaDataWhenReady.
+            idleReader.value.cancelReading()
+        }
+        if Task.isCancelled {
+            writer.cancelWriting()
+            try? collector.finish()
+            throw CancellationError()
+        }
 
-        if reader.status == .failed {
+        if reader.status != .completed {
             writer.cancelWriting()
             throw PackagingError.readerFailed(reader.error)
         }
@@ -217,11 +378,11 @@ public actor HLSPackager {
             throw PackagingError.writerFailed(writer.error)
         }
         await writer.finishWriting()
-        if writer.status == .failed {
+        if writer.status != .completed {
             throw PackagingError.writerFailed(writer.error)
         }
 
-        try collector.writePlaylist(segmentSeconds: segmentSeconds)
+        try collector.finish()
     }
 
     /// Drains the video (and optional audio) reader outputs into their writer
@@ -232,7 +393,7 @@ public actor HLSPackager {
     static func pumpSamples(
         video: (AVAssetReaderTrackOutput, AVAssetWriterInput),
         audio: (AVAssetReaderTrackOutput, AVAssetWriterInput)?,
-        reader: AVAssetReader, writer: AVAssetWriter
+        reader: AVAssetReader, writer: AVAssetWriter, sourceStart: CMTime = .zero
     ) async {
         let resumer = ContinuationResumer()
         let group = DispatchGroup()
@@ -256,9 +417,9 @@ public actor HLSPackager {
                 let timer = DispatchSource.makeTimerSource(queue: queue)
                 timer.schedule(deadline: .now() + .milliseconds(250), repeating: .milliseconds(250))
                 timer.setEventHandler {
-                    if sessionReader.value.status == .failed || sessionWriter.value.status == .failed {
+                    if [.failed, .cancelled].contains(sessionReader.value.status) || [.failed, .cancelled].contains(sessionWriter.value.status) {
                         if finished.run() {
-                            sendableInput.value.markAsFinished()
+                            if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }
                             group.leave()
                         }
                         timer.cancel()
@@ -268,12 +429,16 @@ public actor HLSPackager {
                 input.requestMediaDataWhenReady(on: queue) {
                     while sendableInput.value.isReadyForMoreMediaData {
                         if let sample = sendableOutput.value.copyNextSampleBuffer() {
-                            if !sendableInput.value.append(sample) {
-                                if finished.run() { timer.cancel(); sendableInput.value.markAsFinished(); group.leave() }
+                            // Segmented writers preserve sample timestamps. Rebase
+                            // both tracks together so every seek stream starts at 0.
+                            if CMSampleBufferGetPresentationTimeStamp(sample) < sourceStart { continue }
+                            guard let rebased = Self.rebasedSample(sample, subtracting: sourceStart),
+                                  sendableInput.value.append(rebased) else {
+                                if finished.run() { timer.cancel(); if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }; group.leave() }
                                 return
                             }
                         } else {
-                            if finished.run() { timer.cancel(); sendableInput.value.markAsFinished(); group.leave() }
+                            if finished.run() { timer.cancel(); if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }; group.leave() }
                             return
                         }
                     }
@@ -290,6 +455,24 @@ public actor HLSPackager {
             }
         }
     }
+
+    private nonisolated static func rebasedSample(_ sample: CMSampleBuffer, subtracting start: CMTime) -> CMSampleBuffer? {
+        guard start != .zero else { return sample }
+        var count = 0
+        guard CMSampleBufferGetSampleTimingInfoArray(sample, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count) == noErr,
+              count > 0 else { return nil }
+        var timing = Array(repeating: CMSampleTimingInfo(), count: count)
+        guard CMSampleBufferGetSampleTimingInfoArray(sample, entryCount: count, arrayToFill: &timing, entriesNeededOut: nil) == noErr else { return nil }
+        for index in timing.indices {
+            timing[index].presentationTimeStamp = timing[index].presentationTimeStamp - start
+            if timing[index].decodeTimeStamp.isNumeric { timing[index].decodeTimeStamp = timing[index].decodeTimeStamp - start }
+        }
+        var output: CMSampleBuffer?
+        guard CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sample,
+            sampleTimingEntryCount: count, sampleTimingArray: &timing, sampleBufferOut: &output) == noErr else { return nil }
+        return output
+    }
+
 }
 
 /// A reference that is deliberately confined to one dispatch queue. This is
@@ -348,9 +531,15 @@ private final class HLSSegmentCollector: NSObject, AVAssetWriterDelegate, @unche
     private let lock = NSLock()
     private var segments: [Segment] = []
     private var mediaSegmentIndex = 0
+    private let segmentSeconds: Double
+    private let progressive: Bool
+    private var writeError: Error?
+    private var bytesWritten = 0
 
-    init(directory: URL) {
+    init(directory: URL, segmentSeconds: Double, progressive: Bool) {
         self.directory = directory
+        self.segmentSeconds = segmentSeconds
+        self.progressive = progressive
     }
 
     func assetWriter(
@@ -362,37 +551,51 @@ private final class HLSSegmentCollector: NSObject, AVAssetWriterDelegate, @unche
         lock.lock()
         defer { lock.unlock() }
 
-        switch segmentType {
-        case .initialization:
-            try? segmentData.write(to: directory.appendingPathComponent(HLSPackager.initSegmentFileName), options: .atomic)
-        case .separable:
-            let fileName = "seg\(mediaSegmentIndex).m4s"
-            mediaSegmentIndex += 1
-            try? segmentData.write(to: directory.appendingPathComponent(fileName), options: .atomic)
-            let duration = segmentReport?.trackReports
-                .map { CMTimeGetSeconds($0.duration) }
-                .max() ?? 0
-            segments.append(Segment(fileName: fileName, durationSeconds: duration))
-        @unknown default:
-            break
+        guard writeError == nil, writer.status != .cancelled else { return }
+        do {
+            bytesWritten += segmentData.count
+            guard bytesWritten <= 5 * 1024 * 1024 * 1024 else { throw CocoaError(.fileWriteOutOfSpace) }
+            switch segmentType {
+            case .initialization:
+                try segmentData.write(to: directory.appendingPathComponent(HLSPackager.initSegmentFileName), options: .atomic)
+            case .separable:
+                let fileName = "seg\(mediaSegmentIndex).m4s"
+                try segmentData.write(to: directory.appendingPathComponent(fileName), options: .atomic)
+                mediaSegmentIndex += 1
+                let duration = segmentReport?.trackReports.map { CMTimeGetSeconds($0.duration) }.max() ?? segmentSeconds
+                segments.append(Segment(fileName: fileName, durationSeconds: duration))
+                if progressive { try writePlaylist(complete: false) }
+            @unknown default: break
+            }
+        } catch {
+            writeError = error
+            let failedWriter = QueueConfined(value: writer)
+            DispatchQueue.global(qos: .utility).async { failedWriter.value.cancelWriting() }
         }
+    }
+
+    func finish() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if let writeError { throw writeError }
+        guard !segments.isEmpty else { throw HLSPackager.PackagingError.writerSetupFailed }
+        try writePlaylist(complete: true)
     }
 
     /// Writes `playlist.m3u8` (HLS v7, VOD) referencing the init + media
     /// segments by bare file name. The HTTP layer rewrites those names into
     /// authorized segment URLs when serving.
-    func writePlaylist(segmentSeconds: Double) throws {
-        lock.lock()
-        let segments = self.segments
-        lock.unlock()
+    private func writePlaylist(complete: Bool) throws {
 
-        let targetDuration = max(1, Int(segments.map(\.durationSeconds).max()?.rounded(.up) ?? segmentSeconds.rounded(.up)))
+        let targetDuration = progressive ? max(1, Int(segmentSeconds.rounded(.up)) + 1)
+            : max(1, Int(segments.map(\.durationSeconds).max()?.rounded(.up) ?? segmentSeconds.rounded(.up)))
+        guard segments.allSatisfy({ $0.durationSeconds <= Double(targetDuration) + 0.5 }) else { throw HLSPackager.PackagingError.writerSetupFailed }
         var lines: [String] = [
             "#EXTM3U",
             "#EXT-X-VERSION:7",
             "#EXT-X-TARGETDURATION:\(targetDuration)",
             "#EXT-X-MEDIA-SEQUENCE:0",
-            "#EXT-X-PLAYLIST-TYPE:VOD",
+            progressive ? "#EXT-X-PLAYLIST-TYPE:EVENT" : "#EXT-X-PLAYLIST-TYPE:VOD",
             "#EXT-X-MAP:URI=\"\(HLSPackager.initSegmentFileName)\""
         ]
         for segment in segments {
@@ -400,7 +603,7 @@ private final class HLSSegmentCollector: NSObject, AVAssetWriterDelegate, @unche
             lines.append(String(format: "#EXTINF:%.6f,", duration))
             lines.append(segment.fileName)
         }
-        lines.append("#EXT-X-ENDLIST")
+        if complete { lines.append("#EXT-X-ENDLIST") }
 
         let body = lines.joined(separator: "\n") + "\n"
         try body.data(using: .utf8)?.write(to: directory.appendingPathComponent(HLSPackager.playlistFileName), options: .atomic)

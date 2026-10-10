@@ -2456,6 +2456,14 @@ extension AppModel {
                 guard let model = self else { return nil }
                 return await model.mediaPlaybackChoice(token: token)
             },
+            recordingCommentsProvider: { [weak self] token in
+                guard let model = self else { return nil }
+                return try await model.recordingComments(token: token)
+            },
+            recordingCommentWriter: { [weak self] token, id, authorID, authorName, text in
+                guard let model = self else { return nil }
+                return try await model.addRecordingComment(token: token, id: id, authorID: authorID, authorName: authorName, text: text)
+            },
             operatorsProvider: { [weak self] in
                 guard let model = self else { return nil }
                 return await MainActor.run { model.adminWebOperatorsSnapshot() }

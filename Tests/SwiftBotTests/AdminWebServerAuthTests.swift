@@ -13,6 +13,71 @@ final class AdminWebServerAuthTests: XCTestCase {
 
     // MARK: - Helpers
 
+    func testRecordingCommentsEnforceIdentityCSRFMemberAccessAndReadOnlyRoles() async throws {
+        let server = AdminWebServer()
+        let comment = RecordingComment(id: UUID(), recordingKey: "node|clip", authorID: "123", authorName: "John", text: "Existing", createdAt: Date())
+        await server.testSetRecordingComments(
+            read: { token in token == "allowed" ? [comment] : nil },
+            write: { token, id, userID, name, text in
+                guard token == "allowed" else { return nil }
+                return RecordingComment(id: id, recordingKey: "node|clip", authorID: userID, authorName: name, text: text, createdAt: Date())
+            },
+            mayPlay: { userID, token in userID == "member" && token == "allowed" }
+        )
+        let admin = await server.testSeedSession(userID: "admin")
+        let viewer = await server.testSeedSession(viewerRole: true)
+        let member = await server.testSeedSession(memberRole: true, userID: "member")
+        let otherMember = await server.testSeedSession(memberRole: true, userID: "outsider")
+        let id = UUID().uuidString
+        let body = Data("{\"id\":\"\(id)\",\"text\":\" New comment \",\"authorID\":\"forged\",\"authorName\":\"Forged\"}".utf8)
+        let path = "/api/media/comments?id=allowed"
+        let anonymous = await server.testProcessRequest(makeRequest(path: path))
+        XCTAssertEqual(statusCode(from: anonymous), 401)
+        let read = await server.testProcessRequest(makeRequest(path: path, cookie: viewer.id))
+        XCTAssertEqual(statusCode(from: read), 200)
+        XCTAssertTrue(bodyString(from: read).contains("\"canComment\":false"))
+        let viewerWrite = await server.testProcessRequest(makeRequest(method: "POST", path: path, cookie: viewer.id, csrf: viewer.csrf, body: body))
+        XCTAssertEqual(statusCode(from: viewerWrite), 403)
+        let noCSRF = await server.testProcessRequest(makeRequest(method: "POST", path: path, cookie: admin.id, body: body))
+        XCTAssertEqual(statusCode(from: noCSRF), 403)
+        for method in ["GET", "POST"] {
+            let denied = await server.testProcessRequest(makeRequest(method: method, path: path, cookie: otherMember.id, csrf: otherMember.csrf, body: method == "POST" ? body : Data()))
+            XCTAssertEqual(statusCode(from: denied), 403)
+        }
+        for session in [admin, member] {
+            let response = await server.testProcessRequest(makeRequest(method: "POST", path: path, cookie: session.id, csrf: session.csrf, body: body))
+            XCTAssertEqual(statusCode(from: response), 200)
+            XCTAssertTrue(bodyString(from: response).contains("\"authorName\":\"Audit Fixture\""))
+            XCTAssertFalse(bodyString(from: response).contains("forged"))
+            XCTAssertTrue(bodyString(from: response).contains("\"text\":\"New comment\""))
+        }
+        let memberRead = await server.testProcessRequest(makeRequest(path: path, cookie: member.id))
+        XCTAssertEqual(statusCode(from: memberRead), 200)
+        let missing = await server.testProcessRequest(makeRequest(path: "/api/media/comments?id=missing", cookie: admin.id))
+        XCTAssertEqual(statusCode(from: missing), 404)
+        let invalid = Data("{\"id\":\"\(id)\",\"text\":\"  \"}".utf8)
+        let rejected = await server.testProcessRequest(makeRequest(method: "POST", path: path, cookie: admin.id, csrf: admin.csrf, body: invalid))
+        XCTAssertEqual(statusCode(from: rejected), 400)
+        await server.testSetStatusProvider { Self.nodeStatus(managed: true) }
+        let passive = await server.testProcessRequest(makeRequest(method: "POST", path: path, cookie: admin.id, csrf: admin.csrf, body: body))
+        XCTAssertEqual(statusCode(from: passive), 409)
+    }
+
+    func testRecordingCommentStorageFailuresAreVisibleAndMediaGrantsDoNotAuthorizeComments() async {
+        let server = AdminWebServer()
+        let session = await server.testSeedSession()
+        await server.testSetRecordingComments(read: { _ in throw CocoaError(.fileReadCorruptFile) }, write: { _, _, _, _, _ in throw CocoaError(.fileWriteOutOfSpace) })
+        let path = "/api/media/comments?id=clip"
+        let read = await server.testProcessRequest(makeRequest(path: path, cookie: session.id))
+        XCTAssertEqual(statusCode(from: read), 503)
+        let body = Data("{\"id\":\"\(UUID().uuidString)\",\"text\":\"Save\"}".utf8)
+        let write = await server.testProcessRequest(makeRequest(method: "POST", path: path, cookie: session.id, csrf: session.csrf, body: body))
+        XCTAssertEqual(statusCode(from: write), 503)
+        let token = await server.testMintMediaAccessToken(sessionID: session.id)
+        let grantOnly = await server.testProcessRequest(makeRequest(path: path + "&token=" + token))
+        XCTAssertEqual(statusCode(from: grantOnly), 401)
+    }
+
     private func makeRequest(
         method: String = "GET",
         path: String,

@@ -1,4 +1,91 @@
 import Foundation
+
+struct RecordingComment: Codable, Sendable, Equatable {
+    let id: UUID
+    let recordingKey: String
+    let authorID: String
+    let authorName: String
+    let text: String
+    let createdAt: Date
+}
+
+enum RecordingCommentError: Error {
+    case invalidText, full, conflictingRetry
+}
+
+/// The active WebUI owns comments for local and shared clips. Reads reload the
+/// file so imported SwiftMesh snapshots and restarts see the same history.
+struct RecordingCommentLog: Sendable {
+    static let fileName = "recording-comments.json"
+    static let maximumBytes = 8 * 1024 * 1024
+    let fileURL: URL
+
+    init(fileURL: URL = SwiftBotStorage.folderURL().appendingPathComponent(Self.fileName)) {
+        self.fileURL = fileURL
+    }
+
+    static func validate(_ data: Data) throws {
+        guard data.count <= maximumBytes else { throw RecordingCommentError.full }
+        let comments = try JSONDecoder().decode([RecordingComment].self, from: data)
+        guard comments.count <= 10_000, Set(comments.map(\.id)).count == comments.count,
+              comments.allSatisfy({ !$0.recordingKey.isEmpty && $0.recordingKey.utf8.count <= 1024
+                && !$0.authorID.isEmpty && $0.authorID.utf8.count <= 128
+                && !$0.authorName.isEmpty && $0.authorName.utf16.count <= 100
+                && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && $0.text.utf16.count <= 2000 && $0.createdAt.timeIntervalSince1970.isFinite }),
+              Dictionary(grouping: comments, by: \.recordingKey).values.allSatisfy({ $0.count <= 200 }) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+    }
+
+    func load() throws -> [RecordingComment] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
+        let size = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
+        guard (size?.intValue ?? Self.maximumBytes + 1) <= Self.maximumBytes else { throw RecordingCommentError.full }
+        let data = try Data(contentsOf: fileURL)
+        try Self.validate(data)
+        return try JSONDecoder().decode([RecordingComment].self, from: data)
+    }
+
+    func comments(for key: String) throws -> [RecordingComment] {
+        try load().filter { $0.recordingKey == key }.sorted {
+            $0.createdAt == $1.createdAt ? $0.id.uuidString < $1.id.uuidString : $0.createdAt < $1.createdAt
+        }
+    }
+
+    /// Synchronous read/append/atomic write on AppModel's MainActor; never
+    /// acknowledge a comment until persistence succeeds. Retry IDs deduplicate.
+    func append(id: UUID, key: String, authorID: String, authorName: String, text: String) throws -> RecordingComment {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.utf16.count <= 2000 else { throw RecordingCommentError.invalidText }
+        var comments = try load()
+        if let existing = comments.first(where: { $0.id == id }) {
+            guard existing.recordingKey == key, existing.authorID == authorID, existing.text == trimmed else {
+                throw RecordingCommentError.conflictingRetry
+            }
+            return existing
+        }
+        guard comments.count < 10_000, comments.filter({ $0.recordingKey == key }).count < 200 else {
+            throw RecordingCommentError.full
+        }
+        let name = String(authorName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(50))
+        let comment = RecordingComment(
+            id: id,
+            recordingKey: key,
+            authorID: authorID,
+            authorName: name.isEmpty ? "SwiftBot user" : name,
+            text: trimmed,
+            createdAt: Date()
+        )
+        comments.append(comment)
+        let data = try JSONEncoder().encode(comments)
+        try Self.validate(data)
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: fileURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        return comment
+    }
+}
 import CryptoKit
 import RecordingsKit
 
@@ -541,7 +628,7 @@ enum MeshBotConfiguration {
 enum MeshSnapshotDisk {
     static let fileNames: Set<String> = [
         SwiftBotStorage.settingsFileName, SwiftBotStorage.rulesFileName, "automations.json",
-        "automation-executions.json", "bot-command-cooldowns.json", "automation-memory.json",
+        "automation-executions.json", "bot-command-cooldowns.json", "automation-memory.json", RecordingCommentLog.fileName,
         SwiftBotStorage.voiceActiveSessionsFileName, SwiftBotStorage.voiceSessionHistoryFileName,
         SwiftBotStorage.gameTrackingStateFileName, SwiftBotStorage.communityStatsFileName
     ]
@@ -575,6 +662,8 @@ enum MeshSnapshotDisk {
             _ = try JSONDecoder().decode(AutomationMemory.self, from: data)
         case "bot-command-cooldowns.json":
             _ = try JSONDecoder().decode([String: Date].self, from: data)
+        case RecordingCommentLog.fileName:
+            try RecordingCommentLog.validate(data)
         default: break
         }
     }

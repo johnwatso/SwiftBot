@@ -9,6 +9,57 @@
 
 ## Recent Engineering Log
 
+### 2026-10-10 — GitHub release description cleanup
+
+- [x] `_working-tree_` (log only; release edits applied directly on GitHub): Rewrote all 34 published SwiftBot release descriptions (1.3–1.27.3) in SwiftMiner's readable Markdown style with plain-language introductions, emoji section headings, and focused bullets. Recovered sparse entries from archived notes and release commits; re-fetched every release to verify the exact body and unchanged tags, titles, dates, status, and assets. GitHub Markdown rendering checks passed for three representative releases. App settings, builds, Sparkle feeds, and HTML release-note archives were not changed.
+
+### 2026-10-10 — Persistent recording comments
+
+- [x] Refined the comments layout: existing comments come first, with the composer below a subtle divider. Post/Refresh buttons use compact 32px controls in both the watch page and member player; light/dark and desktop/mobile layouts checked.
+- [x] `_working-tree_`: Added plain-text comments with author/time below the watch player and in member clip playback. Signed-in admins and eligible members can post; viewers remain read-only. The server supplies author identity, checks CSRF/clip access/active ownership and reports persistence failures visibly. Comment IDs deduplicate retries; failed posts retain the draft and playback remains in place.
+- [x] Comments are atomically saved to `recording-comments.json`, survive reload/restart and travel through the existing validated SwiftMesh snapshot. Local/shared clip identities remain distinct. Existing history is preserved on corruption, write failure or capacity limits; Activity records comment/author IDs without the text. This is an append-only basic log, without editing, deletion or replies.
+- [x] Debug build and 78 focused comments/auth/recording/coordination/snapshot tests passed. Browser checks passed posting, disk-backed preview reload, escaped multiline text, error drafts, viewer/member UI and eight widths; native HLS/hls.js seeking to 3:00 still passes. Light/dark layouts inspected and the sample preview refreshed. Live multi-Mac deployment remains unvalidated; no release metadata changed.
+
+### 2026-10-10 — Events sidebar icon
+
+- [x] `_working-tree_`: Corrected the Events calendar glyph to white inside the coloured Web UI sidebar tile. Verified the rendered SVG in light and dark themes, inspected the preview and passed the Debug Xcode build.
+
+### 2026-10-10 — Apple-native encoded seeking
+
+- [x] `_working-tree_`: Uncached watch seeks now request HLS from the selected timestamp through the existing local/shared routes. RecordingsKit uses AVAssetReader.timeRange, rebased Core Media sample timing and the existing required VideoToolbox H.264/AAC encoder; no FFmpeg runtime, package or new application layer was added. Source revision, quality and starting position pin each cache and rendition URL.
+- [x] The player keeps the full AVFoundation-measured duration, adjusts controls/skip shortcuts/playback reports for the stream offset, retains play/pause changes during preparation, coalesces dragging, cancels stale browser requests and retries busy encoders before replacing the stream. Initial masters prepare only the low rendition. At most two encoders run; a seek can supersede this recording's oldest active encode, preserving valid published chunks and continuing viewers from an interrupted prefix's endpoint. Downloads continue to transfer the complete original independently.
+- [x] Debug Xcode build and 82 focused recording/HLS/coordination/auth tests passed. Native checks verify requested footage, tail-only duration, rebased audio/video, busy-slot seeking, cache reuse, invalid/revision-mismatched offsets, AVFoundation duration metadata and authenticated peer routing. Browser checks pass native HLS and growing hls.js playback, uncached paused/playing seeks, busy retries, reverse seeks, rapid dragging, Play during preparation, interrupted-prefix continuation, complete downloads and the existing responsive watch regressions. The standalone preview now has a 3½-minute synthetic clip; jumping to 3:00 passed both native HLS and hls.js checks. An additional native stress check retained a playable four-second A/V prefix when seeking to 180 seconds with both encoder slots occupied. Live gameplay and deployed Mac-to-Mac performance remain unvalidated. Existing unrelated repository warnings remain; no release metadata or publication changed.
+
+### 2026-10-10 — Full recording timeline and original downloads
+
+- [x] `_working-tree_`: The watch scrubber now reads the original's full duration instead of ending at the encoded HLS portion. Seeking beyond available HLS switches to the original at the requested timestamp while retaining play/pause; metadata probes are released on navigation. This initial fallback has been superseded by Apple-native encoded seeking above.
+- [x] Added an authenticated original download endpoint that streams every byte using sequential reads capped at 8 MiB, supports range resume and HEAD, preserves the owner's filename, and rejects changes in source size/revision during transfer. Both HTTP writers support incremental bodies; shared downloads reuse approved HMAC owner reads and member permissions.
+- [x] Debug Xcode build/test passed all 67 selected recording/coordination/auth tests, including byte-for-byte 20 MiB downloads through actual Network and NIO loopback sockets, range resume, source replacement and shared multi-chunk transfers. Browser checks passed native HLS partial timelines, growing hls.js EVENT timelines, uncached seeks while paused/playing, and original downloads before encoding completes; existing watch/HLS regressions and eight widths passed. The standalone preview is refreshed. No dependencies, release metadata or publication changed.
+
+### 2026-10-10 — Recording playback controls
+
+- [x] `_working-tree_`: Added an always-visible watch control bar with a draggable seek timeline, buffered/played indication, elapsed time, play/pause, 10-second skips, mute/volume and fullscreen. Seeking preserves play/pause, stays inside published seekable ranges, and follows growing HLS playlists. Video-focused Space/K, arrows, J/L, Home/End, M and F shortcuts complement accessible sliders/buttons; fullscreen retains controls and navigation releases listeners. Native controls remain the unenhanced fallback.
+- [x] Debug Xcode build and browser checks passed real native HLS dragging while paused/playing, keyboard/skip/volume/fullscreen controls, hls.js seeking, partial EVENT playlist bounds, navigation cleanup, original fallback and eight responsive widths. Refreshed the standalone sample preview; first-view seeking remains limited to already encoded content. No dependencies or release metadata changed.
+
+### 2026-10-10 — Progressive Mac-encoded recording streams
+
+- [x] `_working-tree_`: Owners now encode H.264/AAC directly into incremental HLS chunks with required VideoToolbox hardware, using the existing RecordingsKit packager and bundled hls.js. Native HLS is preferred where supported; playback adapts between 720p/3 Mbps and 1080p/8 Mbps ceilings, retains source cadence, and falls back to original playback on failure. Downloads retain originals. Library listing no longer queues whole-file background encodes.
+- [x] Added authenticated shared HLS reads with existing member permissions, sharing opt-in, trusted owner routing, and redirect rejection. Only the viewer's server attaches playback grants; manifests reject foreign URLs and rendition URLs pin a source revision. Identical viewers share an encode; at most two HLS encoders run, idle work stops after 90 seconds, disk-write failures propagate, and per-rendition output is capped at 5 GiB alongside existing cache trimming.
+- [x] Debug Xcode tests passed: 94 selected recording, HLS/transcode, cluster-security, and web-authentication tests. Native sample chunks were ready in about 0.5s before complete export; browser checks passed native HLS, bundled-player playback/seek, fallback, stale setup cancellation, navigation cleanup, and eight responsive widths. First-view seeking currently covers encoded content until completion; shared bytes still use the main server relay. Live multi-Mac streaming remains to be validated; no release metadata changed or publication performed.
+
+### 2026-10-10 — Recordings watch page refinement
+
+- [x] `_working-tree_`: Added a responsive 70/30 watch layout with compact same-game-first recommendations from the existing library API, retained native playback/streaming and participant chips, and added original-file download plus expandable/copyable filenames. Visible suggestions read real durations with two concurrent metadata probes and a bounded cache; navigation cancels requests and preserves selected clips across library filters/pages. Fix Match refreshes off-page recordings in place. No dependencies or release metadata changed.
+- [x] Debug Xcode build and 15 recording reliability/coordination tests passed. Browser fixture checks covered playback/seeking, progress events, volume/fullscreen, download/copy, recommendation navigation, Fix Match without replacing the player, missing thumbnails/metadata, offline/empty/error states, stale responses, and eight widths (320–1600px); light/dark/mobile layouts inspected. Existing unrelated lint/build warnings remain; live shared-node streaming was not exercised.
+- [x] Aligned the reference layout with a compact artwork/actions row, translucent metadata inset, grouped recommendations, and an accessible central Play button that preserves native controls. Recommendation search filters the full visible library before pagination without replacing the player or changing library filters. All 16 recording tests and browser checks for search, keyboard playback, and eight responsive widths passed; refreshed the standalone sample preview.
+- [x] Replaced the watch page's file path and copy control with “Located on [server name]” from the recording's node name. Refreshed the preview with John Studio sample data; Debug build, JavaScript parsing, and browser checks across eight widths passed.
+
+### 2026-10-10 — 2.0 release notes
+
+- [x] `_working-tree_`: Drafted `docs/release-notes/2.0.html` from changes since 1.27.3, covering the native console and Web Interface transition, automation and moderation expansion, SwiftMesh/Ruru recovery, shared recordings, Lookup, Rewind, and music cards. Included 1.x migration guidance; release copy only, with version/build settings and the ShipHook-owned feed unchanged.
+- [x] Debug Xcode build, HTML structure and diff checks passed. Verified built Info.plist version/build and Sparkle URL/key against project settings and `docs/appcast.xml` (1.27.3 / 2026100422). Existing lint/build warnings remain. The browser rejected the local-file preview, so visual rendering was not checked; nothing published.
+- [x] `_working-tree_`: Expanded the notes to present 2.0 as SwiftBot’s largest release, with dedicated sections for the console, full Web Interface, automation engine, Events, moderation, SwiftMesh recovery, Ruru, shared recordings, Lookup, Rewind, credential security, fixes, and migration. Distinguished existing dashboard capabilities from newly added behaviour; versioning and publication remain out of scope.
+
 ### 2026-10-09 — Report this Mac's Web UI to Ruru
 
 - [x] `192827d`: Participant presence reports now carry this Mac's

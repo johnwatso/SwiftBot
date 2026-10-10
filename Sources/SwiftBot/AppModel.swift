@@ -220,6 +220,7 @@ final class AppModel: ObservableObject {
     let welcomeFlowService = WelcomeFlowService()
     let swiftMeshConfigStore = SwiftMeshConfigStore()
     let mediaLibraryConfigStore = MediaLibraryConfigStore()
+    var recordingCommentLog = RecordingCommentLog()
     let discordCacheStore = DiscordCacheStore()
     let meshCursorStore = MeshCursorStore()
     let gameTrackingStateStore = GameTrackingStateStore()
@@ -239,7 +240,7 @@ final class AppModel: ObservableObject {
         let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let root = baseCaches.appendingPathComponent("SwiftBot/MediaHLS", isDirectory: true)
-        return HLSPackager(cacheRoot: root)
+        return HLSPackager(cacheRoot: root, targetSegmentSeconds: 2)
     }()
     let discordCache = DiscordCache()
 
@@ -793,6 +794,9 @@ final class AppModel: ObservableObject {
                 },
                 mediaPlaybackHandler: { [weak self] itemID in
                     await self?.localMediaPlaybackChoice(itemID: itemID)
+                },
+                mediaHLSHandler: { [weak self] itemID, segment in
+                    await self?.localMediaHLSResponse(itemID: itemID, segment: segment)
                 },
                 mediaStreamHandler: { [weak self] itemID, rangeHeader, quality in
                     guard let self else { return nil }

@@ -9,6 +9,28 @@ extension AppModel {
 
     // MARK: - Media Library
 
+    private func recordingCommentKey(token: String) async -> String? {
+        guard token.utf8.count <= 4096, let descriptor = decodedMediaStreamToken(token),
+              await recordingRoute(for: descriptor) != nil else { return nil }
+        let libraries = await allMediaLibraryPayloads()
+        guard let library = libraries.first(where: {
+            if let id = descriptor.ownerNodeID { return $0.nodeID == id }
+            return $0.nodeName == descriptor.ownerNodeName
+        }), library.items.contains(where: { $0.id == descriptor.itemID }),
+              await recordingRoute(for: descriptor) != nil else { return nil }
+        return "\(library.identity)|\(descriptor.itemID)"
+    }
+
+    func recordingComments(token: String) async throws -> [RecordingComment]? {
+        guard let key = await recordingCommentKey(token: token) else { return nil }
+        return try recordingCommentLog.comments(for: key)
+    }
+
+    func addRecordingComment(token: String, id: UUID, authorID: String, authorName: String, text: String) async throws -> RecordingComment? {
+        guard let key = await recordingCommentKey(token: token), !isFailoverManagedNode else { return nil }
+        return try recordingCommentLog.append(id: id, key: key, authorID: authorID, authorName: authorName, text: text)
+    }
+
     func localMediaLibrarySnapshot(ownerBaseURL: String? = nil) async -> MediaLibraryPayload {
         let configURL = await mediaLibraryConfigStore.fileURL()
         let ownerNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -25,12 +47,6 @@ extension AppModel {
         if ownerBaseURL == nil {
             let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
             recentMediaCount24h = payload.items.filter { $0.modifiedAt >= cutoff }.count
-        }
-        // Lighter copies of the newest clips, made in the background so
-        // they play smoothly the first time over a slow link.
-        for item in payload.items.sorted(by: { $0.modifiedAt > $1.modifiedAt }).prefix(3)
-        where item.modifiedAt < Date().addingTimeInterval(-60) {
-            await mediaTranscodeCache.prepareInBackground(itemID: item.id, sourceURL: URL(fileURLWithPath: item.absolutePath), quality: .standard)
         }
         return payload
     }
@@ -180,6 +196,10 @@ extension AppModel {
 
         let fileSize = fileSizeNumber.uint64Value
         let contentType = mediaContentType(for: fileURL.path)
+        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let revision = SHA256.hash(data: Data("\(fileURL.path)|\(modified)|\(fileSize)".utf8)).map { String(format: "%02x", $0) }.joined()
+        let filename = item.fileName.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")) ?? "recording"
+        let fileHeaders = ["Accept-Ranges": "bytes", "ETag": "\"\(revision)\"", "Content-Disposition": "inline; filename*=UTF-8''\(filename)"]
         let requestedRange = Self.parseByteRange(rangeHeader, fileSize: fileSize)
         if rangeHeader != nil && requestedRange == nil {
             return BinaryHTTPResponse(status: "416 Range Not Satisfiable", contentType: contentType,
@@ -212,7 +232,7 @@ extension AppModel {
         // Task.detached is intentional here: FileHandle I/O is synchronous and must not
         // block the MainActor. All captures are value types (no self), so there is no
         // object-lifecycle race. This is the one justified Task.detached in the codebase.
-        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isPartialResponse, responseStatus, debugStream, debugContext, debugStart] in
+        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, fileHeaders, effectiveRange, isPartialResponse, responseStatus, debugStream, debugContext, debugStart] in
             do {
                 let handle = try FileHandle(forReadingFrom: fileURL)
                 defer { try? handle.close() }
@@ -230,31 +250,15 @@ extension AppModel {
                         elapsedMs: Date().timeIntervalSince(started) * 1000.0
                     )
                 }
+                var headers = fileHeaders
+                headers["Content-Length"] = "\(data.count)"
                 if isPartialResponse {
                     let end = data.isEmpty
                         ? effectiveRange.offset
                         : effectiveRange.offset + UInt64(data.count) - 1
-                    return BinaryHTTPResponse(
-                        status: responseStatus,
-                        contentType: contentType,
-                        headers: [
-                            "Accept-Ranges": "bytes",
-                            "Content-Range": "bytes \(effectiveRange.offset)-\(end)/\(fileSize)",
-                            "Content-Length": "\(data.count)"
-                        ],
-                        body: data
-                    )
-                } else {
-                    return BinaryHTTPResponse(
-                        status: responseStatus,
-                        contentType: contentType,
-                        headers: [
-                            "Accept-Ranges": "bytes",
-                            "Content-Length": "\(data.count)"
-                        ],
-                        body: data
-                    )
+                    headers["Content-Range"] = "bytes \(effectiveRange.offset)-\(end)/\(fileSize)"
                 }
+                return BinaryHTTPResponse(status: responseStatus, contentType: contentType, headers: headers, body: data)
             } catch {
                 return BinaryHTTPResponse(
                     status: "500 Internal Server Error",
@@ -268,54 +272,87 @@ extension AppModel {
 
     // MARK: - HLS streaming
 
-    /// Serves the HLS playlist for a local recording, packaging it into fMP4
-    /// segments on first request. The on-disk playlist references segments by
-    /// bare file name; here we rewrite those into authorized segment URLs the
-    /// browser's player can fetch, reusing the same `id` token the playlist was
-    /// requested with plus the caller's short-lived access token.
-    func localMediaHLSPlaylistResponse(itemID: String, idToken: String, accessToken: String?) async -> BinaryHTTPResponse? {
+    /// The owner sends bare, same-origin HLS names over authenticated peer
+    /// routes. Only the viewer's server attaches its own playback grants.
+    func localMediaHLSResponse(itemID: String, segment: String?) async -> BinaryHTTPResponse? {
         guard let item = await localMediaItem(for: itemID) else { return nil }
-        let originalURL = URL(fileURLWithPath: item.absolutePath)
-        var variants: [String] = ["#EXTM3U", "#EXT-X-VERSION:7"]
-        for quality in [MediaTranscodeCache.Quality.low, .standard] {
-            guard let source = await mediaTranscodeCache.variantURL(itemID: itemID, sourceURL: originalURL, quality: quality),
-                  await hlsPackager.playlistURL(itemID: itemID + "_" + quality.rawValue, sourceURL: source) != nil else { continue }
-            let bandwidth = quality == .low ? 3_800_000 : 9_800_000
-            variants.append("#EXT-X-STREAM-INF:BANDWIDTH=\(bandwidth)")
-            variants.append(quality.rawValue + "-playlist.m3u8")
+        let source = URL(fileURLWithPath: item.absolutePath)
+        let headers = ["Cache-Control": "private, no-store"]
+        // Encode the offset in every rendition URL so local and HMAC peer reads
+        // use the same immutable source revision and seek namespace.
+        var startSeconds = 0
+        var namePrefix = ""
+        var rendition = segment
+        if let segment, segment.hasPrefix("seek-") {
+            let parts = segment.split(separator: "-", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3, let start = Int(parts[1]), (0...604_800).contains(start),
+                  String(start) == parts[1] else { return nil }
+            startSeconds = start
+            namePrefix = "seek-\(start)-"
+            rendition = String(parts[2]) == "master.m3u8" ? nil : String(parts[2])
         }
-        guard variants.count > 2 else { return nil }
-        let rewritten = rewriteHLSPlaylist(variants.joined(separator: "\n"), idToken: idToken, accessToken: accessToken)
-        return BinaryHTTPResponse(status: "200 OK", contentType: "application/vnd.apple.mpegurl",
-                                  headers: ["Cache-Control": "no-cache"], body: Data(rewritten.utf8))
+        guard let segment = rendition else {
+            guard let duration = try? await AVURLAsset(url: source).load(.duration).seconds,
+                  duration.isFinite, duration > Double(startSeconds) else { return nil }
+            var streamHeaders = headers
+            streamHeaders["X-SwiftBot-Duration"] = String(duration)
+            var lines = ["#EXTM3U", "#EXT-X-VERSION:7", "#EXT-X-INDEPENDENT-SEGMENTS"]
+            for quality in [MediaTranscodeCache.Quality.low, .standard] {
+                // Start only the selected rendition, leaving capacity for seeks.
+                if namePrefix.isEmpty, quality == .low {
+                    await hlsPackager.prepareStream(itemID: itemID, sourceURL: source, quality: quality, startSeconds: startSeconds)
+                }
+                let bandwidth = quality == .low ? 4_000_000 : 10_000_000
+                guard let identity = await hlsPackager.streamingIdentity(itemID: itemID, sourceURL: source, quality: quality, startSeconds: startSeconds) else { continue }
+                lines += ["#EXT-X-STREAM-INF:BANDWIDTH=\(bandwidth)", namePrefix + quality.rawValue + "-" + identity + "-playlist.m3u8"]
+            }
+            return BinaryHTTPResponse(status: "200 OK", contentType: "application/vnd.apple.mpegurl",
+                                      headers: streamHeaders, body: Data((lines.joined(separator: "\n") + "\n").utf8))
+        }
+        guard let separator = segment.firstIndex(of: "-"),
+              let quality = MediaTranscodeCache.Quality(rawValue: String(segment[..<separator])) else { return nil }
+        let versionedName = String(segment[segment.index(after: separator)...])
+        guard let versionSeparator = versionedName.firstIndex(of: "-"),
+              let identity = await hlsPackager.streamingIdentity(itemID: itemID, sourceURL: source, quality: quality, startSeconds: startSeconds),
+              String(versionedName[..<versionSeparator]) == identity else { return nil }
+        let name = String(versionedName[versionedName.index(after: versionSeparator)...])
+        if name == HLSPackager.playlistFileName {
+            if let url = await hlsPackager.streamingPlaylistURL(itemID: itemID, sourceURL: source, quality: quality, startSeconds: startSeconds),
+               let raw = try? String(contentsOf: url, encoding: .utf8) {
+                let versioned = raw.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+                    if line == "#EXT-X-MAP:URI=\"init.mp4\"" { return "#EXT-X-MAP:URI=\"\(identity)-init.mp4\"" }
+                    if HLSPackager.isSegmentName(String(line)) { return identity + "-" + line }
+                    return String(line)
+                }.joined(separator: "\n")
+                return BinaryHTTPResponse(status: "200 OK", contentType: "application/vnd.apple.mpegurl", headers: headers, body: Data(versioned.utf8))
+            }
+            let failed = await hlsPackager.streamingFailed(itemID: itemID, sourceURL: source, quality: quality, startSeconds: startSeconds)
+            return BinaryHTTPResponse(status: failed ? "422 Unprocessable Entity" : "503 Service Unavailable",
+                                      contentType: "application/json", headers: ["Retry-After": "2", "Cache-Control": "no-store"], body: Data())
+        }
+        guard let url = await hlsPackager.streamingSegmentURL(itemID: itemID, sourceURL: source, quality: quality, segment: name, startSeconds: startSeconds),
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 8 * 1024 * 1024,
+              let data = try? Data(contentsOf: url) else { return nil }
+        return BinaryHTTPResponse(status: "200 OK", contentType: "video/mp4",
+                                  headers: ["Cache-Control": "private, max-age=300"], body: data)
     }
 
-    /// Serves a rendition playlist or segment using the same authorization as the master.
-    func localMediaHLSSegmentResponse(itemID: String, segment: String, idToken: String, accessToken: String?) async -> BinaryHTTPResponse? {
-        guard let separator = segment.firstIndex(of: "-"),
-              let quality = MediaTranscodeCache.Quality(rawValue: String(segment[..<separator])),
-              let item = await localMediaItem(for: itemID) else { return nil }
-        let name = String(segment[segment.index(after: separator)...])
-        let originalURL = URL(fileURLWithPath: item.absolutePath)
-        guard let sourceURL = await mediaTranscodeCache.variantURL(itemID: itemID, sourceURL: originalURL, quality: quality) else { return nil }
-        let variantID = itemID + "_" + quality.rawValue
-        if name == HLSPackager.playlistFileName {
-            guard let url = await hlsPackager.playlistURL(itemID: variantID, sourceURL: sourceURL),
-                  let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-            let rewritten = rewriteHLSPlaylist(raw, idToken: idToken, accessToken: accessToken, prefix: quality.rawValue + "-")
-            return BinaryHTTPResponse(status: "200 OK", contentType: "application/vnd.apple.mpegurl",
-                                      headers: ["Cache-Control": "no-cache"], body: Data(rewritten.utf8))
-        }
-        guard let segmentURL = await hlsPackager.segmentURL(itemID: variantID, sourceURL: sourceURL, segment: name),
-              let data = try? Data(contentsOf: segmentURL) else { return nil }
-        return BinaryHTTPResponse(status: "200 OK", contentType: "video/mp4",
-                                  headers: ["Cache-Control": "private, max-age=300", "Content-Length": "\(data.count)"], body: data)
+    private func authorizedHLSResponse(_ response: BinaryHTTPResponse?, token: String, accessToken: String?, segment: String?) -> BinaryHTTPResponse? {
+        guard let response else { return nil }
+        guard response.contentType == "application/vnd.apple.mpegurl" else { return response }
+        let prefix: String
+        if let segment, let range = segment.range(of: #"^(seek-[0-9]+-)?(low|standard)-"#, options: .regularExpression) {
+            prefix = String(segment[range])
+        } else { prefix = "" }
+        guard let raw = String(data: response.body, encoding: .utf8),
+              let rewritten = rewriteHLSPlaylist(raw, idToken: token, accessToken: accessToken, prefix: prefix) else { return nil }
+        return BinaryHTTPResponse(status: response.status, contentType: response.contentType, headers: response.headers, body: Data(rewritten.utf8))
     }
 
     /// Rewrites the bare segment names in a generated playlist into relative
     /// segment URLs (`hls-segment?id=…&seg=…&token=…`) that resolve against the
     /// playlist endpoint and carry auth.
-    private func rewriteHLSPlaylist(_ playlist: String, idToken: String, accessToken: String?, prefix: String = "") -> String {
+    func rewriteHLSPlaylist(_ playlist: String, idToken: String, accessToken: String?, prefix: String = "") -> String? {
         func encode(_ value: String) -> String {
             let allowed = CharacterSet(charactersIn:
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
@@ -333,10 +370,17 @@ extension AppModel {
         for rawLine in playlist.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = String(rawLine)
             if line.hasPrefix("#EXT-X-MAP:URI=\"") {
-                lines.append("#EXT-X-MAP:URI=\"\(segmentURL(prefix + HLSPackager.initSegmentFileName))\"")
-            } else if !line.hasPrefix("#") && (line.hasSuffix(".m4s") || line.hasSuffix(".m3u8")) {
+                let name = String(line.dropFirst("#EXT-X-MAP:URI=\"".count).dropLast())
+                guard line.hasSuffix("\""), name == "init.mp4" || name.range(of: #"^[a-f0-9]{64}-init\.mp4$"#, options: .regularExpression) != nil else { return nil }
+                lines.append("#EXT-X-MAP:URI=\"\(segmentURL(prefix + name))\"")
+            } else if !line.isEmpty && !line.hasPrefix("#") {
+                let versioned = line.range(of: #"^([a-f0-9]{64}-seg[0-9]+\.m4s|(seek-[0-9]+-)?(low|standard)-[a-f0-9]{64}-playlist\.m3u8)$"#, options: .regularExpression) != nil
+                guard HLSPackager.isSegmentName(line) || versioned || ["low-playlist.m3u8", "standard-playlist.m3u8"].contains(line) else { return nil }
                 lines.append(segmentURL(prefix + line))
             } else {
+                let allowed = ["#EXTM3U", "#EXT-X-VERSION:", "#EXT-X-TARGETDURATION:", "#EXT-X-MEDIA-SEQUENCE:",
+                               "#EXT-X-PLAYLIST-TYPE:", "#EXTINF:", "#EXT-X-ENDLIST", "#EXT-X-INDEPENDENT-SEGMENTS", "#EXT-X-STREAM-INF:"]
+                guard line.isEmpty || (allowed.contains { line.hasPrefix($0) } && !line.contains("URI=")) else { return nil }
                 lines.append(line)
             }
         }
@@ -669,6 +713,7 @@ extension AppModel {
                 (lhs.latestAt ?? .distantPast) > (rhs.latestAt ?? .distantPast)
             }
 
+        let search = (query["search"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let filteredItems = filteredMediaItemPayloads(
             from: payloads,
             selectedSourceID: selectedSourceID,
@@ -677,7 +722,10 @@ extension AppModel {
             people: people,
             selectedPerson: selectedPerson,
             onlyItems: allowed
-        )
+        ).filter { item in
+            search.isEmpty || [item.fileName, item.relativePath, item.gameName, item.nodeName, item.sourceName]
+                .contains { $0.localizedCaseInsensitiveContains(search) }
+        }
         let totalItems = filteredItems.count
         let totalPages = max(1, Int(ceil(Double(max(totalItems, 1)) / Double(pageSize))))
         let clampedPage = min(page, totalPages)
@@ -707,11 +755,8 @@ extension AppModel {
         )
     }
 
-    /// Which file a playback should use, decided once before it starts so it
-    /// never switches mid-play: the lighter "standard" copy (8 Mbps, up to
-    /// 1080p) when it's ready, otherwise the original, while the copy is
-    /// made in the background for next time. Remote nodes choose their own
-    /// prepared copy through the authenticated mesh route.
+    /// HLS encodes on the owning Mac while the watcher receives short chunks.
+    /// Older peers can continue choosing their prepared MP4/original file.
     func mediaPlaybackChoice(token: String) async -> (quality: String, preparing: Bool)? {
         guard let descriptor = decodedMediaStreamToken(token), let route = await recordingRoute(for: descriptor) else { return nil }
         switch route {
@@ -724,15 +769,16 @@ extension AppModel {
     func localMediaPlaybackChoice(itemID: String) async -> (quality: String, preparing: Bool)? {
         guard let item = await localMediaItem(for: itemID) else { return nil }
         let source = URL(fileURLWithPath: item.absolutePath)
+        if !(await hlsPackager.streamingFailed(itemID: item.id, sourceURL: source, quality: .low)) {
+            await hlsPackager.prepareStream(itemID: item.id, sourceURL: source, quality: .low)
+            return ("hls", false)
+        }
         if await mediaTranscodeCache.cachedVariantURL(itemID: item.id, sourceURL: source, quality: .standard) != nil {
             return ("standard", false)
         }
-        await mediaTranscodeCache.prepareInBackground(itemID: item.id, sourceURL: source, quality: .standard)
         if await prepareMediaFastStartCacheIfEnabled(),
-           await mediaFastStartCache.cachedOptimizedURL(itemID: item.id, sourceURL: source) != nil {
-            return ("faststart", true)
-        }
-        return ("original", true)
+           await mediaFastStartCache.cachedOptimizedURL(itemID: item.id, sourceURL: source) != nil { return ("faststart", false) }
+        return ("original", false)
     }
 
     func adminWebMediaStreamResponse(token: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
@@ -761,13 +807,22 @@ extension AppModel {
     }
 
     func adminWebMediaHLSPlaylistResponse(token: String, accessToken: String?) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token), case .local? = await recordingRoute(for: descriptor) else { return nil }
-        return await localMediaHLSPlaylistResponse(itemID: descriptor.itemID, idToken: token, accessToken: accessToken)
+        await adminWebMediaHLSResponse(token: token, segment: nil, accessToken: accessToken)
     }
 
     func adminWebMediaHLSSegmentResponse(token: String, segment: String, accessToken: String?) async -> BinaryHTTPResponse? {
-        guard let descriptor = decodedMediaStreamToken(token), case .local? = await recordingRoute(for: descriptor) else { return nil }
-        return await localMediaHLSSegmentResponse(itemID: descriptor.itemID, segment: segment, idToken: token, accessToken: accessToken)
+        await adminWebMediaHLSResponse(token: token, segment: segment, accessToken: accessToken)
+    }
+
+    private func adminWebMediaHLSResponse(token: String, segment: String?, accessToken: String?) async -> BinaryHTTPResponse? {
+        guard let descriptor = decodedMediaStreamToken(token), let route = await recordingRoute(for: descriptor) else { return nil }
+        let response: BinaryHTTPResponse?
+        switch route {
+        case .local: response = await localMediaHLSResponse(itemID: descriptor.itemID, segment: segment)
+        case .remote(let baseURL):
+            response = await cluster.fetchRemoteMediaHLS(from: baseURL, itemID: descriptor.itemID, segment: segment)
+        }
+        return authorizedHLSResponse(response, token: token, accessToken: accessToken, segment: segment)
     }
 
     func adminWebMediaExportStatus() async -> MediaExportStatus {

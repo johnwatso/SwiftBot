@@ -235,6 +235,7 @@ actor ClusterCoordinator {
     private var remoteMediaLibraryRequests: [String: Task<MediaLibraryPayload?, Never>] = [:]
     private var mediaLibraryProvider: MediaLibraryProvider?
     private var mediaPlaybackHandler: (@Sendable (String) async -> (quality: String, preparing: Bool)?)?
+    private var mediaHLSHandler: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
     private var mediaStreamHandler: MediaQualityStreamHandler?
     private var mediaThumbnailHandler: MediaStreamHandler?
     private var mediaClipHandler: MediaClipHandler?
@@ -747,6 +748,7 @@ actor ClusterCoordinator {
             MediaLibraryPayload(nodeName: "", configFilePath: "", sources: [], items: [], generatedAt: Date())
         },
         mediaPlaybackHandler: @escaping @Sendable (String) async -> (quality: String, preparing: Bool)? = { _ in nil },
+        mediaHLSHandler: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse? = { _, _ in nil },
         mediaStreamHandler: @escaping MediaQualityStreamHandler = { _, _, _ in nil },
         mediaThumbnailHandler: @escaping MediaStreamHandler = { _, _ in nil },
         mediaClipHandler: @escaping MediaClipHandler = { _ in nil },
@@ -764,6 +766,7 @@ actor ClusterCoordinator {
         self.meshHandler = meshHandler
         self.mediaLibraryProvider = mediaLibraryProvider
         self.mediaPlaybackHandler = mediaPlaybackHandler
+        self.mediaHLSHandler = mediaHLSHandler
         self.mediaStreamHandler = mediaStreamHandler
         self.mediaThumbnailHandler = mediaThumbnailHandler
         self.mediaClipHandler = mediaClipHandler
@@ -2493,7 +2496,7 @@ actor ClusterCoordinator {
                 return httpResponse(status: "403 Forbidden", body: Data(#"{"error":"recording_sharing_disabled"}"#.utf8))
             }
             let reads: Set<String> = ["/v1/media/library", "/v1/media/playback", "/v1/media/stream",
-                                      "/v1/media/thumbnail", "/v1/media/frame"]
+                                      "/v1/media/thumbnail", "/v1/media/frame", "/v1/media/hls", "/v1/media/hls-segment"]
             guard request.method == "GET", reads.contains(request.path) else {
                 return httpResponse(status: "404 Not Found", body: Data())
             }
@@ -2686,6 +2689,13 @@ actor ClusterCoordinator {
                 return httpResponse(status: "404 Not Found", body: Data(#"{"error":"media_not_found"}"#.utf8))
             }
             return httpResponse(status: "200 OK", body: body)
+        case ("GET", "/v1/media/hls"), ("GET", "/v1/media/hls-segment"):
+            guard let itemID = request.query["id"], !itemID.isEmpty,
+                  request.path != "/v1/media/hls-segment" || request.query["seg"]?.isEmpty == false,
+                  let response = await mediaHLSHandler?(itemID, request.query["seg"]) else {
+                return httpResponse(status: "404 Not Found", body: Data())
+            }
+            return httpResponse(status: response.status, body: response.body, contentType: response.contentType, headers: response.headers)
         case ("GET", "/v1/media/stream"):
             guard let itemID = request.query["id"], !itemID.isEmpty else {
                 return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"missing_id"}"#.utf8))
@@ -4688,9 +4698,35 @@ actor ClusterCoordinator {
                   data.count <= 4096,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let quality = json["quality"] as? String,
-                  ["original", "standard", "faststart"].contains(quality),
+                  ["original", "standard", "faststart", "hls"].contains(quality),
                   let preparing = json["preparing"] as? Bool else { return nil }
             return (quality, preparing)
+        } catch { return nil }
+    }
+
+    func fetchRemoteMediaHLS(from baseURL: String, itemID: String, segment: String?) async -> BinaryHTTPResponse? {
+        let path = segment == nil ? "/v1/media/hls" : "/v1/media/hls-segment"
+        guard var components = URLComponents(string: baseURL + path) else { return nil }
+        components.queryItems = [URLQueryItem(name: "id", value: itemID)]
+        if let segment { components.queryItems?.append(URLQueryItem(name: "seg", value: segment)) }
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        applyMeshAuth(to: &request, path: path)
+        do {
+            let (data, response) = try await mediaSession.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  [200, 422, 503].contains(http.statusCode), data.count <= 8 * 1024 * 1024 else { return nil }
+            let type = http.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream"
+            guard type != "application/vnd.apple.mpegurl" || data.count <= 1024 * 1024 else { return nil }
+            let status = http.statusCode == 200 ? "200 OK" : (http.statusCode == 503 ? "503 Service Unavailable" : "422 Unprocessable Entity")
+            var headers = ["Cache-Control": "private, no-store"]
+            if let value = http.value(forHTTPHeaderField: "X-SwiftBot-Duration"),
+               let duration = Double(value), duration.isFinite, duration > 0 {
+                headers["X-SwiftBot-Duration"] = String(duration)
+            }
+            if http.statusCode == 503 { headers["Retry-After"] = "2" }
+            return BinaryHTTPResponse(status: status, contentType: type, headers: headers, body: data)
         } catch { return nil }
     }
 

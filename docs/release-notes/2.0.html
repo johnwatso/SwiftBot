@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 2.0 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #0f1720;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    h2 { margin: 28px 0 12px; font-size: 21px; line-height: 1.3; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
+    ul { margin: 0 0 16px; padding-left: 24px; }
+    li { margin-bottom: 10px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1015; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.88);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      .meta { color: #9fb0c2; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 2.0</h1>
+    <p class="meta">Version 2.0 · Requires macOS 26 or later on Apple silicon</p>
+    <p><strong>SwiftBot 2.0 is our biggest release yet.</strong> It changes how you run, manage, and build with SwiftBot: a redesigned native Mac console, a complete browser interface for your server, an expanded automation engine, and a rebuilt foundation for backup, recovery, and recordings across Macs.</p>
+    <p>Your Mac hosts the bot. Your browser puts its features within reach from a phone, tablet, or desktop. With 2.0, those two sides work together around a clearer setup experience, more capable workflows, and better visibility into what SwiftBot is doing.</p>
+
+    <h2>A redesigned native Mac console</h2>
+    <p>The Mac app has been rebuilt around running SwiftBot and looking after its services. A simpler sidebar, consistent glass surfaces, clearer status, and dedicated service pages bring the console together.</p>
+    <ul>
+      <li><strong>Overview:</strong> this Mac’s identity, version, uptime, service health, quick actions, and system details in one place. Issues link to the relevant settings section.</li>
+      <li><strong>Discord:</strong> connection controls, token management, auto-connect, invite links, permissions, known servers with their icons, and connection diagnostics.</li>
+      <li><strong>Web Interface:</strong> clearer local and public addresses, tunnel status, transport details, and HTTPS policy. Cloudflare credentials and subdomain editing have their own sheets.</li>
+      <li><strong>SwiftMesh:</strong> status and configuration together, with the cluster map, node identity, configured and current roles, and Health &amp; Work cards.</li>
+      <li><strong>Recordings:</strong> manage this Mac’s source folders and Fast Start copies, with folder availability, scan feedback, and an indexed-library summary.</li>
+      <li><strong>Activity and Settings:</strong> search and filter logs by topic or severity, copy or export reports, and manage Launch at Login under Settings → General. Onboarding also adopts the console’s new visual language.</li>
+    </ul>
+
+    <h2>The Web Interface becomes your bot’s control centre</h2>
+    <p>2.0 completes the move of bot feature configuration into the Web Interface. Configure your server from any browser while the native app handles the Mac, its credentials, and its connections.</p>
+    <p>The dashboard brings together Commands, Welcome Flow, Automations, Moderation, Events, Patchy, Sweep, Lookup, Announcer, Apple Intelligence, Game Tracker, Analytics, Rewind, and Recordings. Existing member access also gives server members their own Replay and the clips they appear in, when enabled by an administrator.</p>
+    <ul>
+      <li>Run automation simulations, export or clear Activity, clear cached data, and manage SwiftMesh nodes from the browser.</li>
+      <li>Every channel picker supports type-ahead search, making large server lists easier to navigate.</li>
+      <li>Errors and success messages appear as visible notifications, including the reason a pairing or settings request failed.</li>
+      <li>Discord sign-in works when started from a local address and returns you to the page you were using. Expired sessions take you back to sign-in with a clear explanation.</li>
+    </ul>
+
+    <h2>Automations with branching, memory, and schedules</h2>
+    <p>Automations can now make decisions, remember what happened, and run at a chosen time. Build richer workflows in the browser without writing code.</p>
+    <ul>
+      <li><strong>Nested conditions:</strong> combine AND, OR, and NOT groups instead of relying on a single flat list of filters.</li>
+      <li><strong>Conditional steps:</strong> use nested If/Otherwise branches to choose different actions within the same rule.</li>
+      <li><strong>Memory:</strong> named counters remember occurrences for a chosen period. Count by user, channel, server, or individual rule, and share counters across rules where needed.</li>
+      <li><strong>Cooldowns:</strong> limit repeated runs by scope. Cooldowns and counter state are saved across restarts and included in SwiftMesh recovery.</li>
+      <li><strong>Scheduling:</strong> run once, daily, weekly, or at an interval. Daily and weekly repeats use the selected time zone, including daylight-saving changes.</li>
+      <li><strong>More live triggers:</strong> reaction and slash-command automations now receive real Discord events. Enabled automation commands register with Discord, while media triggers correctly start scanning.</li>
+      <li><strong>A clearer editor:</strong> insert trigger-aware variables into messages, logs, and webhooks. Choose whether a failed step stops the run or allows later steps to continue.</li>
+      <li><strong>Simulation and history:</strong> preview selected and skipped steps without sending messages or waiting through delays. Simulation uses a separate copy of counters and cooldowns. Recent runs show step traces, errors, waiting steps, and recovery status.</li>
+    </ul>
+    <p>Delayed runs now continue independently, keeping incoming Discord messages, voice updates, and heartbeat acknowledgements moving while an automation waits.</p>
+
+    <h2>A new Events page</h2>
+    <p>Bring Discord Scheduled Events into your workflows. The new admin-only Events page lists events across connected servers and lets you prepare a rich announcement for each one.</p>
+    <ul>
+      <li>Announce at the event’s start, a chosen amount of time before or after it, or an absolute custom date and time.</li>
+      <li>Include the event’s name, description, link, and start time using event variables, with an embed preview before saving.</li>
+      <li>Start-relative announcements follow event changes before their run is admitted. Cancelled, removed, or invalid events stop with a diagnostic, and removing an announcement cancels it.</li>
+      <li>Edited, disabled, or deleted scheduled workflows are checked again before sending. An already admitted event announcement is not repeated simply because the event moves.</li>
+    </ul>
+
+    <h2>Stronger moderation and clearer enforcement</h2>
+    <ul>
+      <li>New ban and remove-timeout actions join the existing moderation tools. Bans can optionally remove recent message history; the default preserves it.</li>
+      <li>Kick and ban reasons support variables and appear in Discord’s audit log. Invalid timeout or message-cleanup durations are rejected before a request is sent.</li>
+      <li>Search rules, filter enabled and disabled rules, and see specific action summaries, enforcement counts, and recent successful or failed moderation activity.</li>
+      <li>Ban templates start disabled, and saving or enabling a ban rule requires confirmation.</li>
+      <li>Live events share one moderation-first dispatcher. Destructive moderation suppresses ordinary automations for that event, preventing a normal reply from running ahead of a delete or ban.</li>
+    </ul>
+
+    <h2>SwiftMesh rebuilt for backup and recovery</h2>
+    <p>2.0 expands SwiftMesh from pairing Macs into a more complete recovery system, with verified backup setup, coordinated transfers, saved automation progress, and clearer ownership.</p>
+    <ul>
+      <li><strong>Automatic backup setup:</strong> open the Primary’s Web Interface on the backup Mac and choose SwiftMesh → Pair SwiftBot → Continue in SwiftBot → Set Up Backup. Setup enrolls credentials, inherits Ruru settings when configured, verifies the connection, and completes the first sync before reporting that the backup is ready.</li>
+      <li><strong>Coordinated return:</strong> the returning Primary catches up with shared state and credentials before the current owner closes its Discord connection and hands back control. Failed catch-up leaves the existing owner running.</li>
+      <li><strong>Saved automation progress:</strong> delayed runs can resume from saved checkpoints after takeover. Actions whose outcome is uncertain are held as Needs review instead of being repeated automatically.</li>
+      <li><strong>Better state synchronisation:</strong> shared configuration, automation memory, command cooldowns, and execution checkpoints are transferred with revision checks and recovery safeguards.</li>
+      <li><strong>Resilient background work:</strong> worker jobs for AI replies, wiki lookups, and playlist imports gain persisted IDs, retry handling, duplicate checks, and local fallback.</li>
+      <li><strong>Each Mac keeps its own setup:</strong> websites, tunnels, recording folders, companion apps, browser sessions, and passkeys stay local. Saving settings respects whichever Mac currently owns the bot.</li>
+      <li><strong>A useful standby homepage:</strong> passive Macs show their role and connection status. The browser automatically restores the full dashboard on takeover and returns to the status page if ownership is lost.</li>
+    </ul>
+
+    <h2>Ruru integration and Preferred Primary</h2>
+    <p>Optional Ruru integration gives both Macs an independent authority for deciding who may operate the bot, helping prevent competing owners when the Macs lose contact with each other.</p>
+    <ul>
+      <li>Pair with Ruru using its address and a single-use short code, approve the request in Ruru, then review the connection in SwiftBot. Backup setup inherits the connection without a second Ruru code.</li>
+      <li>Choose a Preferred Primary in Ruru. SwiftBot uses coordinated handback to return to that Mac when it is healthy and ready.</li>
+      <li>See Ruru’s health, Current Owner, Preferred Primary, and lease status in SwiftMesh.</li>
+      <li>Temporary unanswered renewals are retried while the current lease remains valid. A Primary can recover automatically when Ruru returns, including after starting while it was unavailable.</li>
+      <li>Standbys with missing or mismatched Ruru configuration refuse takeover and explain why. Discord output stops when ownership permission expires.</li>
+      <li>Compatible Ruru versions can show standby and worker presence and include the current owner’s website in failover and recovery alerts.</li>
+    </ul>
+
+    <h2>One recording library across your Macs</h2>
+    <p>Opt in to combine recordings from paired Macs in the active Primary’s Web Interface. Browse local and shared clips together by game or date and play them in the same browser player, even while the Mac storing a clip remains on standby.</p>
+    <ul>
+      <li>Choose Share this Mac’s recordings during pairing, or enable it later under Recordings → Shared Library. The choice belongs to that Mac.</li>
+      <li>Each Mac uses its own recording folders and HTTPS website. SwiftBot requests website approval in Ruru and explains pending approval or missing setup.</li>
+      <li>Ruru helps discover the libraries; recording metadata and media are served by SwiftBot. Video does not pass through Ruru.</li>
+      <li>Missing folders and unreachable remote libraries retain clearly marked unavailable entries, with playback disabled until the source is available again.</li>
+      <li>Existing member permissions apply to shared clips too: members can play only recordings they appear in. Turning off sharing withdraws that Mac’s library.</li>
+    </ul>
+
+    <h2>A major Lookup overhaul</h2>
+    <ul>
+      <li>Lookup replies are now the wiki card itself, with Open on wiki and Not this one? buttons. Choose another matching page when the first result is wrong.</li>
+      <li>Query autocomplete suggests page titles, aliases, and frequently requested items.</li>
+      <li>Compare two items stat by stat using the slash command’s comparison option or a query such as “AKM vs FCAR”.</li>
+      <li>Improved site detection and infobox parsing support more Fandom, wiki.gg, table, and custom wiki layouts. THE FINALS uses a working API path, and text decoding fixes garbled summaries and fields.</li>
+      <li>Set per-source aliases, start from suggested wikis, and use Try it to preview the Discord card and choose its fields.</li>
+      <li>Reply caching reduces repeat requests. Usage statistics show weekly lookups, popular items, and recent misses.</li>
+      <li>With Answer questions in chat enabled, AI replies can consult a configured wiki for the item a question names before answering.</li>
+    </ul>
+
+    <h2>A richer Rewind archive</h2>
+    <p>Rewind now records more of the context around your community’s activity alongside its message archive.</p>
+    <ul>
+      <li>A new presence archive captures what members are doing while they are in voice, including game details and changes to maps, modes, or party information when Discord provides them.</li>
+      <li>A server journal records Discord events alongside the archive, preserving more of the server’s history.</li>
+      <li>Activity archiving follows Rewind’s enabled state and collection settings. Presence is recorded while a member is in voice, and in-progress segments are checkpointed for recovery after a restart.</li>
+    </ul>
+
+    <h2>Security and credentials throughout the new workflows</h2>
+    <ul>
+      <li>Automation webhook URLs move into macOS Keychain. Rules, saved runs, and shared snapshots carry credential references rather than token-bearing URLs; older files are migrated when loaded.</li>
+      <li>Webhook URLs are write-only in the editor and are not returned to the browser. Read-only viewers also receive redacted webhook content and credential references.</li>
+      <li>SwiftMesh credential transfers require an approved node’s identity proof in addition to mesh authentication. Private signing keys stay in Keychain, while approval lists contain public verification keys.</li>
+      <li>Public tunnel sign-in uses the supported Discord authentication flow. The developer fallback password is restricted to local access.</li>
+      <li>Shared recording requests retain viewer permissions and use approved destinations. Recording sharing authorises media reads without granting remote editing or export access.</li>
+    </ul>
+
+    <h2>More polish and fixes</h2>
+    <ul>
+      <li>YouTube music links are recognised alongside the other supported services. Richer music cards show album, year, length, source, and full-width artwork where available, with a clearer preview in the link watcher editor.</li>
+      <li>Music artwork hosts are allowed by the Web Interface’s image policy, and the preview dialog no longer clips the card.</li>
+      <li>Avatars for nicknamed members are cached at startup, and SwiftMiner’s Edit games modal submissions are now dispatched correctly.</li>
+      <li>Stopping a Primary no longer leaves its native settings incorrectly locked as though it were a standby.</li>
+      <li>Removed obsolete native feature views, the old rule store, and Remote Control infrastructure so the active console and Web Interface use the same automation state.</li>
+    </ul>
+
+    <h2>Upgrading from 1.x</h2>
+    <p>Use the Mac app for host setup, connections, credentials, and local recording folders. Use the Web Interface for bot features, recording playback, and remote management. The classic native dashboard, native bot feature pages, and old Remote Control mode have been retired.</p>
+    <p>Update every SwiftMesh Mac to 2.0 so the nodes share the current recovery and credential-transfer behaviour, including webhook credentials after failover. Generate a fresh pairing invitation if an older backup lacks credential enrollment or your current Ruru configuration.</p>
+    <p>Shared recordings are optional and require each participating Mac’s own reachable HTTPS website and approval in Ruru. Recordings and Announcer remain beta features. SwiftMesh saves progress for recovery, but a sudden outage can still lose unsynchronised events or leave an action needing review.</p>
+  </main>
+</body>
+</html>

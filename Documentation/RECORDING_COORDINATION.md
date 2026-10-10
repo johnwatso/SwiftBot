@@ -114,7 +114,7 @@ are future work.
 
 The Web Interface forwards only these authenticated media reads to the media
 handlers: `/v1/media/library`, `/v1/media/playback`, `/v1/media/stream`,
-`/v1/media/thumbnail` and `/v1/media/frame`. The separate mesh-port routes enforce
+`/v1/media/thumbnail`, `/v1/media/frame`, `/v1/media/hls` and `/v1/media/hls-segment`. The separate mesh-port routes enforce
 the same opt-in. All require a nonempty mesh secret and valid HMAC, regardless of
 bot role. Recording sharing does not authorize remote exports or mutations.
 
@@ -143,15 +143,103 @@ missing bytes. Fresh reports are observations, not independent reachability proo
 The Ruru directory client admits at most 16 matching libraries after validating
 service, namespace, origin, endpoint path and age. Peer metadata/responses are
 limited to 8 MiB, playback-choice replies to 4 KiB, and video responses use the
-existing 8 MiB range chunks. Shared MP4 playback pins its chosen original/copy;
-remote HLS, direct browser-to-owner playback, replication, durable media catalogues
-and cross-node editing are not implemented. Full peer-list paging beyond the
+existing 8 MiB range chunks. HLS playlists are limited to 1 MiB and segments to
+8 MiB. Shared MP4 playback pins its chosen original/copy. Shared HLS is encoded
+on the Mac holding the recording and relayed through the viewer's SwiftBot server;
+peer manifests carry bare names, and only the viewer's server attaches its media
+access token. Every playlist and chunk retains the existing member/sharing guards.
+Rendition URLs include a source revision digest so replaced files cannot mix chunks.
+Direct browser-to-owner playback, replication, durable media catalogues and
+cross-node editing are not implemented. Full peer-list paging beyond the
 metadata response bound is future work.
+
+## Progressive recording playback
+
+Current owners select HLS through `/v1/media/playback`; older owners can still
+select their cached MP4 or original. AVFoundation and required VideoToolbox
+hardware encoding publish H.264/AAC fMP4 chunks directly, without exporting a
+complete MP4 first. The master advertises 720p/3 Mbps and 1080p/8 Mbps ceilings;
+small sources are not upscaled, and source frame cadence is retained. The WebUI
+uses native HLS when available, otherwise the already bundled hls.js player,
+starting with the low rendition and adapting to available bandwidth.
+
+Rendition playlists grow as EVENT streams. Cached seeks use the current HLS
+range immediately. An uncached seek requests a `seek-<seconds>-master.m3u8`
+namespace through the existing authenticated HLS segment route. The owner uses
+AVAssetReader.timeRange to start within two seconds before the requested point,
+rebases video and audio sample timing together, and hardware-encodes HLS from
+there. The browser applies the remaining offset and retains the full recording
+timeline, current play/pause intent and selected adaptive rendition. The master
+returns the duration measured by AVFoundation, including through the peer relay;
+original metadata probes remain a compatibility fallback.
+
+The browser coalesces drag events, refreshes its playback grant, waits for the
+first playable chunk and retries a busy encoder before replacing its stream.
+Navigation or a newer seek cancels pending browser work. A failed seek shows a
+retry action while retaining the previous source; a fatal playback error can
+still fall back once to the original. Seeking itself does not select original
+playback. Cache identities include the source revision, quality and starting
+position; published chunks from different timelines cannot be mixed.
+Downloads use `/api/media/download`, never an HLS rendition or the playback
+endpoint's initial chunk. The server sends the complete original as bounded
+sequential reads over either HTTP transport, supports byte-range resume, retains
+the owner's filename, and checks source revision/size to stop mixed transfers.
+Existing session, member-clip and opted-in owner-routing guards remain in place.
+
+The watch page adds a visible seek slider and play/pause, 10-second skips,
+mute/volume and fullscreen controls over the real video element. Dragging keeps
+the previous play/pause state and spans the full recording duration. Play/pause
+changes during preparation are retained. With the
+video focused, Space/K toggles playback, arrows seek five seconds, J/L seek ten,
+Home/End seek to full recording boundaries, M toggles mute and F toggles fullscreen.
+Range inputs retain their native keyboard controls. The stage enters fullscreen
+with its controls; supported mobile browsers can use native video fullscreen.
+Native controls remain available before enhancement, and control listeners are
+released when navigating away.
+
+The owner deduplicates viewers of the same source/rendition/offset, runs at most
+two HLS encoders, and returns retryable 503 responses when busy. Initial masters
+start only the low rendition; another rendition starts when selected. A new seek
+can replace this recording's least recently requested encoder, without cancelling
+other recordings' encoders. Cancellation drains reader callbacks safely, freezes
+its valid published prefix with ENDLIST, and retains those chunks. A viewer that
+reaches an interrupted prefix's end requests encoded playback from its current
+position. ENDLIST therefore closes the current HLS timeline, which can be shorter
+than the complete source recording. Unfinished jobs stop
+after 90 seconds without playlist/chunk requests. Each rendition is capped at
+5 GiB; completed and old HLS entries share the existing 10 GiB cache trimming
+policy with its recent-playback retention window. Partial process-crash caches
+are rebuilt, write failures are propagated, and source changes invalidate cache
+identities. Listing a library no longer queues whole-file MP4 encodes.
 
 Runtime implementation is in `RecordingDirectoryClient.swift` and
 `AppModel+RecordingCoordination.swift`; local indexing/encoding stays in
 `RecordingsKit`. No Ruru build dependency or application-specific Ruru authority
 code is required.
+
+## Recording comments
+
+The watch page and member clip player have a basic comment log: plain text,
+author and time, with an explicit Refresh action. Comments require a signed-in
+browser session; media URL grants cannot read or post them. Admins can post,
+read-only viewers can read, and members can read/post only on clips the existing
+participant permission check allows. CSRF and the active-Primary write gate apply.
+Author identity comes from the session, not the submitted form.
+
+Comments for local and shared clips are saved by the active WebUI in
+`recording-comments.json` under SwiftBot's Application Support folder, keyed by
+library identity and recording ID. Each post is atomically persisted before
+success is returned, carries a retry ID to avoid duplicate posts, and logs its
+comment ID and author ID to Activity without copying the comment text. The file
+joins the existing revisioned SwiftMesh configuration snapshot and is reread
+after import or restart; the recording owner and Ruru do not store comments.
+As with other shared state, an abrupt owner failure can lose posts newer than
+the last successful sync. Comments do not add video transfers or restart playback.
+
+Comments are append-only, with a 2,000 UTF-16-unit text limit, 200 comments per
+clip, 10,000 overall and an 8 MiB file limit. Full, corrupt or unwritable logs
+produce a visible error and retain existing history. Edits, deletion and replies
+are outside this basic implementation.
 
 ## Validation
 

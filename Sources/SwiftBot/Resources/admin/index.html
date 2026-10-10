@@ -4380,6 +4380,9 @@
       stroke-width: 2.1px;
       color: #fff;
     }
+    #appShell .sidebar .nav-icon.home-nav-icon .lucide {
+      color: #fff;
+    }
 
     /* ---- Narrow-layout drawer: close button + backdrop ---- */
     .sidebar-close,
@@ -6209,6 +6212,112 @@
     .media-strip-item .media-thumb { border-radius: 10px; }
     .media-strip-item:hover .media-thumb { transform: translateY(-2px); }
     .media-strip-label { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Watch-page columns follow the space left by the sidebar. */
+    #recordingsView .settings-shell { container-type: inline-size; }
+    #mediaPanels > .media-player, .media-watch-header { display: grid; grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr); gap: 20px; align-items: start; }
+    .media-watch-header { width: 100%; align-items: center; }
+    .media-watch-search { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 14px; height: 38px; border: 1px solid var(--ub-stroke); border-radius: 999px; background: var(--home-tile-bg); color: var(--muted); }
+    .media-watch-search svg { width: 16px; height: 16px; flex: none; }
+    #appShell .media-watch-search input { flex: 1; width: 100%; min-width: 0; height: 36px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--text); font: inherit; font-size: 13px; }
+    #appShell .media-watch-search input:focus { outline: none; box-shadow: none; }
+    .media-watch-search:focus-within { outline: 3px solid var(--ub-focus); outline-offset: 2px; }
+    .media-watch-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    .media-watch-main .media-stage { position: relative; container-type: inline-size; container-name: recording-player; border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+    .media-watch-main .media-stage video { max-height: none; }
+    .media-watch-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; width: 72px; height: 72px; padding: 0; border: 1px solid rgba(255,255,255,0.08); border-radius: 50%; color: #fff; background: rgba(38,38,38,0.92); cursor: pointer; }
+    .media-watch-play svg { width: 30px; height: 30px; fill: currentColor; margin-left: 4px; }
+    .media-watch-play:hover { background: rgba(60,60,60,0.96); }
+    .media-watch-controls { position: absolute; inset: auto 0 0; padding: 24px 14px 8px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,0.88)); }
+    .media-watch-controls-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+    .media-watch-controls button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; color: #fff; background: transparent; cursor: pointer; }
+    .media-watch-controls button:hover { background: rgba(255,255,255,0.16); }
+    .media-watch-controls button:disabled { opacity: 0.4; cursor: default; }
+    .media-watch-controls svg { width: 19px; height: 19px; }
+    .media-watch-controls [data-player-toggle] svg { fill: currentColor; }
+    .media-watch-controls button:focus-visible, .media-watch-controls input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .media-watch-controls input[type="range"] { display: block; appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; height: 26px; min-height: 0; background: transparent; cursor: pointer; accent-color: #fff; }
+    .media-watch-controls input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, #fff var(--played, 0%), rgba(255,255,255,0.5) var(--played, 0%) var(--buffered, 0%), rgba(255,255,255,0.25) var(--buffered, 0%)); }
+    .media-watch-controls input[type="range"]::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #fff; }
+    .media-watch-controls input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.35); }
+    .media-watch-controls input[type="range"]::-moz-range-progress { height: 4px; background: #fff; }
+    .media-watch-controls input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; }
+    .media-watch-controls [data-player-seek] { width: 100%; }
+    .media-watch-controls [data-player-volume] { width: 64px; --played: 100%; --buffered: 100%; }
+    .media-watch-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; margin: 0 6px; }
+    .media-watch-controls [data-player-fullscreen] { margin-left: auto; }
+    .media-watch-main .media-stage:fullscreen { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; border-radius: 0; }
+    .media-watch-main .media-stage:fullscreen video { width: 100%; height: 100%; aspect-ratio: auto; }
+    @container recording-player (max-width: 440px) {
+      .media-watch-controls { padding: 20px 8px 4px; }
+      .media-watch-controls-row { gap: 0; }
+      .media-watch-controls input[data-player-volume] { display: none; }
+      .media-watch-time { font-size: 11px; margin: 0 4px; }
+      .media-watch-controls button { width: 32px; height: 32px; }
+    }
+    .media-watch-main .clip-details { display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin: 0; min-width: 0; }
+    .media-watch-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; min-width: 0; }
+    .media-watch-main .clip-game { flex: 1 1 230px; width: auto; background: transparent; border-color: transparent; padding: 0; border-radius: 10px; }
+    .media-watch-main .clip-game:hover .clip-game-name { color: var(--accent); }
+    .media-watch-main .clip-game-art { width: 54px; aspect-ratio: 3 / 4; }
+    .media-watch-main .clip-game-name { font-size: 21px; font-weight: 700; line-height: 1.3; }
+    .media-watch-main .clip-game-chevron { display: none; }
+    .media-watch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    #appShell .media-watch-actions .secondary-action { height: 36px; min-height: 36px; padding: 0 13px; font-size: 13px; background: var(--glass-top); text-decoration: none; }
+    .media-watch-meta { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--home-tile-stroke); background: color-mix(in srgb, var(--home-tile-bg) 75%, transparent); font-size: 12px; color: var(--muted); }
+    .media-watch-meta .clip-when { gap: 6px 12px; font-size: 12px; }
+    .media-watch-meta .clip-when svg, .media-watch-location > svg { width: 14px; height: 14px; flex: none; }
+    .media-watch-location { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .media-watch-location span { min-width: 0; overflow-wrap: anywhere; }
+    .media-watch-match { font-size: 11px; color: var(--muted); }
+    .media-watch-main .clip-people { width: 100%; box-sizing: border-box; gap: 9px; padding: 4px 8px 0; border: 0; border-radius: 0; background: transparent; }
+    .media-watch-main .clip-people > .clip-kicker { color: var(--text); font-size: 13px; font-weight: 650; letter-spacing: 0; text-transform: none; }
+    .media-watch-main .clip-person { max-width: 100%; box-sizing: border-box; padding: 4px 12px 4px 4px; background: var(--glass-top); }
+    .media-watch-main .clip-person-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-watch-main .clip-person-avatar, .media-watch-main .clip-person-tag { flex: none; }
+    .recording-comments { min-width: 0; padding: 16px; border-radius: 14px; border: 1px solid var(--home-tile-stroke); background: var(--home-tile-bg); }
+    .recording-comments-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+    .recording-comments h2 { margin: 0; font-size: 15px; }
+    .recording-comments form { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--home-tile-stroke); }
+    .recording-comments label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+    :is(#appShell, #modalOverlay) .recording-comments :is(.primary-action, .secondary-action) { height: 32px; min-height: 32px; padding: 0 12px; font-size: 13px; border-radius: 8px; box-shadow: none; }
+    #appShell .recording-comments textarea { width: 100%; box-sizing: border-box; min-height: 76px; resize: vertical; font: inherit; font-size: 13px; }
+    .recording-comments-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .recording-comments-status { flex: 1; min-width: 0; margin: 8px 0 0; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
+    .recording-comments-status:empty { display: none; }
+    .recording-comments-list { display: flex; flex-direction: column; gap: 16px; }
+    .recording-comment { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+    .recording-comment-avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--glass-top); flex: none; font-size: 13px; }
+    .recording-comment-body { min-width: 0; flex: 1; }
+    .recording-comment-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px; font-size: 12px; }
+    .recording-comment-text { margin: 5px 0 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .media-suggestions { min-width: 0; padding: 14px 14px 6px; border-radius: 18px; border: 1px solid var(--home-tile-stroke); background: var(--home-tile-bg); }
+    .media-suggestions-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .media-suggestions-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+    .media-suggestions-head button { color: var(--accent); padding-right: 0; }
+    .media-suggestions-head button svg { width: 12px; height: 12px; }
+    .media-suggestions-list { display: grid; }
+    .media-suggestion { appearance: none; display: grid; grid-template-columns: minmax(108px, 39%) minmax(0, 1fr); align-items: start; gap: 12px; width: 100%; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid var(--ub-stroke); border-radius: 0; background: transparent; font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+    .media-suggestion:last-child { border-bottom: 0; }
+    .media-suggestion:hover { background: var(--ub-fill-hover); border-radius: 8px; }
+    .media-suggestion:disabled { cursor: default; opacity: 0.65; }
+    .media-suggestion .media-thumb { border-radius: 8px; }
+    .media-suggestion .media-badge { right: 5px; bottom: 5px; border-radius: 4px; padding: 1px 4px; font-variant-numeric: tabular-nums; backdrop-filter: none; }
+    .media-suggestion-text { display: grid; gap: 4px; min-width: 0; }
+    .media-suggestion-title { font-size: 13px; line-height: 1.35; font-weight: 650; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+    .media-suggestion-text > .media-subtle { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-suggestion-meta { display: flex; flex-wrap: wrap; gap: 2px 6px; font-size: 12px; color: var(--muted); }
+    .media-suggestion-meta > span + span::before { content: '·'; padding-right: 6px; }
+    .media-suggestions-list > [role="status"] { padding: 14px 0; }
+    #appShell .media-watch-main :is(button, a, summary, video):focus-visible, #appShell .media-suggestions button:focus-visible { outline: 3px solid var(--ub-focus, var(--accent)); outline-offset: 3px; }
+    @container (max-width: 850px) {
+      #mediaPanels > .media-player { grid-template-columns: minmax(0, 1fr); }
+      .media-suggestion { grid-template-columns: minmax(110px, 160px) minmax(0, 1fr); }
+    }
+    @media (max-width: 1140px) { .media-watch-header { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+    @container (max-width: 440px) {
+      .media-suggestion { grid-template-columns: minmax(90px, 40%) minmax(0, 1fr); gap: 10px; }
+      .media-watch-main .clip-game-name { font-size: 19px; }
+    }
     .media-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
     .media-tools .settings-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .media-tools .panel-title { margin-bottom: 2px; }
@@ -6913,45 +7022,233 @@
       return `${item.streamURL}&quality=original${mediaAccessQuery()}`;
     }
 
-    // Starts playback straight away. The server says which file to use,
-    // once, before playing: the lighter prepared copy (8 Mbps) when it's
-    // ready, otherwise the original while that copy is made for next time.
-    // Original-bitrate clips (~30 Mbps) stutter over a slow link.
+    function mediaDownloadURL(item) {
+      return `/api/media/download?id=${encodeURIComponent(mediaTokenFromURL(item.streamURL))}${mediaAccessQuery()}`;
+    }
+
+    let mediaHlsLibraryPromise = null;
+    function loadMediaHlsLibrary() {
+      if (window.Hls) return Promise.resolve(window.Hls);
+      if (!mediaHlsLibraryPromise) mediaHlsLibraryPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/assets/hls.min.js';
+        script.onload = () => resolve(window.Hls);
+        script.onerror = () => { mediaHlsLibraryPromise = null; script.remove(); reject(new Error('Streaming player unavailable')); };
+        document.head.appendChild(script);
+      });
+      return mediaHlsLibraryPromise;
+    }
+
+    function recordingPlaybackPosition(video) {
+      return video._requestedPosition ?? ((video._recordingOffset || 0) + (Number.isFinite(video.currentTime) ? video.currentTime : 0));
+    }
+
+    // AVFoundation encodes a new HLS timeline from the requested source offset.
+    // Original playback remains an error fallback, rather than the seek path.
     async function attachRecordingPlayer(video, item) {
       if (!video || !item) return;
       destroyActiveMediaHls();
+      video._disposePlayback?.();
+      const request = new AbortController();
+      let hls = null, usingHls = false, fellBack = false, pendingOriginalPosition = null, pendingResume = false;
+      let streamRequest = null, sequence = 0, seekTimer = null, desiredPosition = null, desiredResume = false, changingSource = false;
+      const valid = () => video.isConnected && !request.signal.aborted;
+      const id = mediaTokenFromURL(item.streamURL);
+      video._recordingOffset = 0;
+      const note = (text, retry = false) => {
+        (video.closest('.media-watch-main') || video.closest('.media-stage, #modalBody'))?.querySelector('.media-playback-note')?.remove();
+        if (!text || !valid()) return;
+        const el = document.createElement('div');
+        el.className = 'media-playback-note'; el.setAttribute('role', 'status'); el.textContent = text;
+        if (retry) {
+          const button = document.createElement('button'); button.className = 'secondary-action';
+          button.type = 'button'; button.textContent = 'Try again';
+          button.addEventListener('click', typeof retry === 'function' ? retry : () => attachRecordingPlayer(video, item), { once: true }); el.appendChild(button);
+        }
+        if (video.closest('.media-watch-main')) video.closest('.media-stage').after(el);
+        else video.after(el);
+      };
+      const playOriginal = (position, message) => {
+        if (!valid()) return;
+        if (fellBack) {
+          if (pendingOriginalPosition !== null) { pendingOriginalPosition = position; video._requestedPosition = position; }
+          else video.currentTime = position;
+          return;
+        }
+        pendingResume = desiredPosition !== null ? desiredResume : !video.paused;
+        pendingOriginalPosition = position;
+        video._requestedPosition = position;
+        desiredPosition = null; clearTimeout(seekTimer); streamRequest?.abort(); sequence++;
+        fellBack = true; usingHls = false; hls?.destroy(); hls = null;
+        video._recordingOffset = 0;
+        note(message); video.pause();
+        ensureMediaAccessToken().then(() => {
+          if (!valid()) return;
+          video.src = mediaMP4URL(item); video.load();
+        });
+      };
+      const fallback = () => {
+        if (fellBack) return;
+        playOriginal(recordingPlaybackPosition(video), 'Adaptive streaming is unavailable. Playing the original recording.');
+      };
+      video.addEventListener('loadedmetadata', () => {
+        if (!valid() || pendingOriginalPosition === null) return;
+        const duration = Number.isFinite(video.duration) ? video.duration : pendingOriginalPosition;
+        video.currentTime = Math.max(0, Math.min(pendingOriginalPosition, duration - 0.05));
+        pendingOriginalPosition = null; video._requestedPosition = null;
+        video.dispatchEvent(new Event('recordingtimelinechange'));
+        if (pendingResume) video.play().catch(() => {});
+      }, { signal: request.signal });
+
+      const readDuration = response => {
+        const duration = Number(response.headers.get('X-SwiftBot-Duration'));
+        if (Number.isFinite(duration) && duration > 0) {
+          video._recordingDuration = duration;
+          video.dispatchEvent(new Event('recordingtimelinechange'));
+        }
+      };
+      const startHls = async (playlist, offset, position, resume, serial) => {
+        const current = () => valid() && serial === sequence && !fellBack;
+        let Hls = null;
+        if (!video.canPlayType('application/vnd.apple.mpegurl')) Hls = await loadMediaHlsLibrary();
+        if (!current()) return;
+        if (!video.canPlayType('application/vnd.apple.mpegurl') && !Hls?.isSupported()) { fallback(); return; }
+        const level = hls?.currentLevel >= 0 ? hls.currentLevel : 0;
+        hls?.destroy(); hls = null;
+        changingSource = true; video.pause(); video._recordingOffset = offset;
+        const relative = Math.max(0, position - offset);
+        video.addEventListener('loadedmetadata', () => {
+          if (!current()) return;
+          video.currentTime = relative;
+          const shouldResume = desiredPosition !== null ? desiredResume : resume;
+          changingSource = false; video._requestedPosition = null; desiredPosition = null;
+          video.dispatchEvent(new Event('recordingtimelinechange'));
+          if (shouldResume) video.play().catch(() => {});
+        }, { once: true, signal: streamRequest?.signal || request.signal });
+        video.addEventListener('loadeddata', () => { if (current()) note(''); },
+          { once: true, signal: streamRequest?.signal || request.signal });
+        if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = playlist; video.load(); }
+        else {
+          hls = new Hls({ startPosition: relative, startLevel: level, enableWorker: false,
+            maxBufferLength: 20, maxMaxBufferLength: 30, backBufferLength: 30,
+            liveSyncDurationCount: 100000, liveMaxLatencyDurationCount: Infinity });
+          hls.on(Hls.Events.ERROR, (_, data) => { if (current() && data.fatal) fallback(); });
+          hls.attachMedia(video); hls.loadSource(playlist);
+        }
+      };
+      const restartStream = async (position, resume) => {
+        streamRequest?.abort(); streamRequest = new AbortController();
+        const serial = ++sequence;
+        const offset = Math.max(0, Math.floor(position / 2) * 2);
+        desiredPosition = position; desiredResume = resume; video._requestedPosition = position;
+        note('Preparing playback from this point on the recording’s Mac…');
+        const current = () => valid() && serial === sequence && !fellBack;
+        try {
+          await ensureMediaAccessToken();
+          const signal = AbortSignal.any([request.signal, streamRequest.signal, AbortSignal.timeout(45000)]);
+          const playlist = `/api/media/hls-segment?id=${encodeURIComponent(id)}&seg=seek-${offset}-master.m3u8${mediaAccessQuery()}`;
+          const master = await fetch(playlist, { signal });
+          if (!master.ok) throw new Error('Stream unavailable');
+          if (!current()) return;
+          readDuration(master);
+          const lines = (await master.text()).split('\n');
+          const renditionURLs = lines.filter(line => line && !line.startsWith('#'));
+          const level = hls?.currentLevel >= 0 ? hls.currentLevel : 0;
+          const rendition = new URL(renditionURLs[Math.min(level, renditionURLs.length - 1)], new URL(playlist, location.href));
+          if (rendition.origin !== location.origin || rendition.pathname !== '/api/media/hls-segment') throw new Error('Invalid stream');
+          // Wait for a playable first chunk while the old stream stays intact.
+          // A busy Mac returns 503; that is a retry, not an original-file switch.
+          while (current()) {
+            const ready = await fetch(rendition, { signal });
+            if (ready.ok) break;
+            if (ready.status !== 503) throw new Error('Encoding failed');
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(done, 500);
+              function done() { signal.removeEventListener('abort', aborted); resolve(); }
+              function aborted() { clearTimeout(timer); reject(signal.reason); }
+              signal.addEventListener('abort', aborted, { once: true });
+              if (signal.aborted) aborted();
+            });
+          }
+          if (current()) await startHls(playlist, offset, position, desiredResume, serial);
+        } catch {
+          if (!current()) return;
+          desiredPosition = null; video._requestedPosition = null;
+          video.dispatchEvent(new Event('recordingtimelinechange'));
+          note('The Mac couldn’t prepare playback from this point. ', () => restartStream(position, resume));
+        }
+      };
+      video._seekRecording = position => {
+        if (!valid()) return;
+        if (usingHls) {
+          const relative = position - (video._recordingOffset || 0);
+          if (desiredPosition === null) {
+            for (let i = 0; i < video.seekable.length; i++) {
+              if (relative >= video.seekable.start(i) && relative < video.seekable.end(i) - 0.05) { video.currentTime = relative; return; }
+            }
+          }
+          const resume = desiredPosition !== null ? desiredResume : !video.paused;
+          desiredPosition = position; desiredResume = resume; video._requestedPosition = position;
+          streamRequest?.abort(); sequence++; clearTimeout(seekTimer);
+          // Coalesce drag events into one seek instead of starting many encoders.
+          seekTimer = setTimeout(() => restartStream(position, desiredResume), 180);
+        } else if (fellBack) playOriginal(position, '');
+        else if (video.readyState >= 1) video.currentTime = position;
+        else {
+          desiredPosition = position; desiredResume = !video.paused; video._requestedPosition = position;
+        }
+      };
+      video._setPlaybackIntent = resume => {
+        if (desiredPosition === null) return false;
+        desiredResume = resume;
+        video.dispatchEvent(new Event('recordingtimelinechange'));
+        return true;
+      };
+      video._playbackIntent = () => desiredPosition !== null ? desiredResume : !video.paused;
+      video.addEventListener('play', () => { if (desiredPosition !== null) desiredResume = true; }, { signal: request.signal });
+      video.addEventListener('pause', () => { if (desiredPosition !== null && !changingSource) desiredResume = false; }, { signal: request.signal });
+      video.addEventListener('ended', () => {
+        const position = recordingPlaybackPosition(video);
+        if (usingHls && valid() && desiredPosition === null && video._recordingDuration > position + 0.25) restartStream(position, true);
+      }, { signal: request.signal });
+      const playback = { destroy: () => {
+        request.abort(); streamRequest?.abort(); clearTimeout(seekTimer); sequence++;
+        hls?.destroy(); hls = null; video._seekRecording = null; video._setPlaybackIntent = null; video._playbackIntent = null; video._requestedPosition = null; video._recordingOffset = 0;
+        if (activeMediaHls === playback) activeMediaHls = null;
+      } };
+      activeMediaHls = playback; video._disposePlayback = playback.destroy;
+      video.addEventListener('error', () => {
+        if (!valid()) return;
+        if (usingHls && !fellBack) fallback();
+        else note('This recording couldn’t play. Check that its Mac and recordings folder are available. ', true);
+      }, { signal: request.signal });
       await ensureMediaAccessToken();
-      let quality = 'original';
-      let preparing = false;
+      if (!valid()) return;
+      let quality = 'original', preparing = false;
       try {
-        const id = mediaTokenFromURL(item.streamURL);
-        const response = await fetch(`/api/media/playback?id=${encodeURIComponent(id)}${mediaAccessQuery()}`, { signal: AbortSignal.timeout(10000) });
+        const response = await fetch(`/api/media/playback?id=${encodeURIComponent(id)}${mediaAccessQuery()}`,
+          { signal: AbortSignal.any([request.signal, AbortSignal.timeout(10000)]) });
         if (response.ok) ({ quality, preparing } = await response.json());
       } catch {}
-      if (!video.isConnected) return;
-      video.src = `${item.streamURL}&quality=${encodeURIComponent(quality || 'original')}${mediaAccessQuery()}`;
-      video.load();
-      video.addEventListener('error', () => {
-        if (!video.isConnected) return;
-        video.closest('.media-stage, #modalBody')?.querySelector('.media-playback-note')?.remove();
-        const note = document.createElement('div');
-        note.className = 'media-playback-note';
-        note.setAttribute('role', 'status');
-        note.textContent = preparing
-          ? 'This recording couldn’t play. Its lighter copy is being prepared; try again shortly. '
-          : 'This recording couldn’t play. Check that its Mac and recordings folder are available. ';
-        const retry = document.createElement('button');
-        retry.className = 'secondary-action';
-        retry.type = 'button';
-        retry.textContent = 'Try again';
-        retry.addEventListener('click', () => attachRecordingPlayer(video, item), { once: true });
-        note.appendChild(retry);
-        video.after(note);
-      }, { once: true });
-      video.closest('.media-stage, #modalBody')?.querySelector('.media-playback-note')?.remove();
-      if (preparing) {
-        video.insertAdjacentHTML('afterend', '<div class="media-playback-note"><i class="lucide" data-lucide="sparkles"></i> Playing the original. A lighter copy is being made so this clip plays smoothly next time.</div>');
-        refreshIcons();
+      if (!valid() || fellBack) return;
+      note('');
+      if (quality === 'hls') {
+        usingHls = true;
+        if (desiredPosition !== null) { await restartStream(desiredPosition, desiredResume); return; }
+        note('Preparing the stream on the recording’s Mac…');
+        try {
+          const serial = sequence;
+          const playlist = `/api/media/hls?id=${encodeURIComponent(id)}${mediaAccessQuery()}`;
+          const response = await fetch(playlist, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]) });
+          if (!valid() || serial !== sequence || fellBack) return;
+          if (!response.ok) throw new Error('Stream unavailable');
+          readDuration(response);
+          await startHls(playlist, 0, 0, false, serial);
+        } catch { if (valid() && desiredPosition === null) fallback(); }
+      } else {
+        if (desiredPosition !== null) { playOriginal(desiredPosition, ''); return; }
+        video.src = `${item.streamURL}&quality=${encodeURIComponent(quality || 'original')}${mediaAccessQuery()}`; video.load();
+        if (preparing) note('Playing the original while its lighter copy is prepared.');
       }
     }
 
@@ -8153,7 +8450,7 @@
 
     // Under the video in both players: the game, when, how long, and who was
     // in it. `forMember` swaps "you" in for the signed-in person.
-    function clipDetailsHTML(item, { forMember = false } = {}) {
+    function clipDetailsHTML(item, { forMember = false, forWatch = false } = {}) {
       const when = new Date(item.modifiedAt);
       const details = mediaGameDetails.get(item.gameName);
       const genres = details?.state === 'ready' ? (details.genres || []).slice(0, 3).join(' · ') : '';
@@ -8168,8 +8465,7 @@
             ${p.id === item.recordedByID ? '<span class="clip-person-tag">Recorded</span>' : ''}
           </span>`;
       };
-      return `
-        <section class="clip-details">
+      const gameHTML = `
           <button class="clip-game" type="button" data-clip-open-game="${escapeHTML(item.gameName)}" title="See all ${escapeHTML(item.gameName)} clips">
             <span class="clip-game-art" style="--poster-tint:${gameColor(item.gameName)};">
               <img src="/api/media/game-art?game=${encodeURIComponent(item.gameName)}${forMember ? '' : mediaAccessQuery()}" alt="" loading="lazy" data-fallback="next-sibling">
@@ -8181,21 +8477,39 @@
               ${genres ? `<span class="media-subtle">${escapeHTML(genres)}</span>` : ''}
             </span>
             <i class="lucide clip-game-chevron" data-lucide="chevron-right"></i>
-          </button>
+          </button>`;
+      const peopleHTML = people.length ? `<div class="clip-people-list">${people.map(chip).join('')}</div>`
+        : `<div class="media-subtle">SwiftBot couldn’t tell who was in this one.${forMember ? '' : ' Set who records this folder under <strong>Who records</strong> so it can.'}</div>`;
+      if (forWatch) return `
+        <section class="clip-details">
+          <div class="media-watch-summary">
+            ${gameHTML}
+            <div class="media-watch-actions">
+              ${item.streamURL && item.available !== false ? `<a class="secondary-action" data-media-download href="${escapeHTML(mediaDownloadURL(item))}" download="${escapeHTML(item.fileName || 'recording')}"><i class="lucide" data-lucide="download"></i> Download</a>` : ''}
+              <button class="secondary-action" type="button" data-clip-fix-match><i class="lucide" data-lucide="wand-sparkles"></i> Fix Match</button>
+            </div>
+          </div>
+          ${recordingWatchMetadataHTML(item)}
+          ${item.gameMatch ? `<div class="media-watch-match">Fixed · the filename says ${escapeHTML(item.detectedGameName || 'nothing')}</div>` : ''}
+          <div class="clip-people"><div class="clip-kicker">In this clip</div>${peopleHTML}</div>
+        </section>`;
+      return `
+        <section class="clip-details">
+          ${gameHTML}
           ${forMember ? '' : `
             <div class="clip-match">
               ${item.gameMatch ? `<span>Fixed · the filename says ${escapeHTML(item.detectedGameName || 'nothing')}</span>` : ''}
               <button class="secondary-action" type="button" data-clip-fix-match><i class="lucide" data-lucide="wand-sparkles"></i> Fix Match</button>
             </div>`}
           <div class="clip-when">
-            <span><i class="lucide" data-lucide="calendar"></i>${escapeHTML(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</span>
-            <span><i class="lucide" data-lucide="clock"></i>${escapeHTML(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
+            ${forWatch && (!item.modifiedAt || !Number.isFinite(when.getTime())) ? '<span>Date unavailable</span>' : `
+              <span><i class="lucide" data-lucide="calendar"></i>${escapeHTML(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</span>
+              <span><i class="lucide" data-lucide="clock"></i>${escapeHTML(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>`}
             <span class="clip-length hidden"><i class="lucide" data-lucide="timer"></i><span data-clip-length></span></span>
           </div>
           <div class="clip-people">
             <div class="clip-kicker">In this clip</div>
-            ${people.length ? `<div class="clip-people-list">${people.map(chip).join('')}</div>` : `
-              <div class="media-subtle">SwiftBot couldn’t tell who was in this one.${forMember ? '' : ' Set who records this folder under <strong>Who records</strong> so it can.'}</div>`}
+            ${peopleHTML}
           </div>
         </section>`;
     }
@@ -8206,7 +8520,7 @@
       if (!container) return;
       container._clipBinding = { video, onOpenGame };
       const showLength = () => {
-        const seconds = video.duration;
+        const seconds = video._recordingDuration || video.duration;
         if (!Number.isFinite(seconds) || seconds <= 0) return;
         const m = Math.floor(seconds / 60);
         const sec = Math.round(seconds % 60);
@@ -8219,6 +8533,7 @@
       // Already loaded when the details are redrawn under a playing video.
       if (video?.readyState >= 1) showLength();
       else video?.addEventListener('loadedmetadata', showLength, { once: true });
+      video?.addEventListener('recordingtimelinechange', showLength, { once: true });
       container.querySelector('[data-clip-open-game]')?.addEventListener('click', () => onOpenGame(item.gameName));
       container.querySelector('[data-clip-fix-match]')?.addEventListener('click', () => openFixMatch(item));
       loadMediaGameDetails(item.gameName);
@@ -8347,13 +8662,26 @@
           // The player keeps playing through library refreshes, so redraw
           // just its details and title rather than the whole page.
           const details = document.querySelector('#mediaPanels .clip-details');
-          const updated = (mediaLibraryData?.items || []).find(i => i.id === item.id);
+          let updated = (mediaLibraryData?.items || []).find(i => i.id === item.id);
+          // A recommendation can be outside the library's current filters/page.
+          // After Fix Match, read its authoritative metadata without restarting
+          // the video or guessing the game's resolved alias on a reset.
+          if (!updated && mediaViewMode === 'player' && mediaWatchItem?.id === item.id) {
+            updated = await findRecordingWatchItem(item.id, gameName);
+            if (currentView !== 'recordings' || mediaViewMode !== 'player' || selectedMediaItemID !== item.id) return;
+          }
           if (mediaViewMode === 'player' && details && updated) {
             const { video, onOpenGame } = details._clipBinding || {};
-            details.outerHTML = clipDetailsHTML(updated);
+            const forWatch = !!details.closest('.media-watch-main');
+            if (forWatch) mediaWatchItem = updated;
+            details.outerHTML = clipDetailsHTML(updated, { forWatch });
             bindClipDetails(document.querySelector('#mediaPanels .clip-details'), video, updated, onOpenGame);
             const title = document.querySelector('#mediaHeader .section-mini-title');
             if (title) title.textContent = updated.gameName || 'Recording';
+            if (forWatch) {
+              bindRecordingWatchActions(document.getElementById('mediaPanels'), updated);
+              loadRecordingSuggestions(updated);
+            }
             refreshIcons();
           } else {
             renderRecordingsView();
@@ -8544,11 +8872,102 @@
       refreshIcons();
     }
 
+    function recordingCommentsHTML() {
+      return `<section class="recording-comments" aria-label="Recording comments">
+        <div class="recording-comments-head"><h2>Comments <span data-comment-count class="media-subtle"></span></h2><button type="button" class="secondary-action" data-comments-refresh>Refresh</button></div>
+        <div class="recording-comments-list"></div>
+        <form class="hidden"><label><span>Leave a comment</span><textarea name="comment" placeholder="Leave a comment…" aria-label="Leave a comment" maxlength="2000" required></textarea></label>
+          <div class="recording-comments-actions"><button type="submit" class="primary-action">Post comment</button></div>
+        </form>
+        <p class="recording-comments-status" role="status" aria-live="polite">Loading comments…</p>
+      </section>`;
+    }
+
+    function bindRecordingComments(container, item) {
+      const section = container.querySelector('.recording-comments');
+      if (!section) return;
+      if (!item.streamURL) {
+        section.querySelector('[role="status"]').textContent = 'Comments aren’t available for this recording.';
+        section.querySelector('[data-comments-refresh]').disabled = true;
+        return;
+      }
+      const form = section.querySelector('form');
+      const input = form.querySelector('textarea');
+      const submit = form.querySelector('button');
+      const refresh = section.querySelector('[data-comments-refresh]');
+      const status = section.querySelector('[role="status"]');
+      const list = section.querySelector('.recording-comments-list');
+      const token = new URL(item.streamURL, location.href).searchParams.get('id');
+      if (!token) { status.textContent = 'Comments aren’t available for this recording.'; refresh.disabled = true; return; }
+      const endpoint = `/api/media/comments?id=${encodeURIComponent(token)}`;
+      let comments = [], request = null, generation = 0, pending = false, retryID = null, retryText = null;
+      function render() {
+        section.querySelector('[data-comment-count]').textContent = comments.length ? `(${comments.length})` : '';
+        list.innerHTML = comments.length ? comments.map(comment => {
+          const date = new Date(comment.createdAt);
+          const time = Number.isFinite(date.getTime()) ? date.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : '';
+          return `<article class="recording-comment"><span class="recording-comment-avatar" aria-hidden="true">${escapeHTML((comment.authorName || '?').charAt(0))}</span><div class="recording-comment-body"><div class="recording-comment-meta"><strong>${escapeHTML(comment.authorName)}</strong><time class="media-subtle" datetime="${escapeHTML(comment.createdAt)}">${escapeHTML(time)}</time></div><p class="recording-comment-text">${escapeHTML(comment.text)}</p></div></article>`;
+        }).join('') : '<div class="media-subtle">No comments yet.</div>';
+      }
+      async function errorMessage(response) {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) return 'Sign in again to view or leave comments.';
+        if (response.status === 403) return 'You don’t have permission to comment on this recording.';
+        return data.message || 'Comments couldn’t be loaded or saved. Try again.';
+      }
+      async function load() {
+        if (pending) return;
+        request?.abort(); request = new AbortController();
+        const version = ++generation;
+        refresh.disabled = true; status.textContent = 'Loading comments…';
+        try {
+          const response = await fetch(endpoint, {signal: request.signal});
+          if (!response.ok) throw new Error(await errorMessage(response));
+          const data = await response.json();
+          if (!section.isConnected || version !== generation) return;
+          comments = data.comments || []; render();
+          form.classList.toggle('hidden', !data.canComment);
+          status.textContent = data.canComment ? '' : 'Comments are read-only for your account.';
+        } catch (error) {
+          if (section.isConnected && version === generation && error.name !== 'AbortError') status.textContent = error.message;
+        } finally { if (section.isConnected && version === generation) refresh.disabled = false; }
+      }
+      refresh.addEventListener('click', load);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const text = input.value.trim();
+        if (pending || !text) return;
+        if (retryText !== text) {
+          // Local HTTP hostnames may not expose randomUUID; getRandomValues
+          // keeps retry IDs available on that supported sign-in path too.
+          const bytes = crypto.getRandomValues(new Uint8Array(16));
+          bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+          const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+          retryID = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+          retryText = text;
+        }
+        pending = true; request?.abort(); ++generation;
+        submit.disabled = true; refresh.disabled = true; input.disabled = true; status.textContent = 'Saving comment…';
+        try {
+          const response = await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Admin-CSRF': csrfToken || ''}, body: JSON.stringify({id: retryID, text})});
+          if (!response.ok) throw new Error(await errorMessage(response));
+          const comment = await response.json();
+          if (!section.isConnected) return;
+          if (!comments.some(existing => existing.id === comment.id)) comments.push(comment);
+          render(); input.value = ''; retryID = null; retryText = null; status.textContent = 'Comment saved.';
+        } catch (error) { if (section.isConnected) status.textContent = error.message; }
+        finally { pending = false; if (section.isConnected) { submit.disabled = false; refresh.disabled = false; input.disabled = false; } }
+      });
+      load();
+    }
+
     function openMemberClip(item) {
       showModal(item.gameName, `
         <video class="member-video" controls playsinline autoplay></video>
-        ${clipDetailsHTML(item, { forMember: true })}`, '', { wide: true });
+        ${clipDetailsHTML(item, { forMember: true })}
+        ${recordingCommentsHTML()}`, '', { wide: true });
       const video = document.querySelector('#modalBody .member-video');
+      bindRecordingComments(document.getElementById('modalBody'), item);
       attachRecordingPlayer(video, item);
       bindClipDetails(document.querySelector('#modalBody .clip-details'), video, item, (game) => {
         hideModal();
@@ -12296,7 +12715,7 @@
 
     function flushActiveMediaPlayback(video, eventName = 'progress') {
       if (!activeMediaPlayback.sessionID || !video) return;
-      const watchedSeconds = Math.max(0, Math.floor(video.currentTime || 0));
+      const watchedSeconds = Math.max(0, Math.floor(recordingPlaybackPosition(video)));
       if (watchedSeconds <= activeMediaPlayback.lastSentSeconds && eventName !== 'completed') return;
       activeMediaPlayback.lastSentSeconds = Math.max(activeMediaPlayback.lastSentSeconds, watchedSeconds);
       sendMediaPlaybackEvent({
@@ -12318,7 +12737,10 @@
     // just removed from the page keeps downloading (and can keep playing)
     // until it's garbage-collected, fighting the clip you actually opened.
     function releaseVideos(container) {
+      container?._disposeSuggestions?.();
       container?.querySelectorAll('video').forEach(video => {
+        video._disposePlayback?.();
+        video._disposeControls?.();
         if (video._hoverTimer) { clearTimeout(video._hoverTimer); video._hoverTimer = null; }
         try { video.pause(); } catch {}
         video.removeAttribute('src');
@@ -16961,6 +17383,341 @@
       refreshIcons();
     }
 
+    // The selected item survives filtered/paginated library refreshes while watching.
+    let mediaWatchItem = null;
+    let mediaSuggestionRequest = null;
+    let mediaSuggestionSearch = '';
+    let mediaSuggestionSearchTimer = null;
+    const mediaDurationCache = new Map();
+
+    function recordingLabel(item) {
+      return item.fileName || item.relativePath?.split('/').pop() || item.gameName || 'Recording';
+    }
+
+    function recordingDurationKey(item) { return `${item.id}|${item.modifiedAt}|${item.sizeBytes}`; }
+
+    function recordingDurationLabel(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) return '';
+      const total = Math.floor(seconds), hours = Math.floor(total / 3600), minutes = Math.floor(total / 60) % 60;
+      return `${hours ? `${hours}:${String(minutes).padStart(2, '0')}` : Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+    }
+
+    function recordingPlayerControlsHTML() {
+      return `<div class="media-watch-controls hidden" role="group" aria-label="Playback controls">
+        <input type="range" data-player-seek aria-label="Playback position" min="0" max="0" step="0.1" value="0" disabled>
+        <div class="media-watch-controls-row">
+          <button type="button" data-player-toggle aria-label="Play" title="Play / pause (Space)"><span data-player-play-icon><i class="lucide" data-lucide="play"></i></span><span data-player-pause-icon class="hidden"><i class="lucide" data-lucide="pause"></i></span></button>
+          <button type="button" data-player-back aria-label="Back 10 seconds" title="Back 10 seconds (J)" disabled><i class="lucide" data-lucide="rotate-ccw"></i></button>
+          <button type="button" data-player-forward aria-label="Forward 10 seconds" title="Forward 10 seconds (L)" disabled><i class="lucide" data-lucide="rotate-cw"></i></button>
+          <span class="media-watch-time" data-player-time>0:00 / 0:00</span>
+          <button type="button" data-player-mute aria-label="Mute" title="Mute (M)"><span data-player-sound-icon><i class="lucide" data-lucide="volume-2"></i></span><span data-player-muted-icon class="hidden"><i class="lucide" data-lucide="volume-x"></i></span></button>
+          <input type="range" data-player-volume aria-label="Volume" min="0" max="1" step="0.05" value="1">
+          <button type="button" data-player-fullscreen aria-label="Enter fullscreen" title="Fullscreen (F)"><i class="lucide" data-lucide="maximize"></i></button>
+        </div>
+      </div>`;
+    }
+
+    // Enhance the native player only after controls are bound. Fullscreen keeps
+    // this whole stage; iPhone can still use its native fullscreen player.
+    function bindRecordingPlayerControls(video, item) {
+      const stage = video.closest('.media-stage');
+      const controls = stage?.querySelector('.media-watch-controls');
+      if (!controls) return;
+      video._disposeControls?.();
+      const events = new AbortController();
+      const listen = (target, event, handler) => target.addEventListener(event, handler, { signal: events.signal });
+      const seek = controls.querySelector('[data-player-seek]');
+      const volume = controls.querySelector('[data-player-volume]');
+      const toggle = controls.querySelector('[data-player-toggle]');
+      const mute = controls.querySelector('[data-player-mute]');
+      const fullscreen = controls.querySelector('[data-player-fullscreen]');
+      let dragging = false;
+      const timeline = () => {
+        const ranges = video.seekable;
+        const offset = video._recordingOffset || 0;
+        const available = ranges.length ? offset + ranges.end(ranges.length - 1) : 0;
+        const duration = video._recordingDuration || (Number.isFinite(video.duration) && video.duration > 0 ? offset + video.duration : available);
+        return { ranges, duration, end: duration };
+      };
+      const time = seconds => recordingDurationLabel(seconds) || '0:00';
+      const update = () => {
+        const { duration, end } = timeline();
+        const position = recordingPlaybackPosition(video);
+        if (!dragging) { seek.max = String(end); seek.value = String(Math.min(position, end)); }
+        seek.disabled = end <= 0;
+        seek.setAttribute('aria-valuetext', `${time(Number(seek.value))} of ${time(duration)}`);
+        let buffered = position;
+        for (let i = 0; i < video.buffered.length; i++) {
+          if ((video._recordingOffset || 0) + video.buffered.start(i) <= position + 0.1 && (video._recordingOffset || 0) + video.buffered.end(i) >= position) buffered = (video._recordingOffset || 0) + video.buffered.end(i);
+        }
+        seek.style.setProperty('--played', `${end > 0 ? 100 * Number(seek.value) / end : 0}%`);
+        seek.style.setProperty('--buffered', `${end > 0 ? Math.min(100, 100 * buffered / end) : 0}%`);
+        controls.querySelector('[data-player-time]').textContent = `${time(dragging ? Number(seek.value) : position)} / ${time(duration)}`;
+        controls.querySelector('[data-player-back]').disabled = end <= 0 || position <= 0;
+        controls.querySelector('[data-player-forward]').disabled = end <= 0 || position >= end - 0.05;
+        const playing = video._playbackIntent ? video._playbackIntent() : !video.paused;
+        toggle.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+        controls.querySelector('[data-player-play-icon]').classList.toggle('hidden', playing);
+        controls.querySelector('[data-player-pause-icon]').classList.toggle('hidden', !playing);
+        const silent = video.muted || video.volume === 0;
+        mute.setAttribute('aria-label', silent ? 'Unmute' : 'Mute');
+        controls.querySelector('[data-player-sound-icon]').classList.toggle('hidden', silent);
+        controls.querySelector('[data-player-muted-icon]').classList.toggle('hidden', !silent);
+        volume.value = String(video.muted ? 0 : video.volume);
+        volume.style.setProperty('--played', `${100 * Number(volume.value)}%`);
+        fullscreen.setAttribute('aria-label', document.fullscreenElement === stage ? 'Exit fullscreen' : 'Enter fullscreen');
+      };
+      const setPosition = target => {
+        const { duration } = timeline();
+        if (duration <= 0 || !Number.isFinite(target)) return;
+        const position = Math.max(0, Math.min(target, Math.max(0, duration - 0.05)));
+        if (video._seekRecording) video._seekRecording(position);
+        else video.currentTime = position;
+        update();
+      };
+      const playPause = () => {
+        if (video._setPlaybackIntent?.(!video._playbackIntent())) { update(); return; }
+        if (video.paused) video.play().catch(() => setMessage('This recording isn’t ready to play yet. Try again shortly.', 'error'));
+        else video.pause();
+      };
+      const toggleMute = () => { const silent = video.muted || video.volume === 0; if (video.volume === 0) video.volume = 1; video.muted = !silent; update(); };
+      const toggleFullscreen = async () => {
+        try {
+          if (document.fullscreenElement === stage) await document.exitFullscreen();
+          else if (stage.requestFullscreen) await stage.requestFullscreen();
+          else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+        } catch { setMessage('Fullscreen is unavailable in this browser view. Open the page in your browser to use fullscreen.', 'error'); }
+      };
+      listen(toggle, 'click', playPause);
+      listen(controls.querySelector('[data-player-back]'), 'click', () => setPosition(recordingPlaybackPosition(video) - 10));
+      listen(controls.querySelector('[data-player-forward]'), 'click', () => setPosition(recordingPlaybackPosition(video) + 10));
+      listen(seek, 'pointerdown', () => { dragging = true; });
+      listen(seek, 'input', () => setPosition(Number(seek.value)));
+      listen(seek, 'change', () => { setPosition(Number(seek.value)); dragging = false; update(); });
+      listen(window, 'pointerup', () => { dragging = false; update(); });
+      listen(window, 'pointercancel', () => { dragging = false; update(); });
+      listen(volume, 'input', () => { video.volume = Number(volume.value); video.muted = video.volume === 0; update(); });
+      listen(mute, 'click', toggleMute);
+      listen(fullscreen, 'click', toggleFullscreen);
+      listen(document, 'fullscreenchange', update);
+      listen(video, 'keydown', event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const key = event.key.toLowerCase();
+        if (key === ' ' || key === 'k') playPause();
+        else if (key === 'arrowleft' || key === 'j') setPosition(recordingPlaybackPosition(video) - (key === 'j' ? 10 : 5));
+        else if (key === 'arrowright' || key === 'l') setPosition(recordingPlaybackPosition(video) + (key === 'l' ? 10 : 5));
+        else if (key === 'home') setPosition(0);
+        else if (key === 'end') setPosition(timeline().end);
+        else if (key === 'm') toggleMute();
+        else if (key === 'f') toggleFullscreen();
+        else return;
+        event.preventDefault();
+      });
+      ['loadedmetadata', 'durationchange', 'progress', 'timeupdate', 'play', 'pause', 'ended', 'volumechange', 'emptied', 'seeked', 'recordingtimelinechange'].forEach(event => listen(video, event, update));
+      fullscreen.disabled = !stage.requestFullscreen && !video.webkitEnterFullscreen;
+      let probe = null, probeTimer = null;
+      const releaseProbe = () => { clearTimeout(probeTimer); if (probe) { probe.removeAttribute('src'); probe.load(); probe = null; } };
+      const fullDuration = mediaDurationCache.get(recordingDurationKey(item));
+      if (fullDuration) video._recordingDuration = fullDuration;
+      else {
+        probe = document.createElement('video'); probe.preload = 'metadata'; probe.muted = true;
+        listen(probe, 'loadedmetadata', () => {
+          if (Number.isFinite(probe?.duration) && probe.duration > 0) {
+            video._recordingDuration = probe.duration;
+            if (mediaDurationCache.size >= 200) mediaDurationCache.delete(mediaDurationCache.keys().next().value);
+            mediaDurationCache.set(recordingDurationKey(item), probe.duration);
+            video.dispatchEvent(new Event('recordingtimelinechange'));
+          }
+          releaseProbe();
+        });
+        listen(probe, 'error', releaseProbe);
+        probeTimer = setTimeout(releaseProbe, 15000);
+        ensureMediaAccessToken().then(() => { if (!events.signal.aborted && probe) probe.src = mediaMP4URL(item); });
+      }
+      video._disposeControls = () => { events.abort(); releaseProbe(); video.controls = true; controls.classList.add('hidden'); };
+      update();
+      controls.classList.remove('hidden');
+      video.controls = false;
+    }
+
+    function recordingWatchMetadataHTML(item) {
+      const when = new Date(item.modifiedAt);
+      const validDate = item.modifiedAt && Number.isFinite(when.getTime());
+      const size = Number.isFinite(item.sizeBytes) ? formatFileSize(item.sizeBytes) : 'Size unavailable';
+      const serverName = (item.nodeName || '').trim();
+      const locationLabel = serverName ? `Located on ${serverName}` : 'Server unavailable';
+      return `
+        <div class="media-watch-meta">
+          <div class="clip-when">
+            <span><i class="lucide" data-lucide="calendar"></i>${validDate ? escapeHTML(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) : 'Date unavailable'}</span>
+            ${validDate ? `<span>${escapeHTML(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>` : ''}
+            <span class="clip-length hidden"><i class="lucide" data-lucide="timer"></i><span data-clip-length></span></span>
+            <span>${escapeHTML(size)}</span>
+          </div>
+          <div class="media-watch-location">
+            <i class="lucide" data-lucide="monitor"></i><span>${escapeHTML(locationLabel)}</span>
+          </div>
+        </div>`;
+    }
+
+    function bindRecordingWatchActions(panels, item) {
+      const download = panels.querySelector('[data-media-download]');
+      if (download && !download.dataset.bound) {
+        download.dataset.bound = 'true';
+        download.addEventListener('click', async (event) => {
+          event.preventDefault();
+          await ensureMediaAccessToken();
+          if (!download.isConnected) return;
+          const link = document.createElement('a');
+          link.href = mediaDownloadURL(item);
+          link.download = item.fileName || 'recording';
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        });
+      }
+    }
+
+    function recordingSuggestions(selected, candidates) {
+      const game = (selected.gameName || '').trim().toLowerCase();
+      return [...new Map(candidates.filter(item => item.id !== selected.id).map(item => [item.id, item])).values()]
+        .sort((a, b) => Number((b.gameName || '').trim().toLowerCase() === game && !!game) - Number((a.gameName || '').trim().toLowerCase() === game && !!game)
+          || (Date.parse(b.modifiedAt) || 0) - (Date.parse(a.modifiedAt) || 0))
+        .slice(0, 10);
+    }
+
+    function renderRecordingSuggestions(selected, candidates, { loading = false, failed = false } = {}) {
+      const panels = document.getElementById('mediaPanels');
+      const list = panels?.querySelector('.media-suggestions-list');
+      if (!list || mediaWatchItem?.id !== selected.id || mediaViewMode !== 'player') return;
+      panels._disposeSuggestionDurations?.();
+      const term = mediaSuggestionSearch.trim().toLowerCase();
+      const matches = candidates.filter(item => !term || [item.fileName, item.relativePath, item.gameName, item.nodeName, item.sourceName].filter(Boolean).join(' ').toLowerCase().includes(term));
+      const others = recordingSuggestions(selected, matches);
+      list.innerHTML = others.map(item => {
+        const duration = recordingDurationLabel(mediaDurationCache.get(recordingDurationKey(item)));
+        const date = Number.isFinite(Date.parse(item.modifiedAt)) ? relativeTime(item.modifiedAt) : 'Date unavailable';
+        return `
+          <button class="media-suggestion" type="button" data-media-switch="${escapeHTML(item.id)}" title="${escapeHTML(recordingLabel(item))}" ${item.available === false ? 'disabled' : ''}>
+            <span class="media-thumb">
+              ${item.thumbnailURL ? `<img src="${escapeHTML(item.thumbnailURL + mediaAccessQuery())}" alt="" loading="lazy" decoding="async" data-fallback="next-sibling">` : ''}
+              <span class="media-thumb-fallback"${item.thumbnailURL ? '' : ' style="display:flex;"'}><i class="lucide" data-lucide="film"></i></span>
+              <span class="media-badge${duration ? '' : ' hidden'}" data-media-duration>${duration}</span>
+            </span>
+            <span class="media-suggestion-text"><span class="media-suggestion-title">${escapeHTML(recordingLabel(item).replace(/\.[a-z0-9]{2,5}$/i, ''))}</span><span class="media-subtle">${escapeHTML(item.gameName || 'Unknown game')}</span><span class="media-suggestion-meta"><span>${escapeHTML(date)}</span>${Number.isFinite(item.sizeBytes) ? `<span>${escapeHTML(formatFileSize(item.sizeBytes))}</span>` : ''}</span>${item.available === false ? '<span class="media-subtle">Source offline</span>' : ''}</span>
+          </button>`;
+      }).join('') || `<div class="media-subtle" role="status">${loading ? 'Finding recordings…' : failed ? 'Suggestions couldn’t load. Browse the library or try again later.' : term ? 'No recordings match your search.' : 'No other recordings yet.'}</div>`;
+      list.querySelectorAll('[data-media-switch]').forEach(button => button.addEventListener('click', () => {
+        const item = others.find(entry => entry.id === button.dataset.mediaSwitch);
+        if (!item || item.available === false) return;
+        flushActiveMediaPlayback(panels.querySelector('#mediaPlayer'), 'progress');
+        mediaWatchItem = item;
+        selectedMediaItemID = item.id;
+        renderRecordingsView();
+        panels.querySelector('#mediaPlayer')?.focus({ preventScroll: true });
+        document.querySelector('#appShell .content')?.scrollTo({ top: 0, behavior: 'smooth' });
+      }));
+      bindRecordingSuggestionDurations(panels, others);
+      refreshIcons();
+    }
+
+    // Duration isn't in the library payload. Read real media metadata only for
+    // visible rows, two at a time, and release every probe on navigation.
+    function bindRecordingSuggestionDurations(panels, items) {
+      let disposed = false, running = 0;
+      const queue = [], probes = new Set();
+      const observer = new IntersectionObserver(entries => {
+        entries.filter(entry => entry.isIntersecting).forEach(entry => {
+          observer.unobserve(entry.target);
+          const item = items.find(item => item.id === entry.target.dataset.mediaSwitch);
+          if (item) queue.push({ item, row: entry.target });
+        });
+        pump();
+      });
+      const pump = () => {
+        while (!disposed && running < 2 && queue.length) {
+          const { item, row } = queue.shift();
+          if (item.available === false || !item.streamURL || mediaDurationCache.has(recordingDurationKey(item))) continue;
+          const probe = document.createElement('video');
+          probe.preload = 'metadata';
+          probe.muted = true;
+          running++;
+          let timer;
+          const finish = () => {
+            if (!probes.delete(finish)) return;
+            clearTimeout(timer);
+            const duration = probe.duration;
+            probe.removeEventListener('loadedmetadata', finish);
+            probe.removeEventListener('error', finish);
+            probe.removeAttribute('src');
+            probe.load();
+            running--;
+            if (!disposed && row.isConnected && Number.isFinite(duration) && duration > 0) {
+              if (mediaDurationCache.size >= 200) mediaDurationCache.delete(mediaDurationCache.keys().next().value);
+              mediaDurationCache.set(recordingDurationKey(item), duration);
+              const badge = row.querySelector('[data-media-duration]');
+              badge.textContent = recordingDurationLabel(duration);
+              badge.classList.remove('hidden');
+            }
+            pump();
+          };
+          probes.add(finish);
+          probe.addEventListener('loadedmetadata', finish);
+          probe.addEventListener('error', finish);
+          timer = setTimeout(finish, 10000);
+          probe.src = mediaMP4URL(item);
+        }
+      };
+      panels.querySelectorAll('[data-media-switch]').forEach(row => observer.observe(row));
+      panels._disposeSuggestionDurations = () => {
+        disposed = true;
+        observer.disconnect();
+        queue.length = 0;
+        [...probes].forEach(finish => finish());
+      };
+    }
+
+    async function findRecordingWatchItem(itemID, gameName) {
+      const params = new URLSearchParams({ pageSize: '96', dateRange: 'all' });
+      const game = gameName.replace(/[®™©]/g, '').split(/\s+/).filter(Boolean).join(' ');
+      if (game) params.set('game', game);
+      for (let page = 1; currentView === 'recordings' && mediaViewMode === 'player' && selectedMediaItemID === itemID; page++) {
+        params.set('page', String(page));
+        const response = await fetch(`/api/media?${params}`, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const item = (data.items || []).find(item => item.id === itemID);
+        if (item) return item;
+        if (page >= (data.totalPages || 1) || !(data.items || []).length) return null;
+      }
+      return null;
+    }
+
+    async function loadRecordingSuggestions(selected) {
+      mediaSuggestionRequest?.abort();
+      const request = new AbortController();
+      mediaSuggestionRequest = request;
+      const panels = document.getElementById('mediaPanels');
+      panels._disposeSuggestions = () => { request.abort(); clearTimeout(mediaSuggestionSearchTimer); panels._disposeSuggestionDurations?.(); };
+      const initial = mediaLibraryData?.items || [];
+      renderRecordingSuggestions(selected, initial, { loading: true });
+      const query = new URLSearchParams({ page: '1', pageSize: '12', dateRange: 'all' });
+      const search = mediaSuggestionSearch.trim();
+      if (search) query.set('search', search);
+      const fetchItems = async (game) => {
+        const params = new URLSearchParams(query);
+        if (game) params.set('game', game);
+        const response = await fetch(`/api/media?${params}`, { signal: request.signal });
+        if (!response.ok) throw new Error('Suggestions unavailable');
+        return (await response.json()).items || [];
+      };
+      // These reads don't mutate the library's filters, pagination or selection.
+      const results = await Promise.allSettled([fetchItems(selected.gameName), ...(selected.gameName ? [fetchItems('')] : [])]);
+      if (request.signal.aborted || currentView !== 'recordings' || mediaViewMode !== 'player' || mediaWatchItem?.id !== selected.id) return;
+      renderRecordingSuggestions(selected, initial.concat(...results.filter(result => result.status === 'fulfilled').map(result => result.value)),
+        { failed: results.every(result => result.status === 'rejected') });
+    }
+
     let mediaLibraryLoading = false;
 
     function renderRecordingsView() {
@@ -16999,56 +17756,56 @@
 
       const items = mediaLibraryData.items || [];
       const sources = mediaLibraryData.sources || [];
-      const selected = items.find(item => item.id === selectedMediaItemID) || items[0] || null;
+      const selected = items.find(item => item.id === selectedMediaItemID) || (mediaViewMode === 'player' && mediaWatchItem?.id === selectedMediaItemID ? mediaWatchItem : null) || items[0] || null;
       if (selected && selectedMediaItemID !== selected.id) selectedMediaItemID = selected.id;
 
       // Player: the video, its details, and more recordings to jump to.
       // Clip editing and exports are archived in Archive/WebUI.
       if (mediaViewMode === 'player') {
         header.innerHTML = `
-          <div class="media-player-title">
+          <div class="media-watch-header"><div class="media-player-title">
             <button id="mediaBackToLibrary" class="secondary-action" type="button"><i class="lucide" data-lucide="chevron-left"></i> Library</button>
             <div class="section-mini-title">${escapeHTML(selected ? (selected.gameName || 'Recording') : 'Recordings')}</div>
             ${selected ? `<span class="media-subtle">${escapeHTML(relativeTime(selected.modifiedAt))}</span>` : ''}
-          </div>
+          </div><label class="media-watch-search"><i class="lucide" data-lucide="search"></i><input type="search" id="mediaSuggestionSearch" placeholder="Search recordings…" aria-label="Search recordings" value="${escapeHTML(mediaSuggestionSearch)}" maxlength="200"></label></div>
         `;
-        const others = items.filter(item => item.id !== (selected?.id || '')).slice(0, 10);
-        const accessQuery = mediaAccessQuery();
+        mediaWatchItem = selected;
+        header.querySelector('#mediaSuggestionSearch')?.addEventListener('input', event => {
+          mediaSuggestionSearch = event.target.value;
+          mediaSuggestionRequest?.abort();
+          clearTimeout(mediaSuggestionSearchTimer);
+          if (selected) mediaSuggestionSearchTimer = setTimeout(() => loadRecordingSuggestions(mediaWatchItem), 250);
+        });
 
         panels.innerHTML = `
           <div class="media-player">
-            ${selected ? `
-              <div class="media-stage">
-                <video id="mediaPlayer" controls playsinline preload="metadata"></video>
-              </div>
-              ${clipDetailsHTML(selected)}
-              <div class="media-meta">
-                <span>${escapeHTML(formatFileSize(selected.sizeBytes))}</span>
-                <span>${escapeHTML(selected.nodeName)} · ${escapeHTML(selected.sourceName)}</span>
-                <span class="media-path" title="${escapeHTML(selected.relativePath)}">${escapeHTML(selected.relativePath)}</span>
-              </div>
-            ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
-            ${others.length ? `
-              <section class="ub-group">
-                <div class="ub-group-head"><h2>More recordings</h2></div>
-                <div class="media-strip">
-                  ${others.map(item => `
-                    <button class="media-strip-item" type="button" data-media-switch="${escapeHTML(item.id)}" title="${escapeHTML(item.fileName)}" ${item.available === false ? 'disabled' : ''}>
-                      <span class="media-thumb"><img src="${item.thumbnailURL}${accessQuery}" alt="" loading="lazy" data-fallback="next-sibling"><span class="media-thumb-fallback"><i class="lucide" data-lucide="film"></i></span></span>
-                      <span class="media-strip-label">${escapeHTML(item.gameName || 'Recording')}</span>
-                      <span class="media-subtle">${escapeHTML(relativeTime(item.modifiedAt))}</span>
-                    </button>`).join('')}
+            <div class="media-watch-main">
+              ${selected ? `
+                <div class="media-stage">
+                  <video id="mediaPlayer" controls playsinline preload="metadata" tabindex="0" aria-label="${escapeHTML(recordingLabel(selected))}"></video>
+                  <button class="media-watch-play" type="button" aria-label="Play recording"><i class="lucide" data-lucide="play"></i></button>
+                  ${recordingPlayerControlsHTML()}
                 </div>
-              </section>` : ''}
+                ${clipDetailsHTML(selected, { forWatch: true })}
+                ${recordingCommentsHTML()}
+              ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
+            </div>
+            <aside class="media-suggestions" aria-label="Suggested recordings">
+              <div class="media-suggestions-head"><h2>More recordings</h2><button class="media-filter-clear" type="button" data-media-view-all>View all <i class="lucide" data-lucide="arrow-right"></i></button></div>
+              <div class="media-suggestions-list"></div>
+            </aside>
           </div>
         `;
 
-        panels.querySelectorAll('[data-media-switch]').forEach(btn => btn.addEventListener('click', () => {
+        panels.querySelector('[data-media-view-all]')?.addEventListener('click', async () => {
           flushActiveMediaPlayback(panels.querySelector('#mediaPlayer'), 'progress');
-          selectedMediaItemID = btn.dataset.mediaSwitch;
+          mediaViewMode = 'library';
+          mediaFilterState = { source: '', dateRange: 'all', game: '', person: '', page: 1, pageSize: 24 };
           renderRecordingsView();
-          document.querySelector('#appShell .content')?.scrollTo({ top: 0, behavior: 'smooth' });
-        }));
+          document.querySelector('#appShell .content')?.scrollTo({ top: 0 });
+          try { await loadMediaLibrary(); if (currentView === 'recordings' && mediaViewMode === 'library') renderRecordingsView(); }
+          catch { setMessage('Couldn’t refresh the library.', 'error'); }
+        });
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
           flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
           mediaViewMode = 'library';
@@ -17058,6 +17815,14 @@
         const primaryVideo = panels.querySelector('video');
         if (primaryVideo && selected) {
           primaryVideo.dataset.itemID = selected.id;
+          const playButton = panels.querySelector('.media-watch-play');
+          const updatePlayButton = () => playButton.classList.toggle('hidden', !primaryVideo.paused || primaryVideo.ended || !!primaryVideo.error);
+          playButton.addEventListener('click', () => primaryVideo.play().catch(() => setMessage('This recording isn’t ready to play yet. Try again shortly.', 'error')));
+          ['play', 'pause', 'ended', 'error', 'loadedmetadata', 'emptied'].forEach(event => primaryVideo.addEventListener(event, updatePlayButton));
+          bindRecordingPlayerControls(primaryVideo, selected);
+          bindRecordingWatchActions(panels, selected);
+          bindRecordingComments(panels, selected);
+          loadRecordingSuggestions(selected);
           attachRecordingPlayer(primaryVideo, selected);
           bindClipDetails(panels.querySelector('.clip-details'), primaryVideo, selected, async (game) => {
             flushActiveMediaPlayback(primaryVideo, 'progress');
@@ -17083,11 +17848,11 @@
               sessionID: activeMediaPlayback.sessionID,
               itemID: activeMediaPlayback.itemID,
               event: 'started',
-              watchedSeconds: Math.max(0, Math.floor(primaryVideo.currentTime || 0))
+              watchedSeconds: Math.max(0, Math.floor(recordingPlaybackPosition(primaryVideo)))
             });
           });
           primaryVideo.addEventListener('timeupdate', () => {
-            const watchedSeconds = Math.max(0, Math.floor(primaryVideo.currentTime || 0));
+            const watchedSeconds = Math.max(0, Math.floor(recordingPlaybackPosition(primaryVideo)));
             if (watchedSeconds - activeMediaPlayback.lastSentSeconds >= 15) flushActiveMediaPlayback(primaryVideo, 'progress');
           });
           primaryVideo.addEventListener('pause', () => flushActiveMediaPlayback(primaryVideo, 'progress'));

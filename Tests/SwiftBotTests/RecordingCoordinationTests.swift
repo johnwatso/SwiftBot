@@ -239,11 +239,21 @@ final class RecordingCoordinationTests: XCTestCase {
                                               sources: [source], items: clips, generatedAt: Date(), nodeID: "max")
         await max.configureHandlers(aiHandler: { _, _, _, _ in nil }, wikiHandler: { _, _ in nil },
             onSnapshot: { _ in }, onJobLog: { _ in }, onSync: { _ in }, meshHandler: { _ in nil },
-            mediaLibraryProvider: { maxLibrary }, mediaPlaybackHandler: { _ in ("original", false) },
+            mediaLibraryProvider: { maxLibrary }, mediaPlaybackHandler: { _ in ("hls", false) },
+            mediaHLSHandler: { id, segment in
+                guard id == "max-clip-0" else { return nil }
+                let seekMaster = segment == "seek-180-master.m3u8"
+                let body = seekMaster ? "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=4000000\nseek-180-low-" + String(repeating: "a", count: 64) + "-playlist.m3u8\n" : segment == nil ? "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=4000000\nlow-playlist.m3u8\n"
+                    : "#EXTM3U\n#EXT-X-TARGETDURATION:3\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:2,\nseg0.m4s\n"
+                return BinaryHTTPResponse(status: "200 OK", contentType: "application/vnd.apple.mpegurl", headers: ["X-SwiftBot-Duration": "210"], body: Data(body.utf8))
+            },
             mediaStreamHandler: { id, range, _ in
-                guard id == "max-clip-0", range == "bytes=2-5" else { return nil }
+                guard id == "max-clip-0", let parsed = AppModel.parseByteRange(range, fileSize: 10) else { return nil }
+                let end = parsed.offset + min(parsed.length, 4) - 1
+                let body = Data("0123456789".utf8).subdata(in: Int(parsed.offset)..<Int(end + 1))
                 return BinaryHTTPResponse(status: "206 Partial Content", contentType: "video/mp4",
-                    headers: ["Content-Range": "bytes 2-5/10", "Accept-Ranges": "bytes"], body: Data("2345".utf8))
+                    headers: ["Content-Range": "bytes \(parsed.offset)-\(end)/10", "Accept-Ranges": "bytes", "ETag": "\"max-original\"",
+                              "Content-Disposition": "inline; filename*=UTF-8''max-clip.mp4"], body: body)
             }, conversationFetcher: { _, _ in ([], false) })
         let publicServer = AdminWebServer()
         await publicServer.setRecordingRequestHandler { request, peer in
@@ -279,8 +289,41 @@ final class RecordingCoordinationTests: XCTestCase {
             let response = await app.adminWebMediaStreamResponse(token: token, rangeHeader: "bytes=2-5")
             XCTAssertEqual(response?.body, Data("2345".utf8))
             XCTAssertEqual(response?.headers["Content-Range"], "bytes 2-5/10")
+            let viewer = AdminWebServer()
+            await viewer.testSetMediaStreamProvider { token, range, quality in
+                return await app.adminWebMediaStreamResponse(token: token, rangeHeader: range, quality: quality)
+            }
+            let session = await viewer.testSeedSession()
+            let downloaded = RecordingDownloadCollector()
+            _ = await viewer.testProcessRequest(Self.rawRequest(path: "/api/media/download?id=" + token,
+                headers: ["Cookie": "swiftbot_admin_session=\(session.id)"]), streamSender: { bytes in await downloaded.append(bytes) })
+            let download = await downloaded.data
+            let boundary = try XCTUnwrap(download.range(of: Data("\r\n\r\n".utf8)))
+            XCTAssertEqual(Data(download[boundary.upperBound...]), Data("0123456789".utf8), "Shared downloads must concatenate every original-owner chunk")
+            XCTAssertTrue(String(decoding: download[..<boundary.upperBound], as: UTF8.self).contains("Content-Disposition: attachment; filename*=UTF-8''max-clip.mp4"))
+            let choice = await app.mediaPlaybackChoice(token: token)
+            XCTAssertEqual(choice?.quality, "hls")
+            let master = await app.adminWebMediaHLSPlaylistResponse(token: token, accessToken: "viewer-grant")
+            XCTAssertEqual(master?.headers["X-SwiftBot-Duration"], "210.0")
+            let playlist = try XCTUnwrap(master).body
+            let masterText = String(decoding: playlist, as: UTF8.self)
+            XCTAssertTrue(masterText.contains("hls-segment?id="))
+            XCTAssertTrue(masterText.contains("seg=low-playlist.m3u8&token=viewer-grant"))
+            XCTAssertFalse(masterText.contains("max.example"))
+            let rendition = await app.adminWebMediaHLSSegmentResponse(token: token, segment: "low-playlist.m3u8", accessToken: "viewer-grant")
+            let text = String(decoding: try XCTUnwrap(rendition).body, as: UTF8.self)
+            XCTAssertTrue(text.contains("seg=low-init.mp4&token=viewer-grant"))
+            XCTAssertTrue(text.contains("seg=low-seg0.m4s&token=viewer-grant"))
+            let seekMaster = await app.adminWebMediaHLSSegmentResponse(token: token, segment: "seek-180-master.m3u8", accessToken: "viewer-grant")
+            let seekText = String(decoding: try XCTUnwrap(seekMaster).body, as: UTF8.self)
+            XCTAssertTrue(seekText.contains("seg=seek-180-low-"))
+            XCTAssertFalse(seekText.contains("max.example"))
+            let seekRendition = await app.adminWebMediaHLSSegmentResponse(token: token, segment: "seek-180-low-" + String(repeating: "a", count: 64) + "-playlist.m3u8", accessToken: "viewer-grant")
+            XCTAssertTrue(String(decoding: try XCTUnwrap(seekRendition).body, as: UTF8.self).contains("seg=seek-180-low-seg0.m4s&token=viewer-grant"))
+
         }
         let requests = await fixture.requests
+        XCTAssertTrue(requests.contains { $0.path == "/v1/media/hls-segment" && $0.host == "max.example" })
         XCTAssertTrue(requests.filter { $0.path == "/v1/media/stream" }.allSatisfy { $0.host == "max.example" })
         XCTAssertTrue(requests.filter { $0.host == "ruru.example" }.allSatisfy { $0.path.hasPrefix("/v1/coordination/") })
         let role = await max.currentSnapshot().mode
@@ -311,6 +354,10 @@ final class RecordingCoordinationTests: XCTestCase {
         await server.setRecordingRequestHandler { request, peer in await max.processHTTPRequest(request, remoteHost: peer) }
         let unsigned = await server.testProcessRequest(Self.rawRequest(path: "/v1/media/library"))
         XCTAssertEqual(Self.status(unsigned), 401)
+        for path in ["/v1/media/hls?id=clip", "/v1/media/hls-segment?id=clip&seg=low-seg0.m4s"] {
+            let unsignedStream = await server.testProcessRequest(Self.rawRequest(path: path))
+            XCTAssertEqual(Self.status(unsignedStream), 401)
+        }
         let headers = await max.testMakeHMACHeaders(method: "GET", path: "/v1/media/library")
         let disabled = await server.testProcessRequest(Self.rawRequest(path: "/v1/media/library", headers: headers))
         XCTAssertEqual(Self.status(disabled), 403)
@@ -327,7 +374,7 @@ final class RecordingCoordinationTests: XCTestCase {
         let server = AdminWebServer()
         let member = await server.testSeedSession(memberRole: true)
         let access = await server.testMintMediaAccessToken(sessionID: member.id)
-        for path in ["/api/media/stream", "/api/media/thumbnail", "/api/media/playback"] {
+        for path in ["/api/media/stream", "/api/media/download", "/api/media/thumbnail", "/api/media/playback", "/api/media/hls", "/api/media/hls-segment"] {
             let response = await server.testProcessRequest(Self.rawRequest(path: path + "?id=someone-elses-clip&token=" + access))
             XCTAssertEqual(Self.status(response), 403)
         }
