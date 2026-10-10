@@ -942,7 +942,7 @@ extension AppModel {
     }
 
     /// Generates a base64-encoded SwiftMesh Join Code containing the leader's address details and secret.
-    func generateSwiftMeshJoinCode() async -> String? {
+    func generateSwiftMeshJoinCode(nodeName: String = "Paired Node") async -> String? {
         var addresses = [String]()
 
         // Local LAN IPs first — preferred when pairing on the same network.
@@ -969,7 +969,9 @@ extension AppModel {
 
         let port = settings.clusterListenPort
         let sharedSecret = ensureSwiftMeshSharedSecret()
-        guard let enrollment = try? await meshCredentialStore.issueGrant(nodeName: "Paired Failover") else {
+        let normalizedNodeName = nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedNodeName.isEmpty,
+              let enrollment = try? await meshCredentialStore.issueGrant(nodeName: normalizedNodeName) else {
             logs.append("SwiftMesh could not issue a credential approval; join code was not generated.")
             return nil
         }

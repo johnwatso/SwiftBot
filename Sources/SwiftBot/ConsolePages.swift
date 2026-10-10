@@ -522,9 +522,8 @@ struct SwiftMeshPage: View {
                         status: status,
                         facts: [
                             ("This Node", app.settings.clusterNodeName.isEmpty ? HostDetails.current.computerName : app.settings.clusterNodeName),
-                            ("Configured Role", app.settings.clusterMode.displayName),
                             ("Runtime Role", app.clusterSnapshot.mode.displayName),
-                            ("Leader Term", "\(app.clusterSnapshot.leaderTerm)")
+                            ("Cluster Availability", clusterAvailability)
                         ],
                         footnote: membershipSummary
                     )
@@ -547,6 +546,17 @@ struct SwiftMeshPage: View {
         let healthy = nodes.filter { $0.status == .healthy }.count
         let offline = nodes.filter { $0.status == .disconnected }.count
         return "\(nodes.count) node\(nodes.count == 1 ? "" : "s") · \(healthy) healthy · \(offline) offline"
+    }
+
+    private var clusterAvailability: String {
+        guard !isStandalone else { return "Not configured" }
+        let healthyFailover = app.clusterNodes.first {
+            $0.role == .standby && $0.status == .healthy
+        }
+        if healthyFailover != nil { return "Failover available" }
+
+        let configuredFailover = app.clusterNodes.contains { $0.role == .standby }
+        return configuredFailover ? "Failover unavailable" : "No failover configured"
     }
 
     @ViewBuilder

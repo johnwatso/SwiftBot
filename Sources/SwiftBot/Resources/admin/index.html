@@ -18580,7 +18580,7 @@
                   : 'Pair with a Mac that already runs SwiftBot. This one stays in sync and takes over if it goes down.'}</span>
               </button>`).join('')}
           </div>
-          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="shield-check"></i> Optional: add Ruru, an ownership witness on a third Mac, so the Primary and Fail Over can never both run the bot during a network split. Set it up in SwiftBot under SwiftMesh → Recovery and Pairing.</p>
+          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="shield-check"></i> Optional: add Ruru, an ownership witness on a third Mac, so the Primary and Fail Over can never both run the bot during a network split. Set it up in SwiftBot under SwiftMesh → Ruru.</p>
         </section>
         ${group('This Mac', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
@@ -18631,7 +18631,7 @@
             + valueRow('Current Owner', w.currentOwner || 'None', 'The Mac running the bot right now.')
             + valueRow('Preferred Primary', preferredValue, preferredDesc);
         })())}
-        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Manage' : 'Set up'} Ruru on the Primary in SwiftMesh → Recovery and Pairing. Its connection is included automatically when you pair a backup.</p>
+        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Manage' : 'Set up'} Ruru on the Primary in SwiftMesh → Ruru. Its connection is included automatically when you pair a backup.</p>
         ${isLeader ? group('Work sharing', `
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}

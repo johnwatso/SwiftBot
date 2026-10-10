@@ -9,6 +9,14 @@
 
 ## Recent Engineering Log
 
+### 2026-10-11 — SwiftMesh Status operational overview
+
+- [x] `_working-tree_`: Reworked SwiftMesh Status around the live cluster map, a compact Primary/Ruru/Failover/Workers health group, real session activity, work-sharing state and collapsed diagnostics. The summary now reports actual failover availability and uses “Running” rather than pairing language when no peer is connected. Existing status polling, topology, node controls, handover controls, lease behaviour and Settings pairing flows are unchanged. Debug build and the full Debug test suite passed; live multi-Mac/Ruru validation remains unperformed.
+
+### 2026-10-11 — SwiftMesh Settings refinement
+
+- [x] `_working-tree_`: Reorganised native SwiftMesh Settings into This Mac, Paired Nodes, Pairing, Failover, Ruru and Work Sharing. Pairing now names newly issued credential approvals, secrets and node diagnostics use focused sheets, and Ruru distinguishes configuration, reachability and the local lease without inferring protection from a hostname. Status retains runtime diagnostics; Settings no longer presents Leader Term or a local listener as cluster health. Debug build and focused cluster/Ruru tests passed; no failover, lease, replication, credential-storage or worker scheduling behaviour changed.
+
 ### 2026-10-10 — GitHub release description cleanup
 
 - [x] `_working-tree_` (log only; release edits applied directly on GitHub): Rewrote all 34 published SwiftBot release descriptions (1.3–1.27.3) in SwiftMiner's readable Markdown style with plain-language introductions, emoji section headings, and focused bullets. Recovered sparse entries from archived notes and release commits; re-fetched every release to verify the exact body and unchanged tags, titles, dates, status, and assets. GitHub Markdown rendering checks passed for three representative releases. App settings, builds, Sparkle feeds, and HTML release-note archives were not changed.

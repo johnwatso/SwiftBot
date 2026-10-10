@@ -15,7 +15,7 @@ the operator when a server requests pairing, and shows **Approve** and
 
 ## In SwiftBot
 
-SwiftMesh → Recovery and Pairing → **Set Up Ruru…**:
+SwiftMesh → Ruru → **Set Up Ruru…**:
 
 1. Enter the code (any case, spaces or a dash; alphabet
    `23456789ABCDEFGHJKMNPQRSTVWXYZ`) and Ruru's HTTPS address.

@@ -229,7 +229,10 @@ struct ConsoleOverviewSnapshot: Equatable {
                 return make(.warning, "Degraded", "\(inputs.clusterUnhealthyNodeCount) of \(peersText) unreachable")
             }
             if peers == 0 {
-                return make(.healthy, "Listening", "\(role) · no peers yet")
+                // A local listener does not establish cluster health or
+                // failover availability. Keep the operational state distinct
+                // from the separate Settings pairing workflow.
+                return make(.healthy, "Running", "\(role) · no peers connected")
             }
             return make(.healthy, "Connected", "\(role) · \(peersText)")
         case .starting:
