@@ -4801,9 +4801,9 @@ actor AdminWebServer {
     }
 
     private func handleLocalLogin(request: HTTPRequest) -> Data {
-        // Mirrors what the sign-in page offers: a developer feature, and only
-        // on this Mac or the local network, never through the public tunnel.
-        guard config.localAuthEnabled, config.devFeaturesEnabled else {
+        // Local-password sign-in is available in every build, but only on the
+        // Mac or its local network. Public tunnel requests must use Discord OAuth.
+        guard config.localAuthEnabled else {
             return jsonResponse(["error": "local_auth_disabled"], status: "403 Forbidden")
         }
         guard !isPublicTunnelRequest(request) else {
@@ -5132,7 +5132,7 @@ actor AdminWebServer {
         return jsonResponse([
             "passkeysEnabled": passkeyOrigin() != nil,
             "discordEnabled": discordConfigured,
-            "localEnabled": localEnabled && devFeaturesEnabled,
+            "localEnabled": localEnabled,
             "devFeaturesEnabled": devFeaturesEnabled,
             "botName": botName,
             "botAvatarURL": botAvatarURL,

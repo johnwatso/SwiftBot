@@ -24,4 +24,18 @@ final class LegacySettingsMigrationTests: XCTestCase {
         let loaded = try JSONDecoder().decode(BotSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(loaded.launchMode, .swiftMeshClusterNode)
     }
+
+    func testWebUIDefaultsOnWhileLocalSignInDefaultsOff() throws {
+        let settings = AdminWebUISettings()
+        XCTAssertTrue(settings.enabled)
+        XCTAssertFalse(settings.localAuthEnabled)
+
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as? [String: Any])
+        json.removeValue(forKey: "enabled")
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let decoded = try JSONDecoder().decode(AdminWebUISettings.self, from: data)
+
+        XCTAssertTrue(decoded.enabled, "Older settings without an enabled key should use the always-on default")
+        XCTAssertFalse(decoded.localAuthEnabled, "Local sign-in remains opt-in")
+    }
 }

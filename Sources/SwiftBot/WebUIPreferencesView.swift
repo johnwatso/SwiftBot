@@ -72,16 +72,15 @@ struct AdminWebServerConfigurationSection: View {
     // Rows, not a stack: each becomes its own row in the section card.
     var body: some View {
         ConsoleSettingRow(
-            title: "Enable Admin Web UI",
-            symbol: "power",
-            subtitle: "Serve the browser dashboard from this Mac."
+            title: "Admin Web UI",
+            symbol: "globe",
+            subtitle: "The bot dashboard is available on this Mac and your local network.",
+            status: ("Always on", .healthy)
         ) {
-            ConsoleRowSwitch(isOn: $app.settings.adminWebUI.enabled)
+            EmptyView()
         }
 
-        if app.settings.adminWebUI.enabled {
-            authenticationRow
-        }
+        authenticationRow
 
         requireHTTPSRow
 
@@ -1170,7 +1169,6 @@ struct AdminWebAuthenticationSection: View {
                 redirectURL: app.adminWebDiscordRedirectURL()
             )
 
-#if DEBUG
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Image(systemName: "lock.shield")
@@ -1179,9 +1177,12 @@ struct AdminWebAuthenticationSection: View {
                         .frame(width: 24)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Local Fallback")
+                        Text("Local Sign-In")
                             .font(.subheadline.weight(.semibold))
-                        Text("Use a local username/password when Discord auth is unavailable during testing.")
+                        Text(
+                            "Use a username and password on this Mac or local network. "
+                                + "Password sign-in is blocked through Cloudflare; configure Discord sign-in for public access."
+                        )
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1208,7 +1209,7 @@ struct AdminWebAuthenticationSection: View {
                             .font(.caption.weight(.medium))
                         SecretSettingsControl(
                             secret: $app.settings.adminWebUI.localAuthPassword,
-                            title: "Local Fallback Password",
+                            title: "Local Sign-In Password",
                             onSave: { app.saveSettings() }
                         )
                     }
@@ -1216,7 +1217,6 @@ struct AdminWebAuthenticationSection: View {
             }
             .padding(14)
             .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            #endif // DEBUG (Local Fallback)
 
             Divider()
                 .padding(.vertical, 4)

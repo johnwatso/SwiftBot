@@ -46,7 +46,7 @@ enum AdminWebUICertificateMode: String, Codable, Hashable, CaseIterable, Identif
 }
 
 struct OAuthProviderSettings: Codable, Hashable {
-    var enabled: Bool = false
+    var enabled: Bool = true
     var clientID: String = ""
     var clientSecret: String = ""
 }
@@ -100,7 +100,7 @@ struct AdminWebUISettings: Codable, Hashable {
     static let defaultSubdomain = "swiftbot"
 #endif
 
-    var enabled: Bool = false
+    var enabled: Bool = true
     /// When `true`, the Admin Web UI server refuses to start if HTTPS isn't
     /// configured. Prevents accidental plain-HTTP serving of the admin panel.
     /// Defaults to `false` to preserve behavior of existing installs.
@@ -210,7 +210,7 @@ struct AdminWebUISettings: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         requireHTTPS = try container.decodeIfPresent(Bool.self, forKey: .requireHTTPS) ?? false
         publicBaseURL = try container.decodeIfPresent(String.self, forKey: .publicBaseURL) ?? ""
 

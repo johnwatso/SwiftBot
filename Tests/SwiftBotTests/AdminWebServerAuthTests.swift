@@ -399,16 +399,31 @@ final class AdminWebServerAuthTests: XCTestCase {
 
     func testPasswordSignInWorksOnTheLocalNetwork() async {
         let server = AdminWebServer()
-        await server.testConfigureSignIn(localPassword: "fixture-pass", devFeatures: true)
+        // A configured local password is available in Release builds too.
+        await server.testConfigureSignIn(localPassword: "fixture-pass", devFeatures: false)
         let response = await server.testProcessRequest(
             rawRequest("POST", "/auth/local/login", host: "192.168.1.5:38888", body: passwordBody), peerIP: "192.168.1.20")
         XCTAssertEqual(statusCode(from: response), 200)
     }
 
+    func testAuthOptionsExposeLocalPasswordSignInOutsideDebug() async throws {
+        let server = AdminWebServer()
+        await server.testConfigureSignIn(localPassword: "fixture-pass", devFeatures: false)
+        let response = await server.testProcessRequest(
+            rawRequest("GET", "/api/auth/options", host: "localhost:38888"), peerIP: "127.0.0.1")
+
+        XCTAssertEqual(statusCode(from: response), 200)
+        let body = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(bodyString(from: response).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(body["localEnabled"] as? Bool, true)
+        XCTAssertEqual(body["devFeaturesEnabled"] as? Bool, false)
+    }
+
     func testPasswordSignInIsRefusedThroughTheTunnel() async {
         // The sign-in page hides it there; the server must refuse it too.
         let server = AdminWebServer()
-        await server.testConfigureSignIn(publicBaseURL: "https://bot.example.com", localPassword: "fixture-pass", devFeatures: true)
+        await server.testConfigureSignIn(publicBaseURL: "https://bot.example.com", localPassword: "fixture-pass", devFeatures: false)
         let viaCloudflare = await server.testProcessRequest(
             rawRequest("POST", "/auth/local/login", host: "bot.example.com", extraHeaders: ["CF-Connecting-IP: 203.0.113.9", "CF-Ray: 8abc"], body: passwordBody),
             peerIP: "127.0.0.1")
@@ -418,15 +433,6 @@ final class AdminWebServerAuthTests: XCTestCase {
         let publicHostOnly = await server.testProcessRequest(
             rawRequest("POST", "/auth/local/login", host: "bot.example.com", body: passwordBody), peerIP: "127.0.0.1")
         XCTAssertEqual(statusCode(from: publicHostOnly), 403)
-    }
-
-    func testPasswordSignInIsRefusedWithoutDeveloperFeatures() async {
-        let server = AdminWebServer()
-        await server.testConfigureSignIn(localPassword: "fixture-pass", devFeatures: false)
-        let response = await server.testProcessRequest(
-            rawRequest("POST", "/auth/local/login", host: "localhost", body: passwordBody), peerIP: "127.0.0.1")
-        XCTAssertEqual(statusCode(from: response), 403)
-        XCTAssertTrue(bodyString(from: response).contains("local_auth_disabled"))
     }
 
     // MARK: - User-agent binding

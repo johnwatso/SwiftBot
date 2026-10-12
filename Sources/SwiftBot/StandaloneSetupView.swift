@@ -14,8 +14,25 @@ struct StandaloneSetupView: View {
     @State private var inviteLoadFailed: Bool = false
     @State private var errorMessage: String?
 
+    // Local sign-in onboarding state
+    @State private var localUsernameDraft = "admin"
+    @State private var localPasswordDraft = ""
+
+    // Internet Access onboarding state
+    @State private var cfTokenDraft = ""
+    @State private var cfTokenError: String?
+    @State private var isCFTokenVerifying = false
+    @State private var cfTokenVerified = false
+    @State private var cfAvailableZones: [CloudflareDNSProvider.ZoneSummary] = []
+    @State private var cfSelectedZoneID = ""
+    @State private var cfSubdomain = AdminWebUISettings.defaultSubdomain
+    @State private var isSettingUpInternetAccess = false
+    @State private var internetAccessSetupProgress: OnboardingInternetAccessProgress?
+    @State private var internetAccessSetupError: String?
+
     private enum StandaloneStep {
         case entry, validating, proceedingToDashboard, confirmed, failed
+        case localSignIn, internetAccess
     }
 
     private var errorMessageToShow: String? {
@@ -68,6 +85,12 @@ struct StandaloneSetupView: View {
                     .transition(.opacity)
             case .confirmed:
                 confirmedView
+                    .transition(.opacity)
+            case .localSignIn:
+                localSignInStepView
+                    .transition(.opacity)
+            case .internetAccess:
+                internetAccessStepView
                     .transition(.opacity)
             }
         }
@@ -157,7 +180,7 @@ struct StandaloneSetupView: View {
                         .font(.title3.weight(.bold))
                 }
                 
-                Text("Your bot is already in a server. Loading dashboard…")
+                Text("Your bot is already in a server. Continuing setup…")
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
@@ -202,8 +225,8 @@ struct StandaloneSetupView: View {
                 .frame(maxWidth: 520, alignment: .center)
             }
 
-            Button { app.completeOnboarding() } label: {
-                Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
+            Button { step = .localSignIn } label: {
+                Label("Continue Setup", systemImage: "arrow.right.circle.fill")
                     .font(.headline)
                     .frame(minWidth: 200)
             }
@@ -309,10 +332,9 @@ struct StandaloneSetupView: View {
                 let inGuild = await app.checkBotInAnyGuild()
                 if inGuild {
                     step = .proceedingToDashboard
-                    // Show success state briefly then enter app
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     await MainActor.run {
-                        app.completeOnboarding()
+                        step = .localSignIn
                     }
                 } else {
                     step = .confirmed
@@ -325,6 +347,390 @@ struct StandaloneSetupView: View {
                 step = .failed
             }
         }
+    }
+
+    // MARK: - Web UI Login
+
+    private var localSignInStepView: some View {
+        VStack(spacing: 24) {
+            ConsoleIconTile(symbol: "person.badge.key.fill", size: 64)
+
+            VStack(spacing: 8) {
+                Text("Web UI Login")
+                    .font(.title2.weight(.bold))
+
+                Text("Create a username and password to sign in to your bot's dashboard.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+            .padding(.horizontal, 16)
+
+            VStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Username")
+                        .font(.subheadline.weight(.semibold))
+                    TextField("admin", text: $localUsernameDraft)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Password")
+                        .font(.subheadline.weight(.semibold))
+                    SecureField("Choose a password", text: $localPasswordDraft)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            .padding(14)
+            .background(
+                .ultraThinMaterial,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .frame(maxWidth: 420)
+
+            VStack(spacing: 12) {
+                Button {
+                    saveLocalAuthSettings()
+                    step = .internetAccess
+                } label: {
+                    Label("Continue", systemImage: "arrow.right.circle.fill")
+                        .font(.headline)
+                        .frame(minWidth: 200)
+                }
+                .buttonStyle(GlassActionButtonStyle())
+                .controlSize(.large)
+                .disabled(localPasswordDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Button {
+                    saveLocalAuthSettings()
+                    app.saveSettings()
+                    app.completeOnboarding()
+                } label: {
+                    Text("Skip & Go to Dashboard")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .font(.callout)
+                .disabled(localPasswordDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    // MARK: - Step 3: Internet Access (optional)
+
+    private var internetAccessStepView: some View {
+        VStack(spacing: 24) {
+            if let assetImage = NSImage(named: "CloudflareLogo") {
+                Image(nsImage: assetImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 64, height: 64)
+            } else {
+                ConsoleIconTile(symbol: "network", size: 64)
+            }
+
+            VStack(spacing: 8) {
+                Text("Internet Access")
+                    .font(.title2.weight(.bold))
+
+                Text("Connect a Cloudflare account to give your dashboard a public HTTPS address. SwiftBot creates a secure tunnel automatically.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+            .padding(.horizontal, 16)
+
+            VStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Cloudflare API Token")
+                        .font(.subheadline.weight(.semibold))
+
+                    Text("Needs **Zone > DNS > Edit** and **Account > Cloudflare Tunnel > Edit** permissions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 8) {
+                        SecureField("Cloudflare API Token", text: $cfTokenDraft)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isCFTokenVerifying || cfTokenVerified)
+
+                        if cfTokenVerified {
+                            Label("Verified", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.callout)
+                        } else {
+                            Button(isCFTokenVerifying ? "Verifying…" : "Verify") {
+                                verifyCFToken()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isCFTokenVerifying || cfTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+
+                    if let cfTokenError {
+                        Label(cfTokenError, systemImage: "exclamationmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://dash.cloudflare.com/profile/api-tokens") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    } label: {
+                        Label("Create a token…", systemImage: "arrow.up.right.square")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+
+                if cfTokenVerified {
+                    Divider()
+
+                    HStack {
+                        Text("Domain")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Picker("Domain", selection: $cfSelectedZoneID) {
+                            if cfSelectedZoneID.isEmpty {
+                                Text("Choose…").tag("")
+                            }
+                            ForEach(cfAvailableZones, id: \.id) { zone in
+                                Text(zone.name).tag(zone.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+
+                    HStack {
+                        Text("Subdomain")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        TextField("swiftbot", text: cfSubdomainBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 160)
+                    }
+
+                    if !cfOnboardingHostname.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "link")
+                                .foregroundStyle(.secondary)
+                            Text("https://\(cfOnboardingHostname)")
+                                .font(.callout.monospaced())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let internetAccessSetupProgress {
+                        Divider()
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(internetAccessSetupProgress.items) { item in
+                                HStack(spacing: 8) {
+                                    Image(systemName: item.status == .success ? "checkmark.circle.fill" : item.status == .warning ? "arrow.triangle.2.circlepath" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(item.status == .success ? .green : item.status == .warning ? .orange : .secondary)
+                                    Text(item.title)
+                                        .font(.caption)
+                                }
+                            }
+                        }
+                    }
+
+                    if let internetAccessSetupError {
+                        Label(internetAccessSetupError, systemImage: "exclamationmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .padding(14)
+            .background(
+                .ultraThinMaterial,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .frame(maxWidth: 420)
+            .animation(.smooth(duration: 0.2), value: cfTokenVerified)
+
+            VStack(spacing: 12) {
+                if cfTokenVerified && !cfSelectedZoneID.isEmpty && !cfSubdomain.isEmpty {
+                    Button {
+                        startInternetAccessSetup()
+                    } label: {
+                        Label(
+                            isSettingUpInternetAccess ? "Setting Up…" : "Enable Internet Access",
+                            systemImage: "bolt.fill"
+                        )
+                        .font(.headline)
+                        .frame(minWidth: 220)
+                    }
+                    .buttonStyle(GlassActionButtonStyle())
+                    .controlSize(.large)
+                    .disabled(isSettingUpInternetAccess)
+                }
+
+                Button {
+                    app.saveSettings()
+                    app.completeOnboarding()
+                } label: {
+                    Text(cfTokenVerified ? "Skip & Go to Dashboard" : "Skip for Now")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .font(.callout)
+                .disabled(isSettingUpInternetAccess)
+            }
+        }
+    }
+
+    private func saveLocalAuthSettings() {
+        let username = localUsernameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = localPasswordDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.adminWebUI.enabled = true
+        if !password.isEmpty {
+            app.settings.adminWebUI.localAuthEnabled = true
+            app.settings.adminWebUI.localAuthUsername = username.isEmpty ? "admin" : username
+            app.settings.adminWebUI.localAuthPassword = password
+        }
+    }
+
+    // MARK: - Internet Access Helpers
+
+    private var cfSubdomainBinding: Binding<String> {
+        Binding(
+            get: { cfSubdomain },
+            set: { newValue in
+                cfSubdomain = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+            }
+        )
+    }
+
+    private var cfSelectedZoneName: String {
+        cfAvailableZones.first(where: { $0.id == cfSelectedZoneID })?.name ?? ""
+    }
+
+    private var cfOnboardingHostname: String {
+        let sub = cfSubdomain.trimmingCharacters(in: .whitespacesAndNewlines)
+        let zone = cfSelectedZoneName
+        guard !sub.isEmpty, !zone.isEmpty else { return "" }
+        return "\(sub).\(zone)"
+    }
+
+    private func verifyCFToken() {
+        let token = CloudflareDNSProvider.normalizedAPIToken(from: cfTokenDraft)
+        guard !token.isEmpty else { return }
+        isCFTokenVerifying = true
+        cfTokenError = nil
+
+        Task { @MainActor in
+            do {
+                let zones = try await app.verifyCloudflareTokenAndListZones(token: token)
+                cfAvailableZones = zones
+                cfTokenVerified = true
+                isCFTokenVerifying = false
+                app.settings.adminWebUI.cloudflareAPIToken = token
+                if zones.count == 1 {
+                    cfSelectedZoneID = zones[0].id
+                }
+            } catch {
+                isCFTokenVerifying = false
+                cfTokenError = app.userFacingAdminWebPublicAccessMessage(for: error)
+            }
+        }
+    }
+
+    private func startInternetAccessSetup() {
+        let hostname = cfOnboardingHostname
+        guard !hostname.isEmpty else { return }
+
+        app.settings.adminWebUI.enabled = true
+        app.settings.adminWebUI.subdomain = cfSubdomain
+        app.settings.adminWebUI.selectedZoneID = cfSelectedZoneID
+        app.settings.adminWebUI.selectedZoneName = cfSelectedZoneName
+        app.settings.adminWebUI.hostname = hostname
+        app.saveSettings()
+
+        isSettingUpInternetAccess = true
+        internetAccessSetupError = nil
+        internetAccessSetupProgress = OnboardingInternetAccessProgress()
+
+        Task { @MainActor in
+            do {
+                _ = try await app.startInternetAccessSetup(progress: { event in
+                    internetAccessSetupProgress?.apply(event)
+                })
+                isSettingUpInternetAccess = false
+                internetAccessSetupProgress = nil
+                app.saveSettings()
+                app.completeOnboarding()
+            } catch {
+                isSettingUpInternetAccess = false
+                internetAccessSetupError = app.userFacingAdminWebPublicAccessMessage(for: error)
+            }
+        }
+    }
+}
+
+// MARK: - Onboarding Internet Access Progress
+
+private struct OnboardingInternetAccessProgress {
+    private static let orderedStepIDs = [
+        "cloudflare-access", "cloudflare-zone", "create-tunnel",
+        "create-dns", "issue-certificate", "enable-access"
+    ]
+
+    private var itemsByID: [String: CertificateManager.ValidationItem] = [
+        "cloudflare-access": .init(id: "cloudflare-access", title: "Verify Cloudflare API", status: .pending, detail: nil),
+        "cloudflare-zone": .init(id: "cloudflare-zone", title: "Detect zone", status: .pending, detail: nil),
+        "create-tunnel": .init(id: "create-tunnel", title: "Detect or create tunnel", status: .pending, detail: nil),
+        "create-dns": .init(id: "create-dns", title: "Configure DNS route", status: .pending, detail: nil),
+        "issue-certificate": .init(id: "issue-certificate", title: "Issue HTTPS certificate", status: .pending, detail: nil),
+        "enable-access": .init(id: "enable-access", title: "Enable Internet Access", status: .pending, detail: nil)
+    ]
+
+    var items: [CertificateManager.ValidationItem] {
+        Self.orderedStepIDs.compactMap { itemsByID[$0] }
+    }
+
+    mutating func apply(_ event: InternetAccessSetupEvent) {
+        switch event {
+        case .verifyingCloudflareAccess:
+            setItem(id: "cloudflare-access", status: .warning, detail: nil)
+        case .cloudflareAccessVerified:
+            setItem(id: "cloudflare-access", status: .success, detail: nil)
+        case .detectingCloudflareZone:
+            setItem(id: "cloudflare-zone", status: .warning, detail: nil)
+        case .cloudflareZoneDetected:
+            setItem(id: "cloudflare-zone", status: .success, detail: nil)
+        case .creatingTunnel:
+            setItem(id: "create-tunnel", status: .warning, detail: nil)
+        case .tunnelCreated, .tunnelDetected:
+            setItem(id: "create-tunnel", status: .success, detail: nil)
+        case .creatingTunnelDNSRecord:
+            setItem(id: "create-dns", status: .warning, detail: nil)
+        case .tunnelDNSRecordCreated:
+            setItem(id: "create-dns", status: .success, detail: nil)
+        case .issuingHTTPSCertificate:
+            setItem(id: "issue-certificate", status: .warning, detail: nil)
+        case .httpsCertificateIssued:
+            setItem(id: "issue-certificate", status: .success, detail: nil)
+        case .startingCloudflareTunnel:
+            setItem(id: "enable-access", status: .warning, detail: nil)
+        case .cloudflareTunnelStarted:
+            setItem(id: "enable-access", status: .success, detail: nil)
+        case .internetAccessEnabled:
+            break
+        }
+    }
+
+    private mutating func setItem(id: String, status: CertificateManager.ValidationStatus, detail: String?) {
+        guard let existing = itemsByID[id] else { return }
+        itemsByID[id] = .init(id: existing.id, title: existing.title, status: status, detail: detail)
     }
 }
 

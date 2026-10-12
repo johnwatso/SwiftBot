@@ -703,7 +703,9 @@ final class AppModel: ObservableObject {
                 workerModeMigrated = true
                 migrated = true
             }
-            if loadedSettings.swiftMiner.enabled && !loadedSettings.adminWebUI.enabled {
+            // The Admin Web UI is SwiftBot's primary interface, not an
+            // optional service. Migrate older installs that stored it off.
+            if !loadedSettings.adminWebUI.enabled {
                 loadedSettings.adminWebUI.enabled = true
                 migrated = true
             }
