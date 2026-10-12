@@ -96,6 +96,11 @@ actor MeshWitnessClient {
         let nodeName: String?
         let role: ParticipantRole
         let webUIURL: String?
+        let powerSource: String?
+        let externalPower: Bool?
+        let batteryPercent: Int?
+        let batteryTimeRemaining: Int?
+        let sessionEnding: Bool?
     }
     struct Grant: Codable, Sendable {
         let ownerNodeID: String
@@ -143,7 +148,8 @@ actor MeshWitnessClient {
     /// Reports this Mac even while it is standby. This neither requests nor
     /// extends ownership. Feature detection keeps earlier Ruru versions usable.
     @discardableResult
-    func reportPresence(role: ParticipantRole, webUIURL: String? = nil) async -> Bool {
+    func reportPresence(role: ParticipantRole, webUIURL: String? = nil, power: PowerSnapshot? = nil,
+                        sessionEnding: Bool? = nil) async -> Bool {
         guard config.isValid, !nodeID.isEmpty, !Task.isCancelled else { return false }
         let generation = configurationGeneration
         let configuration = config
@@ -169,7 +175,12 @@ actor MeshWitnessClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let report = ParticipantReport(
             clusterID: configuration.clusterID, nodeID: nodeID, nodeName: nodeName,
-            role: role, webUIURL: Self.reportedWebUIURL(webUIURL)
+            role: role, webUIURL: Self.reportedWebUIURL(webUIURL),
+            powerSource: power?.source.rawValue,
+            externalPower: power?.externalPower,
+            batteryPercent: power?.batteryPercent,
+            batteryTimeRemaining: power?.timeRemainingSeconds,
+            sessionEnding: sessionEnding
         )
         request.httpBody = try? JSONEncoder().encode(report)
         guard let (data, response) = try? await session.data(for: request),

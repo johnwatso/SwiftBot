@@ -9,13 +9,38 @@
 
 ## Recent Engineering Log
 
+### 2026-10-12 — Graceful system session-end handoff to Ruru
+
+- [x] `_working-tree_`: SwiftBot observes macOS's workspace notification for
+  logout/power-off. On app termination it sends Ruru an ephemeral session-ending
+  presence snapshot, freezes and drains local work, saves state, then uses the
+  existing lease release handler. If drain or save fails, it stops renewal but
+  leaves the lease to expire under its normal deadline.
+- Ruru shows the notice only while participant presence is fresh. The notice
+  does not grant, release or transfer ownership. Ordinary app quit also drains
+  and releases cleanly, without marking a system session-ending event.
+- Validation: SwiftBot and Ruru Debug builds passed, and `git diff --check` is
+  clean. Tests were not rerun after this lifecycle extension; no live logout or
+  power-off was exercised.
+
+### 2026-10-12 — Local RuruClient dependency
+
+- [x] `_working-tree_`: Added Ruru's application-neutral `RuruClient` SwiftPM
+  product as a local sibling dependency (`../ruru`). SwiftBot now resolves and
+  links the package without changing its existing `MeshWitnessClient`, lease
+  loop, pairing flow, persistence or failover behaviour.
+- The local path is intentional until RuruClient receives its first published
+  semantic-version tag; a dedicated follow-up will replace the internal HTTP
+  client while retaining SwiftBot-specific orchestration.
+- Validation: XcodeGen, `git diff --check` and the SwiftBot Debug build passed.
+
 ### 2026-10-11 — SwiftMesh Status operational overview
 
 - [x] `_working-tree_`: Reworked SwiftMesh Status around the live cluster map, a compact Primary/Ruru/Failover/Workers health group, real session activity, work-sharing state and collapsed diagnostics. The summary now reports actual failover availability and uses “Running” rather than pairing language when no peer is connected. Existing status polling, topology, node controls, handover controls, lease behaviour and Settings pairing flows are unchanged. Debug build and the full Debug test suite passed; live multi-Mac/Ruru validation remains unperformed.
 
 ### 2026-10-11 — SwiftMesh Settings refinement
 
-- [x] `_working-tree_`: Reorganised native SwiftMesh Settings into This Mac, Paired Nodes, Pairing, Failover, Ruru and Work Sharing. Pairing now names newly issued credential approvals, secrets and node diagnostics use focused sheets, and Ruru distinguishes configuration, reachability and the local lease without inferring protection from a hostname. Status retains runtime diagnostics; Settings no longer presents Leader Term or a local listener as cluster health. Debug build and focused cluster/Ruru tests passed; no failover, lease, replication, credential-storage or worker scheduling behaviour changed.
+- [x] `_working-tree_`: Reorganised native SwiftMesh Settings into This Mac, Paired Nodes, Pairing, Failover, Ruru and Work Sharing. Paired Nodes now lists only Macs that actually report to the mesh, using their live hardware/icon data through the credential node ID; unused Join Code approvals live separately under Pairing Approvals and use a key icon. Secrets and node diagnostics use focused sheets, and Ruru distinguishes configuration, reachability and the local lease without inferring protection from a hostname. Status retains runtime diagnostics; Settings no longer presents Leader Term or a local listener as cluster health. Debug build and focused cluster/Ruru tests passed; no failover, lease, replication, credential-storage or worker scheduling behaviour changed.
 
 ### 2026-10-10 — GitHub release description cleanup
 

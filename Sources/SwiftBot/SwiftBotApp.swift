@@ -142,6 +142,7 @@ struct SwiftBotApp: App {
                     .environmentObject(appModel)
                     .environmentObject(updater)
                     .onAppear {
+                        appDelegate.attach(appModel: appModel)
                         applyAppIconIfAvailable()
                         applyPresenceMode(appModel.settings.presenceMode)
                         updateStatusItem()
@@ -461,7 +462,27 @@ private final class SwiftBotStatusItemController: NSObject, ObservableObject {
     }
 }
 
+@MainActor
 private final class SwiftBotAppDelegate: NSObject, NSApplicationDelegate {
+    private weak var appModel: AppModel?
+    private var powerOffObserver: NSObjectProtocol?
+    private var systemSessionEndingRequested = false
+    private var terminationTask: Task<Void, Never>?
+
+    func attach(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        powerOffObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification,
+            object: NSWorkspace.shared,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.systemSessionEndingRequested = true }
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -474,7 +495,14 @@ private final class SwiftBotAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        Task {
+        guard terminationTask == nil else { return .terminateLater }
+        let systemSessionEnding = systemSessionEndingRequested
+        terminationTask = Task { [weak self] in
+            guard let self else { return }
+            if let appModel {
+                let safeToRelease = await appModel.prepareForApplicationTermination(systemEnding: systemSessionEnding)
+                await appModel.stopBot(releaseWitnessOwnership: safeToRelease)
+            }
             await TunnelManager.shared.stopForAppTermination()
             sender.reply(toApplicationShouldTerminate: true)
         }

@@ -1140,12 +1140,12 @@ final class AppModel: ObservableObject {
 
     // MARK: - Admin Web Server (see AppModel+AdminWeb.swift)
 
-    func stopBot() async {
+    func stopBot(releaseWitnessOwnership: Bool = true) async {
         await cluster.setDesiredBotRunning(false)
         stopMediaMonitor()
         await disconnectVoice()
         await service.disconnect()
-        await cluster.stopAll()
+        await cluster.stopAll(releaseOwnership: releaseWitnessOwnership)
         await meshDidStop()
         meshSyncTask?.cancel()
         meshSyncTask = nil

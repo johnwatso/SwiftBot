@@ -183,6 +183,7 @@
 		7EE812444756F4D2CDA0B455 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BCC89EED4A1FBB517843B46 /* AdminWebServer.swift */; };
 		809612F66781F81E1798C08B /* AppModel+WikiBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45D44EE6B96566AC77A5C0A /* AppModel+WikiBridge.swift */; };
 		816D04A797B09B56D8D44987 /* ThirdPartyNoticesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016C280F1D848F712E8A4529 /* ThirdPartyNoticesTests.swift */; };
+		81DC4C4366321725407B5D68 /* RuruClient in Frameworks */ = {isa = PBXBuildFile; productRef = 1893306273FD7EEA8C3FB4AD /* RuruClient */; };
 		82AFE54D3A1FACA8D333BE04 /* BotPermissionsCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3E46A2E973887D408730D2 /* BotPermissionsCheckView.swift */; };
 		838C7E3468BE6BC5AE73C7B4 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207953E8C7879C279BCB9D58 /* ClusterCoordinator.swift */; };
 		8470ADBE10BE1B6352A4FAD4 /* AppModel+RewindActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3BF40B21E57E454EF5DE84E /* AppModel+RewindActivity.swift */; };
@@ -274,6 +275,7 @@
 		CC9D6634C1B265CCB11BDDD0 /* RewindTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803EAE97D6A0E7EF802071F0 /* RewindTests.swift */; };
 		CCD0A6256F334076F0CC2059 /* SweepWeeklyMVPAnnouncementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76ACAC822C262D849FDCBFBD /* SweepWeeklyMVPAnnouncementTests.swift */; };
 		CD79F325926C9AFC89CD5A9F /* DiscordRateLimiterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4CDC5634CE8B6B9796C29B5 /* DiscordRateLimiterTests.swift */; };
+		CE9EFD6A31AEBFC3FCFCC037 /* PowerSourceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1FACC7932F4E9DC63A776C /* PowerSourceMonitor.swift */; };
 		D02524D99AF40637E1B41DE7 /* SystemDetailsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CCD9A6567E45B31295EB8B3 /* SystemDetailsSection.swift */; };
 		D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */; };
 		D269722CFD7C900DA20391E6 /* SweepService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7880F5B8180E070166397ACD /* SweepService.swift */; };
@@ -579,6 +581,7 @@
 		9E08244F764D8DD025AB8F6A /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
 		9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGatewayConnectionTests.swift; sourceTree = "<group>"; };
 		9E4EC9D78C68ABE01644F817 /* AppModel+Voice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Voice.swift"; sourceTree = "<group>"; };
+		9F1FACC7932F4E9DC63A776C /* PowerSourceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerSourceMonitor.swift; sourceTree = "<group>"; };
 		9F7283D7E2B8AD07A272B495 /* DiscordGatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGatewayConnection.swift; sourceTree = "<group>"; };
 		A1B6102C6401DD65125DFF91 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		A242BC711BB3261C9D007EF6 /* SwiftMinerDMRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouterTests.swift; sourceTree = "<group>"; };
@@ -713,6 +716,7 @@
 				626D847B8BB20176403EBBAA /* Opus in Frameworks */,
 				2C83C163CF68600ED913A1DB /* libdave-swift in Frameworks */,
 				68B5A4A0FECCF69D5A9D40C3 /* WebAuthn in Frameworks */,
+				81DC4C4366321725407B5D68 /* RuruClient in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -909,6 +913,7 @@
 				9524C5D92677750F6BF2717F /* OpusFrameEncoder.swift */,
 				3A0E658387DA152DC3752958 /* PatchySwiftMinerCampaignRouter.swift */,
 				E4155A5B46BE9627288D4C5E /* PlaylistImportService.swift */,
+				9F1FACC7932F4E9DC63A776C /* PowerSourceMonitor.swift */,
 				94DF180FA5ECC9E43CA14C80 /* RecordingDirectoryClient.swift */,
 				7B4BCA8AB9F799EA2CEE918C /* RewindActivityStore.swift */,
 				FDF7965037E2858D09DF8327 /* RewindStore.swift */,
@@ -1191,6 +1196,7 @@
 				8340F7290FCD93DB7287E27A /* Opus */,
 				24FCC927E2337E1A74F2A427 /* libdave-swift */,
 				5468062CB266917DDA23C7B4 /* WebAuthn */,
+				1893306273FD7EEA8C3FB4AD /* RuruClient */,
 			);
 			productName = SwiftBot;
 			productReference = FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */;
@@ -1242,6 +1248,7 @@
 			mainGroup = 5862010FC4698115F0427E7E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				481655629DFD5D4D38FC7B2B /* XCRemoteSwiftPackageReference "ruru" */,
 				D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */,
 				6A7976F088120A7F5815E5B9 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */,
@@ -1459,6 +1466,7 @@
 				8E6E28C2B707E23C0CCBC9C3 /* PatchyViewModel.swift in Sources */,
 				3A08715595B61EEDF8C41B4A /* Persistence.swift in Sources */,
 				D28247A5224312A0E701C5B8 /* PlaylistImportService.swift in Sources */,
+				CE9EFD6A31AEBFC3FCFCC037 /* PowerSourceMonitor.swift in Sources */,
 				FCA4F3DFFEB2E584145245AA /* PreferencesView.swift in Sources */,
 				004DEF4B414FD8F8C9092F36 /* QuickActionsSection.swift in Sources */,
 				6F514212585527FB648DB4E2 /* RTPPacketBuilder.swift in Sources */,
@@ -2080,6 +2088,14 @@
 				minimumVersion = 1.9.0;
 			};
 		};
+		481655629DFD5D4D38FC7B2B /* XCRemoteSwiftPackageReference "ruru" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnwatso/ruru.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.1.0;
+			};
+		};
 		53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-nio.git";
@@ -2151,6 +2167,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8CD70ED74937A5A681408390 /* XCRemoteSwiftPackageReference "swift-crypto" */;
 			productName = Crypto;
+		};
+		1893306273FD7EEA8C3FB4AD /* RuruClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 481655629DFD5D4D38FC7B2B /* XCRemoteSwiftPackageReference "ruru" */;
+			productName = RuruClient;
 		};
 		1C81108D7CF200AA2750ED17 /* NIOSSL */ = {
 			isa = XCSwiftPackageProductDependency;

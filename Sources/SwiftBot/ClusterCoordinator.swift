@@ -1712,7 +1712,7 @@ actor ClusterCoordinator {
         return requestedMode
     }
 
-    func stopAll() async {
+    func stopAll(releaseOwnership: Bool = true) async {
         meshLogger.notice("Stopping all cluster services")
         desiredBotRunning = false
         promotionTask?.cancel()
@@ -1726,7 +1726,7 @@ actor ClusterCoordinator {
         pendingHandback = nil
         ownershipGranted = false
         if mode == .leader { await onDemotion?() }
-        await ownershipRelease?(leaderTerm)
+        if releaseOwnership { await ownershipRelease?(leaderTerm) }
         stopMeshDiscovery()
         handoverTestTask?.cancel()
         _ = await handoverTestTask?.value
@@ -4064,6 +4064,7 @@ actor ClusterCoordinator {
 
         return ClusterNodeStatus(
             id: "\(role.rawValue)-\(hostname.lowercased())-\(listenPort)",
+            credentialNodeID: credentialNodeID.isEmpty ? nil : credentialNodeID,
             hostname: hostname,
             displayName: nodeName,
             role: role,

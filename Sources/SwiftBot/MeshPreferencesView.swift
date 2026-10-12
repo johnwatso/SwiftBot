@@ -17,7 +17,8 @@ struct MeshPreferencesView: View {
     @State private var showSecretManagement = false
     @State private var showIdentitySheet = false
     @State private var showNodeManager = false
-    @State private var managedNodeID: String?
+    @State private var managedNode: ClusterNodeStatus?
+    @State private var managedGrant: MeshCredentialGrant?
     @State private var credentialGrants: [MeshCredentialGrant] = []
 
     private struct JoinCodeFeedback: Equatable {
@@ -32,6 +33,14 @@ struct MeshPreferencesView: View {
     private var canManageCredentials: Bool { app.runtimeClusterMode == .leader }
     private var pairedGrants: [MeshCredentialGrant] {
         credentialGrants.filter { $0.nodeID != app.meshLocalNodeID }
+    }
+    private var livePairedNodes: [ClusterNodeStatus] {
+        app.clusterNodes.filter { $0.role != .leader && !isLocalNode($0) }
+    }
+    private var unmatchedPairingGrants: [MeshCredentialGrant] {
+        pairedGrants.filter { grant in
+            !livePairedNodes.contains { matchingGrant(for: $0)?.nodeID == grant.nodeID }
+        }
     }
 
     private var leaderPortBinding: Binding<String> {
@@ -91,6 +100,7 @@ struct MeshPreferencesView: View {
 
             if shouldShowMeshSettings {
                 pairedNodesSection
+                pairingApprovalsSection
                 pairingSection
                 failoverSection
                 MeshWitnessPreferencesSection()
@@ -119,12 +129,12 @@ struct MeshPreferencesView: View {
             }
         }
         .sheet(isPresented: $showNodeManager) {
-            if let grant = pairedGrants.first(where: { $0.nodeID == managedNodeID }) {
+            if managedNode != nil || managedGrant != nil {
                 MeshPairedNodeSheet(
-                    grant: grant,
-                    node: runtimeNode(for: grant),
+                    grant: managedGrant,
+                    node: managedNode,
                     canRevoke: canManageCredentials,
-                    onRevoke: { await revokeCredential(for: grant) }
+                    onRevoke: managedGrant.map { grant in { await revokeCredential(for: grant) } }
                 )
             }
         }
@@ -202,23 +212,23 @@ struct MeshPreferencesView: View {
 
     private var pairedNodesSection: some View {
         Section {
-            if pairedGrants.isEmpty {
+            if livePairedNodes.isEmpty {
                 ConsoleSettingRow(
                     title: "No Paired Nodes",
-                    symbol: "desktopcomputer.trianglebadge.exclamationmark",
-                    subtitle: "Copy a Join Code to pair another Mac."
+                    symbol: "server.rack",
+                    subtitle: "No other Macs have reported to this mesh."
                 )
             } else {
-                ForEach(pairedGrants, id: \.nodeID) { grant in
-                    let node = runtimeNode(for: grant)
+                ForEach(livePairedNodes) { node in
+                    let grant = matchingGrant(for: node)
                     ConsoleSettingRow(
-                        title: displayedName(for: grant),
-                        symbol: "desktopcomputer",
-                        subtitle: node.map { "\($0.role.displayName) · \($0.connectionStatusText)" }
-                            ?? "Credential access approved"
+                        title: node.displayName,
+                        symbol: pairedNodeSymbol(for: node),
+                        subtitle: "\(node.role.displayName) · \(node.connectionStatusText)"
                     ) {
                         Button("Manage…") {
-                            managedNodeID = grant.nodeID
+                            managedNode = node
+                            managedGrant = grant
                             showNodeManager = true
                         }
                         .buttonStyle(.bordered)
@@ -229,7 +239,35 @@ struct MeshPreferencesView: View {
         } header: {
             Text("Paired Nodes")
         } footer: {
-            Text("Each paired node has its own credential approval. Connection details and cluster diagnostics are available in Status.")
+            Text("These are Macs that have reported to SwiftMesh. Their role and connection state are live; detailed diagnostics are in Status.")
+        }
+    }
+
+    private var pairingApprovalsSection: some View {
+        Group {
+            if !unmatchedPairingGrants.isEmpty {
+                Section {
+                    ForEach(unmatchedPairingGrants, id: \.nodeID) { grant in
+                        ConsoleSettingRow(
+                            title: displayedName(for: grant),
+                            symbol: "key.fill",
+                            subtitle: "Credential approval awaiting a matching Mac."
+                        ) {
+                            Button("Manage…") {
+                                managedNode = nil
+                                managedGrant = grant
+                                showNodeManager = true
+                            }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.capsule)
+                        }
+                    }
+                } header: {
+                    Text("Pairing Approvals")
+                } footer: {
+                    Text("An approval is created when a Join Code is copied. It becomes a paired node only after that code is used by another Mac.")
+                }
+            }
         }
     }
 
@@ -379,11 +417,35 @@ struct MeshPreferencesView: View {
         return name.isEmpty || name == "Paired Failover" ? "Paired Node" : name
     }
 
-    private func runtimeNode(for grant: MeshCredentialGrant) -> ClusterNodeStatus? {
-        app.clusterNodes.first {
-            $0.displayName.caseInsensitiveCompare(grant.nodeName) == .orderedSame
-                && $0.role != .leader
+    private func matchingGrant(for node: ClusterNodeStatus) -> MeshCredentialGrant? {
+        if let nodeID = node.credentialNodeID,
+           let grant = pairedGrants.first(where: { $0.nodeID == nodeID }) {
+            return grant
         }
+        // Older peers do not report a stable enrollment ID. Use a display-name
+        // fallback only when the name occurs once among non-Primary nodes.
+        let sameNameNodes = livePairedNodes.filter {
+            $0.displayName.caseInsensitiveCompare(node.displayName) == .orderedSame
+        }
+        guard sameNameNodes.count == 1 else { return nil }
+        return pairedGrants.first {
+            $0.nodeName.caseInsensitiveCompare(node.displayName) == .orderedSame
+        }
+    }
+
+    private func isLocalNode(_ node: ClusterNodeStatus) -> Bool {
+        if let nodeID = node.credentialNodeID, !app.meshLocalNodeID.isEmpty {
+            return nodeID == app.meshLocalNodeID
+        }
+        let name = app.settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !name.isEmpty && node.displayName.caseInsensitiveCompare(name) == .orderedSame
+    }
+
+    private func pairedNodeSymbol(for node: ClusterNodeStatus) -> String {
+        return SwiftMeshHardwareSymbols.symbolName(
+            for: node.hardwareModel,
+            override: app.settings.clusterNodeIconOverrides[node.displayName]
+        )
     }
 
     @MainActor
@@ -544,29 +606,31 @@ private struct MeshJoinCodeSheet: View {
 
 private struct MeshPairedNodeSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let grant: MeshCredentialGrant
+    let grant: MeshCredentialGrant?
     let node: ClusterNodeStatus?
     let canRevoke: Bool
-    let onRevoke: () async -> Void
+    let onRevoke: (() async -> Void)?
     @State private var showRevokeConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text(node?.displayName ?? (grant.nodeName == "Paired Failover" ? "Paired Node" : grant.nodeName))
+            Text(node?.displayName ?? displayName)
                 .font(.title2.weight(.semibold))
             Form {
                 LabeledContent("Configured Role", value: node?.role.displayName ?? "Not reported")
                 LabeledContent("Connection", value: node?.connectionStatusText ?? "Not currently reported")
-                LabeledContent("Credential Access", value: "Approved")
-                LabeledContent("Node ID") {
-                    Text(grant.nodeID).font(.caption.monospaced()).textSelection(.enabled)
+                LabeledContent("Credential Access", value: grant == nil ? "Not listed" : "Approved")
+                if let nodeID = node?.credentialNodeID ?? grant?.nodeID {
+                    LabeledContent("Node ID") {
+                        Text(nodeID).font(.caption.monospaced()).textSelection(.enabled)
+                    }
                 }
             }
             .formStyle(.grouped)
             .scrollDisabled(true)
             .fixedSize(horizontal: false, vertical: true)
 
-            if canRevoke {
+            if canRevoke, let onRevoke {
                 Divider()
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
@@ -577,7 +641,7 @@ private struct MeshPairedNodeSheet: View {
                     Spacer()
                     Button("Revoke…", role: .destructive) { showRevokeConfirmation = true }
                 }
-            } else {
+            } else if grant != nil {
                 Text("Credential access is managed by the active Primary.")
                     .font(.callout).foregroundStyle(.secondary)
             }
@@ -587,10 +651,17 @@ private struct MeshPairedNodeSheet: View {
         .padding(24)
         .frame(width: 560)
         .confirmationDialog("Revoke credential access?", isPresented: $showRevokeConfirmation, titleVisibility: .visible) {
-            Button("Revoke Access", role: .destructive) { Task { await onRevoke() } }
+            if let onRevoke {
+                Button("Revoke Access", role: .destructive) { Task { await onRevoke() } }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This node will no longer be authorised to fetch shared credentials. To remove an untrusted node fully, also rotate the shared secret and any credentials it previously received.")
         }
+    }
+
+    private var displayName: String {
+        guard let grant else { return "Paired Node" }
+        return grant.nodeName == "Paired Failover" ? "Paired Node" : grant.nodeName
     }
 }

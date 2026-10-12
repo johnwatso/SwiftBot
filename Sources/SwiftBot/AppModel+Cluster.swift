@@ -838,6 +838,7 @@ extension AppModel {
         var nodes: [ClusterNodeStatus] = [
             ClusterNodeStatus(
                 id: "\(role.rawValue)-\(hostname.lowercased())-\(settings.clusterListenPort)",
+                credentialNodeID: meshLocalNodeID.isEmpty ? nil : meshLocalNodeID,
                 hostname: hostname,
                 displayName: localNodeName,
                 role: role,

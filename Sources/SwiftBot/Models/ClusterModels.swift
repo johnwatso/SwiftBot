@@ -943,6 +943,9 @@ extension ClusterConnectionState {
 
 struct ClusterNodeStatus: Identifiable, Codable, Hashable {
     var id: String
+    /// Stable credential enrollment identity when the reporting node has one.
+    /// It links a live node safely to its pairing approval; older peers omit it.
+    var credentialNodeID: String?
     var hostname: String
     var displayName: String
     var role: ClusterNodeRole
@@ -963,6 +966,7 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
 
     init(
         id: String,
+        credentialNodeID: String? = nil,
         hostname: String,
         displayName: String,
         role: ClusterNodeRole,
@@ -977,6 +981,7 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
         jobsActive: Int
     ) {
         self.id = id
+        self.credentialNodeID = credentialNodeID
         self.hostname = hostname
         self.displayName = displayName
         self.role = role
@@ -993,6 +998,7 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case credentialNodeID
         case hostname
         case displayName
         case role
@@ -1019,6 +1025,7 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        credentialNodeID = try container.decodeIfPresent(String.self, forKey: .credentialNodeID)
         hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? "unknown-host"
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
             ?? (try container.decodeIfPresent(String.self, forKey: .hardwareName) ?? hostname)
@@ -1055,6 +1062,7 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(credentialNodeID, forKey: .credentialNodeID)
         try container.encode(hostname, forKey: .hostname)
         try container.encode(displayName, forKey: .displayName)
         try container.encode(role, forKey: .role)

@@ -1,6 +1,32 @@
 import Foundation
 
 extension AppModel {
+    /// Called when the app is about to terminate. A confirmed system logout or
+    /// power-off is reported before the existing stop/drain/release sequence.
+    /// The lease is released only if local work and settings drain successfully;
+    /// otherwise it expires under its existing deadline after this process exits.
+    func prepareForApplicationTermination(systemEnding: Bool) async -> Bool {
+        let presenceTask = meshWitnessHealthTask
+        meshWitnessHealthTask?.cancel()
+        meshWitnessHealthTask = nil
+        await presenceTask?.value
+
+        if systemEnding {
+            let role: MeshWitnessClient.ParticipantRole
+            switch runtimeClusterMode {
+            case .leader: role = meshOwnershipExpired ? .unknown : .active
+            case .standby: role = .standby
+            case .worker: role = .worker
+            default: role = .unknown
+            }
+            let power = PowerSourceMonitor.current()
+            _ = await meshWitnessClient.reportPresence(role: role, webUIURL: localMeshPublicAddress,
+                power: power.source != .unknown ? power : nil, sessionEnding: true)
+        }
+
+        return await freezeMeshWrites()
+    }
+
     /// The witness settings live in the Keychain; read them off the main
     /// thread so a Keychain prompt can't freeze the app during launch.
     nonisolated static func loadWitnessSettingsOffMain() async -> MeshWitnessConfiguration {
@@ -110,7 +136,9 @@ extension AppModel {
                 case .worker: role = .worker
                 default: role = .unknown
                 }
-                await client.reportPresence(role: role, webUIURL: self?.localMeshPublicAddress)
+                let power = PowerSourceMonitor.current()
+                await client.reportPresence(role: role, webUIURL: self?.localMeshPublicAddress,
+                                            power: power.source != .unknown ? power : nil)
                 try? await Task.sleep(for: .seconds(15))
             }
         }

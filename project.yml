@@ -46,6 +46,9 @@ packages:
     # Keep this pin centralized: release a new libdave tag, change this one
     # value, then regenerate the project with `xcodegen`.
     exactVersion: 4.0.0
+  Ruru:
+    url: https://github.com/johnwatso/ruru.git
+    exactVersion: 0.1.0
 
 targets:
   SwiftBot:
@@ -115,6 +118,8 @@ targets:
         product: libdave-swift
       - package: swift-webauthn
         product: WebAuthn
+      - package: Ruru
+        product: RuruClient
     settings:
       base:
         PRODUCT_NAME: SwiftBot
