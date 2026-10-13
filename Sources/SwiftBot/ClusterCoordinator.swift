@@ -186,7 +186,6 @@ actor ClusterCoordinator {
 
     // SwiftMesh failover state
     var leaderTerm: Int = 0
-    private var standbyMonitorTask: Task<Void, Never>?
     /// Activation must outlive the polling task that requested it. Settings
     /// refreshes restart those polls, including while Discord is connecting.
     private var promotionTask: Task<Void, Never>?
@@ -194,29 +193,16 @@ actor ClusterCoordinator {
     /// Keep the last activation refusal visible when registration/listener
     /// updates arrive concurrently with a takeover attempt.
     private var promotionBlockReason: String?
-    var standbyHealthMisses: Int = 0
-    /// Standby health probe interval. 15s balances fast failover detection with
-    /// avoiding request storms on the primary.
-    static let standbyHealthInterval: TimeInterval = 15.0
-    static let standbyPromotionThreshold: Int = 3
     /// Phase 4: auto-reclaim by configured-primary.
     /// Whether THIS node was configured as Primary in settings (set by AppModel).
     /// Only originally-configured Primary nodes are allowed to auto-reclaim.
     private var isConfiguredPrimary: Bool = false
     /// Auto-reclaim threshold in seconds. `0` disables auto-reclaim.
     private var autoReclaimAfterSeconds: TimeInterval = 0
-    /// Timestamp of the first consecutive healthy probe of the current leader
-    /// while we're a runtime-demoted Primary. Reset to nil on any miss or on
-    /// settings/role changes.
-    private var standbyHealthySince: Date?
 
     // Phase 2: per-node replication cursors (keyed by nodeName, persisted on leader)
     var replicationCursors: [String: ReplicationCursor] = [:]
     private var onCursorsChanged: (@Sendable ([String: ReplicationCursor]) async -> Void)?
-
-    // P1b: LAN peer discovery via Bonjour/mDNS
-    private var meshBrowser: NWBrowser?
-    var discoveredPeers: [String: DiscoveredPeer] = [:]
 
     private var aiHandler: AIHandler?
     private var wikiHandler: WikiHandler?
@@ -337,9 +323,8 @@ actor ClusterCoordinator {
     }
 
     func setPrimaryPreference(_ preference: MeshPrimaryPreference) {
-        if preference != primaryPreference { standbyHealthySince = nil }
         primaryPreference = preference
-        if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
+        startOwnershipRecoveryIfNeeded()
     }
 
     func currentPrimaryPreference() -> MeshPrimaryPreference { primaryPreference }
@@ -371,7 +356,7 @@ actor ClusterCoordinator {
     func setDesiredBotRunning(_ running: Bool) {
         desiredBotRunning = running
         if !running { promotionTask?.cancel() }
-        if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
+        startOwnershipRecoveryIfNeeded()
     }
 
     func setServiceHealthProvider(_ provider: @escaping @Sendable () async -> Bool) {
@@ -552,7 +537,12 @@ actor ClusterCoordinator {
         if automatic, !mayReclaimAutomatically() { return false }
         // Checked against the owner's current health before it freezes, and
         // again before commit: once the owner commits, it has already closed.
-        if let health = await fetchMeshNodeHealth(baseURL) { observeLeaderHealth(health) }
+        if let health = await fetchMeshNodeHealth(baseURL),
+           mode == .standby, health.mode == ClusterMode.leader.rawValue,
+           health.ownershipWitness != leaderWitnessRequirement {
+            leaderWitnessRequirement = health.ownershipWitness
+            persistRecoveryState()
+        }
         if let reason = witnessMismatchReason() {
             snapshot.diagnostics = "Handback blocked: \(reason)"
             await publishSnapshot()
@@ -857,19 +847,11 @@ actor ClusterCoordinator {
         guard self.isConfiguredPrimary != isConfiguredPrimary || autoReclaimAfterSeconds != nextSeconds else { return }
         self.isConfiguredPrimary = isConfiguredPrimary
         self.autoReclaimAfterSeconds = nextSeconds
-        // Any policy change resets the healthy clock — start clean.
-        self.standbyHealthySince = nil
-        // Startup demotes before this policy arrives; recover now if needed.
-        if standbyMonitorTask == nil { startOwnershipRecoveryIfNeeded() }
+        startOwnershipRecoveryIfNeeded()
     }
 
-    /// Phase 4: time remaining (seconds) until auto-reclaim, or `nil` if
-    /// auto-reclaim is disabled / not eligible. Exposed for the GUI countdown.
     func autoReclaimCountdownSeconds() -> TimeInterval? {
-        guard mayReclaimAutomatically(),
-              let since = standbyHealthySince else { return nil }
-        let elapsed = Date().timeIntervalSince(since)
-        return max(0, autoReclaimAfterSeconds - elapsed)
+        nil
     }
 
     /// Phase 4: user-initiated promote. Skips the death-confirmation probe
@@ -1742,7 +1724,6 @@ actor ClusterCoordinator {
         listener = nil
         listenerActivePort = nil
         registeredWorkers.removeAll()
-        standbyHealthMisses = 0
         snapshot.serverState = .stopped
         snapshot.runtimeState = .idle
         snapshot.serverStatusText = "Stopped"
@@ -1756,7 +1737,7 @@ actor ClusterCoordinator {
     func currentSnapshot() -> ClusterSnapshot {
         snapshot.leaderTerm = leaderTerm
         if mode == .standby, let reason = promotionBlockReason { snapshot.diagnostics = reason }
-        snapshot.isFailoverWatchActive = mode == .standby && standbyMonitorTask != nil
+        snapshot.isFailoverWatchActive = false
         snapshot.isOwnershipRecoveryActive = mode == .standby && ownershipRecoveryTask != nil
         return snapshot
     }
@@ -2206,79 +2187,6 @@ actor ClusterCoordinator {
     }
 
     // MARK: - P1b: LAN peer discovery
-
-    /// Returns base URLs of LAN-discovered peers, sorted by discovery time (oldest first).
-    /// Peers are discovered via Bonjour (_swiftbot-mesh._tcp) and keyed by node name for dedupe.
-    /// Does NOT replace the manual leaderAddress path; purely additive.
-    func discoveredPeerBaseURLs() -> [String] {
-        // Primary: discovery time (oldest first). Secondary: nodeName (lexicographic) for
-        // fully deterministic output when two peers are discovered within the same tick.
-        discoveredPeers.values
-            .sorted {
-                if $0.discoveredAt != $1.discoveredAt { return $0.discoveredAt < $1.discoveredAt }
-                return $0.nodeName < $1.nodeName
-            }
-            .map { $0.baseURL }
-    }
-
-    private func startMeshDiscovery() {
-        meshBrowser?.cancel()
-        let browser = NWBrowser(
-            for: .bonjourWithTXTRecord(type: "_swiftbot-mesh._tcp", domain: nil),
-            using: .tcp
-        )
-        browser.browseResultsChangedHandler = { [weak self] results, _ in
-            Task { await self?.handleDiscoveryResults(results) }
-        }
-        browser.start(queue: .global(qos: .utility))
-        meshBrowser = browser
-    }
-
-    private func stopMeshDiscovery() {
-        meshBrowser?.cancel()
-        meshBrowser = nil
-        discoveredPeers.removeAll()
-    }
-
-    private func handleDiscoveryResults(_ results: Set<NWBrowser.Result>) {
-        // Single timestamp for the entire batch so all newly seen peers in the same
-        // browse update share the same discoveredAt — preventing Set iteration order
-        // from producing different primary-sort values across runs.
-        let batchTimestamp = Date()
-        var active: [String: DiscoveredPeer] = [:]
-        for result in results {
-            guard case let .bonjour(txtRecord) = result.metadata else { continue }
-            let peerName = txtRecord["node"] ?? ""
-            let host = txtRecord["host"] ?? ""
-            let portStr = txtRecord["port"] ?? ""
-            guard !peerName.isEmpty, !host.isEmpty,
-                  let port = Int(portStr), port > 0 else { continue }
-            guard peerName != nodeName else { continue }  // skip self
-            let baseURL = "http://\(host):\(port)"
-            if let existing = active[peerName] {
-                // Deterministic collision rule: when the same nodeName appears more than once
-                // in a single browse batch, prefer the lexicographically smallest baseURL so
-                // the result is independent of Set iteration order.
-                if baseURL < existing.baseURL {
-                    active[peerName] = DiscoveredPeer(
-                        nodeName: peerName,
-                        baseURL: baseURL,
-                        discoveredAt: existing.discoveredAt
-                    )
-                }
-            } else {
-                // New peer: use batchTimestamp (not per-item Date()) so all peers first seen
-                // in the same batch share an identical discoveredAt; secondary nodeName sort
-                // then provides stable output ordering within the batch.
-                active[peerName] = DiscoveredPeer(
-                    nodeName: peerName,
-                    baseURL: baseURL,
-                    discoveredAt: discoveredPeers[peerName]?.discoveredAt ?? batchTimestamp
-                )
-            }
-        }
-        discoveredPeers = active
-    }
 
     private func handleConnection(_ connection: NWConnection) async {
         guard acquireConnectionSlot() else {
@@ -2801,212 +2709,6 @@ actor ClusterCoordinator {
         return data
     }
 
-    private func restartStandbyMonitorIfNeeded() async {
-        standbyMonitorTask?.cancel()
-        _ = await standbyMonitorTask?.value
-        standbyMonitorTask = nil
-        standbyHealthMisses = 0
-        standbyHealthySince = nil
-
-        guard mode == .standby else {
-            ownershipRecoveryTask?.cancel()
-            ownershipRecoveryTask = nil
-            return
-        }
-        guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty,
-              !isSelfClusterEndpoint(leaderBaseURL) else {
-            startOwnershipRecoveryIfNeeded()
-            return
-        }
-        ownershipRecoveryTask?.cancel()
-        ownershipRecoveryTask = nil
-
-        meshLogger.debug("Starting standby health monitor for \(leaderBaseURL, privacy: .public)")
-        standbyMonitorTask = Task {
-            // Learn the owner's Ruru requirement now rather than after 15 s.
-            if let health = await self.fetchMeshNodeHealth(leaderBaseURL) { await self.observeLeaderHealth(health) }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(Self.standbyHealthInterval * 1_000_000_000))
-                if Task.isCancelled { break }
-                await monitorLeaderHealth(leaderBaseURL)
-            }
-            meshLogger.debug("Standby health monitor exited")
-        }
-    }
-
-    private func monitorLeaderHealth(_ leaderBaseURL: String) async {
-        guard mode == .standby else { return }
-
-        let nodeHealth = await fetchMeshNodeHealth(leaderBaseURL)
-        if let nodeHealth { observeLeaderHealth(nodeHealth) }
-        var isHealthy = nodeHealth?.mode == ClusterMode.leader.rawValue
-        if nodeHealth == nil { isHealthy = await isWorkerReachable(leaderBaseURL) }
-        // Bug-2 fix: a single failed probe is not enough to count a miss. Network
-        // jitter or a momentarily-busy event loop can drop one request. Retry once
-        // with a short backoff before deciding the leader is unreachable.
-        if !isHealthy, nodeHealth == nil {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if Task.isCancelled { return }
-            guard mode == .standby else { return }
-            isHealthy = await isWorkerReachable(leaderBaseURL)
-        }
-        var unhealthyReason = "Primary health miss"
-        let intentionallyPaused = nodeHealth?.desiredBotRunning == false
-        let gatewayBroken = nodeHealth.map { $0.mode == ClusterMode.leader.rawValue && $0.desiredBotRunning && !$0.gatewayConnected } ?? false
-        let publicGatewayConnected = intentionallyPaused || nodeHealth != nil ? nil : await onConfirmPrimaryPubliclyReachable?()
-        if !intentionallyPaused, isHealthy,
-           (gatewayBroken || publicGatewayConnected == false) {
-            isHealthy = false
-            unhealthyReason = "Primary Discord offline"
-            meshLogger.warning("Primary mesh endpoint is reachable, but /live reports Discord offline")
-        }
-
-        if isHealthy {
-            if standbyHealthMisses > 0 {
-                snapshot.diagnostics = "Primary recovered after \(standbyHealthMisses) misses"
-                // Flag transient recovery so the dashboard shows the node
-                // climbing out of isolation rather than silently resetting.
-                if snapshot.runtimeState == .isolated {
-                    snapshot.runtimeState = .recovering
-                }
-                await publishSnapshot()
-            } else if snapshot.runtimeState == .recovering {
-                // Healthy ticks after a recovery — return to idle.
-                snapshot.runtimeState = .idle
-                await publishSnapshot()
-            }
-            standbyHealthMisses = 0
-            // Phase 4: only the originally-configured primary, currently
-            // demoted to standby, with auto-reclaim enabled, accumulates a
-            // continuous healthy clock. Reclaim once the threshold elapses.
-            // With Ruru, a fresh Preferred Primary picks which Standby this is.
-            if mayReclaimAutomatically() {
-                if standbyHealthySince == nil {
-                    standbyHealthySince = Date()
-                } else if let since = standbyHealthySince,
-                          Date().timeIntervalSince(since) >= autoReclaimAfterSeconds {
-                    meshLogger.notice("Auto-reclaim threshold reached after \(self.autoReclaimAfterSeconds, privacy: .public)s healthy; reclaiming Primary")
-                    standbyHealthySince = nil
-                    _ = await requestCoordinatedHandback(automatic: true)
-                    return
-                }
-            } else {
-                standbyHealthySince = nil
-            }
-            // NOTE: Removed the duplicate `registerWithLeader` safety-net call.
-            // The dedicated `workerRegistrationTask` already registers every 30s.
-            // Calling it here too caused overlapping HTTP requests to the primary,
-            // which contributed to CFNetwork loader-queue races on the standby.
-        } else {
-            // Any miss resets the auto-reclaim clock; reclaim only fires after
-            // a fully-uninterrupted healthy window.
-            standbyHealthySince = nil
-            standbyHealthMisses += 1
-            snapshot.diagnostics = "\(unhealthyReason) \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
-            // Mark as isolated once misses cross half the promotion threshold
-            // — visible warning that we may promote soon, before we actually
-            // commit to a promotion attempt.
-            if standbyHealthMisses >= max(1, Self.standbyPromotionThreshold / 2) {
-                snapshot.runtimeState = .isolated
-            }
-        meshLogger.warning("\(unhealthyReason, privacy: .public) \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")
-            await publishSnapshot()
-
-            if standbyHealthMisses >= Self.standbyPromotionThreshold {
-                if gatewayBroken, nodeHealth?.mode == ClusterMode.leader.rawValue {
-                    _ = await requestCoordinatedHandback()
-                    return
-                }
-                // Bug 1 / Bug 3: confirm leader is genuinely dead AND attempt a final
-                // tail-resync before promoting. If the leader answers the high-timeout
-                // probe, the previous misses were transient — abort and reset.
-                let shouldPromote = await confirmLeaderDeadAndResync(leaderBaseURL)
-                if shouldPromote {
-                    await promoteToLeader()
-                } else {
-                    standbyHealthMisses = 0
-                    snapshot.diagnostics = "Primary reachable on confirmation probe; aborting promotion"
-                    meshLogger.warning("Promotion aborted: leader reachable on confirmation probe (term \(self.leaderTerm, privacy: .public))")
-                    await publishSnapshot()
-                }
-            }
-        }
-    }
-
-    /// Records the owner's Ruru fingerprint, and reports a mismatch while it
-    /// is still reachable rather than only when a takeover is refused.
-    private func observeLeaderHealth(_ health: MeshNodeHealth) {
-        guard mode == .standby, health.mode == ClusterMode.leader.rawValue,
-              health.ownershipWitness != leaderWitnessRequirement else { return }
-        leaderWitnessRequirement = health.ownershipWitness
-        persistRecoveryState()
-        if let reason = witnessMismatchReason() {
-            snapshot.diagnostics = "Takeover unavailable: \(reason)"
-            meshLogger.error("SwiftMesh takeover unavailable: \(reason, privacy: .public)")
-        }
-    }
-
-    /// A saved invitation may predate an ownership-authority change. Read the
-    /// actual Primary's authenticated health before advertising backup readiness.
-    func pairingPrimaryProblem() async -> String? {
-        guard mode == .standby,
-              let base = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
-              let health = await fetchMeshNodeHealth(base), health.mode == ClusterMode.leader.rawValue else {
-            return "The Primary is no longer available. Keep it running and try again."
-        }
-        observeLeaderHealth(health)
-        if let reason = witnessMismatchReason() {
-            return "Generate a new pairing link on the Primary: \(reason)."
-        }
-        return nil
-    }
-
-    /// Called immediately before `promoteToLeader()`. Performs:
-    /// 1. A final, generous-timeout health probe (retried twice) to filter long
-    ///    network blips that beat the per-cycle confirm-retry above. If the
-    ///    leader responds, the standby remains a standby — preventing the
-    ///    split-brain scenario where a still-alive primary loses its role to a
-    ///    falsely-promoted standby.
-    /// 2. A best-effort final resync pull from the cursor, so when this node
-    ///    promotes it has the absolute latest records before flipping output
-    ///    on. Failures here are non-fatal: standby has been merging live syncs
-    ///    while in passive mode and is already substantially up to date.
-    /// Returns `true` if promotion should proceed.
-    private func confirmLeaderDeadAndResync(_ leaderBaseURL: String) async -> Bool {
-        // (1) Final liveness probes with generous timeout. Two attempts.
-        for attempt in 0..<2 {
-            if attempt > 0 {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                if Task.isCancelled { return false }
-            }
-            if let health = await fetchMeshNodeHealth(leaderBaseURL, timeout: 10) {
-                if health.mode == ClusterMode.leader.rawValue { return false }
-            } else if await isWorkerReachable(leaderBaseURL, timeout: 10) {
-                return false
-            }
-        }
-        // (2) Best-effort tail-resync. If this works, the leader is actually alive
-        // and we should abort. If it fails, the leader is dead — proceed to promote.
-        // Page size kept small (50) to keep this fast on a slow link.
-        if let payload = await fetchResyncPage(fromRecordID: nil, pageSize: 50) {
-            // Resync succeeded — leader is alive. Hand the payload to the sync
-            // handler so any tail records get merged before we abort.
-            await onSync?(payload)
-            meshLogger.warning("Final resync succeeded; leader is alive — promotion aborted")
-            return false
-        }
-        // (3) Secondary signal — if the Primary publishes a public URL we can
-        // also probe `/live` over HTTPS (works through NAT, doesn't depend on
-        // the direct mesh socket). If that probe still finds the Primary
-        // online, the mesh failure is more likely a routing issue and we
-        // should NOT promote. Returns nil when no URL is known; in that case
-        // we proceed with mesh-only behavior unchanged.
-        if let publiclyReachable = await onConfirmPrimaryPubliclyReachable?(), publiclyReachable == true {
-            meshLogger.warning("Direct mesh probe failed, but Primary still answers /live publicly — promotion aborted (routing issue suspected)")
-            return false
-        }
-        return true
-    }
     func promoteToLeader(grantedTerm: Int? = nil) async {
         if let task = promotionTask {
             await task.value
@@ -3100,9 +2802,7 @@ actor ClusterCoordinator {
         }
         await onCursorsChanged?(replicationCursors)
 
-        // Stop standby monitoring and registration — no longer a standby.
-        standbyMonitorTask?.cancel()
-        standbyMonitorTask = nil
+        // Stop registration — no longer a standby.
         workerRegistrationTask?.cancel()
         workerRegistrationTask = nil
 
@@ -4936,13 +4636,6 @@ struct RegisteredWorker: Hashable, Sendable {
     var lastSeen: Date
     var outboundJobsVersion: Int = 0
     var advertisedBaseURL: String? = nil
-}
-
-/// A LAN peer discovered via Bonjour (_swiftbot-mesh._tcp).
-struct DiscoveredPeer: Sendable {
-    let nodeName: String
-    var baseURL: String
-    let discoveredAt: Date
 }
 
 private struct WorkerRegistrationRequest: Codable {

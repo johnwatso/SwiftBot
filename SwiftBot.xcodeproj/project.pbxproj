@@ -88,7 +88,6 @@
 		3936CB1D00742E2F70D4DBC0 /* Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD8586A9E98310B7A55771F /* Automations.swift */; };
 		399965F0D7BC3887B987F003 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E77049930E8BAD515BCDF64 /* BotSettings.swift */; };
 		3A08715595B61EEDF8C41B4A /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F26512B0FB6B2F8BBD1B00F7 /* Persistence.swift */; };
-		3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */; };
 		3AA5917F094954284FBE5F72 /* GitHubService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB33AF73B410B2CBCD3B11BF /* GitHubService.swift */; };
 		3B75FC8A87C745BEDB09B767 /* AppSharedTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CB2A94B58F31E09599AA61 /* AppSharedTypes.swift */; };
 		3BEE1CEA79B0EB5CF68B502E /* WebUIPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E98793778F81DB2BF26E8B /* WebUIPreferencesView.swift */; };
@@ -574,7 +573,6 @@
 		9524C5D92677750F6BF2717F /* OpusFrameEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusFrameEncoder.swift; sourceTree = "<group>"; };
 		954E3D68055D456BB032FA95 /* VoicePlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackService.swift; sourceTree = "<group>"; };
 		956971B960C43D817EDDDE82 /* AppleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleService.swift; sourceTree = "<group>"; };
-		966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshDiscoveryTests.swift; sourceTree = "<group>"; };
 		97662EA71A7334D96319F194 /* MacHardwareInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacHardwareInfo.swift; sourceTree = "<group>"; };
 		9E08244F764D8DD025AB8F6A /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
 		9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGatewayConnectionTests.swift; sourceTree = "<group>"; };
@@ -809,7 +807,6 @@
 				40DB0B95FCF95EB97B4019D1 /* LegacySettingsMigrationTests.swift */,
 				B0646686CA089EF890C0FBD0 /* LogExporterTests.swift */,
 				1D3C0B8AE7836B532CA6850D /* MeshConfigMutationTests.swift */,
-				966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */,
 				4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */,
 				E1C61277F888422928536026 /* MeshFailoverTests.swift */,
 				AC330CC733BFDCC4F4194D89 /* MeshJobReliabilityTests.swift */,
@@ -1580,7 +1577,6 @@
 				F9B9A7B7391A7E9CBE5D6A15 /* LegacySettingsMigrationTests.swift in Sources */,
 				4EF788CC92E5E105279A48F4 /* LogExporterTests.swift in Sources */,
 				A3D21AC06D681B38BFB30556 /* MeshConfigMutationTests.swift in Sources */,
-				3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */,
 				EC945C92A428A86DAF62173F /* MeshFailoverIntegrationTests.swift in Sources */,
 				0684186AD516210645A6083C /* MeshFailoverTests.swift in Sources */,
 				497B4A7795500E28BD69DEC2 /* MeshJobReliabilityTests.swift in Sources */,

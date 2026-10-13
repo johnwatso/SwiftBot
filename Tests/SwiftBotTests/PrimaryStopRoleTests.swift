@@ -49,7 +49,6 @@ final class PrimaryStopRoleTests: XCTestCase {
         XCTAssertTrue(model.isFailoverManagedNode)
         await model.stopBot()
     }
-}
 
 
     /// The WebUI shows Ruru's host and state only; never its secrets.

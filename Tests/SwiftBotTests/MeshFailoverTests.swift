@@ -44,65 +44,6 @@ final class MeshFailoverTests: XCTestCase {
         XCTAssertEqual(term, 10)
     }
 
-    func testTermPersistedOnPromotion() async {
-        actor TermBox {
-            var value = 0
-            func set(_ v: Int) { value = v }
-        }
-        let persistedTerm = TermBox()
-        let coordinator = ClusterCoordinator()
-        await coordinator.applySettings(
-            mode: .standby,
-            nodeName: "StandbyNode",
-            leaderAddress: "http://127.0.0.1:39104",
-            listenPort: 39105,
-            sharedSecret: "",
-            leaderTerm: 2
-        )
-        await coordinator.setTermChangedHandler { newTerm in
-            await persistedTerm.set(newTerm)
-        }
-
-        for _ in 0..<3 {
-            await coordinator.testSimulateLeaderHealthMiss()
-        }
-
-        let mode = await coordinator.testCurrentMode()
-        let term = await coordinator.testCurrentLeaderTerm()
-        let persisted = await persistedTerm.value
-        XCTAssertEqual(mode, .leader)
-        XCTAssertEqual(term, 3)        // 2 + 1
-        XCTAssertEqual(persisted, 3)   // callback fired with new term
-    }
-
-    // MARK: - Forced Failover Drill
-
-    func testStandbyPromotesAfterThreeMisses() async {
-        let standby = ClusterCoordinator()
-        await standby.applySettings(
-            mode: .standby,
-            nodeName: "StandbyDrill",
-            leaderAddress: "http://127.0.0.1:39106",
-            listenPort: 39107,
-            sharedSecret: "drill-secret",
-            leaderTerm: 0
-        )
-
-        let initialMode = await standby.testCurrentMode()
-        XCTAssertEqual(initialMode, .standby)
-
-        await standby.testSimulateLeaderHealthMiss()
-        await standby.testSimulateLeaderHealthMiss()
-        let modeBeforeThreshold = await standby.testCurrentMode()
-        XCTAssertEqual(modeBeforeThreshold, .standby, "Should not promote before 3 misses")
-
-        await standby.testSimulateLeaderHealthMiss()
-        let promotedMode = await standby.testCurrentMode()
-        let promotedTerm = await standby.testCurrentLeaderTerm()
-        XCTAssertEqual(promotedMode, .leader)
-        XCTAssertEqual(promotedTerm, 1)
-    }
-
     func testWorkerAcceptsNewerTermLeaderChanged() async {
         let worker = ClusterCoordinator()
         await worker.applySettings(
@@ -172,59 +113,6 @@ final class MeshFailoverTests: XCTestCase {
         XCTAssertEqual(statusCode(from: response), 409, "Stale term must be rejected")
         XCTAssertEqual(addressAfter, "http://127.0.0.1:39111", "Leader address must not change")
         XCTAssertEqual(termAfter, 5, "Term must not regress")
-    }
-
-    /// Full drill: standby promotes → broadcasts leader-changed → worker accepts and re-registers.
-    func testFullFailoverDrillSequence() async {
-        // Step 1: standby at term 0 reaches promotion threshold.
-        let standby = ClusterCoordinator()
-        await standby.applySettings(
-            mode: .standby,
-            nodeName: "FullDrillStandby",
-            leaderAddress: "http://127.0.0.1:39114",
-            listenPort: 39115,
-            sharedSecret: "drill-secret",
-            leaderTerm: 0
-        )
-        for _ in 0..<3 { await standby.testSimulateLeaderHealthMiss() }
-
-        let standbyMode = await standby.testCurrentMode()
-        let promotedTerm = await standby.testCurrentLeaderTerm()
-        XCTAssertEqual(standbyMode, .leader, "Standby must promote")
-        XCTAssertEqual(promotedTerm, 1)
-
-        // Step 2: worker at term 0 receives leader-changed from promoted standby.
-        let worker = ClusterCoordinator()
-        await worker.applySettings(
-            mode: .worker,
-            nodeName: "FullDrillWorker",
-            leaderAddress: "http://127.0.0.1:39114",  // old (dead) leader
-            listenPort: 39116,
-            sharedSecret: "drill-secret",
-            leaderTerm: 0
-        )
-
-        let newLeaderAddress = "http://127.0.0.1:39115"
-        let changedPayload = MeshLeaderChangedPayload(
-            term: promotedTerm,
-            leaderAddress: newLeaderAddress,
-            leaderNodeName: "FullDrillStandby",
-            sharedSecret: "drill-secret"
-        )
-        let body = (try? JSONEncoder().encode(changedPayload)) ?? Data()
-        let signedHeaders = await worker.testMakeHMACHeaders(path: "/v1/mesh/leader-changed", body: body)
-        let request = makeRequest(
-            method: "POST", path: "/v1/mesh/leader-changed",
-            headers: signedHeaders, body: body
-        )
-        let response = await worker.testProcessHTTPRequest(request)
-
-        // Step 3: verify worker accepted and redirected.
-        let finalAddress = await worker.testCurrentLeaderAddress()
-        let finalTerm = await worker.testCurrentLeaderTerm()
-        XCTAssertEqual(statusCode(from: response), 200, "Worker must accept valid promotion")
-        XCTAssertEqual(finalAddress, newLeaderAddress, "Worker must point to new leader")
-        XCTAssertEqual(finalTerm, promotedTerm, "Worker term must match promoted term")
     }
 
     // MARK: - Startup Reconciliation

@@ -27,18 +27,6 @@ extension ClusterCoordinator {
         contentLength > ClusterCoordinator.maxHTTPRequestSize
     }
 
-    /// Simulates a single leader health miss without making a network call.
-    /// Increments the miss counter and triggers promotion if threshold is reached.
-    func testSimulateLeaderHealthMiss() async {
-        standbyHealthMisses += 1
-        snapshot.workerStatusText = "Primary unreachable (\(standbyHealthMisses)/\(ClusterCoordinator.standbyPromotionThreshold))"
-        snapshot.diagnostics = "Simulated health miss \(standbyHealthMisses)"
-        await publishSnapshot()
-        if standbyHealthMisses >= ClusterCoordinator.standbyPromotionThreshold {
-            await promoteToLeader()
-        }
-    }
-
     func testCurrentMode() -> ClusterMode { mode }
     func testCurrentSnapshot() -> ClusterSnapshot { snapshot }
     func testCurrentLeaderTerm() -> Int { leaderTerm }
@@ -70,24 +58,4 @@ extension ClusterCoordinator {
         )
     }
 
-    /// Injects a list of DiscoveredPeer values into the discovery table, applying the same
-    /// deterministic collision rule as handleDiscoveryResults (lexicographically smallest baseURL
-    /// wins when two entries share the same nodeName).
-    func testInjectDiscoveredPeers(_ peers: [DiscoveredPeer]) {
-        var result: [String: DiscoveredPeer] = [:]
-        for peer in peers {
-            if let existing = result[peer.nodeName] {
-                if peer.baseURL < existing.baseURL {
-                    result[peer.nodeName] = DiscoveredPeer(
-                        nodeName: peer.nodeName,
-                        baseURL: peer.baseURL,
-                        discoveredAt: existing.discoveredAt
-                    )
-                }
-            } else {
-                result[peer.nodeName] = peer
-            }
-        }
-        discoveredPeers = result
-    }
 }

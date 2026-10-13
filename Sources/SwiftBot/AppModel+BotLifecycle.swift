@@ -139,9 +139,7 @@ extension AppModel {
         // gateway-connect delay at promotion, in exchange for never having
         // two SwiftBot instances fight over the same token's IDENTIFY slot.
         //
-        // A final tail-resync pull from the prior leader was already attempted
-        // inside ClusterCoordinator.confirmLeaderDeadAndResync() before
-        // promotion was committed, so by the time we get here our local
+        // By the time we get here, Ruru has granted ownership and our local
         // state contains everything we could pull from the prior leader.
         guard !Task.isCancelled, !meshOwnershipExpired, await cluster.hasActiveOwnership() else { return }
         await service.setOutputAllowed(true)

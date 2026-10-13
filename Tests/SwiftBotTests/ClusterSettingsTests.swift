@@ -129,36 +129,6 @@ final class ClusterSettingsTests: XCTestCase {
         XCTAssertEqual(scrubbed.sharedSecret, "")
     }
 
-    // MARK: - Snapshot and Promotion Terminology
-
-    func testClusterSnapshotPromotionTerminology() async {
-        let coordinator = ClusterCoordinator()
-        
-        // Setup as Fail Over (standby)
-        await coordinator.applySettings(
-            mode: .standby,
-            nodeName: "TestFailOver",
-            leaderAddress: "http://127.0.0.1:39999",
-            listenPort: 38888,
-            sharedSecret: "test-secret",
-            leaderTerm: 0
-        )
-        
-        // Simulate promotion
-        for _ in 0..<3 {
-            await coordinator.testSimulateLeaderHealthMiss()
-        }
-        
-        let snapshot = await coordinator.testCurrentSnapshot()
-        
-        // Refinement from Codex: Verify promoted status copy contains "Primary"
-        XCTAssertTrue(snapshot.workerStatusText.contains("Primary"), "Status should contain 'Primary', got: \(snapshot.workerStatusText)")
-        
-        let mode = await coordinator.testCurrentMode()
-        XCTAssertEqual(mode, .leader)
-        XCTAssertEqual(mode.displayName, "Primary")
-    }
-
     // MARK: - Worker Mode Disable (UX Hotfix)
 
     @MainActor

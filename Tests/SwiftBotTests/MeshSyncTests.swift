@@ -229,43 +229,6 @@ final class MeshSyncTests: XCTestCase {
                        "Paginated resync must deliver all records in order")
     }
 
-    // MARK: - Test 5: Cursor resets on promotion to leader
-
-    func testCursorResetOnPromotion() async {
-        let standby = ClusterCoordinator()
-        await standby.applySettings(
-            mode: .standby,
-            nodeName: "StandbyReset",
-            leaderAddress: "http://127.0.0.1:39204",
-            listenPort: 39205,
-            sharedSecret: "s",
-            leaderTerm: 1
-        )
-        // Pre-load a cursor so we can verify its term gets advanced.
-        await standby.applyRestoredCursors([
-            "Worker-1": ReplicationCursor(leaderTerm: 1, lastSentRecordID: "old-rec", updatedAt: Date())
-        ])
-
-        let cursorExpectation = expectation(description: "Cursors changed handler called")
-        await standby.setCursorsChangedHandler { cursors in
-            if let c = cursors["Worker-1"], c.leaderTerm == 2 {
-                cursorExpectation.fulfill()
-            }
-        }
-
-        // Trigger promotion.
-        for _ in 0..<3 { await standby.testSimulateLeaderHealthMiss() }
-
-        let mode = await standby.testCurrentMode()
-        XCTAssertEqual(mode, .leader, "Standby must promote")
-
-        let cursors = await standby.testReplicationCursors()
-        XCTAssertEqual(cursors.count, 1, "Cursor should be preserved, not wiped")
-        XCTAssertEqual(cursors["Worker-1"]?.leaderTerm, 2, "Cursor must be advanced to the new leader term")
-
-        await fulfillment(of: [cursorExpectation], timeout: 2.0)
-    }
-
     func testReplicationCursorDoesNotMoveBackwardWithinSameTerm() async {
         let leader = await makeLeader(port: 39206)
 
