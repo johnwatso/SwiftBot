@@ -2,6 +2,12 @@ import XCTest
 @testable import SwiftBot
 
 final class ClusterSettingsTests: XCTestCase {
+    func testProtectionStatePreservesStandaloneAndLegacyCompatibility() {
+        XCTAssertEqual(SwiftMeshProtectionState.resolve(mode: .standalone, hasRuru: false), .standalone)
+        XCTAssertEqual(SwiftMeshProtectionState.resolve(mode: .leader, hasRuru: false), .legacyPeer)
+        XCTAssertEqual(SwiftMeshProtectionState.resolve(mode: .standby, hasRuru: true), .ruruGuarded)
+    }
+
 
     // MARK: - Terminology and Label Mapping
 

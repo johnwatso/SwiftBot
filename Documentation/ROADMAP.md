@@ -9,6 +9,17 @@
 
 ## Recent Engineering Log
 
+### 2026-10-13 — Phase 0: Ruru-guarded SwiftMesh policy
+
+- [x] Defined the derived deployment states: standalone, `ruruGuarded`, and
+  `legacyPeer`. The state is not persisted, so existing peer-only pairs retain
+  their current configuration until they are deliberately migrated.
+- [x] Documented that Ruru is required for new SwiftMesh setup and that the
+  legacy path lacks partition-safe exclusive ownership. New Ruru SwiftBot
+  services use a five-minute template lease; existing services are unchanged.
+- Validation: focused model coverage added. No lease, failover, transport, UI,
+  or pairing behaviour changed in this baseline phase.
+
 ### 2026-10-12 — Graceful system session-end handoff to Ruru
 
 - [x] `_working-tree_`: SwiftBot observes macOS's workspace notification for

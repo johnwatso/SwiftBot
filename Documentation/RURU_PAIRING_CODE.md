@@ -65,10 +65,12 @@ The backup's listener port, WebUI, tunnels and companion configuration remain
 local. Its own public website and recording sharing can be configured separately;
 recording website approval is still an independent Ruru operator decision.
 
-Invitations without Ruru retain peer coordination compatibility and clear a
-previous service's Ruru connection. A new Primary reporting Ruru refuses readiness
-for such an invitation: generate a fresh link after configuring Ruru. Use matching
+Existing invitations without Ruru retain **legacy peer** compatibility and clear a
+previous service's Ruru connection. New SwiftMesh setup requires Ruru; generate
+a fresh link after configuring it. Legacy pairs remain operable for deliberate
+migration but do not have partition-safe exclusive ownership. Use matching
 SwiftBot builds for this flow.
 
-Lease grants of 3–300 seconds are accepted, matching Ruru's per-service lease
-lengths (10–300 seconds).
+Lease grants of 10–300 seconds are accepted, matching Ruru's per-service lease
+lengths. New SwiftBot services use 300 seconds; existing services retain their
+configured duration.

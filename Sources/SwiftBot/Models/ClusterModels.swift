@@ -427,6 +427,22 @@ struct MeshCredentialGrant: Codable, Hashable, Sendable {
 
 // MARK: - Cluster Mode
 
+/// The ownership-protection contract for a SwiftMesh deployment.
+///
+/// This is intentionally derived rather than persisted: older peer-only
+/// deployments keep their current behaviour, while new setup can require a
+/// Ruru authority without rewriting historic mesh settings.
+enum SwiftMeshProtectionState: String, Equatable, Sendable {
+    case standalone
+    case ruruGuarded
+    case legacyPeer
+
+    static func resolve(mode: ClusterMode, hasRuru: Bool) -> Self {
+        guard mode != .standalone else { return .standalone }
+        return hasRuru ? .ruruGuarded : .legacyPeer
+    }
+}
+
 /// Transient runtime state, orthogonal to the configured `ClusterMode`.
 /// Surfaces in-flight transitions so the dashboard can show "Promoting…",
 /// "Demoting…", "Isolated", or "Recovering" instead of a stale role label

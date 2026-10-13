@@ -4,7 +4,7 @@ SwiftMesh keeps one active Discord bot, a preferred Primary Mac, and a paired Fa
 
 ## Pairing and addresses
 
-For an automatically configured backup, connect the Primary to Ruru first. On
+For every **new** SwiftMesh deployment, connect the Primary to Ruru first. On
 the backup Mac, open the Primary's WebUI and choose **SwiftMesh → Pair SwiftBot**,
 then **Continue in SwiftBot → Set Up Backup**. This installs the same Ruru service,
 credential enrollment and Primary connection and verifies the first bot sync
@@ -46,7 +46,7 @@ Failed catchup aborts the transfer and resumes the current owner. An unconfirmed
 
 ## Independent ownership witness
 
-Peer coordination alone cannot distinguish a dead Mac from a partition between two live Macs. For exclusive takeover during partitions, configure the optional witness under the native console's SwiftMesh **Ruru** section. Use one independent authority reachable by both Macs; do not run it solely on either bot Mac.
+Peer coordination alone cannot distinguish a dead Mac from a partition between two live Macs. Ruru is therefore required for every **new** SwiftMesh deployment. Existing peer-only pairs remain supported as **legacy peer** deployments so they can be migrated deliberately; they do not have partition-safe ownership protection. Use one independent authority reachable by both Macs; do not run it solely on either bot Mac.
 
 The preferred authority is **Ruru** (formerly SwiftMesh Witness), a separate native macOS Xcode app in its own repository (`johnwatso/ruru`, locally `~/Documents/GitHub/ruru`). It targets macOS 15 (Sequoia), with Intel and Apple silicon Release binaries. It provides a menu bar service, ownership history, Keychain credentials, and per-service connection details without running a bot or companion apps. Closing its window keeps the service running. It requires a logged-in user session and a Mac that stays awake. Its storage still lives under `~/Library/Application Support/SwiftMeshWitness/`.
 
@@ -76,7 +76,7 @@ existing bot builds can be given a local nickname through Bot Details. Ownership
 continues to use the stable node ID and term. Changing a name preserves the
 client's current lease and deadline and never determines Primary preference.
 
-The witness grants one owner per cluster, uses monotonically increasing terms, and refuses expired renewals. Live expiry uses a monotonic clock. After a witness restart with outstanding leases, it waits a full 30-second lease before new acquisitions; a wall-clock change or reboot cannot prematurely release the previous owner's lease. The owner renews every five seconds. SwiftBot's Discord output gate and WebUI write gate check a local monotonic lease deadline even if the renewal task stalls. Loss of the witness stops bot output instead of permitting both Macs to operate. This trades availability for exclusive ownership when the authority is unavailable.
+The witness grants one owner per cluster, uses monotonically increasing terms, and refuses expired renewals. Live expiry uses a monotonic clock. New SwiftBot services use a five-minute lease; after a witness restart with outstanding leases, Ruru waits out the recorded grant before new acquisitions. A wall-clock change or reboot cannot prematurely release the previous owner's lease. The owner renews every five seconds. SwiftBot's Discord output gate and WebUI write gate check a local monotonic lease deadline even if the renewal task stalls. Loss of the witness stops bot output instead of permitting both Macs to operate. This trades availability for exclusive ownership when the authority is unavailable.
 
 A renewal Ruru doesn't answer (a timeout, a network drop, or its restart quarantine) is retried every two seconds while the local deadline holds. The owner demotes, closing its Discord gateway, only when Ruru refuses the renewal or that deadline passes. A configured Primary, or Ruru's Preferred Primary, with no other Primary to watch keeps trying to acquire a lease every five seconds. That is how it recovers after losing its lease, after starting while Ruru was unreachable, or after Ruru restarts. Ruru arbitrates these attempts, so they never take ownership from another Mac. A Ruru restart, including installing a Ruru update, therefore pauses the bot for about 30–40 seconds rather than forcing a failover.
 
