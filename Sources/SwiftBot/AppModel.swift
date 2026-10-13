@@ -145,15 +145,6 @@ final class AppModel: ObservableObject {
     @Published var workerConnectionTestInProgress = false
     @Published var workerConnectionTestOutcome: WorkerConnectionTestOutcome?
     @Published var lastClusterStatusRefreshAt: Date?
-    /// Set when a `swiftmesh://join?b=...` deep link arrives **after** the user
-    /// has finished onboarding. Drives the confirmation sheet shown by
-    /// `RootView` — never auto-apply, since a malicious link could otherwise
-    /// silently repoint this node.
-    @Published var pendingSwiftMeshJoin: PendingSwiftMeshJoin?
-    /// Set when a join deep link arrives **during** onboarding. Drives the
-    /// onboarding root to switch to the SwiftMesh setup step and auto-apply
-    /// the code so the user lands directly in the join flow.
-    @Published var pendingMeshOnboardingCode: String?
     /// Primary's publicly-reachable URL, as advertised in the most recent
     /// `MeshLiveSnapshot`. Used by the Standby's `/live` second-signal probe
     /// to confirm a real outage before promoting. Empty when the Primary has
@@ -295,7 +286,6 @@ final class AppModel: ObservableObject {
     let cluster: ClusterCoordinator
     let meshCredentialStore = MeshCredentialEnrollmentStore()
     let meshWitnessClient = MeshWitnessClient()
-    var meshPairingInProgress = false
     let recordingDirectory: RecordingDirectoryClient
     var recordingWitnessConfiguration = MeshWitnessConfiguration()
     var recordingCoordinationTask: Task<Void, Never>?
@@ -1009,9 +999,6 @@ final class AppModel: ObservableObject {
     }
 
     func saveSettings() {
-        // Pairing owns ordered persistence and its onboarding result. A term
-        // update must not launch a competing save/runtime reload mid-setup.
-        guard !meshPairingInProgress else { return }
         let now = Date()
         let throttleInterval: TimeInterval = 3
         if now.timeIntervalSince(lastSettingsSaveAt) < throttleInterval {

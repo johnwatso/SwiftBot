@@ -1619,7 +1619,7 @@ actor ClusterCoordinator {
             promotionBlockReason = nil
             configuredMode = mode
             configuredLeaderAddress = normalizedConfiguredAddress
-            self.mode = await startupReconciledMode(requestedMode: mode)
+            self.mode = mode
             if self.mode == .leader {
                 if await acquireOwnership(minimumTerm: self.leaderTerm) {
                     startOwnershipRenewal()
@@ -1654,7 +1654,6 @@ actor ClusterCoordinator {
         await restartServerIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         restartOutboundPolling()
-        await restartStandbyMonitorIfNeeded()
         await reconcileFollowerStatePoll()
         await refreshWorkerHealth()
         await publishSnapshot()
@@ -1727,7 +1726,6 @@ actor ClusterCoordinator {
         ownershipGranted = false
         if mode == .leader { await onDemotion?() }
         if releaseOwnership { await ownershipRelease?(leaderTerm) }
-        stopMeshDiscovery()
         handoverTestTask?.cancel()
         _ = await handoverTestTask?.value
         handoverTestTask = nil
@@ -1736,9 +1734,6 @@ actor ClusterCoordinator {
         workerRegistrationTask?.cancel()
         _ = await workerRegistrationTask?.value
         workerRegistrationTask = nil
-        standbyMonitorTask?.cancel()
-        _ = await standbyMonitorTask?.value
-        standbyMonitorTask = nil
         followerStatePollTask?.cancel()
         _ = await followerStatePollTask?.value
         followerStatePollTask = nil
@@ -2157,7 +2152,6 @@ actor ClusterCoordinator {
             return
         }
 
-        stopMeshDiscovery()
         listener?.cancel()
         listener = nil
 
@@ -2172,13 +2166,6 @@ actor ClusterCoordinator {
             snapshot.serverStatusText = "Starting on :\(listenPort)"
             snapshot.diagnostics = "Starting worker server on port \(listenPort)"
             let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(integerLiteral: NWEndpoint.Port.IntegerLiteralType(listenPort)))
-            // P1b: advertise this node over Bonjour so LAN peers can discover it.
-            let txtRecord = NWTXTRecord([
-                "node": nodeName,
-                "port": "\(listenPort)",
-                "host": ProcessInfo.processInfo.hostName
-            ])
-            listener.service = NWListener.Service(name: nodeName, type: "_swiftbot-mesh._tcp", txtRecord: txtRecord)
             listener.newConnectionHandler = { [weak self] connection in
                 Task { await self?.handleConnection(connection) }
             }
@@ -2192,9 +2179,6 @@ actor ClusterCoordinator {
             snapshot.serverStatusText = "Server failed: \(error.localizedDescription)"
             snapshot.diagnostics = "Failed to bind port \(listenPort): \(error.localizedDescription)"
         }
-
-        // P1b: start browsing for other LAN nodes regardless of role.
-        startMeshDiscovery()
     }
 
     private func handleListenerState(_ state: NWListener.State) async {
@@ -3300,7 +3284,6 @@ actor ClusterCoordinator {
         snapshot.diagnostics = "Demoted to Standby (peer term \(observedTerm))"
         await publishSnapshot()
         await onTermChanged?(leaderTerm)
-        await restartStandbyMonitorIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         await restartServerIfNeeded()
         // No longer primary — stop polling follower state and clear the published map.
@@ -4333,10 +4316,6 @@ actor ClusterCoordinator {
         if mode == .worker || mode == .standby {
             await restartWorkerRegistrationIfNeeded()
         }
-        if mode == .standby {
-            await restartStandbyMonitorIfNeeded()
-        }
-
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
     }
 

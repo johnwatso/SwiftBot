@@ -2,16 +2,6 @@ import Foundation
 
 /// The WebUI's SwiftMesh page: the same state and actions as `SwiftMeshView`.
 extension AppModel {
-    func adminWebSwiftMeshJoinCode() async -> String? {
-        guard settings.clusterMode == .leader,
-              await cluster.currentSnapshot().mode == .leader else { return nil }
-        let code = await generateSwiftMeshJoinCode()
-        // Address discovery suspends; ownership may have changed meanwhile.
-        guard settings.clusterMode == .leader,
-              await cluster.currentSnapshot().mode == .leader else { return nil }
-        return code
-    }
-
     func adminWebSwiftMeshSnapshot() async -> AdminWebSwiftMeshPayload {
         // The native view polls while it's open; the web page polls this
         // endpoint instead, so refresh here too.

@@ -5,7 +5,6 @@ import AppKit
 
 struct StandaloneSetupView: View {
     @EnvironmentObject var app: AppModel
-    let onBack: () -> Void
 
     @State private var step: StandaloneStep = .entry
     @State private var inviteURL: String?
@@ -126,26 +125,15 @@ struct StandaloneSetupView: View {
                 .buttonStyle(GlassActionButtonStyle())
                 .controlSize(.large)
                 
-                HStack(spacing: 16) {
-                    Button(action: onBack) {
-                        Label("Back", systemImage: "chevron.left")
+                Button {
+                    if let url = URL(string: "https://discord.com/developers/applications") {
+                        NSWorkspace.shared.open(url)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    
-                    Text("•")
-                        .foregroundStyle(.tertiary)
-                    
-                    Button {
-                        if let url = URL(string: "https://discord.com/developers/applications") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    } label: {
-                        Label("Developer Portal", systemImage: "arrow.up.right.square")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                } label: {
+                    Label("Developer Portal", systemImage: "arrow.up.right.square")
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .font(.callout)
                 .padding(.top, 4)
             }
@@ -737,7 +725,7 @@ private struct OnboardingInternetAccessProgress {
 // MARK: - Preview
 
 #Preview {
-    StandaloneSetupView(onBack: {})
+    StandaloneSetupView()
         .environmentObject(AppModel())
         .padding()
         .frame(width: 600, height: 400)

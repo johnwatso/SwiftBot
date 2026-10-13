@@ -2496,10 +2496,6 @@ extension AppModel {
                 guard let model = self else { return "unavailable" }
                 return await model.runAdminWebSwiftMeshAction(action)
             },
-            swiftMeshJoinCodeProvider: { [weak self] in
-                guard let model = self else { return nil }
-                return await model.adminWebSwiftMeshJoinCode()
-            },
             swiftMinerWebhookHandler: { [weak self] headers, body in
                 guard let model = self else {
                     return ("503 Service Unavailable", Data("{\"error\":\"app_unavailable\"}".utf8))

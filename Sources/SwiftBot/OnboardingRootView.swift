@@ -1,43 +1,10 @@
 import SwiftUI
 
-// MARK: - Setup Mode
-
-enum SetupMode: String, CaseIterable, Identifiable {
-    case standalone
-    case mesh
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .standalone: return "Set Up Standalone Bot"
-        case .mesh: return "Set Up Backup"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .standalone: return "Run SwiftBot locally on this Mac."
-        case .mesh: return "Pair with your Primary’s Web Interface."
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .standalone: return "server.rack"
-        case .mesh: return "point.3.connected.trianglepath.dotted"
-        }
-    }
-}
-
 // MARK: - Onboarding Root View
 
 struct OnboardingRootView: View {
     @EnvironmentObject var app: AppModel
     @Environment(\.colorScheme) private var colorScheme
-
-    @State private var mode: SetupMode?
-    @State private var movesForward: Bool = true
 
     var body: some View {
         ZStack {
@@ -59,51 +26,13 @@ struct OnboardingRootView: View {
             }
         }
         .ignoresSafeArea()
-        .onAppear {
-            // A swiftmesh:// deep link may have arrived before this view
-            // appeared; jump straight to the mesh step in that case.
-            if app.pendingMeshOnboardingCode != nil, mode != .mesh {
-                navigateTo(.mesh)
-            }
-        }
-        .onChange(of: app.pendingMeshOnboardingCode) { _, newValue in
-            if newValue != nil, mode != .mesh {
-                navigateTo(.mesh)
-            }
-        }
     }
 
     private var onboardingCard: some View {
         VStack(spacing: 20) {
             cardHeader
 
-            ZStack {
-                switch mode {
-                case .standalone:
-                    StandaloneSetupView(onBack: { navigateTo(nil) })
-                        .id("standalone")
-                case .mesh:
-                    SwiftMeshSetupView(onBack: { navigateTo(nil) })
-                        .id("mesh")
-                case nil:
-                    ModeSelectionView(mode: Binding(
-                        get: { mode },
-                        set: { newMode in
-                            if let newMode {
-                                navigateTo(newMode)
-                            }
-                        }
-                    ))
-                    .id("modeSelection")
-                }
-            }
-            .transition(
-                .asymmetric(
-                    insertion: .move(edge: movesForward ? .trailing : .leading).combined(with: .opacity),
-                    removal: .move(edge: movesForward ? .leading : .trailing).combined(with: .opacity)
-                )
-            )
-            .animation(.smooth(duration: 0.26), value: mode)
+            StandaloneSetupView()
         }
         .padding(.horizontal, 22)
         .padding(.top, 24)
@@ -148,7 +77,7 @@ struct OnboardingRootView: View {
                 .accessibilityAddTraits(.isHeader)
                 .multilineTextAlignment(.center)
 
-            Text(stepSubtitle)
+            Text("Enter your Discord bot token to get started.")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -178,26 +107,6 @@ struct OnboardingRootView: View {
         RoundedRectangle(cornerRadius: 28, style: .continuous)
             .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.18 : 0.32), lineWidth: 1)
             .allowsHitTesting(false)
-    }
-
-    // MARK: - Navigation
-
-    private func navigateTo(_ newMode: SetupMode?) {
-        movesForward = newMode != nil
-        mode = newMode
-    }
-
-    // MARK: - Subtitle
-
-    private var stepSubtitle: String {
-        switch mode {
-        case nil:
-            return "How would you like to set up SwiftBot?"
-        case .standalone:
-            return "Enter your Discord bot token to get started."
-        case .mesh:
-            return "Configure this Mac automatically from your Primary."
-        }
     }
 }
 

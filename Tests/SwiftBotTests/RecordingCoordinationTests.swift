@@ -130,18 +130,11 @@ final class RecordingCoordinationTests: XCTestCase {
     }
 
     @MainActor
-    func testPairingSharesOnlyThisMacWebsiteUsingTheNewEnrollmentAndPersistsItsChoice() async throws {
+    func testSharingAnnouncesOnlyThisMacWebsiteThroughRuru() async throws {
         XCTAssertTrue(KeychainHelper.isRunningUnderXCTest)
         let realAccesses = KeychainHelper.realKeychainAccessCount.load(ordering: .relaxed)
         let previousWitness = MeshWitnessSettingsStore.load()
-        let previousEnrollment = KeychainHelper.load(account: "swiftmesh-credential-enrollment")
-        let issuerAccount = "recording-pairing-test-\(UUID())"
-        defer {
-            MeshWitnessSettingsStore.save(previousWitness)
-            if let previousEnrollment { _ = KeychainHelper.save(previousEnrollment, account: "swiftmesh-credential-enrollment") }
-            else { _ = KeychainHelper.delete(account: "swiftmesh-credential-enrollment") }
-            _ = KeychainHelper.delete(account: issuerAccount)
-        }
+        defer { MeshWitnessSettingsStore.save(previousWitness) }
         let fixture = RecordingWireFixture()
         await fixture.setEnrollmentPolicy(enabled: false, origins: [], status: "pending")
         RecordingWireProtocol.state.set(fixture)
@@ -151,35 +144,26 @@ final class RecordingCoordinationTests: XCTestCase {
         app.settings.adminWebUI.enabled = true
         app.settings.adminWebUI.internetAccessEnabled = false
         app.settings.adminWebUI.publicBaseURL = "https://max.example"
-        let enrollment = try await MeshCredentialEnrollmentStore(account: issuerAccount).issueGrant(nodeName: "Backup")
-        let bundle = SwiftMeshJoinBundle(leaderAddresses: ["127.0.0.1"], leaderPort: 39195, sharedSecret: "test-only-pairing-secret",
-                                        credentialEnrollment: enrollment, witness: Self.witness)
-        let code = "swiftmesh://join?b=" + (try JSONEncoder().encode(bundle)).base64EncodedString()
-        let result = await app.applySwiftMeshJoinCode(code, shareRecordings: true)
-        XCTAssertTrue(result.ok)
-        XCTAssertEqual(app.meshLocalNodeID, enrollment.nodeID)
-        XCTAssertEqual(app.settings.clusterMode, .standby)
-        XCTAssertEqual(app.settings.adminWebUI.publicBaseURL, "https://max.example")
+        app.settings.clusterSharedSecret = "test-only-transport-secret"
+        app.meshLocalNodeID = "backup-node"
+        app.recordingWitnessConfiguration = Self.witness
+
+        let sharingEnabled = await app.setRecordingSharingEnabled(true)
+        XCTAssertTrue(sharingEnabled)
         XCTAssertTrue(app.mediaLibrarySettings.sharedLibraryEnabled)
         let snapshot = await directory.refresh(force: true)
         XCTAssertTrue(snapshot.message.contains("approve https://max.example"))
         let requests = await fixture.requests
         let proposal = try XCTUnwrap(requests.first { $0.path.hasSuffix("enrollment") })
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: proposal.body) as? [String: Any])
-        XCTAssertEqual(json["nodeID"] as? String, enrollment.nodeID)
+        XCTAssertEqual(json["nodeID"] as? String, "backup-node")
         XCTAssertEqual(json["origin"] as? String, "https://max.example")
         XCTAssertTrue(requests.allSatisfy { $0.path.hasPrefix("/v1/coordination/") })
         let persisted = await app.mediaLibraryConfigStore.load()
         XCTAssertTrue(persisted.sharedLibraryEnabled)
-        for _ in 0..<100 {
-            if await app.cluster.currentSnapshot().mode == .standby { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        let role = await app.cluster.currentSnapshot().mode
-        XCTAssertEqual(role, .standby)
-        await app.cluster.stopAll()
         XCTAssertEqual(KeychainHelper.realKeychainAccessCount.load(ordering: .relaxed), realAccesses)
     }
+
 
     func testRuruAndMediaRedirectsDoNotSendCredentialsToAnotherOrigin() async throws {
         let sink = try RecordingRedirectServer()

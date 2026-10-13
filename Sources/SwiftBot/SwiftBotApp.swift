@@ -228,13 +228,6 @@ struct SwiftBotApp: App {
             default:
                 break
             }
-        case "swiftmesh":
-            // Stash the request; RootView shows a confirmation sheet. Never
-            // auto-apply — a malicious link could otherwise repoint the node.
-            Task { @MainActor in
-                _ = appModel.handleSwiftMeshDeepLink(url)
-                presentMainWindow()
-            }
         default:
             break
         }

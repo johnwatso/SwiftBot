@@ -8,20 +8,7 @@ struct RootView: View {
     @State private var selection: SidebarItem = .overview
 
     var body: some View {
-        #if DEBUG
-        if ScreenshotDemo.isRecordingPairing {
-            // Render the actual dialog in its own preview window. This avoids
-            // screenshot tools scaling the parent window into a sheet capture.
-            SwiftMeshJoinConfirmationSheet(pending: app.pendingSwiftMeshJoin ?? .init(
-                rawCode: ScreenshotDemo.recordingPairingLink, bundle: ScreenshotDemo.recordingPairingBundle
-            ))
-            .background(Color(nsColor: .windowBackgroundColor))
-        } else {
-            productionRoot
-        }
-        #else
         productionRoot
-        #endif
     }
 
     private var productionRoot: some View {
@@ -32,10 +19,6 @@ struct RootView: View {
                 guard let item else { return }
                 selection = item
                 app.requestedSidebarItem = nil
-            }
-            .sheet(item: $app.pendingSwiftMeshJoin) { pending in
-                SwiftMeshJoinConfirmationSheet(pending: pending)
-                    .environmentObject(app)
             }
     }
 
@@ -273,155 +256,5 @@ struct DashboardSidebar: View {
     /// A zero badge is not drawn.
     private func badgeCount(for item: SidebarItem) -> Int {
         item == .recordings ? app.recentMediaCount24h : 0
-    }
-}
-
-// MARK: - SwiftMesh Join Confirmation
-
-struct SwiftMeshJoinConfirmationSheet: View {
-    @EnvironmentObject var app: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let pending: PendingSwiftMeshJoin
-
-    @State private var isApplying = false
-    @State private var feedback: String?
-    @State private var feedbackIsError = false
-    @State private var shareRecordings = false
-    @State private var pairingComplete = false
-    @State private var pairingProgress = ""
-
-    private var primaryHost: String {
-        let address = pending.bundle.leaderAddresses.first ?? "Primary"
-        return URL(string: address)?.host ?? address
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .center, spacing: 14) {
-                ConsoleIconTile(symbol: pairingComplete ? "checkmark" : "point.3.connected.trianglepath.dotted", size: 46)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(pairingComplete ? "Backup ready" : "Set Up Backup")
-                        .font(.title2.weight(.semibold))
-                    Text(pairingComplete ? "Ready as a Fail Over for \(primaryHost)." : "Add this Mac as a Fail Over.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 16) {
-                connectionRow("Primary", value: primaryHost, symbol: "desktopcomputer")
-                if let witness = pending.bundle.witness {
-                    Divider()
-                    connectionRow("Ruru", value: URL(string: witness.endpoint)?.host ?? witness.endpoint, symbol: "checkmark.shield")
-                }
-            }
-            .padding(18).consoleSurface(cornerRadius: 16)
-
-            if pairingComplete && !feedbackIsError {
-                Label(pending.bundle.witness == nil ? "Bot settings and credentials synced" : "Ruru connected · Bot settings and credentials synced", systemImage: "checkmark.circle.fill")
-                    .font(.callout.weight(.medium)).foregroundStyle(.green)
-                if shareRecordings {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Recording sharing is enabled").font(.headline)
-                        Text(sharingNextStep)
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            } else {
-                RecordingPairingOptions(enabled: $shareRecordings, ruruAvailable: pending.bundle.witness?.isValid == true)
-                    .disabled(isApplying || pairingComplete)
-            }
-
-            if let feedback, feedbackIsError {
-                Label {
-                    Text(feedback).fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                }
-                .font(.callout).foregroundStyle(.orange)
-            }
-
-            if !pairingComplete {
-                Text("SwiftBot configures the backup and syncs bot settings and credentials automatically\(pending.bundle.witness == nil ? "." : ", including Ruru.") This replaces this Mac’s existing SwiftMesh settings.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 12) {
-                if isApplying {
-                    ProgressView().controlSize(.small)
-                    Text(pairingProgress).font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !pairingComplete {
-                    Button("Cancel", role: .cancel, action: finish)
-                        .keyboardShortcut(.cancelAction).disabled(isApplying)
-                }
-                Button(isApplying ? "Setting Up…" : pairingComplete ? (shareRecordings ? "Open Recordings" : "Done") : "Set Up Backup") {
-                    if pairingComplete { finish() } else { apply() }
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
-                .keyboardShortcut(.defaultAction).disabled(isApplying)
-            }
-        }
-        .padding(28).frame(width: 540)
-        .interactiveDismissDisabled(isApplying)
-        .onAppear {
-            shareRecordings = SwiftMeshJoinBundle.recordingSharingChoice(from: pending.rawCode)
-                ?? app.mediaLibrarySettings.sharedLibraryEnabled
-        }
-    }
-
-    private var sharingNextStep: String {
-        guard pending.bundle.witness?.isValid == true else {
-            return "Connect Ruru in SwiftMesh to combine recording libraries. Your sharing choice is saved on this Mac."
-        }
-        if RecordingDirectoryClient.origin(app.localMeshPublicAddress) == nil {
-            return "Set up this Mac’s website in Web Interface and choose its folders in Recordings. SwiftBot will request approval from your Ruru operator."
-        }
-        return "SwiftBot sends this Mac’s website to Ruru automatically. Your Ruru operator approves it once; then its library joins the combined Recordings view."
-    }
-
-    private func connectionRow(_ title: String, value: String, symbol: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(.secondary).frame(width: 24)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.caption).foregroundStyle(.secondary)
-                Text(value).font(.body.weight(.medium)).textSelection(.enabled)
-            }
-            Spacer()
-            if title == "Ruru" {
-                Text("Included").font(.caption.weight(.medium)).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func finish() {
-        if pairingComplete && shareRecordings { app.requestedSidebarItem = .recordings }
-        app.pendingSwiftMeshJoin = nil
-        dismiss()
-    }
-
-    private func apply() {
-        #if DEBUG
-        if ScreenshotDemo.isRecordingPairing {
-            // Only the visible fixture changes; no pairing, persistence or I/O.
-            app.settings.clusterMode = .standby
-            app.clusterSnapshot.mode = .standby
-            app.mediaLibrarySettings.sharedLibraryEnabled = shareRecordings
-            app.recordingCoordinationStatus = "Website sent to Ruru. Awaiting approval for https://max.swiftbot.app."
-            pairingComplete = true
-            return
-        }
-        #endif
-        isApplying = true
-        feedback = nil
-        Task {
-            let result = await app.pairSwiftMeshFailover(pending.rawCode, shareRecordings: shareRecordings) {
-                pairingProgress = $0
-            }
-            isApplying = false
-            pairingComplete = result.ok
-            feedbackIsError = !result.ok || app.mediaLibrarySettings.sharedLibraryEnabled != shareRecordings
-            feedback = result.message
-        }
     }
 }

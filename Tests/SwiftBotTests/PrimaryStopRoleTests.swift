@@ -51,23 +51,6 @@ final class PrimaryStopRoleTests: XCTestCase {
     }
 }
 
-/// Pair SwiftBot opens the Join Code on whichever Mac is browsing. If that is
-/// the Primary itself, joining would demote it into a Fail Over of itself.
-@MainActor
-final class SwiftMeshSelfJoinTests: XCTestCase {
-    func testPrimaryRefusesItsOwnJoinCode() async throws {
-        let model = AppModel()
-        model.settings.clusterMode = .leader
-        model.settings.clusterSharedSecret = "primary-secret"
-        let bundle = SwiftMeshJoinBundle(leaderAddresses: ["10.0.0.2"], leaderPort: 38787, sharedSecret: "primary-secret")
-        let code = "swiftmesh://join?b=" + (try JSONEncoder().encode(bundle)).base64EncodedString()
-
-        let result = await model.applySwiftMeshJoinCode(code)
-
-        XCTAssertFalse(result.ok)
-        XCTAssertTrue(result.message.contains("Primary that made this Join Code"))
-        XCTAssertEqual(model.settings.clusterMode, .leader)
-    }
 
     /// The WebUI shows Ruru's host and state only; never its secrets.
     func testWebPayloadCarriesWitnessDisplayStateOnly() throws {

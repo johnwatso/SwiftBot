@@ -1844,7 +1844,6 @@ actor AdminWebServer {
     private var setMediaSourceOwner: (@Sendable (String, String) async -> Bool)?
     private var fixMediaGameMatch: (@Sendable (AdminWebMediaGameMatchPatch) async -> Bool)?
     private var runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)?
-    private var swiftMeshJoinCodeProvider: (@Sendable () async -> String?)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     /// Registers a companion-app hostname (e.g. SwiftMiner's dashboard) on the
     /// Cloudflare tunnel. HMAC-authenticated inside the handler; fail-closed.
@@ -1987,7 +1986,6 @@ actor AdminWebServer {
         setMediaSourceOwner: (@Sendable (String, String) async -> Bool)? = nil,
         fixMediaGameMatch: (@Sendable (AdminWebMediaGameMatchPatch) async -> Bool)? = nil,
         runSwiftMeshAction: (@Sendable (AdminWebSwiftMeshAction) async -> String?)? = nil,
-        swiftMeshJoinCodeProvider: (@Sendable () async -> String?)? = nil,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))? = nil,
         swiftMinerTunnelInfoProvider: (@Sendable () async -> (status: String, body: Data))? = nil,
@@ -2093,7 +2091,6 @@ actor AdminWebServer {
         self.setMediaSourceOwner = setMediaSourceOwner
         self.fixMediaGameMatch = fixMediaGameMatch
         self.runSwiftMeshAction = runSwiftMeshAction
-        self.swiftMeshJoinCodeProvider = swiftMeshJoinCodeProvider
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.swiftMinerTunnelHostnameHandler = swiftMinerTunnelHostnameHandler
         self.swiftMinerTunnelInfoProvider = swiftMinerTunnelInfoProvider
@@ -4371,33 +4368,6 @@ actor AdminWebServer {
                 return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
             }
             return codableResponse(payload)
-        case ("POST", "/api/swiftmesh/pair"):
-            guard let session = authenticatedSession(for: request) else {
-                return unauthorizedResponse()
-            }
-            guard requireRole(.admin, session: session) else {
-                return forbiddenResponse()
-            }
-            guard validateCSRF(session: session, request: request) else {
-                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
-            }
-            // The link carries the mesh's shared secret, so only a Discord
-            // admin (sign-in requires Discord 2FA) gets it. Local-password
-            // sessions have no second factor.
-            guard !session.userID.hasPrefix("local:") else {
-                return jsonResponse([
-                    "error": "discord_required",
-                    "message": "Sign in with Discord to pair a Mac. The local admin sign-in has no two-factor authentication."
-                ], status: "403 Forbidden")
-            }
-            if let refusal = sensitiveSecretRefusal(session: session, request: request, purpose: "pair a Mac") {
-                return refusal
-            }
-            guard let joinURL = await swiftMeshJoinCodeProvider?() else {
-                return jsonResponse(["error": "Pairing is available only on the active Primary."], status: "409 Conflict")
-            }
-            audit(source: "Web Config", actor: actorLabel(session), action: "SwiftMesh pairing link requested")
-            return jsonResponse(["joinURL": joinURL])
         case ("POST", "/api/swiftmesh/action"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -6587,10 +6557,6 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
 extension AdminWebServer {
     func testSetStatusProvider(_ provider: @escaping @Sendable () async -> AdminWebStatusPayload) {
         statusProvider = provider
-    }
-
-    func testSetSwiftMeshJoinCodeProvider(_ provider: @escaping @Sendable () async -> String?) {
-        swiftMeshJoinCodeProvider = provider
     }
 
     /// Inserts a ready-made admin session and returns the values a client would

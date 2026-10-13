@@ -196,103 +196,11 @@ final class AdminWebServerAuthTests: XCTestCase {
         XCTAssertEqual(statusCode(from: allowed), 503, "Admin should reach the absent moderation provider")
     }
 
-    func testSwiftMeshPairingRequiresAdminAndCSRF() async {
+    func testRemovedSwiftMeshPairingRouteIsNotFound() async {
         let server = AdminWebServer()
-        let path = "/api/swiftmesh/pair"
-        let anonymous = await server.testProcessRequest(makeRequest(method: "POST", path: path))
-        XCTAssertEqual(statusCode(from: anonymous), 401)
-
-        let viewer = await server.testSeedSession(viewerRole: true)
-        let forbidden = await server.testProcessRequest(
-            makeRequest(method: "POST", path: path, cookie: viewer.id, csrf: viewer.csrf)
-        )
-        XCTAssertEqual(statusCode(from: forbidden), 403)
-
-        let member = await server.testSeedSession(memberRole: true)
-        let memberResponse = await server.testProcessRequest(
-            makeRequest(method: "POST", path: path, cookie: member.id, csrf: member.csrf)
-        )
-        XCTAssertEqual(statusCode(from: memberResponse), 403)
-
-        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
-        let noCSRF = await server.testProcessRequest(
-            makeRequest(method: "POST", path: path, cookie: admin.id),
-            peerIP: "127.0.0.1"
-        )
-        XCTAssertEqual(statusCode(from: noCSRF), 403)
-
-        // An authenticated admin reaches the provider, which is absent here.
-        let unavailable = await server.testProcessRequest(
-            makeRequest(method: "POST", path: path, cookie: admin.id, csrf: admin.csrf),
-            peerIP: "127.0.0.1"
-        )
-        XCTAssertEqual(statusCode(from: unavailable), 409)
-        XCTAssertFalse(bodyString(from: unavailable).contains("swiftmesh://"))
-        XCTAssertTrue(String(decoding: unavailable, as: UTF8.self).contains("Cache-Control: no-store"))
+        let response = await server.testProcessRequest(makeRequest(method: "POST", path: "/api/swiftmesh/pair"))
+        XCTAssertEqual(statusCode(from: response), 404)
     }
-
-    func testSwiftMeshPairingReturnsLinkOnlyToAuthorizedAdmin() async {
-        let server = AdminWebServer()
-        let joinURL = "swiftmesh://join?b=fixture"
-        await server.testSetSwiftMeshJoinCodeProvider { joinURL }
-        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
-        let response = await server.testProcessRequest(
-            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: admin.id, csrf: admin.csrf),
-            peerIP: "127.0.0.1"
-        )
-        XCTAssertEqual(statusCode(from: response), 200)
-        let payload = try? JSONDecoder().decode([String: String].self, from: Data(bodyString(from: response).utf8))
-        XCTAssertEqual(payload?["joinURL"], joinURL)
-        XCTAssertTrue(String(decoding: response, as: UTF8.self).contains("Cache-Control: no-store"))
-
-        let viewer = await server.testSeedSession(viewerRole: true)
-        let forbidden = await server.testProcessRequest(
-            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: viewer.id, csrf: viewer.csrf)
-        )
-        XCTAssertEqual(statusCode(from: forbidden), 403)
-        XCTAssertFalse(bodyString(from: forbidden).contains(joinURL))
-    }
-
-    func testSwiftMeshPairingRefusesLocalPasswordSessions() async {
-        let server = AdminWebServer()
-        await server.testSetSwiftMeshJoinCodeProvider { "swiftmesh://join?b=fixture" }
-        let local = await server.testSeedSession(expiresIn: 24 * 60 * 60, userID: "local:admin")
-        let response = await server.testProcessRequest(
-            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: local.id, csrf: local.csrf),
-            peerIP: "127.0.0.1"
-        )
-        XCTAssertEqual(statusCode(from: response), 403)
-        XCTAssertTrue(bodyString(from: response).contains("discord_required"))
-        XCTAssertFalse(bodyString(from: response).contains("swiftmesh://"))
-    }
-
-    func testSwiftMeshPairingRefusesPlainHTTPFromTheNetwork() async {
-        let server = AdminWebServer()
-        await server.testSetSwiftMeshJoinCodeProvider { "swiftmesh://join?b=fixture" }
-        let admin = await server.testSeedSession(expiresIn: 24 * 60 * 60)
-        let response = await server.testProcessRequest(
-            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: admin.id, csrf: admin.csrf),
-            peerIP: "192.168.1.20"
-        )
-        XCTAssertEqual(statusCode(from: response), 400)
-        XCTAssertTrue(bodyString(from: response).contains("insecure_transport"))
-        XCTAssertFalse(bodyString(from: response).contains("swiftmesh://"))
-    }
-
-    func testSwiftMeshPairingNeedsARecentSignIn() async {
-        let server = AdminWebServer()
-        await server.testSetSwiftMeshJoinCodeProvider { "swiftmesh://join?b=fixture" }
-        // Signed in about 23 hours ago.
-        let admin = await server.testSeedSession(expiresIn: 3_600)
-        let response = await server.testProcessRequest(
-            makeRequest(method: "POST", path: "/api/swiftmesh/pair", cookie: admin.id, csrf: admin.csrf),
-            peerIP: "127.0.0.1"
-        )
-        XCTAssertEqual(statusCode(from: response), 401)
-        XCTAssertTrue(bodyString(from: response).contains("reauth_required"))
-        XCTAssertFalse(bodyString(from: response).contains("swiftmesh://"))
-    }
-
     func testUnauthenticatedRequestIsRejected() async {
         let server = AdminWebServer()
         let response = await server.testProcessRequest(makeRequest(path: "/api/me"))

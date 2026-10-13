@@ -8,40 +8,14 @@ struct MeshPreferencesView: View {
     @State private var showWorkerOffloadWarning = false
     @State private var useSeparateLeaderPort = false
     @State private var isAdvancedPortsExpanded = false
-    @State private var isCopyingJoinCode = false
-    @State private var justCopiedJoinCode = false
-    @State private var isApplyingJoinCode = false
-    @State private var joinCodeFeedback: JoinCodeFeedback?
     @State private var showRotateSecretConfirm = false
-    @State private var showPairingSheet = false
     @State private var showSecretManagement = false
     @State private var showIdentitySheet = false
-    @State private var showNodeManager = false
-    @State private var managedNode: ClusterNodeStatus?
-    @State private var managedGrant: MeshCredentialGrant?
-    @State private var credentialGrants: [MeshCredentialGrant] = []
-
-    private struct JoinCodeFeedback: Equatable {
-        let ok: Bool
-        let message: String
-    }
 
     private static let defaultListenPort = 38787
 
     private var shouldShowMeshSettings: Bool { app.settings.clusterMode != .standalone }
     private var canEditOffloadPolicy: Bool { app.settings.clusterMode == .leader }
-    private var canManageCredentials: Bool { app.runtimeClusterMode == .leader }
-    private var pairedGrants: [MeshCredentialGrant] {
-        credentialGrants.filter { $0.nodeID != app.meshLocalNodeID }
-    }
-    private var livePairedNodes: [ClusterNodeStatus] {
-        app.clusterNodes.filter { $0.role != .leader && !isLocalNode($0) }
-    }
-    private var unmatchedPairingGrants: [MeshCredentialGrant] {
-        pairedGrants.filter { grant in
-            !livePairedNodes.contains { matchingGrant(for: $0)?.nodeID == grant.nodeID }
-        }
-    }
 
     private var leaderPortBinding: Binding<String> {
         Binding(
@@ -99,9 +73,7 @@ struct MeshPreferencesView: View {
             thisMacSection
 
             if shouldShowMeshSettings {
-                pairedNodesSection
-                pairingApprovalsSection
-                pairingSection
+                transportSection
                 failoverSection
                 MeshWitnessPreferencesSection()
                 workSharingSection
@@ -111,7 +83,6 @@ struct MeshPreferencesView: View {
             useSeparateLeaderPort = app.settings.clusterLeaderPort != app.settings.clusterListenPort
             isAdvancedPortsExpanded = useSeparateLeaderPort || app.settings.clusterListenPort != Self.defaultListenPort
         }
-        .task { await refreshCredentialGrants() }
         .sheet(isPresented: $showIdentitySheet) {
             MeshNodeIdentitySheet(nodeID: app.meshLocalNodeID)
         }
@@ -123,26 +94,11 @@ struct MeshPreferencesView: View {
                 onRotate: { showRotateSecretConfirm = true }
             )
         }
-        .sheet(isPresented: $showPairingSheet) {
-            MeshJoinCodeSheet(isCopying: $isCopyingJoinCode, justCopied: $justCopiedJoinCode) { nodeName in
-                copyJoinCode(for: nodeName)
-            }
-        }
-        .sheet(isPresented: $showNodeManager) {
-            if managedNode != nil || managedGrant != nil {
-                MeshPairedNodeSheet(
-                    grant: managedGrant,
-                    node: managedNode,
-                    canRevoke: canManageCredentials,
-                    onRevoke: managedGrant.map { grant in { await revokeCredential(for: grant) } }
-                )
-            }
-        }
         .confirmationDialog("Rotate SwiftMesh shared secret?", isPresented: $showRotateSecretConfirm, titleVisibility: .visible) {
             Button("Rotate Secret", role: .destructive) { app.rotateSwiftMeshSharedSecret() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Any Join Codes already shared will stop working and connected nodes will need to re-pair using a new code.")
+            Text("Connected nodes must be updated with the new transport secret before they can communicate with this Mac.")
         }
         .alert("Enable Work Sharing?", isPresented: $showWorkerOffloadWarning) {
             Button("Cancel", role: .cancel) {}
@@ -210,110 +166,23 @@ struct MeshPreferencesView: View {
         }
     }
 
-    private var pairedNodesSection: some View {
+    private var transportSection: some View {
         Section {
-            if livePairedNodes.isEmpty {
-                ConsoleSettingRow(
-                    title: "No Paired Nodes",
-                    symbol: "server.rack",
-                    subtitle: "No other Macs have reported to this mesh."
-                )
-            } else {
-                ForEach(livePairedNodes) { node in
-                    let grant = matchingGrant(for: node)
-                    ConsoleSettingRow(
-                        title: node.displayName,
-                        symbol: pairedNodeSymbol(for: node),
-                        subtitle: "\(node.role.displayName) · \(node.connectionStatusText)"
-                    ) {
-                        Button("Manage…") {
-                            managedNode = node
-                            managedGrant = grant
-                            showNodeManager = true
-                        }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
-                    }
-                }
-            }
-        } header: {
-            Text("Paired Nodes")
-        } footer: {
-            Text("These are Macs that have reported to SwiftMesh. Their role and connection state are live; detailed diagnostics are in Status.")
-        }
-    }
-
-    private var pairingApprovalsSection: some View {
-        Group {
-            if !unmatchedPairingGrants.isEmpty {
-                Section {
-                    ForEach(unmatchedPairingGrants, id: \.nodeID) { grant in
-                        ConsoleSettingRow(
-                            title: displayedName(for: grant),
-                            symbol: "key.fill",
-                            subtitle: "Credential approval awaiting a matching Mac."
-                        ) {
-                            Button("Manage…") {
-                                managedNode = nil
-                                managedGrant = grant
-                                showNodeManager = true
-                            }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.capsule)
-                        }
-                    }
-                } header: {
-                    Text("Pairing Approvals")
-                } footer: {
-                    Text("An approval is created when a Join Code is copied. It becomes a paired node only after that code is used by another Mac.")
-                }
-            }
-        }
-    }
-
-    private var pairingSection: some View {
-        Section {
-            if app.settings.clusterMode == .standby {
-                ConsoleSettingRow(
-                    title: "Join Code",
-                    symbol: "doc.on.clipboard",
-                    subtitle: joinCodeFeedback == nil ? "Paste the code copied on the Primary to configure this Mac." : nil,
-                    status: joinCodeFeedback.map { ($0.message, $0.ok ? .healthy : .error) }
-                ) {
-                    Button(isApplyingJoinCode ? "Checking…" : "Paste & Verify") {
-                        Task { await pasteAndVerifyJoinCode() }
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .disabled(isApplyingJoinCode)
-                }
-            } else if app.settings.clusterMode == .leader {
-                ConsoleSettingRow(
-                    title: "Join Code",
-                    symbol: "doc.on.clipboard",
-                    subtitle: "Copy a code to configure a named Fail Over or Worker Mac."
-                ) {
-                    Button("Copy Join Code…") { showPairingSheet = true }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
-                }
-            }
-
             ConsoleSettingRow(
-                title: "Shared Secret",
+                title: "Transport Secret",
                 symbol: "key.fill",
                 subtitle: app.settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? "Not configured"
-                    : "Stored securely in this Mac’s Keychain."
+                    : "Stored securely in this Mac’s Keychain; used for existing node-to-node transport."
             ) {
                 Button("Manage…") { showSecretManagement = true }
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
             }
         } header: {
-            Text("Pairing")
+            Text("Node Transport")
         } footer: {
-            Text("Join Codes carry the connection details and a unique credential approval. Rotating the shared secret requires every connected node to re-pair.")
+            Text("This secret authenticates the existing HTTP transport used for status, sync, and work sharing. Changing it requires updating connected nodes.")
         }
     }
 
@@ -412,96 +281,7 @@ struct MeshPreferencesView: View {
             : "Distribute supported tasks to available Worker nodes. No Worker nodes are currently available."
     }
 
-    private func displayedName(for grant: MeshCredentialGrant) -> String {
-        let name = grant.nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty || name == "Paired Failover" ? "Paired Node" : name
-    }
-
-    private func matchingGrant(for node: ClusterNodeStatus) -> MeshCredentialGrant? {
-        if let nodeID = node.credentialNodeID,
-           let grant = pairedGrants.first(where: { $0.nodeID == nodeID }) {
-            return grant
-        }
-        // Older peers do not report a stable enrollment ID. Use a display-name
-        // fallback only when the name occurs once among non-Primary nodes.
-        let sameNameNodes = livePairedNodes.filter {
-            $0.displayName.caseInsensitiveCompare(node.displayName) == .orderedSame
-        }
-        guard sameNameNodes.count == 1 else { return nil }
-        return pairedGrants.first {
-            $0.nodeName.caseInsensitiveCompare(node.displayName) == .orderedSame
-        }
-    }
-
-    private func isLocalNode(_ node: ClusterNodeStatus) -> Bool {
-        if let nodeID = node.credentialNodeID, !app.meshLocalNodeID.isEmpty {
-            return nodeID == app.meshLocalNodeID
-        }
-        let name = app.settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !name.isEmpty && node.displayName.caseInsensitiveCompare(name) == .orderedSame
-    }
-
-    private func pairedNodeSymbol(for node: ClusterNodeStatus) -> String {
-        return SwiftMeshHardwareSymbols.symbolName(
-            for: node.hardwareModel,
-            override: app.settings.clusterNodeIconOverrides[node.displayName]
-        )
-    }
-
-    @MainActor
-    private func refreshCredentialGrants() async {
-        credentialGrants = await app.meshCredentialStore.allGrants()
-    }
-
-    private func copyJoinCode(for nodeName: String) {
-        isCopyingJoinCode = true
-        Task {
-            if let code = await app.generateSwiftMeshJoinCode(nodeName: nodeName) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(code, forType: .string)
-                app.logs.append("[SwiftMesh] Join code copied to clipboard for \(nodeName).")
-                await refreshCredentialGrants()
-                justCopiedJoinCode = true
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                justCopiedJoinCode = false
-            }
-            isCopyingJoinCode = false
-        }
-    }
-
-    @MainActor
-    private func pasteAndVerifyJoinCode() async {
-        guard !isApplyingJoinCode else { return }
-        joinCodeFeedback = nil
-        let code = (NSPasteboard.general.string(forType: .string) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty else {
-            joinCodeFeedback = .init(ok: false, message: "Clipboard is empty. Copy the Join Code on the Primary first.")
-            return
-        }
-        guard code.contains("swiftmesh://join") || code.count > 50 else {
-            joinCodeFeedback = .init(ok: false, message: "That doesn’t look like a SwiftMesh Join Code.")
-            return
-        }
-
-        isApplyingJoinCode = true
-        defer { isApplyingJoinCode = false }
-        let result = await app.pairSwiftMeshFailover(code)
-        joinCodeFeedback = .init(ok: result.ok, message: result.message)
-    }
-
-    @MainActor
-    private func revokeCredential(for grant: MeshCredentialGrant) async {
-        do {
-            try await app.meshCredentialStore.revoke(nodeID: grant.nodeID)
-            await refreshCredentialGrants()
-            showNodeManager = false
-        } catch {
-            app.logs.append("SwiftMesh could not revoke credential access: \(error.localizedDescription)")
-        }
-    }
 }
-
 private struct MeshNodeIdentitySheet: View {
     @Environment(\.dismiss) private var dismiss
     let nodeID: String
@@ -541,17 +321,17 @@ private struct MeshSharedSecretSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Manage Shared Secret").font(.title2.weight(.semibold))
-            Text("The shared secret authenticates mesh traffic and is stored in this Mac’s Keychain.")
+            Text("Manage Transport Secret").font(.title2.weight(.semibold))
+            Text("The secret authenticates the existing node transport and is stored in this Mac’s Keychain.")
                 .foregroundStyle(.secondary)
             SecretSettingsControl(
                 secret: $secret,
-                title: "SwiftMesh Shared Secret",
+                title: "Node Transport Secret",
                 message: "Use the same secret on every node in your mesh.",
-                replacementWarning: "Replacing the secret invalidates existing Join Codes. Connected nodes must use the new secret to reconnect.",
+                replacementWarning: "Connected nodes must be updated with the new secret before they can communicate again.",
                 allowsGeneration: true,
                 isRequired: role != .leader,
-                emptyLabel: role == .leader ? "Created with Join Code" : "Not configured",
+                emptyLabel: "Not configured",
                 onSave: onSave
             )
             if role == .leader {
@@ -559,7 +339,7 @@ private struct MeshSharedSecretSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Rotate Shared Secret").font(.body.weight(.medium))
-                        Text("Connected nodes will need to re-pair.").font(.callout).foregroundStyle(.secondary)
+                        Text("Connected nodes will need the new secret.").font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Rotate…", role: .destructive, action: onRotate)
@@ -569,99 +349,5 @@ private struct MeshSharedSecretSheet: View {
         }
         .padding(24)
         .frame(width: 520)
-    }
-}
-
-private struct MeshJoinCodeSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var isCopying: Bool
-    @Binding var justCopied: Bool
-    let onCopy: (String) -> Void
-    @State private var nodeName = ""
-
-    private var trimmedName: String { nodeName.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Pair Another Mac").font(.title2.weight(.semibold))
-            Text("Name the Mac you are pairing so it remains recognisable in Paired Nodes. The Join Code is copied to the clipboard.")
-                .foregroundStyle(.secondary)
-            TextField("Mac name", text: $nodeName, prompt: Text("Studio Mac"))
-                .textFieldStyle(.roundedBorder)
-            HStack {
-                Button("Cancel") { dismiss() }
-                Spacer()
-                Button(isCopying ? "Copying…" : justCopied ? "Copied" : "Copy Join Code") {
-                    onCopy(trimmedName)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(trimmedName.isEmpty || isCopying)
-            }
-        }
-        .padding(24)
-        .frame(width: 480)
-        .onChange(of: justCopied) { _, copied in if copied { dismiss() } }
-    }
-}
-
-private struct MeshPairedNodeSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let grant: MeshCredentialGrant?
-    let node: ClusterNodeStatus?
-    let canRevoke: Bool
-    let onRevoke: (() async -> Void)?
-    @State private var showRevokeConfirmation = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(node?.displayName ?? displayName)
-                .font(.title2.weight(.semibold))
-            Form {
-                LabeledContent("Configured Role", value: node?.role.displayName ?? "Not reported")
-                LabeledContent("Connection", value: node?.connectionStatusText ?? "Not currently reported")
-                LabeledContent("Credential Access", value: grant == nil ? "Not listed" : "Approved")
-                if let nodeID = node?.credentialNodeID ?? grant?.nodeID {
-                    LabeledContent("Node ID") {
-                        Text(nodeID).font(.caption.monospaced()).textSelection(.enabled)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .scrollDisabled(true)
-            .fixedSize(horizontal: false, vertical: true)
-
-            if canRevoke, let onRevoke {
-                Divider()
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Credential Access").font(.body.weight(.medium))
-                        Text("Revoking blocks future credential fetches. It does not erase credentials this Mac has already received or remove its network settings.")
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Revoke…", role: .destructive) { showRevokeConfirmation = true }
-                }
-            } else if grant != nil {
-                Text("Credential access is managed by the active Primary.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-
-            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
-        }
-        .padding(24)
-        .frame(width: 560)
-        .confirmationDialog("Revoke credential access?", isPresented: $showRevokeConfirmation, titleVisibility: .visible) {
-            if let onRevoke {
-                Button("Revoke Access", role: .destructive) { Task { await onRevoke() } }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This node will no longer be authorised to fetch shared credentials. To remove an untrusted node fully, also rotate the shared secret and any credentials it previously received.")
-        }
-    }
-
-    private var displayName: String {
-        guard let grant else { return "Paired Node" }
-        return grant.nodeName == "Paired Failover" ? "Paired Node" : grant.nodeName
     }
 }
