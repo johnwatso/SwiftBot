@@ -323,6 +323,8 @@ struct SwiftMeshView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), alignment: .leading)], alignment: .leading, spacing: 10) {
                 DiagnosticsLine(label: "Server", value: app.clusterSnapshot.serverStatusText, tone: tone(for: app.clusterSnapshot.serverState))
                 DiagnosticsLine(label: "Worker", value: app.clusterSnapshot.workerStatusText, tone: tone(for: app.clusterSnapshot.workerState))
+                DiagnosticsLine(label: "Operational Status", value: app.meshOperationalReadiness?.state.rawValue.capitalized ?? "Not reported",
+                                tone: app.meshOperationalReadiness?.state == .ready ? .green : .secondary)
                 DiagnosticsLine(label: "Status", value: app.clusterSnapshot.diagnostics, tone: .secondary, multiline: true)
                 DiagnosticsLine(label: "Last Route", value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized, tone: .primary)
                 DiagnosticsLine(label: "Last Node", value: app.clusterSnapshot.lastJobNode, tone: .primary)

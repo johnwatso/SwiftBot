@@ -56,6 +56,14 @@ Install Ruru on the independent Mac and use its Internet Access setup to enter a
 
 Once configured, Ruru appears on the SwiftMesh dashboard's Cluster Map above the Primary. Each Mac polls Ruru's unauthenticated `GET /health` every 15 seconds, which shows **Ready**, **Recovering** (a restart quarantine, 503) or **Unreachable**. The line to the Primary is solid, and the chip reads **Lease held**, only while this Mac holds an unexpired lease. Otherwise it is dashed. The probe is for display only and never grants or infers ownership.
 
+SwiftBot also reports bounded local operational status when the configured Ruru
+advertises that capability: configuration loading, credential approval, first
+shared snapshot, direct peer sync, and Discord connection. It is visible in
+the native SwiftMesh diagnostics and helps distinguish a healthy authority from
+a degraded peer link. These reports are observation only—neither a degraded
+report nor a missing report changes a lease, output gate, promotion, or
+failover decision.
+
 ### Preferred Primary (Ruru)
 
 Ruru can store a **Preferred Primary** per service (Guarding → service → Preferred Primary). It is advisory intent, separate from the **Current Owner**, and never grants ownership. Each SwiftBot reads it with the service token via `POST /v1/service/policy` every 5 seconds while witness-backed SwiftMesh runs, following Ruru's [client contract](https://github.com/johnwatso/ruru/blob/main/Documentation/PRIMARY_PREFERENCE.md).

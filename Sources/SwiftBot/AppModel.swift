@@ -300,6 +300,8 @@ final class AppModel: ObservableObject {
     /// Ruru shown on the SwiftMesh map; nil when no witness is configured.
     @Published var meshWitnessHealth: MeshWitnessHealth?
     @Published var meshWitnessEndpoint = ""
+    /// Local SwiftBot readiness last submitted to Ruru; display only.
+    @Published var meshOperationalReadiness: MeshOperationalReadiness?
     var meshWitnessHealthTask: Task<Void, Never>?
     /// Ruru's Preferred Primary, polled every 5 s while witness-backed SwiftMesh runs.
     @Published var meshPrimaryPreference = MeshPrimaryPreference()

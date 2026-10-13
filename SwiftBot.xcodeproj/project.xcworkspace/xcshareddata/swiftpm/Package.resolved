@@ -1,5 +1,5 @@
 {
-  "originHash" : "0a7cf58f7739f8feb2f9dd8694ff823ae87f8eb68cd219ddd8858a8d856e8786",
+  "originHash" : "59151bef25bb2872aa92d5ffe7e564eb7467dc571933c3e0c977535afb665ff4",
   "pins" : [
     {
       "identity" : "libdave-swift",
@@ -8,15 +8,6 @@
       "state" : {
         "revision" : "7f056a048207dd3c6272a4cf4b120d56988bdc74",
         "version" : "4.0.0"
-      }
-    },
-    {
-      "identity" : "ruru",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/johnwatso/ruru.git",
-      "state" : {
-        "revision" : "3d1767f8adf047fd0fc1a283ae4f3496eceb79cd",
-        "version" : "0.1.0"
       }
     },
     {

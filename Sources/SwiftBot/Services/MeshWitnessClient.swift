@@ -95,6 +95,38 @@ enum MeshOwnershipRenewal: Equatable, Sendable {
     case unreachable(stillValid: Bool)
 }
 
+/// SwiftBot's application-specific mapping onto Ruru's generic readiness
+/// contract. It is strictly diagnostic and is never read by lease or promotion
+/// paths.
+struct MeshOperationalReadiness: Sendable {
+    let state: RuruOperationalState
+    let components: [RuruOperationalComponent]
+
+    static func evaluate(automationsLoaded: Bool, hasDiscordToken: Bool,
+                         hasSnapshot: Bool, credentialsApproved: Bool,
+                         peerState: RuruOperationalState, discordConnected: Bool) -> Self {
+        let components: [RuruOperationalComponent] = [
+            .init(namespace: "swiftbot", id: "configuration", state: automationsLoaded ? .ready : .synchronizing,
+                  reasonCode: automationsLoaded ? "loaded" : "loading"),
+            .init(namespace: "swiftbot", id: "credentials", state: credentialsApproved ? .ready : .outdated,
+                  reasonCode: credentialsApproved ? "approved" : "approval_missing"),
+            .init(namespace: "swiftbot", id: "snapshot", state: hasSnapshot ? .ready : .synchronizing,
+                  reasonCode: hasSnapshot ? "current" : "initial_sync_pending"),
+            .init(namespace: "swiftbot", id: "peer-sync", state: peerState,
+                  reasonCode: peerState == .ready ? "current" : peerState == .degraded ? "peer_unreachable" : "status_unknown"),
+            .init(namespace: "swiftbot", id: "discord", state: hasDiscordToken ? (discordConnected ? .ready : .unknown) : .outdated,
+                  reasonCode: hasDiscordToken ? (discordConnected ? "connected" : "not_connected") : "token_missing")
+        ]
+        let state: RuruOperationalState
+        if components.contains(where: { $0.state == .degraded }) { state = .degraded }
+        else if components.contains(where: { $0.state == .outdated }) { state = .outdated }
+        else if components.contains(where: { $0.state == .synchronizing }) { state = .synchronizing }
+        else if components.contains(where: { $0.state == .unknown }) { state = .unknown }
+        else { state = .ready }
+        return .init(state: state, components: components)
+    }
+}
+
 actor MeshWitnessClient {
     enum ParticipantRole: String, Encodable { case active, standby, worker, unknown }
     private struct ParticipantReport: Encodable {
@@ -114,6 +146,8 @@ actor MeshWitnessClient {
     private var nodeID = ""
     private var nodeName: String?
     private var presenceCapability: (supported: Bool, checked: ContinuousClock.Instant)?
+    private var operationalStatusCapability: (supported: Bool, checked: ContinuousClock.Instant)?
+    private var operationalStatusClient: RuruLeaseClient?
     private var configurationGeneration = UUID()
     private let session: URLSession
 
@@ -127,13 +161,17 @@ actor MeshWitnessClient {
 
     func configure(_ configuration: MeshWitnessConfiguration, nodeID: String, nodeName: String = "") {
         let name = nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.nodeName = !name.isEmpty && name.utf8.count <= 256 && name.rangeOfCharacter(from: .controlCharacters) == nil ? name : nil
+        let normalizedName = !name.isEmpty && name.utf8.count <= 256 && name.rangeOfCharacter(from: .controlCharacters) == nil ? name : nil
         // A name change is cosmetic and must preserve the existing permission.
-        guard config != configuration || self.nodeID != nodeID else { return }
+        guard config != configuration || self.nodeID != nodeID || self.nodeName != normalizedName else { return }
         config = configuration
         self.nodeID = nodeID
+        self.nodeName = normalizedName
         configurationGeneration = UUID()
         presenceCapability = nil
+        operationalStatusCapability = nil
+        operationalStatusClient = configuration.toRuruConfiguration(nodeID: nodeID, nodeName: normalizedName ?? "")
+            .map { RuruLeaseClient(configuration: $0, session: session) }
     }
 
     /// Reports this Mac even while it is standby. This neither requests nor
@@ -180,6 +218,26 @@ actor MeshWitnessClient {
               let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               reply["version"] as? Int == 1, reply["accepted"] as? Bool == true else { return false }
         return true
+    }
+
+    /// Reports SwiftBot's local readiness through RuruClient's typed API.
+    /// Feature detection leaves earlier Ruru versions compatible.
+    @discardableResult
+    func reportOperationalStatus(_ readiness: MeshOperationalReadiness) async -> Bool {
+        guard config.isValid, !nodeID.isEmpty, !Task.isCancelled, let client = operationalStatusClient else { return false }
+        let generation = configurationGeneration
+        let needsDiscovery = operationalStatusCapability.map { ContinuousClock.now - $0.checked >= .seconds(60) } ?? true
+        if needsDiscovery {
+            guard let description = try? await client.describe(), generation == configurationGeneration, !Task.isCancelled else { return false }
+            operationalStatusCapability = (description.supports("operationalStatus"), .now)
+        }
+        guard operationalStatusCapability?.supported == true, generation == configurationGeneration, !Task.isCancelled else { return false }
+        do {
+            try await client.reportOperationalStatus(state: readiness.state, components: readiness.components)
+            return generation == configurationGeneration && !Task.isCancelled
+        } catch {
+            return false
+        }
     }
 
     /// Only advertise this Mac's credential-free HTTPS website origin.

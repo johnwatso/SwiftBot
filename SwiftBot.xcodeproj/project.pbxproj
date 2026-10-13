@@ -542,6 +542,7 @@
 		7F82A36670864C3BDF5174E7 /* AppModel+Patchy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Patchy.swift"; sourceTree = "<group>"; };
 		803EAE97D6A0E7EF802071F0 /* RewindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewindTests.swift; sourceTree = "<group>"; };
 		80859225F976C75EFDB6B459 /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
+		809654E895B9E6C7BB9E552D /* ruru */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ruru; path = ../ruru; sourceTree = SOURCE_ROOT; };
 		80EA69CC715042EE059E9197 /* AutomationDrafter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationDrafter.swift; sourceTree = "<group>"; };
 		814CAE5BAF267EB565154600 /* AppModel+CommandProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+CommandProcessor.swift"; sourceTree = "<group>"; };
 		82266A5BF1F54F34EDC49019 /* DiscordCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordCache.swift; sourceTree = "<group>"; };
@@ -862,6 +863,7 @@
 		5862010FC4698115F0427E7E = {
 			isa = PBXGroup;
 			children = (
+				EB4E1A064296A3546D3A53C7 /* Packages */,
 				1F9A5CA4BC7035A935E760D3 /* RecordingsKit */,
 				E1805FAD499C9CAAC9CB4485 /* Resources */,
 				0B81279A83B1440C3CEC4A11 /* SparklePublisher */,
@@ -1081,6 +1083,14 @@
 			path = Sources/SwiftBot/Resources;
 			sourceTree = "<group>";
 		};
+		EB4E1A064296A3546D3A53C7 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				809654E895B9E6C7BB9E552D /* ruru */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
 		FE64EB1FDC6A30CEA1D98CA6 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -1239,7 +1249,6 @@
 			mainGroup = 5862010FC4698115F0427E7E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				481655629DFD5D4D38FC7B2B /* XCRemoteSwiftPackageReference "ruru" */,
 				D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */,
 				6A7976F088120A7F5815E5B9 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */,
@@ -1251,6 +1260,7 @@
 				084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
 				7308FA16F17ABFEA15C0CDB5 /* XCRemoteSwiftPackageReference "swift-webauthn" */,
 				B1374D9B633575E7680E1A22 /* XCRemoteSwiftPackageReference "swiftbot-opus" */,
+				C42A409121F5EA5FFF43C5DB /* XCLocalSwiftPackageReference "../ruru" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A63029345405694029040AF9 /* Products */;
@@ -2051,6 +2061,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		C42A409121F5EA5FFF43C5DB /* XCLocalSwiftPackageReference "../ruru" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ruru;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -2074,14 +2091,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.9.0;
-			};
-		};
-		481655629DFD5D4D38FC7B2B /* XCRemoteSwiftPackageReference "ruru" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/johnwatso/ruru.git";
-			requirement = {
-				kind = exactVersion;
-				version = 0.1.0;
 			};
 		};
 		53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */ = {
@@ -2158,7 +2167,6 @@
 		};
 		1893306273FD7EEA8C3FB4AD /* RuruClient */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 481655629DFD5D4D38FC7B2B /* XCRemoteSwiftPackageReference "ruru" */;
 			productName = RuruClient;
 		};
 		1C81108D7CF200AA2750ED17 /* NIOSSL */ = {

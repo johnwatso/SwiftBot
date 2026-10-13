@@ -331,6 +331,49 @@ final class MeshReliabilityTests: XCTestCase {
         XCTAssertTrue(accepted)
     }
 
+    func testOperationalStatusReportsReadinessWithoutLeaseRequests() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [WitnessNameURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel(); WitnessNameURLProtocol.setHandler(nil) }
+        WitnessNameURLProtocol.setHandler { request in
+            let reply: String
+            switch request.url!.path {
+            case "/v1/service":
+                reply = #"{"version":1,"clusterID":"cluster","leaseSeconds":300,"recoverySeconds":0,"capabilities":{"operationalStatus":{"version":1,"enabled":true}},"lease":null}"#
+            case "/v1/operational-status/report":
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: WitnessNameURLProtocol.body(of: request)) as? [String: Any])
+                XCTAssertEqual(body["nodeID"] as? String, "stable-backup")
+                XCTAssertEqual(body["state"] as? String, "degraded")
+                let components = try XCTUnwrap(body["components"] as? [[String: Any]])
+                XCTAssertEqual(components.first { $0["id"] as? String == "peer-sync" }?["reasonCode"] as? String, "peer_unreachable")
+                reply = #"{"version":1,"accepted":true}"#
+            default:
+                XCTFail("Operational status must not acquire or renew: \(request.url!.path)")
+                reply = "{}"
+            }
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(reply.utf8))
+        }
+        let client = MeshWitnessClient(session: session)
+        await client.configure(.init(endpoint: "https://ruru.example.com", clusterID: "cluster", token: String(repeating: "t", count: 32)),
+                               nodeID: "stable-backup", nodeName: "Backup Mac")
+        let readiness = MeshOperationalReadiness.evaluate(automationsLoaded: true, hasDiscordToken: true,
+                                                           hasSnapshot: true, credentialsApproved: true,
+                                                           peerState: .degraded, discordConnected: true)
+        XCTAssertEqual(readiness.state, .degraded)
+        let accepted = await client.reportOperationalStatus(readiness)
+        XCTAssertTrue(accepted)
+    }
+
+    func testOperationalReadinessMapsSyncAndCredentialProblemsWithoutAuthorityEffects() {
+        let readiness = MeshOperationalReadiness.evaluate(automationsLoaded: false, hasDiscordToken: false,
+                                                           hasSnapshot: false, credentialsApproved: false,
+                                                           peerState: .synchronizing, discordConnected: false)
+        XCTAssertEqual(readiness.state, .outdated)
+        XCTAssertEqual(readiness.components.first { $0.id == "configuration" }?.state, .synchronizing)
+        XCTAssertEqual(readiness.components.first { $0.id == "credentials" }?.reasonCode, "approval_missing")
+    }
+
     func testPresenceWebsiteOmitsCredentialsAndInvalidAddresses() {
         XCTAssertEqual(MeshWitnessClient.reportedWebUIURL("https://Failover.Example.com:443/"), "https://failover.example.com")
         for value in ["http://example.com", "https://user:secret@example.com", "https://example.com?token=secret",

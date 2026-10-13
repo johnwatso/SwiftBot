@@ -170,6 +170,10 @@ extension AppModel {
                 let power = PowerSourceMonitor.current()
                 await client.reportPresence(role: role, webUIURL: self?.localMeshPublicAddress,
                                             power: power.source != .unknown ? power : nil)
+                guard let self else { return }
+                let readiness = await self.currentMeshOperationalReadiness()
+                self.meshOperationalReadiness = readiness
+                _ = await client.reportOperationalStatus(readiness)
                 try? await Task.sleep(for: .seconds(15))
             }
         }
@@ -277,6 +281,36 @@ extension AppModel {
         guard let enrollment = try? await meshCredentialStore.loadOrCreateLocalEnrollment(),
               await meshCredentialStore.authorizedPublicKey(nodeID: enrollment.nodeID) != nil else { return "this failover has no credential approval" }
         return nil
+    }
+
+    /// Builds a local report only. No caller may use this result to change
+    /// cluster ownership, output gating, or a Ruru lease.
+    func currentMeshOperationalReadiness() async -> MeshOperationalReadiness {
+        let hasSnapshot = await store.meshSnapshotVersion() != nil
+        let credentialsApproved: Bool
+        if let enrollment = try? await meshCredentialStore.loadOrCreateLocalEnrollment() {
+            credentialsApproved = await meshCredentialStore.authorizedPublicKey(nodeID: enrollment.nodeID) != nil
+        } else {
+            credentialsApproved = false
+        }
+        let peerState: RuruOperationalState
+        if settings.clusterMode == .standalone {
+            peerState = .unknown
+        } else if clusterNodes.contains(where: { $0.status == .disconnected }) {
+            peerState = .degraded
+        } else if settings.clusterMode == .standby, meshLastSuccessfulSync == nil {
+            peerState = .synchronizing
+        } else if let lastSync = meshLastSuccessfulSync, Date().timeIntervalSince(lastSync) > 60 {
+            peerState = .degraded
+        } else if clusterNodes.isEmpty {
+            peerState = .unknown
+        } else {
+            peerState = .ready
+        }
+        return MeshOperationalReadiness.evaluate(automationsLoaded: automationStore.isLoaded,
+                                                 hasDiscordToken: !settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                                 hasSnapshot: hasSnapshot, credentialsApproved: credentialsApproved,
+                                                 peerState: peerState, discordConnected: status == .running)
     }
 
     func meshCredentialsSnapshot() async -> MeshCredentialsResponse {

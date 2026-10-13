@@ -9,6 +9,18 @@
 
 ## Recent Engineering Log
 
+### 2026-10-13 — Phase 2: SwiftBot operational readiness reports
+
+- [x] SwiftBot now feature-detects Ruru's `operationalStatus` capability and
+  reports typed, bounded configuration, credential, snapshot, peer-sync, and
+  Discord readiness every presence interval. The native SwiftMesh diagnostic
+  grid shows the last local readiness state.
+- [x] Peer disconnection/stale standby sync reports as degraded, independently
+  of Ruru reachability. Reporting is strictly observational: it cannot acquire,
+  renew, release, or alter a lease, Discord output gate, promotion, or failover.
+- Validation: focused witness-client coverage asserts the typed request has no
+  lease route and readiness mapping coverage exercises sync/credential states.
+
 ### 2026-10-13 — Phase 0: Ruru-guarded SwiftMesh policy
 
 - [x] Defined the derived deployment states: standalone, `ruruGuarded`, and

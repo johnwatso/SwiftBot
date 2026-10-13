@@ -163,6 +163,7 @@ Automation webhook URLs (which usually embed the webhook's token) are `"automati
 - Credential endpoints require a node enrollment proof in addition to mesh HMAC. Treat a Failover Join Code as a secret.
 - Handback freezes/drains the current owner, catches up state, then closes the old owner before promotion. Ruru is required for new SwiftMesh deployments and expires output with a monotonic deadline; existing peer-only pairs are legacy-compatible but not partition-safe.
 - With Ruru, only a refused renewal (`MeshOwnershipRenewal.lost`) or a passed local deadline demotes; an unanswered renewal is retried. A witness-backed configured or preferred Primary with no leader to watch keeps acquiring (`startOwnershipRecoveryIfNeeded`). A Standby whose Ruru fingerprint (`MeshNodeHealth.ownershipWitness`) differs from the owner's never promotes or hands back.
+- SwiftBot may report bounded configuration, credential, snapshot, peer-sync and Discord readiness to a capable Ruru. This operational status is diagnostic only; it is never an ownership or promotion input.
 - Automation checkpoints hold ambiguous actions for review; compute jobs use durable IDs and outbound polling. No exactly-once Discord or lossless Gateway claim.
 - See `SWIFTMESH_RELIABILITY.md` for setup, protocol boundaries, and rollout limits.
 
