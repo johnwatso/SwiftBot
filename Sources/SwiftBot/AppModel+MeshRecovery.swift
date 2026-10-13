@@ -1,4 +1,5 @@
 import Foundation
+import RuruClient
 
 extension AppModel {
     /// Called when the app is about to terminate. A confirmed system logout or
@@ -49,22 +50,52 @@ extension AppModel {
             recordingWitnessConfiguration = witness
             await meshWitnessClient.configure(witness, nodeID: enrollment.nodeID, nodeName: settings.clusterNodeName)
             meshLocalNodeID = enrollment.nodeID
+            if let ruruConfig = witness.toRuruConfiguration(nodeID: enrollment.nodeID, nodeName: settings.clusterNodeName) {
+                ruruLeaseClient = RuruLeaseClient(configuration: ruruConfig)
+            } else {
+                ruruLeaseClient = nil
+            }
+            currentRuruLease = nil
+            let leaseClient = ruruLeaseClient
             updateMeshWitnessMonitoring(witness)
             if witness.isConfigured && settings.clusterMode != .standalone {
                 await cluster.setOwnershipHandlers(acquire: { [weak self] term in
-                    guard let self else { return nil }
-                    let grant = await self.meshWitnessClient.acquire(minimumTerm: term)
-                    await self.updateMeshOwnershipDeadline(await self.meshWitnessClient.leaseDeadline() ?? ContinuousClock.now)
-                    return grant
+                    guard let self, let leaseClient else { return nil }
+                    do {
+                        let lease = try await leaseClient.acquire()
+                        guard Int(lease.term) >= term else {
+                            try? await leaseClient.release(lease)
+                            return nil
+                        }
+                        await self.setRuruLease(lease)
+                        await self.updateMeshOwnershipDeadline(lease.deadline)
+                        return Int(lease.term)
+                    } catch {
+                        return nil
+                    }
                 }, renew: { [weak self] term in
-                    guard let self else { return .lost }
-                    let renewed = await self.meshWitnessClient.renew(term: term)
-                    await self.updateMeshOwnershipDeadline(await self.meshWitnessClient.leaseDeadline() ?? ContinuousClock.now)
-                    return renewed
+                    guard let self, let leaseClient else { return .lost }
+                    let lease = await self.currentRuruLease
+                    guard let lease else { return .lost }
+                    do {
+                        let renewed = try await leaseClient.renew(lease)
+                        await self.setRuruLease(renewed)
+                        await self.updateMeshOwnershipDeadline(renewed.deadline)
+                        return .renewed
+                    } catch RuruError.ownershipLost {
+                        await self.setRuruLease(nil)
+                        await self.updateMeshOwnershipDeadline(ContinuousClock.now)
+                        return .lost
+                    } catch {
+                        return .unreachable(stillValid: lease.isValid)
+                    }
                 }, release: { [weak self] term in
                     guard let self else { return }
                     await self.service.setOutputAllowed(false)
-                    await self.meshWitnessClient.release(term: term)
+                    if let leaseClient, let lease = await self.currentRuruLease {
+                        try? await leaseClient.release(lease)
+                    }
+                    await self.setRuruLease(nil)
                 }, witnessFingerprint: witness.ownershipFingerprint)
             } else {
                 await cluster.setOwnershipHandlers(acquire: nil, renew: nil, release: nil)
@@ -204,6 +235,10 @@ extension AppModel {
         await cluster.setPrimaryPreference(preference)
     }
 
+    func setRuruLease(_ lease: RuruLease?) {
+        currentRuruLease = lease
+    }
+
     var meshOwnershipExpired: Bool {
         meshOwnershipDeadline.map { ContinuousClock.now >= $0 } ?? false
     }
@@ -336,6 +371,7 @@ extension AppModel {
         await publishMeshPrimaryPreference()
         lastPublishedRole = nil
         clusterSnapshot = await cluster.currentSnapshot()
+        currentRuruLease = nil
         await updateMeshOwnershipDeadline(nil)
     }
 

@@ -4,6 +4,7 @@ import AVFoundation
 import CryptoKit
 import Foundation
 import OSLog
+import RuruClient
 import SwiftUI
 import Darwin
 
@@ -286,6 +287,8 @@ final class AppModel: ObservableObject {
     let cluster: ClusterCoordinator
     let meshCredentialStore = MeshCredentialEnrollmentStore()
     let meshWitnessClient = MeshWitnessClient()
+    var ruruLeaseClient: RuruLeaseClient?
+    var currentRuruLease: RuruLease?
     let recordingDirectory: RecordingDirectoryClient
     var recordingWitnessConfiguration = MeshWitnessConfiguration()
     var recordingCoordinationTask: Task<Void, Never>?

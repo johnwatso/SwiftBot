@@ -1,4 +1,5 @@
 import Foundation
+import RuruClient
 
 /// Optional independent arbiter. Its credential is stored only in Keychain.
 struct MeshWitnessConfiguration: Codable, Equatable, Sendable {
@@ -27,6 +28,13 @@ struct MeshWitnessConfiguration: Codable, Equatable, Sendable {
         guard let url = URL(string: endpoint), let host = url.host,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return false }
         return url.scheme == "https" || (url.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains(host))
+    }
+
+    func toRuruConfiguration(nodeID: String, nodeName: String) -> RuruConfiguration? {
+        guard isValid, let url = URL(string: endpoint) else { return nil }
+        let name = nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return RuruConfiguration(endpoint: url, clusterID: clusterID, nodeID: nodeID,
+                                 nodeName: name.isEmpty ? nil : name, token: token)
     }
 }
 
@@ -102,22 +110,9 @@ actor MeshWitnessClient {
         let batteryTimeRemaining: Int?
         let sessionEnding: Bool?
     }
-    struct Grant: Codable, Sendable {
-        let ownerNodeID: String
-        let term: Int
-        let expiresInSeconds: Double
-    }
-    private struct Request: Encodable {
-        let clusterID: String
-        let nodeID: String
-        let term: Int
-        let nodeName: String?
-    }
     private var config = MeshWitnessConfiguration()
     private var nodeID = ""
     private var nodeName: String?
-    private var currentTerm: Int?
-    private var deadline: ContinuousClock.Instant?
     private var presenceCapability: (supported: Bool, checked: ContinuousClock.Instant)?
     private var configurationGeneration = UUID()
     private let session: URLSession
@@ -139,11 +134,7 @@ actor MeshWitnessClient {
         self.nodeID = nodeID
         configurationGeneration = UUID()
         presenceCapability = nil
-        currentTerm = nil
-        deadline = nil
     }
-
-    func leaseDeadline() -> ContinuousClock.Instant? { deadline }
 
     /// Reports this Mac even while it is standby. This neither requests nor
     /// extends ownership. Feature detection keeps earlier Ruru versions usable.
@@ -275,158 +266,28 @@ actor MeshWitnessClient {
         return .unreachable
     }
 
-    func acquire(minimumTerm: Int) async -> Int? {
-        guard case .granted(let grant) = await request("acquire", term: minimumTerm), grant.term >= minimumTerm else { return nil }
-        return grant.term
-    }
-
-    func renew(term: Int) async -> MeshOwnershipRenewal {
-        guard currentTerm == term else { return .lost }
-        switch await request("renew", term: term) {
-        case .granted(let grant):
-            return grant.term == term ? .renewed : .lost
-        case .refused:
-            return .lost
-        case .unreachable:
-            return .unreachable(stillValid: deadline.map { ContinuousClock.now < $0 } ?? false)
-        }
-    }
-
-    func release(term: Int) async {
-        guard config.isValid, let url = URL(string: config.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/lease/release") else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(Request(clusterID: config.clusterID, nodeID: nodeID, term: term, nodeName: nodeName))
-        _ = try? await session.data(for: request)
-        if currentTerm == term { currentTerm = nil; deadline = nil }
-    }
-
-    private enum LeaseResponse {
-        case granted(Grant)
-        /// A definite answer from Ruru: 401, 403 or 409.
-        case refused
-        case unreachable
-    }
-
-    private func request(_ action: String, term: Int) async -> LeaseResponse {
-        guard config.isValid, !nodeID.isEmpty,
-              let url = URL(string: config.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/lease/\(action)") else { return .refused }
-        let began = ContinuousClock.now
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(Request(clusterID: config.clusterID, nodeID: nodeID, term: term, nodeName: nodeName))
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let response = response as? HTTPURLResponse else { return .unreachable }
-            if [401, 403, 409].contains(response.statusCode) { return .refused }
-            guard response.statusCode == 200,
-                  let grant = try? JSONDecoder().decode(Grant.self, from: data),
-                  grant.ownerNodeID == nodeID, grant.term >= 0,
-                  // Ruru allows per-service lease lengths of 10–300 seconds.
-                  grant.expiresInSeconds >= 3, grant.expiresInSeconds <= 300 else { return .unreachable }
-            // Start the local deadline before the HTTP request, with a safety
-            // margin. Slow requests can never extend our permission to act.
-            let expires = began.advanced(by: .milliseconds(Int64((grant.expiresInSeconds - 2) * 1000)))
-            guard ContinuousClock.now < expires else { return .unreachable }
-            currentTerm = grant.term
-            deadline = expires
-            return .granted(grant)
-        } catch { return .unreachable }
-    }
 }
 
-/// Ruru's pairing codes (`7KQ4-M2XP`). A code carries no secret: SwiftBot
-/// exchanges it with Ruru for a pending
-/// request, and Ruru releases this service's connection details only after
-/// its operator approves the request. Codes are single-use and expire after
-/// 10 minutes. Protocol: Ruru's `POST /v1/pair` and `POST /v1/pair/status`.
-enum RuruShortCodePairing {
-    /// Ruru's code alphabet: no 0/1/I/L/O/U.
+/// Ruru’s code alphabet: no 0/1/I/L/O/U.
+/// "7kq4 m2xp" → "7KQ4-M2XP"; nil if the text isn’t a short code.
+enum RuruPairingCode {
     private static let alphabet = Set("23456789ABCDEFGHJKMNPQRSTVWXYZ")
-
-    enum Failure: LocalizedError, Equatable {
-        case invalidAddress, missingNodeID, invalidCode, rejected, expired, throttled, unsupported
-        case unavailable(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .invalidAddress: "Enter Ruru’s HTTPS address, such as https://ruru.example.com."
-            case .missingNodeID: "This Mac’s SwiftMesh identity isn’t ready yet. Try again in a moment."
-            case .invalidCode: "Ruru didn’t accept this code. It may be mistyped, already used, or expired; create a new one in Ruru."
-            case .rejected: "The request was rejected in Ruru."
-            case .expired: "Nobody approved the request in time. Create a new code in Ruru and try again."
-            case .throttled: "Ruru received too many wrong codes. Wait a minute, then try again."
-            case .unsupported: "This Ruru is too old to pair with a code. Update Ruru, or enter the details under Advanced."
-            case .unavailable(let detail): "Ruru couldn’t be reached: \(detail)"
-            }
-        }
-    }
-
-    /// "7kq4 m2xp" → "7KQ4-M2XP"; nil if the text isn't a short code.
     static func normalized(_ text: String) -> String? {
         let cleaned = text.uppercased().filter { $0 != "-" && $0 != " " && !$0.isNewline }
         guard cleaned.count == 8, cleaned.allSatisfy(alphabet.contains) else { return nil }
         return String(cleaned.prefix(4)) + "-" + String(cleaned.suffix(4))
     }
+}
 
-    /// Requests pairing and waits up to 10 minutes for approval in Ruru.
-    /// Cancelling the calling task stops waiting. Saves nothing: the caller
-    /// reviews and stores the returned configuration.
-    static func pair(endpoint rawEndpoint: String, code: String, nodeID: String, nodeName: String,
-                     session: URLSession = .shared) async throws -> MeshWitnessConfiguration {
-        let endpoint = rawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard MeshWitnessConfiguration.isValidEndpoint(endpoint) else { throw Failure.invalidAddress }
-        guard !nodeID.isEmpty else { throw Failure.missingNodeID }
-        guard let code = normalized(code) else { throw Failure.invalidCode }
-        var claim = ["code": code, "nodeID": nodeID]
-        let name = nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !name.isEmpty { claim["nodeName"] = name }
-        let pending = try await post(endpoint + "/v1/pair", claim, session)
-        guard let pairingID = pending["pairingID"] as? String, !pairingID.isEmpty else {
-            throw Failure.unavailable("unexpected response")
-        }
-        let deadline = ContinuousClock.now + .seconds(600)
-        while ContinuousClock.now < deadline {
-            try Task.checkCancellation()
-            let reply = try await post(endpoint + "/v1/pair/status", ["pairingID": pairingID], session)
-            if reply["status"] as? String == "approved",
-               let clusterID = reply["clusterID"] as? String, let token = reply["token"] as? String {
-                let configuration = MeshWitnessConfiguration(endpoint: endpoint, clusterID: clusterID, token: token)
-                guard configuration.isValid else { throw Failure.unavailable("Ruru sent incomplete details") }
-                return configuration
-            }
-            let wait = min(10, max(1, (reply["retryAfter"] as? Double) ?? 2))
-            try await Task.sleep(for: .seconds(wait))
-        }
-        throw Failure.expired
-    }
-
-    private static func post(_ address: String, _ body: [String: String], _ session: URLSession) async throws -> [String: Any] {
-        guard let url = URL(string: address) else { throw Failure.invalidAddress }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
-        let data: Data, response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
-        catch is CancellationError { throw CancellationError() }
-        catch let error as URLError where error.code == .cancelled { throw CancellationError() }
-        catch { throw Failure.unavailable(error.localizedDescription) }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        switch (status, object["error"] as? String) {
-        case (200, _), (202, _): return object
-        case (404, "invalid_code"): throw Failure.invalidCode
-        case (404, _): throw Failure.unsupported
-        case (403, _): throw Failure.rejected
-        case (410, _): throw Failure.expired
-        case (429, _): throw Failure.throttled
-        default: throw Failure.unavailable("HTTP \(status)")
+extension RuruPairing.Failure: @retroactive LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .invalidCode: "Ruru didn’t accept this code. It may be mistyped, already used, or expired; create a new one in Ruru."
+        case .rejected: "The request was rejected in Ruru."
+        case .expired: "Nobody approved the request in time. Create a new code in Ruru and try again."
+        case .throttled: "Ruru received too many wrong codes. Wait a minute, then try again."
+        case .server: "Ruru returned an unexpected error."
+        case .transport(let detail): "Ruru couldn’t be reached: \(detail)"
         }
     }
 }

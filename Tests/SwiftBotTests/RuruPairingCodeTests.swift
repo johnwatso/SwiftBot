@@ -123,8 +123,6 @@ final class RuruBackupConnectionTests: XCTestCase {
         XCTAssertTrue(BackupRuruURLProtocol.requests.allSatisfy { $0.httpMethod == "GET" })
         XCTAssertEqual(BackupRuruURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer " + String(repeating: "t", count: 32))
         XCTAssertNil(BackupRuruURLProtocol.requests.last?.value(forHTTPHeaderField: "Authorization"))
-        let deadline = await client.leaseDeadline()
-        XCTAssertNil(deadline)
     }
 
     func testPublicHealthCannotMakeWrongTokenOrServiceReady() async {

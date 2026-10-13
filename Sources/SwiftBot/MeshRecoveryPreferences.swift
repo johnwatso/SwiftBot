@@ -1,4 +1,5 @@
 import AppKit
+import RuruClient
 import SwiftUI
 
 /// Ruru is an independent ownership witness. Its configuration is kept
@@ -95,7 +96,7 @@ private struct MeshWitnessEditor: View {
         _address = State(initialValue: configuration.endpoint)
     }
 
-    private var code: String? { RuruShortCodePairing.normalized(typedCode) }
+    private var code: String? { RuruPairingCode.normalized(typedCode) }
     private var trimmedAddress: String {
         address.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
@@ -186,12 +187,23 @@ private struct MeshWitnessEditor: View {
     /// until the operator reviews the result and chooses Connect.
     private func requestPairing() {
         guard let code else { return }
+        guard MeshWitnessConfiguration.isValidEndpoint(trimmedAddress) else {
+            error = "Enter Ruru's HTTPS address, such as https://ruru.example.com."
+            return
+        }
+        guard !nodeID.isEmpty else {
+            error = "This Mac's SwiftMesh identity isn't ready yet. Try again in a moment."
+            return
+        }
         error = nil
         let address = trimmedAddress, nodeID = nodeID, nodeName = nodeName
         waiting = Task {
             do {
-                approved = try await RuruShortCodePairing.pair(endpoint: address, code: code,
-                                                              nodeID: nodeID, nodeName: nodeName)
+                guard let url = URL(string: address) else { return }
+                let ruruConfig = try await RuruPairing.pair(endpoint: url, code: code,
+                                                            nodeID: nodeID, nodeName: nodeName)
+                approved = MeshWitnessConfiguration(endpoint: ruruConfig.endpoint.absoluteString,
+                                                     clusterID: ruruConfig.clusterID, token: ruruConfig.token)
                 typedCode = ""
             } catch is CancellationError {
             } catch {

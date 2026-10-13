@@ -291,68 +291,6 @@ final class MeshReliabilityTests: XCTestCase {
         XCTAssertFalse(allowed)
     }
 
-    func testWitnessNameChangePreservesLeaseAndStableIdentity() async throws {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [WitnessNameURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel(); WitnessNameURLProtocol.setHandler(nil) }
-        WitnessNameURLProtocol.setHandler { request in
-            let data = WitnessNameURLProtocol.body(of: request)
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            XCTAssertEqual(body["nodeID"] as? String, "stable-node-id")
-            XCTAssertEqual(body["clusterID"] as? String, "cluster")
-            let path = request.url!.lastPathComponent
-            XCTAssertEqual(body["nodeName"] as? String, path == "acquire" ? "Primary Mac" : "Office Mac")
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            let reply = path == "release" ? #"{"released":true}"# : #"{"ownerNodeID":"stable-node-id","term":4,"expiresInSeconds":30}"#
-            return (response, Data(reply.utf8))
-        }
-        let settings = MeshWitnessConfiguration(endpoint: "https://witness.example.com", clusterID: "cluster", token: String(repeating: "t", count: 32))
-        let client = MeshWitnessClient(session: session)
-        await client.configure(settings, nodeID: "stable-node-id", nodeName: " Primary Mac ")
-        let term = await client.acquire(minimumTerm: 3)
-        XCTAssertEqual(term, 4)
-        let existingDeadline = await client.leaseDeadline()
-        let before = try XCTUnwrap(existingDeadline)
-        await client.configure(settings, nodeID: "stable-node-id", nodeName: "Office Mac")
-        let afterRename = await client.leaseDeadline()
-        XCTAssertEqual(afterRename, before)
-        let renewed = await client.renew(term: 4)
-        XCTAssertEqual(renewed, .renewed)
-        await client.release(term: 4)
-        let afterRelease = await client.leaseDeadline()
-        XCTAssertNil(afterRelease)
-    }
-
-    /// Ruru refusing ends the lease; no answer (or its restart quarantine)
-    /// only does once this Mac's own deadline has passed.
-    func testRenewalSeparatesRefusalFromNoAnswer() async {
-        final class Status: @unchecked Sendable { var renewal = 200 }
-        let status = Status()
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [WitnessNameURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel(); WitnessNameURLProtocol.setHandler(nil) }
-        WitnessNameURLProtocol.setHandler { request in
-            let code = request.url!.lastPathComponent == "renew" ? status.renewal : 200
-            let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
-            let body = code == 200 ? #"{"ownerNodeID":"stable-node-id","term":4,"expiresInSeconds":30}"# : #"{"error":"x"}"#
-            return (response, Data(body.utf8))
-        }
-        let client = MeshWitnessClient(session: session)
-        await client.configure(MeshWitnessConfiguration(endpoint: "https://witness.example.com", clusterID: "cluster",
-                                                        token: String(repeating: "t", count: 32)), nodeID: "stable-node-id")
-        _ = await client.acquire(minimumTerm: 3)
-        status.renewal = 503
-        let quarantined = await client.renew(term: 4)
-        XCTAssertEqual(quarantined, .unreachable(stillValid: true))
-        status.renewal = 409
-        let refused = await client.renew(term: 4)
-        XCTAssertEqual(refused, .lost)
-        let otherTerm = await client.renew(term: 9)
-        XCTAssertEqual(otherTerm, .lost)
-    }
-
     func testRuruFingerprintOmitsTheToken() {
         let witness = MeshWitnessConfiguration(endpoint: "https://Ruru.Example.com/", clusterID: "swiftmesh", token: String(repeating: "s", count: 40))
         XCTAssertEqual(witness.ownershipFingerprint, "swiftmesh@ruru.example.com")
@@ -391,8 +329,6 @@ final class MeshReliabilityTests: XCTestCase {
                                nodeID: "stable-backup", nodeName: "JohnBook Pro")
         let accepted = await client.reportPresence(role: .standby, webUIURL: "https://Failover.Website.Example:443/")
         XCTAssertTrue(accepted)
-        let deadline = await client.leaseDeadline()
-        XCTAssertNil(deadline)
     }
 
     func testPresenceWebsiteOmitsCredentialsAndInvalidAddresses() {
@@ -405,7 +341,7 @@ final class MeshReliabilityTests: XCTestCase {
         XCTAssertNil(MeshWitnessClient.reportedWebUIURL(nil))
     }
 
-    func testUnsupportedOrUnauthorizedPresenceDoesNotChangeLease() async throws {
+    func testUnsupportedOrUnauthorizedPresenceReturnsFalse() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [WitnessNameURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -415,7 +351,6 @@ final class MeshReliabilityTests: XCTestCase {
                 let reply: String
                 var status = 200
                 switch request.url!.path {
-                case "/v1/lease/acquire": reply = #"{"ownerNodeID":"node","term":4,"expiresInSeconds":30}"#
                 case "/v1/service":
                     reply = supported
                         ? #"{"version":1,"authority":"Ruru","clusterID":"cluster","capabilities":{"participantPresence":{"version":1,"enabled":true}}}"#
@@ -423,37 +358,41 @@ final class MeshReliabilityTests: XCTestCase {
                 case "/v1/participants/report":
                     XCTAssertTrue(supported, "Old Ruru must not receive presence reports")
                     status = 401; reply = #"{"error":"unauthorized"}"#
-                default: XCTFail("Unexpected route"); reply = "{}"
+                default: XCTFail("Unexpected route: \(request.url!.path)"); reply = "{}"
                 }
                 return (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, Data(reply.utf8))
             }
             let client = MeshWitnessClient(session: session)
             await client.configure(.init(endpoint: "https://ruru.example.com", clusterID: "cluster", token: String(repeating: "t", count: 32)), nodeID: "node")
-            _ = await client.acquire(minimumTerm: 3)
-            let before = await client.leaseDeadline()
             let reported = await client.reportPresence(role: .active)
             XCTAssertFalse(reported)
-            let after = await client.leaseDeadline()
-            XCTAssertEqual(after, before)
         }
     }
 
-    func testInvalidWitnessDisplayNameIsOmittedWithoutBlockingOwnership() async {
+    func testInvalidWitnessDisplayNameIsOmittedFromPresence() async {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [WitnessNameURLProtocol.self]
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel(); WitnessNameURLProtocol.setHandler(nil) }
         WitnessNameURLProtocol.setHandler { request in
-            let body = try JSONSerialization.jsonObject(with: WitnessNameURLProtocol.body(of: request)) as? [String: Any]
-            XCTAssertNil(body?["nodeName"])
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, Data(#"{"ownerNodeID":"stable-node-id","term":1,"expiresInSeconds":30}"#.utf8))
+            let reply: String
+            switch request.url!.path {
+            case "/v1/service":
+                reply = #"{"version":1,"authority":"Ruru","clusterID":"cluster","capabilities":{"participantPresence":{"version":1,"enabled":true}}}"#
+            case "/v1/participants/report":
+                let body = try JSONSerialization.jsonObject(with: WitnessNameURLProtocol.body(of: request)) as? [String: Any]
+                XCTAssertNil(body?["nodeName"])
+                reply = #"{"version":1,"accepted":true}"#
+            default:
+                XCTFail("Unexpected route: \(request.url!.path)"); reply = "{}"
+            }
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(reply.utf8))
         }
         let client = MeshWitnessClient(session: session)
         let settings = MeshWitnessConfiguration(endpoint: "https://witness.example.com", clusterID: "cluster", token: String(repeating: "t", count: 32))
         await client.configure(settings, nodeID: "stable-node-id", nodeName: "two\nlines")
-        let acquired = await client.acquire(minimumTerm: 0)
-        XCTAssertEqual(acquired, 1)
+        let reported = await client.reportPresence(role: .unknown)
+        XCTAssertTrue(reported)
     }
 }
 
