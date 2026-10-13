@@ -12,6 +12,7 @@ struct MeshPreferencesView: View {
     @State private var showSecretManagement = false
     @State private var showIdentitySheet = false
     @State private var showRuruRequired = false
+    @State private var showRuruSetup = false
 
     private static let defaultListenPort = 38787
 
@@ -91,7 +92,7 @@ struct MeshPreferencesView: View {
             if shouldShowMeshSettings {
                 transportSection
                 failoverSection
-                MeshWitnessPreferencesSection()
+                MeshWitnessPreferencesSection(showSetup: $showRuruSetup)
                 workSharingSection
             }
         }
@@ -128,9 +129,10 @@ struct MeshPreferencesView: View {
             Text("Paired Worker nodes can process supported tasks for the active Primary. Only the active Primary sends results to Discord.")
         }
         .alert("Set Up Ruru First", isPresented: $showRuruRequired) {
+            Button("Set Up Ruru…") { showRuruSetup = true }
             Button("OK", role: .cancel) { }
         } message: {
-            Text("New SwiftMesh deployments require an independent Ruru service. Configure it in the Ruru section below, then choose a Primary or Fail Over role. Existing legacy peer deployments remain available until you migrate them deliberately.")
+            Text("New SwiftMesh deployments require an independent Ruru service. Set it up now, create a pairing code in Ruru, approve this Mac there, then choose a Primary or Fail Over role. A newly paired standby inherits the Ruru connection through protected SwiftMesh credential sync. Existing legacy peer deployments remain available until you migrate them deliberately.")
         }
     }
 

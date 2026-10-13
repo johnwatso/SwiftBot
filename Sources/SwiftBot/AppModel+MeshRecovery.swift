@@ -323,7 +323,9 @@ extension AppModel {
             discordOAuthClientSecret: settings.adminWebUI.discordOAuth.clientSecret,
             discordToken: settings.token,
             automationWebhookURLs: AutomationWebhookVault.urls(for: automationStore.rules),
-            authorizedCredentialGrants: grants, leaderTerm: term, configRevision: version?.revision ?? 0
+            authorizedCredentialGrants: grants,
+            ruruWitness: recordingWitnessConfiguration.isValid ? recordingWitnessConfiguration : nil,
+            leaderTerm: term, configRevision: version?.revision ?? 0
         )
     }
 
@@ -429,7 +431,8 @@ extension AppModel {
               let revision = payload.configRevision,
               let version = await store.meshSnapshotVersion(), version.leaderTerm == term,
               revision >= version.revision, let grants = payload.authorizedCredentialGrants,
-              let token = payload.discordToken, !token.isEmpty else { return false }
+              let token = payload.discordToken, !token.isEmpty,
+              payload.ruruWitness?.isValid ?? true else { return false }
         do {
             try await meshCredentialStore.replaceGrants(grants)
             settings.token = token
@@ -442,7 +445,18 @@ extension AppModel {
             }
             // Companion credentials and tunnel routes belong to their host Mac.
             try await store.save(settings)
+            // Keep the inherited Ruru connection out of the ordinary settings
+            // store. It is committed only after the prerequisite mesh snapshot
+            // and credentials have saved successfully.
+            guard MeshWitnessSettingsStore.inherit(payload.ruruWitness) else {
+                logs.append("SwiftMesh could not save the inherited Ruru connection.")
+                return false
+            }
             meshLastSuccessfulSync = Date()
+            // A newly paired standby receives the same Ruru service connection
+            // through the sealed mesh credential response. Reinstall its
+            // lease-only hooks only after every local sync prerequisite saved.
+            if payload.ruruWitness != nil { await configureMeshRecovery() }
             return true
         } catch {
             logs.append("SwiftMesh could not persist paired credentials: \(error.localizedDescription)")

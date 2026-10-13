@@ -9,6 +9,21 @@
 
 ## Recent Engineering Log
 
+### 2026-10-13 — Phase 1–3 monitoring and pairing completion
+
+- [x] A newly paired Failover now inherits a valid Ruru endpoint, service ID,
+  and bearer token through SwiftMesh’s existing sealed,
+  credential-authorized response. It saves the connection in Keychain and
+  reinstalls its lease hooks only after its credential/snapshot sync succeeds.
+  Older Primaries omit the optional field; legacy existing pairs remain
+  unchanged until re-paired.
+- [x] The new-deployment guard now offers **Set Up Ruru…** directly from its
+  explanatory alert instead of leaving the user at a blocked role picker.
+- Validation: focused Keychain-isolated inheritance and wire-compatibility
+  tests passed locally. A physical two-Mac pairing, Ruru operator approval,
+  WAN reachability, and standby promotion remain required before claiming this
+  flow is deployed.
+
 ### 2026-10-13 — Phase 3: require Ruru for new SwiftMesh setup
 
 - [x] The native role picker and WebUI configuration patch now reject a new

@@ -54,6 +54,21 @@ final class MeshReliabilityTests: XCTestCase {
         await node.stopAll()
     }
 
+    func testCredentialResponseCarriesAnOptionalRuruConnectionForNewStandbys() throws {
+        let witness = MeshWitnessConfiguration(endpoint: "https://ruru.example.com", clusterID: "swiftbot",
+                                                token: String(repeating: "t", count: 40))
+        let payload = MeshCredentialsResponse(discordToken: "protected-token", authorizedCredentialGrants: [], ruruWitness: witness)
+        let decoded = try JSONDecoder().decode(MeshCredentialsResponse.self, from: JSONEncoder().encode(payload))
+        XCTAssertEqual(decoded.ruruWitness, witness)
+        XCTAssertTrue(decoded.ruruWitness?.isValid == true)
+
+        var oldShape = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any])
+        oldShape.removeValue(forKey: "ruruWitness")
+        let older = try JSONDecoder().decode(MeshCredentialsResponse.self,
+                                             from: JSONSerialization.data(withJSONObject: oldShape))
+        XCTAssertNil(older.ruruWitness, "Older Primaries remain compatible")
+    }
+
     func testReplicatedApprovalsCannotImpersonateAnotherNodeAfterRevocation() async throws {
         let store = MeshCredentialEnrollmentStore(account: "mesh-signing-test-\(UUID().uuidString)")
         let revoked = try await store.issueGrant(nodeName: "Revoked")
@@ -340,7 +355,7 @@ final class MeshReliabilityTests: XCTestCase {
             let reply: String
             switch request.url!.path {
             case "/v1/service":
-                reply = #"{"version":1,"clusterID":"cluster","leaseSeconds":300,"recoverySeconds":0,"capabilities":{"operationalStatus":{"version":1,"enabled":true}},"lease":null}"#
+                reply = #"{"version":1,"authority":"Ruru","clusterID":"cluster","leaseSeconds":300,"recoverySeconds":0,"capabilities":{"operationalStatus":{"version":1,"enabled":true}},"lease":null}"#
             case "/v1/operational-status/report":
                 let body = try XCTUnwrap(JSONSerialization.jsonObject(with: WitnessNameURLProtocol.body(of: request)) as? [String: Any])
                 XCTAssertEqual(body["nodeID"] as? String, "stable-backup")
@@ -363,6 +378,29 @@ final class MeshReliabilityTests: XCTestCase {
         XCTAssertEqual(readiness.state, .degraded)
         let accepted = await client.reportOperationalStatus(readiness)
         XCTAssertTrue(accepted)
+    }
+
+    func testOperationalReportingSkipsAnOlderRuruWithoutTheCapability() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [WitnessNameURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel(); WitnessNameURLProtocol.setHandler(nil) }
+        WitnessNameURLProtocol.setHandler { request in
+            guard request.url!.path == "/v1/service" else {
+                XCTFail("Unsupported operational status must not use a lease route or report endpoint: \(request.url!.path)")
+                return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!, Data())
+            }
+            let reply = #"{"version":1,"authority":"Ruru","clusterID":"cluster","leaseSeconds":30,"recoverySeconds":0,"capabilities":{"lease":{"version":1,"enabled":true}},"lease":null}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(reply.utf8))
+        }
+        let client = MeshWitnessClient(session: session)
+        await client.configure(.init(endpoint: "https://ruru.example.com", clusterID: "cluster", token: String(repeating: "t", count: 32)),
+                               nodeID: "stable-backup", nodeName: "Backup Mac")
+        let readiness = MeshOperationalReadiness.evaluate(automationsLoaded: true, hasDiscordToken: true,
+                                                           hasSnapshot: true, credentialsApproved: true,
+                                                           peerState: .ready, discordConnected: true)
+        let accepted = await client.reportOperationalStatus(readiness)
+        XCTAssertFalse(accepted)
     }
 
     func testOperationalReadinessMapsSyncAndCredentialProblemsWithoutAuthorityEffects() {

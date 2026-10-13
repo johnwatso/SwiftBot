@@ -7,8 +7,13 @@ import SwiftUI
 /// mistaken for a blanket cluster-health claim.
 struct MeshWitnessPreferencesSection: View {
     @EnvironmentObject private var app: AppModel
+    @Binding private var showSetup: Bool
     @State private var witness = MeshWitnessSettingsStore.load()
     @State private var showWitnessEditor = false
+
+    init(showSetup: Binding<Bool> = .constant(false)) {
+        _showSetup = showSetup
+    }
 
     var body: some View {
         Section {
@@ -45,6 +50,12 @@ struct MeshWitnessPreferencesSection: View {
                 witness = saved
                 Task { await app.configureMeshRecovery() }
             }
+        }
+        .onChange(of: showSetup) { _, requested in
+            guard requested else { return }
+            witness = MeshWitnessSettingsStore.load()
+            showWitnessEditor = true
+            showSetup = false
         }
     }
 
@@ -166,8 +177,7 @@ private struct MeshWitnessEditor: View {
             }
 
             Text("""
-                Settings are saved in this Mac’s Keychain and included in new failover Join Codes.
-                Failovers that are already paired keep their old settings: set up Ruru on each one, or pair it again with a new Join Code.
+                Settings are saved in this Mac’s Keychain and inherited by a newly paired SwiftMesh standby through the sealed credential sync. Existing legacy pairs keep their current settings until you migrate them deliberately.
                 """)
                 .font(.caption)
                 .foregroundStyle(.secondary)

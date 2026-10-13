@@ -51,6 +51,16 @@ enum MeshWitnessSettingsStore {
               let value = String(data: data, encoding: .utf8) else { return false }
         return KeychainHelper.update(Data(value.utf8), account: account)
     }
+
+    /// Installs a Ruru connection received through SwiftMesh's sealed,
+    /// credential-authorized channel. A missing value keeps legacy pairs
+    /// unchanged; an invalid value can never overwrite a working Keychain
+    /// configuration.
+    @discardableResult static func inherit(_ configuration: MeshWitnessConfiguration?) -> Bool {
+        guard let configuration else { return true }
+        guard configuration.isValid else { return false }
+        return save(configuration)
+    }
 }
 
 /// Reachability of the witness from this Mac, from its unauthenticated

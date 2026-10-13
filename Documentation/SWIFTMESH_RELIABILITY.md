@@ -9,7 +9,10 @@ the backup Mac, open the Primary's WebUI and choose **SwiftMesh → Pair SwiftBo
 then **Continue in SwiftBot → Set Up Backup**. This installs the same Ruru service,
 credential enrollment and Primary connection and verifies the first bot sync
 before reporting **Backup ready**. No separate Ruru pairing or Discord token entry
-is needed. The backup remains passive throughout setup. See
+is needed: the Ruru endpoint, service ID, and bearer token travel only in the
+existing sealed, credential-authorized SwiftMesh response and are saved in the
+backup’s Keychain after sync prerequisites succeed. The backup remains passive
+throughout setup. See
 [the pairing workflow](RURU_PAIRING_CODE.md#adding-a-backup-from-the-primarys-webui).
 
 ### Migrating an existing peer-only pair
@@ -87,7 +90,7 @@ Ruru can store a **Preferred Primary** per service (Guarding → service → Pre
 
 Mixed builds: an older Fail Over sends handbacks without a node ID; owners treat those as manual. An older owner ignores the new fields.
 
-The default listener is `127.0.0.1:38990`. Configure the HTTPS endpoint, a stable cluster ID, and the bearer token on trusted nodes. New Failover Join Codes include this witness configuration; existing paired nodes need the same configuration saved locally. Provisioning and deployment are separate from building SwiftBot.
+The default listener is `127.0.0.1:38990`. Configure the HTTPS endpoint, a stable cluster ID, and the bearer token on the Primary. A newly paired Failover receives the same valid configuration through the sealed credential response; existing paired nodes are not silently changed and can be migrated with a fresh pairing. Provisioning and deployment are separate from building SwiftBot.
 
 SwiftBot includes its configured SwiftMesh node name as optional display metadata
 on witness requests. The witness shows that name in Overview and Activity;
@@ -99,7 +102,7 @@ The witness grants one owner per cluster, uses monotonically increasing terms, a
 
 A renewal Ruru doesn't answer (a timeout, a network drop, or its restart quarantine) is retried every two seconds while the local deadline holds. The owner demotes, closing its Discord gateway, only when Ruru refuses the renewal or that deadline passes. A configured Primary, or Ruru's Preferred Primary, with no other Primary to watch keeps trying to acquire a lease every five seconds. That is how it recovers after losing its lease, after starting while Ruru was unreachable, or after Ruru restarts. Ruru arbitrates these attempts, so they never take ownership from another Mac. A Ruru restart, including installing a Ruru update, therefore pauses the bot for about 30–40 seconds rather than forcing a failover.
 
-Both Macs must use the same Ruru service. Each node reports its Ruru fingerprint (cluster ID and endpoint host, never the token) in its mesh health, and a Standby remembers the owner's. A Standby with no Ruru, or a different one, refuses to take over or hand back, and SwiftMesh shows why. Set up Ruru on the Failover with the same pairing code before relying on failover. Builds from before this check report no fingerprint and are not held to it.
+Both Macs must use the same Ruru service. Each node reports its Ruru fingerprint (cluster ID and endpoint host, never the token) in its mesh health, and a Standby remembers the owner's. A Standby with no Ruru, or a different one, refuses to take over or hand back, and SwiftMesh shows why. New pairings inherit the Primary’s Ruru connection through credential sync; legacy pairs can be re-paired to migrate. Builds from before this check report no fingerprint and are not held to it.
 
 The protocol fences ownership decisions; already-sent Discord HTTP requests can still complete. Discord does not enforce SwiftMesh fencing tokens. This is not a guarantee of exactly-once external effects.
 

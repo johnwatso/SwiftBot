@@ -45,6 +45,15 @@ final class RuruWitnessSettingsTests: XCTestCase {
         XCTAssertEqual(MeshWitnessSettingsStore.load(), existing)
     }
 
+    func testValidInheritedWitnessIsSavedButInvalidPayloadCannotReplaceIt() {
+        XCTAssertTrue(MeshWitnessSettingsStore.inherit(fixtureConfiguration))
+        XCTAssertEqual(MeshWitnessSettingsStore.load(), fixtureConfiguration)
+        XCTAssertFalse(MeshWitnessSettingsStore.inherit(.init(endpoint: "http://not-ruru.example", clusterID: "bad", token: "short")))
+        XCTAssertEqual(MeshWitnessSettingsStore.load(), fixtureConfiguration)
+        XCTAssertTrue(MeshWitnessSettingsStore.inherit(nil), "Older Primaries omit this optional field")
+        XCTAssertEqual(MeshWitnessSettingsStore.load(), fixtureConfiguration)
+    }
+
 
     func testWitnessConfigurationJSONShapeIsStable() throws {
         let json = #"{"endpoint":"https://w.example.com","clusterID":"c","token":"\#(String(repeating: "t", count: 32))"}"#

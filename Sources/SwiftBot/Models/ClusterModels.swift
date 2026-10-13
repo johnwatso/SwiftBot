@@ -723,6 +723,9 @@ struct MeshCredentialsResponse: Codable, Sendable {
     /// Webhook credential ID → URL for the Primary's automation rules.
     var automationWebhookURLs: [String: String]? = nil
     var authorizedCredentialGrants: [MeshCredentialGrant]? = nil
+    /// A valid Ruru connection inherited by a newly paired standby through the
+    /// sealed credential response. Older Primaries omit it.
+    var ruruWitness: MeshWitnessConfiguration? = nil
     var leaderTerm: Int? = nil
     var configRevision: Int64? = nil
 }
