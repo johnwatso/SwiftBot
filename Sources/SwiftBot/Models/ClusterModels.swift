@@ -441,6 +441,12 @@ enum SwiftMeshProtectionState: String, Equatable, Sendable {
         guard mode != .standalone else { return .standalone }
         return hasRuru ? .ruruGuarded : .legacyPeer
     }
+
+    /// New mesh creation requires Ruru, but a pre-existing non-standalone
+    /// deployment remains operable long enough for a deliberate migration.
+    static func allowsTransition(from current: ClusterMode, to next: ClusterMode, hasRuru: Bool) -> Bool {
+        current != .standalone || next == .standalone || hasRuru
+    }
 }
 
 /// Transient runtime state, orthogonal to the configured `ClusterMode`.

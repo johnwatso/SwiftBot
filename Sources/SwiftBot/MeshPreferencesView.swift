@@ -11,6 +11,7 @@ struct MeshPreferencesView: View {
     @State private var showRotateSecretConfirm = false
     @State private var showSecretManagement = false
     @State private var showIdentitySheet = false
+    @State private var showRuruRequired = false
 
     private static let defaultListenPort = 38787
 
@@ -68,6 +69,21 @@ struct MeshPreferencesView: View {
         )
     }
 
+    private var clusterModeBinding: Binding<ClusterMode> {
+        Binding(
+            get: { app.settings.clusterMode },
+            set: { next in
+                let current = app.settings.clusterMode
+                let hasRuru = MeshWitnessSettingsStore.load().isValid
+                guard SwiftMeshProtectionState.allowsTransition(from: current, to: next, hasRuru: hasRuru) else {
+                    showRuruRequired = true
+                    return
+                }
+                app.settings.clusterMode = next
+            }
+        )
+    }
+
     var body: some View {
         SettingsForm {
             thisMacSection
@@ -111,11 +127,16 @@ struct MeshPreferencesView: View {
         } message: {
             Text("Paired Worker nodes can process supported tasks for the active Primary. Only the active Primary sends results to Discord.")
         }
+        .alert("Set Up Ruru First", isPresented: $showRuruRequired) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("New SwiftMesh deployments require an independent Ruru service. Configure it in the Ruru section below, then choose a Primary or Fail Over role. Existing legacy peer deployments remain available until you migrate them deliberately.")
+        }
     }
 
     private var thisMacSection: some View {
         Section {
-            Picker("Configured Role", selection: $app.settings.clusterMode) {
+            Picker("Configured Role", selection: clusterModeBinding) {
                 ForEach(ClusterMode.selectableCases) { mode in
                     Text(mode.displayName).tag(mode)
                 }

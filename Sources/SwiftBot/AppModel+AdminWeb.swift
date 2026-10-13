@@ -920,6 +920,12 @@ extension AppModel {
     }
 
     func applyAdminWebConfigPatch(_ patch: AdminWebConfigPatch) -> Bool {
+        if let value = patch.clusterMode,
+           let mode = ClusterMode(rawValue: value),
+           !SwiftMeshProtectionState.allowsTransition(from: settings.clusterMode, to: mode,
+                                                      hasRuru: MeshWitnessSettingsStore.load().isValid) {
+            return false
+        }
         if let value = patch.commandsEnabled { settings.commandsEnabled = value }
         if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }

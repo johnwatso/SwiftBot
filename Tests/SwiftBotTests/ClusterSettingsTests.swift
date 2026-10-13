@@ -6,6 +6,9 @@ final class ClusterSettingsTests: XCTestCase {
         XCTAssertEqual(SwiftMeshProtectionState.resolve(mode: .standalone, hasRuru: false), .standalone)
         XCTAssertEqual(SwiftMeshProtectionState.resolve(mode: .leader, hasRuru: false), .legacyPeer)
         XCTAssertEqual(SwiftMeshProtectionState.resolve(mode: .standby, hasRuru: true), .ruruGuarded)
+        XCTAssertFalse(SwiftMeshProtectionState.allowsTransition(from: .standalone, to: .leader, hasRuru: false))
+        XCTAssertTrue(SwiftMeshProtectionState.allowsTransition(from: .leader, to: .standby, hasRuru: false))
+        XCTAssertTrue(SwiftMeshProtectionState.allowsTransition(from: .standalone, to: .standby, hasRuru: true))
     }
 
 

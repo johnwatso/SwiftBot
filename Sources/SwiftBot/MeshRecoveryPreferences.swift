@@ -49,7 +49,11 @@ struct MeshWitnessPreferencesSection: View {
     }
 
     private var witnessSummary: String {
-        guard witness.isConfigured else { return "Use an independent Ruru service for ownership coordination." }
+        guard witness.isConfigured else {
+            return app.settings.clusterMode == .standalone
+                ? "Required before creating a new SwiftMesh deployment."
+                : "Legacy peer deployment: migrate to Ruru for partition-safe ownership."
+        }
         guard witness.isValid else { return "The saved witness details are incomplete." }
         return "\(URL(string: witness.endpoint)?.host ?? witness.endpoint)"
     }
@@ -60,7 +64,9 @@ struct MeshWitnessPreferencesSection: View {
     }
 
     private var protectionText: String {
-        guard witness.isValid else { return "Not available" }
+        guard witness.isValid else {
+            return app.settings.clusterMode == .standalone ? "Set up Ruru before pairing" : "Legacy peer only"
+        }
         guard app.meshWitnessHealth == .ready else { return "Waiting for Ruru" }
         if app.runtimeClusterMode == .leader, !app.meshOwnershipExpired {
             return "Lease held on this Mac"

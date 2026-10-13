@@ -12,6 +12,17 @@ before reporting **Backup ready**. No separate Ruru pairing or Discord token ent
 is needed. The backup remains passive throughout setup. See
 [the pairing workflow](RURU_PAIRING_CODE.md#adding-a-backup-from-the-primarys-webui).
 
+### Migrating an existing peer-only pair
+
+Existing peer-only meshes are labelled **legacy peer** and continue to run so
+they can be migrated without a forced outage. Set up one independent Ruru
+service, connect the current Primary through **SwiftMesh → Ruru**, then create
+a fresh Join Code and pair or re-pair the Fail Over so both Macs receive the
+same Ruru connection. Confirm that both nodes report Ruru ready and complete a
+sync before relying on automatic takeover. A legacy mesh can be changed between
+its existing roles, but once returned to Standalone, creating a new mesh requires
+Ruru configuration first.
+
 The addresses below concern each Mac's own WebUI and remote handover/access;
 they are not additional forms in the backup pairing flow.
 

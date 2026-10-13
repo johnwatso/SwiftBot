@@ -9,6 +9,19 @@
 
 ## Recent Engineering Log
 
+### 2026-10-13 — Phase 3: require Ruru for new SwiftMesh setup
+
+- [x] The native role picker and WebUI configuration patch now reject a new
+  Standalone → Primary/Fail Over transition until a valid independent Ruru
+  connection is in Keychain. The UI explains the next action in the existing
+  Ruru settings section.
+- [x] Existing non-standalone, peer-only deployments remain `legacyPeer` and
+  can continue changing roles while they are migrated. The reliability guide
+  documents the safe Ruru-first migration and fresh Join Code rollout.
+- Validation: transition coverage confirms new setup is guarded while legacy
+  compatibility is preserved. Lease, replication, output gating and existing
+  pairing wire compatibility are unchanged.
+
 ### 2026-10-13 — Phase 2: SwiftBot operational readiness reports
 
 - [x] SwiftBot now feature-detects Ruru's `operationalStatus` capability and
