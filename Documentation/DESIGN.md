@@ -190,6 +190,10 @@ spacing, quiet glass surfaces, rounded panels, and service cards.
 - Let headers stack their accessories, diagnostic sections stack vertically,
   and summary facts wrap when space is limited. Retain the normal wide layout.
 - Service warnings must show their complete detail and a named review action.
+- Ruru reachability warnings appear on Overview as well as SwiftMesh. Say
+  "unreachable from this Mac", distinguish an unexpired local lease from missing
+  permission, and show reachable restart recovery separately. Mirror the facts
+  on the WebUI Overview and backup-node status page without exposing credentials.
 - Separate local web transport, public access transport, and HTTPS policy.
   A Cloudflare HTTPS endpoint does not imply the local listener uses TLS.
 - Keep API tokens, passwords, and shared secrets out of inline settings fields.

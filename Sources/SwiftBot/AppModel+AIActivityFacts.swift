@@ -5,6 +5,16 @@ import Foundation
 /// answer from data instead of guessing. Pure, so it can be tested without a
 /// running bot.
 enum AIActivityFacts {
+    /// The result of looking up an activity question before it reaches the
+    /// language model. A deterministic reply means SwiftBot has no verified
+    /// basis for an AI-written answer.
+    struct Lookup: Sendable {
+        var context = ""
+        var deterministicReply: String?
+        /// The verified facts shown to an admin in the WebUI test chat.
+        var debugSummary: String?
+    }
+
     struct Member: Sendable {
         let id: String
         let name: String
@@ -17,6 +27,7 @@ enum AIActivityFacts {
         var sessions: [VoiceSession] = []
         var messages: Int?
         var playingNow: [String] = []
+        var gameHistory: [RewindGameSummary] = []
     }
 
     static let windowDays = 30
@@ -49,6 +60,36 @@ enum AIActivityFacts {
 
     static func asksAboutServer(_ text: String) -> Bool {
         words(in: text).contains { serverWords.contains($0) }
+    }
+
+    static func asksAboutGames(_ text: String) -> Bool {
+        let questionWords = Set(words(in: text))
+        return !questionWords.isDisjoint(with: ["game", "games", "gaming", "played", "play", "plays", "playing"])
+    }
+
+    /// Questions that need a history-based pattern, rather than an answer
+    /// about somebody's current state or a total amount of activity.
+    static func asksForUsualPattern(_ text: String) -> Bool {
+        let questionWords = Set(words(in: text))
+        return !questionWords.isDisjoint(with: ["usually", "normally", "typically", "often", "when", "time", "times"])
+    }
+
+    /// Avoid treating an ordinary conversational question such as "what time
+    /// is it?" as a failed member lookup. These are the stronger signals that
+    /// somebody expects SwiftBot to identify a Discord member.
+    static func needsMemberResolution(_ text: String) -> Bool {
+        let questionWords = Set(words(in: text))
+        return !questionWords.isDisjoint(with: [
+            "usually", "normally", "typically", "often", "voice", "vc", "play", "plays", "playing", "played", "online", "active"
+        ])
+    }
+
+    static func usableSessions(_ sessions: [VoiceSession], now: Date) -> [VoiceSession] {
+        sessions.filter { ($0.leftAt ?? now).timeIntervalSince($0.joinedAt) >= 120 || $0.leftAt == nil }
+    }
+
+    static func memberLabel(_ member: Member) -> String {
+        member.username.map { "\(member.name) (@\($0))" } ?? member.name
     }
 
     /// Members named in the question: <@id> mentions first, then display
@@ -132,7 +173,7 @@ enum AIActivityFacts {
     }
 
     static func describe(_ record: MemberRecord, now: Date, timeZone: TimeZone, isAsker: Bool) -> String {
-        let label = record.member.username.map { "\(record.member.name) (@\($0))" } ?? record.member.name
+        let label = memberLabel(record.member)
         let who = isAsker ? "\(label), the person asking" : label
         var parts: [String] = []
         let timeFormatter = DateFormatter()
@@ -144,7 +185,7 @@ enum AIActivityFacts {
         dayFormatter.timeZone = timeZone
         dayFormatter.dateFormat = "EEE d MMM 'at' h:mm a"
 
-        let sessions = record.sessions.filter { ($0.leftAt ?? now).timeIntervalSince($0.joinedAt) >= 120 || $0.leftAt == nil }
+        let sessions = usableSessions(record.sessions, now: now)
         if sessions.isEmpty {
             parts.append("no voice activity in the last \(windowDays) days")
         } else {
@@ -178,6 +219,12 @@ enum AIActivityFacts {
         }
         if let messages = record.messages { parts.append("\(messages) messages sent in the last \(windowDays) days") }
         if !record.playingNow.isEmpty { parts.append("playing \(record.playingNow.joined(separator: ", ")) right now") }
+        if let favourite = record.gameHistory.first {
+            parts.append(
+                "most-played recorded game in this server while in voice over the last \(windowDays) days is \(favourite.game), " +
+                "\(hours(Int(favourite.seconds))) across \(favourite.sessions) \(favourite.sessions == 1 ? "session" : "sessions")"
+            )
+        }
         return "- \(who): " + parts.joined(separator: "; ") + "."
     }
 
@@ -205,6 +252,7 @@ enum AIActivityFacts {
         return """
         Server activity from SwiftBot's records (last \(windowDays) days, times in \(zone)). \
         Use only these facts to answer questions about when people are on, play or chat. \
+        Some game facts are explicitly limited to time in voice; never generalise them beyond that scope. \
         Round times naturally ("around 8 PM"). If something isn't listed, say you don't know.
         \(lines.joined(separator: "\n"))
         """
@@ -218,11 +266,14 @@ enum AIActivityFacts {
 }
 
 extension AppModel {
-    /// Facts for an AI reply, or "" when the question isn't about anyone's
-    /// activity or the feature is off. `guildID` nil (a DM or the Settings
-    /// "Try it" box) looks across every connected server.
-    func aiActivityContext(question: String, askerID: String?, guildID: String?) async -> String {
-        guard settings.aiActivityAnswersEnabled, AIActivityFacts.isActivityQuestion(question) else { return "" }
+    /// Locates facts before an AI reply. A member question with no match or too
+    /// little data returns a direct, explicit response instead of inviting the
+    /// model to guess. `guildID` nil (a DM or the Settings "Try it" box) looks
+    /// across every connected server.
+    func aiActivityLookup(question: String, askerID: String?, guildID: String?) async -> AIActivityFacts.Lookup {
+        guard settings.aiActivityAnswersEnabled, AIActivityFacts.isActivityQuestion(question) else {
+            return .init()
+        }
         let members = discordMemberOptions.map { AIActivityFacts.Member(id: $0.id, name: $0.displayName, username: $0.username) }
         var targets = AIActivityFacts.mentionedMembers(in: question, members: members, botUserID: botUserId)
         if let askerID, AIActivityFacts.asksAboutSelf(question), !targets.contains(where: { $0.id == askerID }) {
@@ -240,6 +291,7 @@ extension AppModel {
         let guildIDs = guildID.map { [$0] } ?? Array(connectedServers.keys)
 
         var lines: [String] = []
+        var directReply: String?
         for member in targets {
             var record = AIActivityFacts.MemberRecord(member: member)
             record.sessions = await voiceSessionStore.sessions(userId: member.id, guildId: guildID, since: since)
@@ -250,13 +302,63 @@ extension AppModel {
                 }
                 record.messages = total
             }
-            record.playingNow = gameSessionTracker.activeGames(for: member.id)
+            var playingNow = gameSessionTracker.activeGames(for: member.id)
+            if settings.rewind.isEnabled, let guildID {
+                playingNow += await rewindActivityStore.activePlayingGames(userID: member.id, guildID: guildID)
+            }
+            record.playingNow = Array(Set(playingNow)).sorted()
+            if settings.rewind.isEnabled, AIActivityFacts.asksAboutGames(question) {
+                var gameTotals: [String: (sessions: Int, seconds: TimeInterval)] = [:]
+                for id in guildIDs {
+                    for summary in await rewindActivityStore.gameSummaries(userID: member.id, guildID: id, from: since, to: now) {
+                        let current = gameTotals[summary.game] ?? (sessions: 0, seconds: 0)
+                        gameTotals[summary.game] = (current.sessions + summary.sessions, current.seconds + summary.seconds)
+                    }
+                }
+                record.gameHistory = gameTotals.map { game, total in
+                    RewindGameSummary(game: game, sessions: total.sessions, seconds: total.seconds)
+                }.sorted { lhs, rhs in
+                    lhs.seconds == rhs.seconds ? lhs.game.localizedCaseInsensitiveCompare(rhs.game) == .orderedAscending : lhs.seconds > rhs.seconds
+                }
+            }
+
+            let usableSessions = AIActivityFacts.usableSessions(record.sessions, now: now)
+            let label = AIActivityFacts.memberLabel(member)
+            if AIActivityFacts.asksAboutGames(question) {
+                if !settings.rewind.isEnabled {
+                    directReply = "I can’t answer game-history questions until Rewind is enabled. It records game presence only while someone is in voice."
+                    break
+                }
+                if record.gameHistory.isEmpty {
+                    directReply = "I don’t have recorded in-voice game activity for \(label) in the last \(AIActivityFacts.windowDays) days."
+                    break
+                }
+            } else if AIActivityFacts.asksForUsualPattern(question), usableSessions.count < 3 {
+                directReply = usableSessions.isEmpty
+                    ? "I don’t have recorded voice activity for \(label) in the last \(AIActivityFacts.windowDays) days."
+                    : "I need at least three recorded voice sessions for \(label) before I can say when they usually get on."
+                break
+            }
             lines.append(AIActivityFacts.describe(record, now: now, timeZone: timeZone, isAsker: member.id == askerID))
         }
         if targets.isEmpty, AIActivityFacts.asksAboutServer(question) {
             let sessions = await voiceSessionStore.sessions(guildId: guildID, since: since)
-            if let line = AIActivityFacts.describeServer(sessions, timeZone: timeZone) { lines.append(line) }
+            let usableSessions = AIActivityFacts.usableSessions(sessions, now: now)
+            if usableSessions.count < 3 {
+                directReply = usableSessions.isEmpty
+                    ? "I don’t have recorded voice activity for this server in the last \(AIActivityFacts.windowDays) days."
+                    : "I need at least three recorded voice sessions before I can say when this server is usually busiest."
+            } else if let line = AIActivityFacts.describeServer(usableSessions, timeZone: timeZone) {
+                lines.append(line)
+            }
         }
-        return AIActivityFacts.block(lines: lines, timeZone: timeZone)
+        if let directReply {
+            return .init(deterministicReply: directReply)
+        }
+        if lines.isEmpty, targets.isEmpty, AIActivityFacts.needsMemberResolution(question) {
+            return .init(deterministicReply: "I couldn’t match that member. Please @mention them so I can check SwiftBot’s recorded activity.")
+        }
+        let context = AIActivityFacts.block(lines: lines, timeZone: timeZone)
+        return .init(context: context, debugSummary: lines.isEmpty ? nil : lines.joined(separator: "\n"))
     }
 }

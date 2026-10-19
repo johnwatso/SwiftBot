@@ -49,6 +49,40 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.services.map(\.kind), [.discord, .webInterface, .swiftMesh, .cloudflareTunnel])
     }
 
+    func testRuruOutageReachesOverviewEvenWhileDiscordIsConnected() {
+        var input = inputs(clusterMode: .leader, clusterState: .listening)
+        input.witnessHealth = .unreachable
+        input.witnessLeaseValid = true
+        let snapshot = ConsoleOverviewSnapshot(input)
+        XCTAssertEqual(snapshot.host.badge, "Needs Attention")
+        XCTAssertEqual(snapshot[.discord]?.health, .healthy)
+        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Ruru Unreachable")
+        XCTAssertTrue(snapshot[.swiftMesh]?.detail.contains("local deadline") == true)
+    }
+
+    func testStandbyReportsRuruOutageWithoutSuggestingPromotion() {
+        var input = inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, watchActive: true)
+        input.witnessHealth = .unreachable
+        let snapshot = ConsoleOverviewSnapshot(input)
+        XCTAssertEqual(snapshot.host.health, .warning)
+        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Ruru Unreachable")
+        XCTAssertTrue(snapshot[.swiftMesh]?.detail.contains("cannot take ownership") == true)
+        XCTAssertEqual(snapshot[.discord]?.summary, "Standing By")
+    }
+
+    func testRuruQuarantineIsReportedAsReachableAndRecovering() {
+        var input = inputs(clusterMode: .leader, clusterState: .listening)
+        input.witnessHealth = .recovering
+        let snapshot = ConsoleOverviewSnapshot(input)
+        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Ruru Recovering")
+        XCTAssertTrue(snapshot[.swiftMesh]?.detail.contains("reachable") == true)
+        input.witnessHealth = .ready
+        XCTAssertEqual(ConsoleOverviewSnapshot(input)[.swiftMesh]?.health, .healthy)
+        input.clusterMode = .standalone
+        input.witnessHealth = .unreachable
+        XCTAssertEqual(ConsoleOverviewSnapshot(input)[.swiftMesh]?.health, .disabled)
+    }
+
     func testHealthyStandaloneHostIsRunningWithOptionalServicesDisabled() {
         let snapshot = ConsoleOverviewSnapshot(inputs())
         XCTAssertEqual(snapshot.host.health, .healthy)

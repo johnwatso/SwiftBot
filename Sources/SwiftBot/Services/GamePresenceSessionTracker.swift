@@ -65,6 +65,7 @@ struct GamePresenceSessionTracker {
     func activeGames(for userID: String) -> [String] {
         live.filter { $0.key.userID == userID && $0.value.pendingEndSince == nil }
             .map(\.value.session.gameName)
+            .reduce(into: Set<String>()) { $0.insert($1) }
             .sorted()
     }
 

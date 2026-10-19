@@ -56,6 +56,10 @@ final class AdminWebCopyTests: XCTestCase {
         XCTAssertTrue(html.contains("/api/aibots/memory/clear"), "Conversation memory must be clearable from the web")
         XCTAssertTrue(html.contains("/api/aibots/try"), "Personality changes can be tried before saving")
         XCTAssertTrue(html.contains("group('Apple Intelligence'"), "Apple Intelligence is a Settings group")
+        XCTAssertTrue(html.contains("Test conversation"), "The Try it dialog supports a multi-turn test chat")
+        XCTAssertTrue(html.contains("aiTryClear"), "The temporary test conversation can be cleared")
+        XCTAssertTrue(html.contains("history"), "Prior test turns are sent as transient context")
+        XCTAssertTrue(html.contains("Verified activity context"), "The test chat exposes the facts sent to Apple Intelligence")
 
         for row in ["Reply when mentioned", "Reply to DMs", "Accept direct messages", "Answer questions about members", "Personality", "Memory"] {
             XCTAssertTrue(html.contains(row), "Apple Intelligence settings are missing '\(row)'")

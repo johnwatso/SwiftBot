@@ -159,6 +159,7 @@ final class GamePresenceSessionTests: XCTestCase {
         _ = tracker.tick(now: base.addingTimeInterval(2_100))
         XCTAssertEqual(tracker.activeGames(for: "user-1"), ["Call of Duty"])
     }
+
 }
 
 final class GameSessionSummaryTests: XCTestCase {

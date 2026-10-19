@@ -1869,7 +1869,12 @@
     #modalOverlay #aiPromptInput { min-height: 132px; resize: vertical; line-height: 1.45; }
     .ai-try { display: flex; gap: 8px; }
     .ai-try .field-input { flex: 1; min-width: 0; }
-    .ai-try-output { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .ai-try-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }
+    .ai-try-toolbar .ub-help { margin: 0; }
+    #modalOverlay .ai-try-clear { font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; border: 0; background: transparent; padding: 4px 0; }
+    #modalOverlay .ai-try-clear:hover { color: var(--text); }
+    #modalOverlay .ai-try-clear:disabled { cursor: default; opacity: 0.45; }
+    .ai-try-output { display: flex; flex-direction: column; gap: 8px; max-height: 292px; overflow-y: auto; margin-top: 12px; padding-right: 2px; }
     .ai-try-bubble {
       max-width: 85%;
       padding: 9px 13px;
@@ -1882,6 +1887,9 @@
     .ai-try-bubble.is-you { align-self: flex-end; background: #0a84ff; color: #fff; border-bottom-right-radius: 5px; }
     .ai-try-bubble.is-bot { align-self: flex-start; background: var(--ub-fill, var(--glass-bottom)); border: 1px solid var(--glass-stroke); border-bottom-left-radius: 5px; }
     .ai-try-bubble.is-thinking { color: var(--muted); animation: ai-pulse 1.2s ease-in-out infinite; }
+    .ai-try-context { max-width: 85%; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .ai-try-context summary { cursor: pointer; user-select: none; }
+    .ai-try-context pre { margin: 5px 0 0; padding: 8px; border-radius: 8px; background: var(--bg-subtle); color: var(--text); font: inherit; white-space: pre-wrap; }
     @keyframes ai-pulse { 50% { opacity: 0.45; } }
 
     /* SwiftMesh page */
@@ -6424,6 +6432,240 @@
     #opsTiles .ops-tile-title { white-space:normal; }
     #opsTiles .ops-tile-value { font-size:18px; white-space:normal; overflow:visible; }
     #opsTiles .ops-tile-detail { white-space:normal; overflow:visible; min-height:2.8em; line-height:1.4; }
+
+    /*
+       Operator density pass
+       ---------------------
+       The sidebar intentionally keeps its existing character. The workspace is
+       quieter and more compact: it should read as an administration console,
+       not a collection of individually decorated landing-page sections.
+    */
+    #appShell.active {
+      --ops-workspace-surface: rgba(255, 255, 255, 0.055);
+      --cv-glass-bg: var(--ops-workspace-surface);
+    }
+    html[data-theme="light"] #appShell.active {
+      --ops-workspace-surface: rgba(255, 255, 255, 0.82);
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme]) #appShell.active {
+        --ops-workspace-surface: rgba(255, 255, 255, 0.82);
+      }
+    }
+
+    body:has(#appShell.active) #bgStream { display: none; }
+    /* One continuous workspace surface: the sidebar floats over the same
+       background as the cards instead of exposing the retired wallpaper. */
+    #appShell.active,
+    #appShell.active .content { background: var(--cv-shell-bg); }
+    #appShell .view {
+      width: min(100%, 1500px);
+      margin: 0 auto;
+      padding: 18px clamp(18px, 2.25vw, 34px) 30px;
+    }
+    #appShell .section-sticky { margin-bottom: 14px; }
+    #appShell .section-sticky-row { min-height: 34px; }
+    #appShell .section-sticky .section-mini-title {
+      gap: 8px;
+      font-size: 21px;
+      letter-spacing: -0.02em;
+    }
+    #appShell .section-sticky .section-mini-title > svg.lucide {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border-radius: 0;
+      color: var(--cv-sidebar-accent);
+      background: transparent;
+      box-shadow: none;
+    }
+    #appShell .section-mini-title {
+      gap: 7px;
+      font-size: 14px;
+    }
+    #appShell .section-mini-title > svg.lucide {
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    #appShell .glass,
+    #appShell .stat-card,
+    #appShell .settings-panel,
+    #appShell .diagnostics-panel,
+    #appShell .overview-panel,
+    #appShell .detail-card,
+    #appShell .analytics-panel {
+      border-radius: 12px;
+      backdrop-filter: blur(16px) saturate(125%);
+      -webkit-backdrop-filter: blur(16px) saturate(125%);
+    }
+    #appShell .glass:hover,
+    #appShell .stat-card:hover,
+    #appShell .diagnostics-panel:hover,
+    #appShell .overview-panel:hover { transform: none; }
+    #appShell .settings-panel,
+    #appShell .detail-card { padding: 14px 16px; }
+    #appShell .diagnostics-panel { padding: 14px 16px; }
+    #appShell .panel-title {
+      margin-bottom: 10px;
+      padding: 0 0 8px;
+      font-size: 13px;
+    }
+    #appShell .panel-title > svg.lucide {
+      width: 22px;
+      height: 22px;
+      padding: 4px;
+      border-radius: 6px;
+    }
+
+    #appShell .primary-action,
+    #modalOverlay .primary-action {
+      border-radius: 8px;
+      padding: 7px 12px;
+      box-shadow: none;
+    }
+    #appShell .secondary-action,
+    #appShell .mini-btn,
+    #modalOverlay .secondary-action,
+    #modalOverlay .mini-btn {
+      border-radius: 8px;
+      padding: 7px 11px;
+    }
+    #appShell .section-actions { gap: 6px; }
+
+    /* Dashboard: keep the facts visible without spending a row on decoration. */
+    .home-hero {
+      gap: 10px;
+      margin: 0 0 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--cv-border-soft);
+    }
+    .home-hero-avatar { display: none; }
+    .home-greeting {
+      font-size: 22px;
+      line-height: 1.2;
+      text-shadow: none;
+    }
+    .home-date { margin-top: 1px; font-size: 12px; }
+    .home-hero-search {
+      border-radius: 8px;
+      padding: 6px 9px;
+      background: var(--cv-surface-1);
+      border-color: var(--cv-border-softer);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .home-vitals { gap: 6px; }
+    .home-vital {
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 7px;
+      background: var(--cv-surface-1);
+      border-color: var(--cv-border-softer);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      font-size: 12px;
+    }
+    .overview-summary-row { margin: 0 0 10px; gap: 6px 12px; }
+    #appShell .ops-panel { margin-bottom: 10px; }
+    .ops-tiles { gap: 8px; }
+    .ops-tile { padding: 10px; border-radius: 8px; }
+    .ops-chip { width: 20px; height: 20px; border-radius: 5px; }
+    .ops-chip svg { width: 12px; height: 12px; }
+    .ops-tile-value { margin-top: 7px; font-size: 16px; }
+    .ops-tile-detail { font-size: 11px; }
+    #appShell #overviewLiveRow { margin-bottom: 10px; gap: 10px; }
+    #appShell #overviewView .overview-panel { border-radius: 12px; }
+    .overview-activity-filters { gap: 4px; margin-bottom: 9px; }
+    .overview-activity-filters button { padding: 4px 8px; border-radius: 6px; }
+    #activeVoiceList { max-height: 300px; }
+    .vc-channel { gap: 6px; }
+    .vc-members { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+    .vc-member {
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 8px;
+      border-radius: 8px;
+      text-align: left;
+      width: 100%;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .vc-member:hover { background: var(--ub-fill-hover); border-color: var(--ub-stroke-strong, var(--ub-stroke)); }
+    .vc-member:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .vc-avatar {
+      width: 30px;
+      height: 30px;
+      box-shadow: 0 0 0 1px #30d158;
+      animation: none;
+    }
+    .vc-name { flex: 1; min-width: 0; font-size: 12px; }
+    .vc-time { font-size: 11px; }
+    .vc-action-icon { width: 15px; height: 15px; flex: none; color: var(--muted); }
+    #appShell #overviewPanelUsage { padding: 14px 16px; }
+    .weekly-metric { gap: 3px; padding: 6px 12px; }
+    .weekly-value { font-size: 19px; }
+    .weekly-insights { margin-top: 8px; padding-top: 8px; }
+
+    /* Avoid the repeated entrance effects that make routine navigation feel busy. */
+    #appShell .view:not(.hidden) .stats-grid > *,
+    #appShell .view:not(.hidden) .cv-overview-top > *,
+    #appShell .view:not(.hidden) .diagnostics-panels > *,
+    #appShell .view:not(.hidden) .glass { animation: none; }
+
+    /* On a desktop, the Overview is the control surface—not a short stack of
+       cards at the top of an otherwise empty canvas. Let its three primary
+       sections share the available height, while their list contents scroll
+       inside their own cards when needed. */
+    @media (min-width: 881px) and (min-height: 760px) {
+      #appShell #overviewView {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #appShell #overviewView > .home-hero,
+      #appShell #overviewView > .overview-summary-row,
+      #appShell #overviewView > .ops-panel,
+      #appShell #overviewView > #overviewLiveRow,
+      #appShell #overviewView > #overviewTopRow { margin: 0; }
+      #appShell #overviewView > .ops-panel {
+        flex: 0.85 1 172px;
+        min-height: 172px;
+        display: flex;
+        flex-direction: column;
+      }
+      #appShell #overviewView > #overviewLiveRow {
+        flex: 1.3 1 262px;
+        min-height: 220px;
+      }
+      #appShell #overviewView > #overviewTopRow {
+        flex: 0.65 1 118px;
+        min-height: 118px;
+      }
+      #appShell #overviewView > .ops-panel:not(.hidden) #opsTiles { flex: 1; }
+      #appShell #overviewView > #overviewLiveRow > .overview-panel,
+      #appShell #overviewView > #overviewTopRow > #overviewPanelUsage {
+        height: 100%;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      #appShell #overviewView #activeVoiceList,
+      #appShell #overviewView #opsActivity { flex: 1; min-height: 0; overflow: auto; }
+      #appShell #overviewView .weekly-metrics { flex: 1; align-items: stretch; }
+      #appShell #overviewView .weekly-metric { justify-content: center; }
+    }
+
+    @media (max-width: 880px) {
+      #appShell .view { padding: 14px 16px 24px; }
+      #appShell .section-sticky .section-mini-title { font-size: 19px; }
+    }
   </style>
   <script src="/assets/node-role.js" defer></script>
 </head>
@@ -9258,14 +9500,15 @@
           const name = member.username || 'Member';
           const initial = escapeHTML(name.trim().charAt(0).toUpperCase() || '?');
           return `
-          <div class="vc-member">
+          <button class="vc-member" type="button" data-voice-user="${escapeHTML(member.userId)}" data-voice-guild="${escapeHTML(member.guildId || '')}" aria-label="Actions for ${escapeHTML(name)}">
             <span class="vc-avatar" style="--vc-hue:${hueFor(member.userId)};" aria-hidden="true">
               ${member.avatarURL ? `<img src="${escapeHTML(member.avatarURL)}" alt="" loading="lazy" data-fallback="next-sibling">` : ''}
               <span class="vc-avatar-fallback"${member.avatarURL ? '' : ' style="display:flex;"'}>${initial}</span>
             </span>
             <span class="vc-name" title="${escapeHTML(name)}">${escapeHTML(name)}</span>
             <span class="vc-time">${member.joinedAt ? `<span data-voice-joined="${escapeHTML(member.joinedAt)}">${voiceDuration(member.joinedAt)}</span>` : escapeHTML(member.joinedText)}</span>
-          </div>`;
+            <i class="lucide vc-action-icon" data-lucide="ellipsis" aria-hidden="true"></i>
+          </button>`;
         }).join('');
         blocks.push(`
           <div class="vc-channel">
@@ -9278,7 +9521,54 @@
           </div>
         `);
       }
-      if (setHTMLIfChanged(node, blocks.join(''), JSON.stringify(list))) refreshIcons();
+      if (setHTMLIfChanged(node, blocks.join(''), JSON.stringify(list))) {
+        node.querySelectorAll('[data-voice-user]').forEach(tile => {
+          tile.addEventListener('click', () => {
+            const member = list.find(item => item.userId === tile.dataset.voiceUser && item.guildId === tile.dataset.voiceGuild);
+            if (member) openVoiceMemberActions(member);
+          });
+        });
+        refreshIcons();
+      }
+    }
+
+    function openVoiceMemberActions(member) {
+      const name = member.username || 'Member';
+      const location = `${member.channelName || 'Voice channel'} · ${member.serverName || 'Server'}`;
+      showModal(`${name} · Voice`, `
+        <div class="ub-item" style="padding:0; background:transparent; border:0;">
+          <div class="ub-item-text">
+            <div class="ub-item-title">${escapeHTML(name)}</div>
+            <div class="ub-row-desc">Currently in ${escapeHTML(location)}.</div>
+          </div>
+        </div>
+        <p class="ub-help">Choose a moderation action. Each action asks for confirmation before it reaches Discord.</p>
+      `, `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="voiceDisconnect" class="secondary-action is-destructive" type="button"><i class="lucide" data-lucide="volume-x"></i> Disconnect</button>
+        <button id="voiceKick" class="primary-action is-destructive" type="button"><i class="lucide" data-lucide="user-x"></i> Kick from server</button>
+      `);
+      document.getElementById('voiceDisconnect').addEventListener('click', () => confirmVoiceMemberAction(member, 'disconnect'));
+      document.getElementById('voiceKick').addEventListener('click', () => confirmVoiceMemberAction(member, 'kick'));
+      refreshIcons();
+    }
+
+    function confirmVoiceMemberAction(member, action) {
+      const name = member.username || 'this member';
+      const isKick = action === 'kick';
+      const label = isKick ? 'Kick member' : 'Disconnect member';
+      const detail = isKick
+        ? `Kick <strong>${escapeHTML(name)}</strong> from this server? They can only return with a new invite.`
+        : `Disconnect <strong>${escapeHTML(name)}</strong> from voice? They can join a voice channel again.`;
+      confirmDestructive(label, detail, label, async () => {
+        await postJSON('/api/voice/member/action', {
+          guildID: member.guildId,
+          userID: member.userId,
+          action
+        });
+        setMessage(isKick ? `${name} was kicked from the server.` : `${name} was disconnected from voice.`, 'success');
+        await loadOverview();
+      });
     }
 
     function commandBadge(label, extraClass = '') {
@@ -16999,7 +17289,7 @@
         </div>
         ${switchRow('setAIMentions', 'Reply when mentioned', 'Answer when someone @mentions SwiftBot in a server channel.', ai.useAIInGuildChannels)}
         ${switchRow('setAIDMs', 'Reply to DMs', ai.allowDMs ? 'Chat with people who message SwiftBot directly.' : 'SwiftBot isn’t accepting DMs. Turn on Accept direct messages above first.', ai.localAIDMReplyEnabled, ai.allowDMs || ai.localAIDMReplyEnabled ? '' : 'disabled')}
-        ${switchRow('setAIActivity', 'Answer questions about members', 'Lets SwiftBot answer things like “when is Sam usually on?” from voice history and Rewind.', data ? data.activityAnswersEnabled : true, data ? '' : 'disabled')}
+        ${switchRow('setAIActivity', 'Answer questions about members', 'Lets SwiftBot answer things like “when is Sam usually on?” or “what does Max play?” from voice and Rewind’s in-voice game history.', data ? data.activityAnswersEnabled : true, data ? '' : 'disabled')}
         ${linkRow('setAIPersonality', 'Personality', 'How SwiftBot talks when it replies.', (data?.personalities || []).find(p => p.isSelected)?.title || 'Custom')}
         ${linkRow('setAIMemory', 'Memory', 'Recent messages kept so replies follow the conversation.', memory.totalMessages ? `${memory.totalMessages.toLocaleString()} messages · ${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}` : 'Empty')}
       `);
@@ -17045,13 +17335,14 @@
           <div class="ub-help">Pick a starting point, then change anything: tone, length, what to avoid. Edited instructions count as Custom.</div>
         </div>
         <div class="automation-editor-section">
-          <h3><i class="lucide" data-lucide="message-circle"></i> Try it</h3>
+          <h3><i class="lucide" data-lucide="message-circle"></i> Test conversation</h3>
           ${data.online ? `
             <form id="aiTryForm" class="ai-try">
-              <input id="aiTryInput" class="field-input" type="text" maxlength="1000" placeholder="Ask what your members would ask…" autocomplete="off">
+              <input id="aiTryInput" class="field-input" type="text" maxlength="1000" placeholder="Send a message as a member…" autocomplete="off">
               <button id="aiTrySend" class="secondary-action" type="submit"><i class="lucide" data-lucide="send"></i> Send</button>
             </form>
             <div class="ai-try-suggestions">${suggestions.map(q => `<button class="ai-try-chip" type="button" data-try="${escapeHTML(q)}">${escapeHTML(q)}</button>`).join('')}</div>
+            <div class="ai-try-toolbar"><div class="ub-help">A private, temporary conversation.</div><button id="aiTryClear" class="ai-try-clear" type="button" disabled>Clear</button></div>
             <div id="aiTryOutput" class="ai-try-output hidden"></div>
             <div class="ub-help">Uses the instructions above, even before you save${data.activityAnswersEnabled ? ', plus the same activity facts a real reply gets' : ''}. Nothing is posted to Discord or remembered.</div>
           ` : '<div class="placeholder">Apple Intelligence is offline on this Mac, so replies can’t be tried here.</div>'}
@@ -17099,6 +17390,20 @@
       update();
       refreshIcons();
 
+      const dialogue = [];
+      const renderDialogue = (thinking = false) => {
+        const output = document.getElementById('aiTryOutput');
+        const clear = document.getElementById('aiTryClear');
+        if (!output || !clear) return;
+        clear.disabled = dialogue.length === 0;
+        output.classList.toggle('hidden', dialogue.length === 0 && !thinking);
+        output.innerHTML = dialogue.map(turn => `
+          <div class="ai-try-bubble ${turn.role === 'user' ? 'is-you' : 'is-bot'}">${escapeHTML(turn.content)}</div>${turn.activityContext ? `
+          <details class="ai-try-context"><summary>Verified activity context</summary><pre>${escapeHTML(turn.activityContext)}</pre></details>` : ''}`).join('')
+          + (thinking ? '<div class="ai-try-bubble is-bot is-thinking">Thinking…</div>' : '');
+        output.scrollTop = output.scrollHeight;
+      };
+
       document.getElementById('aiTryForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const tryInput = document.getElementById('aiTryInput');
@@ -17107,20 +17412,27 @@
         const message = tryInput.value.trim();
         if (!message) return;
         send.disabled = true;
-        output.classList.remove('hidden');
-        output.innerHTML = `
-          <div class="ai-try-bubble is-you">${escapeHTML(message)}</div>
-          <div class="ai-try-bubble is-bot is-thinking">Thinking…</div>`;
-        const bot = output.querySelector('.is-bot');
+        const history = dialogue
+          .filter(turn => turn.role === 'user' || turn.role === 'assistant')
+          .slice(-8)
+          .map(({ role, content }) => ({ role, content }));
+        dialogue.push({ role: 'user', content: message });
+        tryInput.value = '';
+        renderDialogue(true);
         try {
-          const result = await postJSON('/api/aibots/try', { message, prompt });
-          bot.textContent = result.reply;
+          const result = await postJSON('/api/aibots/try', { message, prompt, history });
+          dialogue.push({ role: 'assistant', content: result.reply, activityContext: result.activityContext });
         } catch {
-          bot.textContent = 'No reply came back. Try a shorter message.';
+          dialogue.push({ role: 'error', content: 'No reply came back. Try a shorter message.' });
         } finally {
-          bot.classList.remove('is-thinking');
           send.disabled = false;
+          renderDialogue();
         }
+      });
+      document.getElementById('aiTryClear')?.addEventListener('click', () => {
+        dialogue.length = 0;
+        renderDialogue();
+        document.getElementById('aiTryInput')?.focus();
       });
 
       document.getElementById('aiPromptSave').addEventListener('click', async () => {
@@ -18609,7 +18921,10 @@
           const state = w ? (MESH_WITNESS_STATUS[w.health] || MESH_WITNESS_STATUS.checking) : null;
           const value = !w ? 'Not set up' : (w.leaseHeld && w.health === 'ready' ? 'Lease held' : state.label);
           const desc = w
-            ? `Ruru at ${escapeHTML(w.host)} grants one Mac at a time permission to run the bot. If it can't be reached, the bot pauses rather than risk two Primaries.`
+            ? w.health === 'unreachable'
+              ? 'This Mac cannot reach Ruru. Check the Ruru Mac, its network and Internet Access. ' + (w.leaseHeld ? 'Existing permission ends at the local lease deadline if renewal fails.' : 'This Mac has no valid local lease and cannot take ownership.')
+              : w.health === 'recovering' ? 'Ruru is reachable and waiting out earlier leases after a restart. New grants and renewals are paused.'
+              : `Ruru at ${escapeHTML(w.host)} grants one Mac at a time permission to run the bot.`
             : 'Optional. Without Ruru, a network split between the Macs can leave both running the bot.';
           const witnessRow = row(`<span class="mesh-status-dot" style="background:${!w ? 'var(--muted)' : state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span> Ruru ownership witness`, desc,
             `<span class="ub-row-value">${escapeHTML(value)}</span>`);

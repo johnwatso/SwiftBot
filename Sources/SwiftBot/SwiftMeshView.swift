@@ -381,7 +381,7 @@ struct SwiftMeshView: View {
     private var ruruHealthStatus: String {
         guard !app.meshWitnessEndpoint.isEmpty else { return "Not configured" }
         guard let health = app.meshWitnessHealth else { return "Checking" }
-        if health == .ready, app.runtimeClusterMode == .leader, !app.meshOwnershipExpired {
+        if health == .ready, app.meshHasValidLocalLease {
             return "Lease held"
         }
         return health.displayName
@@ -390,15 +390,7 @@ struct SwiftMeshView: View {
     private var ruruHealthDetail: String {
         guard !app.meshWitnessEndpoint.isEmpty else { return "Ownership protection is not configured." }
         guard let health = app.meshWitnessHealth else { return "Checking Ruru reachability…" }
-        switch health {
-        case .ready:
-            return app.runtimeClusterMode == .leader && !app.meshOwnershipExpired
-                ? "This Mac holds the current lease."
-                : "Witness is reachable; no local lease is held."
-        case .recovering: return "Ruru is in its lease-recovery quarantine."
-        case .unreachable: return "This Mac cannot currently reach Ruru."
-        case .checking: return "Checking Ruru reachability…"
-        }
+        return health.operatorDetail(leaseValid: app.meshHasValidLocalLease)
     }
 
     private var ruruHealthTone: Color {

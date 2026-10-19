@@ -104,6 +104,31 @@ final class DiscordAIServiceTests: XCTestCase {
         XCTAssertFalse(offline)
     }
 
+    func testCurrentAIStatusCachesAnUnavailableModelCheck() async {
+        let recorder = CallRecorder()
+        let availability = SynchronousCallCounter()
+        let service = DiscordAIService(
+            engineFactory: { _ in StubEngine(name: "apple", reply: nil, recorder: recorder) },
+            appleAvailability: {
+                availability.increment()
+                return false
+            },
+            appleModelName: {
+                XCTFail("An unavailable model must not ask for its display name")
+                return nil
+            }
+        )
+
+        let firstStatus = await service.currentAIStatus()
+        let modelName = await service.currentAIModelName()
+        let secondStatus = await service.currentAIStatus()
+
+        XCTAssertFalse(firstStatus)
+        XCTAssertNil(modelName)
+        XCTAssertFalse(secondStatus)
+        XCTAssertEqual(availability.value, 1)
+    }
+
     func testPatchySummaryCleanupRemovesToolLeadIn() {
         XCTAssertEqual(
             DiscordAIService.cleanPatchySummary("Patchy reports NVIDIA 580.12 improves game stability."),
@@ -129,5 +154,22 @@ final class DiscordAIServiceTests: XCTestCase {
         XCTAssertTrue(DiscordAIService.isUsefulPatchySummary(
             "NVIDIA 580.12 focuses on game stability, adds support for newer titles, and calls out compatibility notes for affected systems. It also fixes crash regressions and gives users a clearer reason to upgrade when they rely on those games or hardware paths."
         ))
+    }
+}
+
+private final class SynchronousCallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
     }
 }

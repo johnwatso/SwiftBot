@@ -39,6 +39,7 @@
       <p id="statusDescription">This Mac is a backup for the Primary. Bot administration is handled on the Primary’s website.</p>
       <dl>
         <div><dt>Bot control</dt><dd id="controlDescription">Waiting to take over when needed.</dd></div>
+        <div id="ruruRow" hidden><dt id="ruruTitle">Ruru</dt><dd id="ruruDescription"></dd></div>
         <div id="discordRow"><dt>Discord connection</dt><dd id="discordDescription">Checking connection…</dd></div>
         <div><dt>Recordings</dt><dd>When sharing is enabled, this Mac’s recordings remain available through the Primary’s Recordings view.</dd></div>
       </dl>
@@ -59,6 +60,14 @@
         : 'This Mac is a backup for the Primary. Bot administration is handled on the Primary’s website.';
       document.getElementById('controlDescription').textContent = worker ? 'Managed by the Primary.'
         : paused ? 'Waiting for ownership to be confirmed.' : 'Waiting to take over when needed.';
+      const ruru = status.ruruHealth;
+      document.getElementById('ruruRow').hidden = !ruru;
+      document.getElementById('ruruTitle').textContent = ruru === 'unreachable' ? 'Ruru unreachable' : ruru === 'recovering' ? 'Ruru recovering' : 'Ruru';
+      document.getElementById('ruruDescription').textContent = ruru === 'unreachable'
+        ? 'This Mac cannot reach Ruru. Check the Ruru Mac, its network and Internet Access. '
+          + (status.ruruLeaseValid ? 'Existing permission ends at the local lease deadline if renewal fails.' : 'This Mac has no valid local lease and cannot take ownership.')
+        : ruru === 'recovering' ? 'Ruru is reachable and waiting out earlier leases after a restart. New grants and renewals are paused.'
+        : ruru === 'ready' ? 'Reachable and accepting lease requests. This health check does not grant ownership.' : 'Checking Ruru from this Mac.';
       document.getElementById('discordRow').hidden = worker;
       document.getElementById('discordDescription').textContent = status.discordConnected
         ? 'Connected. Bot output is paused on this Mac.' : 'Disconnected. Check SwiftBot on this Mac.';

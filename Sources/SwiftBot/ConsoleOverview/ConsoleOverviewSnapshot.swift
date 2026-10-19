@@ -24,6 +24,8 @@ struct ConsoleOverviewSnapshot: Equatable {
         var primaryName: String = "the Primary"
         var ownershipRecoveryActive: Bool = false
         var clusterDiagnostics: String = ""
+        var witnessHealth: MeshWitnessHealth? = nil
+        var witnessLeaseValid: Bool = false
 
         var webEnabled: Bool
         var webListening: Bool
@@ -192,6 +194,13 @@ struct ConsoleOverviewSnapshot: Equatable {
             return make(.disabled, "Standalone", "Not in a mesh")
         }
 
+        if inputs.clusterServerState == .failed { return make(.error, "Error", "Mesh server failed") }
+
+        if let health = inputs.witnessHealth, health == .unreachable || health == .recovering {
+            return make(.warning, health == .unreachable ? "Ruru Unreachable" : "Ruru Recovering",
+                        health.operatorDetail(leaseValid: inputs.witnessLeaseValid))
+        }
+
         let role = inputs.clusterMode.displayName
         let peers = max(0, inputs.clusterNodeCount - 1)
         let peersText = peers == 1 ? "1 peer" : "\(peers) peers"
@@ -293,6 +302,8 @@ extension AppModel {
             primaryName: clusterNodes.first { $0.role == .leader }?.displayName ?? "the Primary",
             ownershipRecoveryActive: clusterSnapshot.isOwnershipRecoveryActive,
             clusterDiagnostics: clusterSnapshot.diagnostics,
+            witnessHealth: meshWitnessEndpoint.isEmpty ? nil : meshWitnessHealth,
+            witnessLeaseValid: meshHasValidLocalLease,
             webEnabled: settings.adminWebUI.enabled,
             webListening: adminWebIsListening,
             webAddress: adminWebBaseURL(),

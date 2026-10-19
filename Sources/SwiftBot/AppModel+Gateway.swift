@@ -338,8 +338,8 @@ extension AppModel {
                     currentUserID: userId,
                     currentContent: content
                 )
-                let activityContext = await aiActivityContext(question: content, askerID: userId, guildID: nil)
-                let wikiContext = [baseContext, activityContext].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                let activity = await aiActivityLookup(question: content, askerID: userId, guildID: nil)
+                let wikiContext = [baseContext, activity.context].filter { !$0.isEmpty }.joined(separator: "\n\n")
 
                 var serverName: String?
                 if let gid = guildID {
@@ -347,13 +347,18 @@ extension AppModel {
                 }
                 let channelName = await discordCache.channelName(for: channelId)
 
-                let outcome = await generateAIReplyWithTimeout(
-                    channelId: channelId,
-                    messages: messages,
-                    serverName: serverName,
-                    channelName: channelName,
-                    wikiContext: wikiContext
-                )
+                let outcome: AIReplyOutcome
+                if let deterministicReply = activity.deterministicReply {
+                    outcome = .reply(deterministicReply)
+                } else {
+                    outcome = await generateAIReplyWithTimeout(
+                        channelId: channelId,
+                        messages: messages,
+                        serverName: serverName,
+                        channelName: channelName,
+                        wikiContext: wikiContext
+                    )
+                }
                 switch outcome {
                 case .reply(let aiReply):
                     await conversationStore.append(
@@ -411,21 +416,27 @@ extension AppModel {
                     currentUserID: userId,
                     currentContent: prompt
                 )
-                let activityContext = await aiActivityContext(question: content, askerID: userId, guildID: guildID)
-                let wikiContext = [baseContext, activityContext].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                let activity = await aiActivityLookup(question: content, askerID: userId, guildID: guildID)
+                let wikiContext = [baseContext, activity.context].filter { !$0.isEmpty }.joined(separator: "\n\n")
                 var serverName: String?
                 if let gid = guildID {
                     serverName = await discordCache.guildName(for: gid)
                 }
                 let channelName = await discordCache.channelName(for: channelId)
 
-                if case .reply(let aiReply) = await generateAIReplyWithTimeout(
-                    channelId: channelId,
-                    messages: messages,
-                    serverName: serverName,
-                    channelName: channelName,
-                    wikiContext: wikiContext
-                ) {
+                let outcome: AIReplyOutcome
+                if let deterministicReply = activity.deterministicReply {
+                    outcome = .reply(deterministicReply)
+                } else {
+                    outcome = await generateAIReplyWithTimeout(
+                        channelId: channelId,
+                        messages: messages,
+                        serverName: serverName,
+                        channelName: channelName,
+                        wikiContext: wikiContext
+                    )
+                }
+                if case .reply(let aiReply) = outcome {
                     await conversationStore.append(
                         scope: scope,
                         messageID: messageId,

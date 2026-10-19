@@ -32,6 +32,11 @@ actor DiscordGatewayConnection {
         var sleep: @Sendable (UInt64) async -> Void = { nanoseconds in
             try? await Task.sleep(nanoseconds: nanoseconds)
         }
+        /// A small random spread keeps multiple bots from reconnecting in
+        /// lockstep after a shared gateway or network interruption.
+        var reconnectJitter: @Sendable (Int) -> Int = { baseDelaySeconds in
+            Int.random(in: 0...max(1, baseDelaySeconds / 4))
+        }
     }
 
     private static let logger = Logger(subsystem: "com.swiftbot", category: "discord.gateway")
@@ -223,7 +228,6 @@ actor DiscordGatewayConnection {
                case let .double(interval)? = hello["heartbeat_interval"] {
                 heartbeatInterval = UInt64(interval * 1_000_000)
             }
-            reconnectAttempts = 0
             reconnectTask?.cancel()
             _ = await reconnectTask?.value
             reconnectTask = nil
@@ -263,7 +267,7 @@ actor DiscordGatewayConnection {
                 await onHeartbeatLatency?(latencyMs)
             }
         default:
-            if payload.t == "RESUMED" {
+            if payload.t == "READY" || payload.t == "RESUMED" {
                 resumeOnHelloGeneration = nil
                 reconnectAttempts = 0
                 await onConnectionState?(.running)
@@ -316,7 +320,8 @@ actor DiscordGatewayConnection {
         guard let token = botToken, !token.isEmpty else { return }
 
         reconnectAttempts += 1
-        let delaySeconds = min(30, 1 << min(reconnectAttempts, 5))
+        let baseDelaySeconds = min(30, 1 << min(reconnectAttempts, 5))
+        let delaySeconds = baseDelaySeconds + max(0, dependencies.reconnectJitter(baseDelaySeconds))
         let generation = connectionGeneration
         await onConnectionState?(.reconnecting)
         await onReconnectDiagnostic?(ReconnectDiagnostic(

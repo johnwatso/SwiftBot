@@ -80,6 +80,8 @@ struct OverviewHealthReport {
         var patchyLastCycleAt: Date?
         var patchyIsCycleRunning: Bool
         var memoryText: String
+        var witnessHealth: MeshWitnessHealth? = nil
+        var witnessLeaseValid: Bool = false
         var now = Date()
     }
 
@@ -182,12 +184,14 @@ private struct Derived {
     var overall: State {
         if status == .reconnecting
             || ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(diagnostics.lastGatewayCloseCode)
-            || failedCommandsToday >= 5 {
+            || failedCommandsToday >= 5
+            || (settings.clusterMode != .standalone && input.witnessHealth == .unreachable && !input.witnessLeaseValid) {
             return .critical
         }
         if status == .connecting
             || failedCommandsToday > 0
-            || ConnectionDiagnostics.isGatewayHeartbeatWarning(diagnostics.heartbeatLatencyMs) {
+            || ConnectionDiagnostics.isGatewayHeartbeatWarning(diagnostics.heartbeatLatencyMs)
+            || (settings.clusterMode != .standalone && (input.witnessHealth == .unreachable || input.witnessHealth == .recovering)) {
             return .warning
         }
         if status == .running || settings.clusterMode == .worker {
@@ -409,6 +413,15 @@ private struct Derived {
 
     var attention: [AttentionItem] {
         var items: [AttentionItem] = []
+
+        if settings.clusterMode != .standalone, let health = input.witnessHealth,
+           health == .unreachable || health == .recovering {
+            items.append(AttentionItem(
+                id: "ruru-reachability", title: health == .unreachable ? "Ruru is unreachable from this Mac" : "Ruru is recovering",
+                detail: health.operatorDetail(leaseValid: input.witnessLeaseValid),
+                severity: health == .unreachable && !input.witnessLeaseValid ? .critical : .warning
+            ))
+        }
 
         if status != .running && settings.clusterMode != .worker {
             items.append(AttentionItem(

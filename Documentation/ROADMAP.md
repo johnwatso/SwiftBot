@@ -9,6 +9,56 @@
 
 ## Recent Engineering Log
 
+### 2026-10-18 — Grounded Apple Intelligence activity answers
+
+- [x] Activity questions now resolve a Discord member locally, collect only
+  that member's verified voice/Rewind facts, and bypass the model with a clear
+  answer when the member cannot be matched or there is too little history to
+  establish a pattern.
+- [x] The Apple Intelligence WebUI test conversation now exposes the exact
+  verified activity facts that informed an answer. Rewind game history remains
+  scoped to time recorded in voice.
+- Validation: focused `AIActivityFactsTests` and `AdminWebCopyTests` passed.
+  Working-tree change; no commit or release created.
+
+### 2026-10-17 — Runtime log feedback-loop cleanup
+
+- [x] Public `/live` checks from the same host now remain diagnostic: repeated
+  failures retain a registered Cloudflare tunnel instead of restarting it every
+  three checks. Process death and actual path changes retain their existing
+  restart handling.
+- [x] Discord reconnect backoff now resets only after `READY` or `RESUMED`, not
+  after an incomplete `HELLO`, and includes a small jitter to avoid synchronized
+  reconnect bursts.
+- [x] Apple Intelligence availability and display-name lookup are cached for
+  the process lifetime, preventing repeated system-session attempts while
+  settings or mesh configuration reloads report an unavailable model.
+- Validation: Debug Xcode test run passed 14 focused gateway and AI-service
+  tests, including unsuccessful-HELLO backoff and unavailable-model cache
+  coverage. Same-host public-route behaviour still needs a live tunnel check.
+
+### 2026-10-15 — Independent Ruru reachability flags
+
+- [x] Reused the existing Ruru health check to flag unreachable/recovering Ruru
+  on native Overview and the WebUI Overview. SwiftMesh shows the same operator
+  guidance, and the backup-node status page receives optional credential-free
+  display fields through `/live`.
+- [x] Added one local Activity entry per observed outage/recovery transition.
+  Reachability never grants or extends a lease. Guidance distinguishes a valid
+  local lease from missing/expired permission; standby Discord output remains
+  closed. No new probes, timers, notification destinations or dependencies.
+- Validation: Debug app and test build succeeded; 57 focused Overview, witness
+  health, mesh reliability and stop-role tests passed, including new outage,
+  recovery, transition deduplication and optional public-payload coverage.
+  Both modified WebUI pages' scripts parse; an isolated rendering check covered
+  unreachable/valid-lease/recovering/legacy backup-status payloads.
+- Existing validation limit: `ConsoleOverviewSnapshotTests/testCoordinatorSnapshotTracksWatchStartupAndStop`
+  fails because the unchanged `ClusterCoordinator.currentSnapshot()` sets
+  `isFailoverWatchActive` to false unconditionally. It failed in two runs and
+  was excluded from the final focused run; no takeover/watch logic was changed
+  to mask it. Physical multi-Mac outage/recovery remains an operator test.
+- Working-tree change; no commit or release created.
+
 ### 2026-10-13 — Phase 1–3 monitoring and pairing completion
 
 - [x] A newly paired Failover now inherits a valid Ruru endpoint, service ID,

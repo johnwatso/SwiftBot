@@ -32,6 +32,22 @@ final class AIActivityFactsTests: XCTestCase {
         XCTAssertFalse(AIActivityFacts.isActivityQuestion("tell sam a joke"))
         XCTAssertTrue(AIActivityFacts.asksAboutSelf("when am I usually online"))
         XCTAssertTrue(AIActivityFacts.asksAboutServer("when is the server busiest"))
+        XCTAssertTrue(AIActivityFacts.asksAboutGames("What is Max's most played game?"))
+    }
+
+    func testOnlyMemberActivitySignalsRequireAnUnmatchedMemberPrompt() {
+        XCTAssertTrue(AIActivityFacts.needsMemberResolution("when does Sam usually get on"))
+        XCTAssertTrue(AIActivityFacts.needsMemberResolution("what games does Max play"))
+        XCTAssertFalse(AIActivityFacts.needsMemberResolution("what time is it?"))
+    }
+
+    func testUsableSessionsExcludeBriefDisconnectedEvents() {
+        var brief = VoiceSession(userId: "1", username: "Sam", guildId: "g", channelId: "c", channelName: "General", joinedAt: date(day: 1, hour: 20))
+        brief.leftAt = date(day: 1, hour: 20, minute: 1)
+        var useful = VoiceSession(userId: "1", username: "Sam", guildId: "g", channelId: "c", channelName: "General", joinedAt: date(day: 2, hour: 20))
+        useful.leftAt = date(day: 2, hour: 20, minute: 3)
+
+        XCTAssertEqual(AIActivityFacts.usableSessions([brief, useful], now: date(day: 3, hour: 12)).count, 1)
     }
 
     func testUsualStartFindsTheEveningCluster() throws {
@@ -60,6 +76,16 @@ final class AIActivityFactsTests: XCTestCase {
         XCTAssertTrue(line.contains("usually joins around 8:00 PM"), line)
         XCTAssertTrue(line.contains("12 h total"), line)
         XCTAssertTrue(line.contains("favourite voice channel General"), line)
+    }
+
+    func testDescribeIncludesTheMostPlayedGameWhenItWasObservedInThisServer() {
+        var record = AIActivityFacts.MemberRecord(member: members[2])
+        record.gameHistory = [
+            RewindGameSummary(game: "THE FINALS", sessions: 18, seconds: 42 * 3_600),
+            RewindGameSummary(game: "Valorant", sessions: 5, seconds: 11 * 3_600)
+        ]
+        let line = AIActivityFacts.describe(record, now: date(day: 10, hour: 12), timeZone: utc, isAsker: false)
+        XCTAssertTrue(line.contains("most-played recorded game in this server while in voice over the last 30 days is THE FINALS, 42 h across 18 sessions"), line)
     }
 
     func testSettingSurvivesASaveAndLoad() throws {

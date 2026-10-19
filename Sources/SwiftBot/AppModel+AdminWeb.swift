@@ -74,7 +74,9 @@ extension AppModel {
             webUIBaseURL: adminWebBaseURL(),
             clusterMode: settings.clusterMode.rawValue,
             runtimeState: clusterSnapshot.runtimeState.rawValue,
-            isFailoverManagedNode: isFailoverManagedNode
+            isFailoverManagedNode: isFailoverManagedNode,
+            ruruHealth: runtimeClusterMode == .standalone || meshWitnessEndpoint.isEmpty ? nil : meshWitnessHealth?.webValue,
+            ruruLeaseValid: runtimeClusterMode == .standalone || meshWitnessEndpoint.isEmpty ? nil : meshHasValidLocalLease
         )
     }
 
@@ -217,6 +219,7 @@ extension AppModel {
             .map { member in
                 AdminWebActiveVoicePayload(
                     userId: member.userId,
+                    guildId: member.guildId,
                     username: member.username,
                     channelName: member.channelName,
                     serverName: connectedServers[member.guildId] ?? member.guildId,
@@ -296,7 +299,9 @@ extension AppModel {
             lastClusterStatusSuccessAt: lastClusterStatusSuccessAt,
             patchyLastCycleAt: patchyLastCycleAt,
             patchyIsCycleRunning: patchyIsCycleRunning,
-            memoryText: OverviewHealthReport.memoryText(samples: [])
+            memoryText: OverviewHealthReport.memoryText(samples: []),
+            witnessHealth: meshWitnessEndpoint.isEmpty ? nil : meshWitnessHealth,
+            witnessLeaseValid: meshHasValidLocalLease
         ))
         let icon = { (symbol: String) in Self.adminWebHealthIcons[symbol] ?? "circle" }
         let severityName: (OverviewHealthReport.AttentionItem.Severity) -> String = {
@@ -1394,24 +1399,42 @@ extension AppModel {
         )
     }
 
-    /// One reply for the Settings "Try it" box, using the instructions being
-    /// edited. Nothing is saved and conversation memory isn't touched.
-    func tryAdminWebAIReply(_ request: AdminWebAITryRequest) async -> String? {
+    /// One reply in the Settings test conversation, using the instructions
+    /// being edited. The browser supplies up to eight previous turns; nothing
+    /// is saved and conversation memory isn't touched.
+    func tryAdminWebAIReply(_ request: AdminWebAITryRequest) async -> AdminWebAITryResponse? {
         let prompt = request.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userID = request.askerID ?? "admin-web"
+        let history = (request.history ?? []).suffix(8).compactMap { turn -> Message? in
+            guard let role = MessageRole(rawValue: turn.role) else { return nil }
+            let content = turn.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else { return nil }
+            return Message(
+                channelID: "admin-web-try",
+                userID: role == .assistant ? "swiftbot" : userID,
+                username: role == .assistant ? "SwiftBot" : "Admin",
+                content: content,
+                role: role
+            )
+        }
         let message = Message(
             channelID: "admin-web-try",
-            userID: request.askerID ?? "admin-web",
+            userID: userID,
             username: "Admin",
             content: request.message.trimmingCharacters(in: .whitespacesAndNewlines),
             role: .user
         )
-        // Same activity facts a real reply would get, across every server.
-        let facts = await aiActivityContext(question: message.content, askerID: request.askerID, guildID: nil)
+        // Same activity lookup a real reply would get, across every server.
+        let activity = await aiActivityLookup(question: message.content, askerID: request.askerID, guildID: nil)
+        if let deterministicReply = activity.deterministicReply {
+            return AdminWebAITryResponse(reply: deterministicReply, activityContext: nil)
+        }
         let instructions = prompt.isEmpty ? settings.localAISystemPrompt : prompt
-        return await aiService.generateHelpReply(
-            messages: [message],
-            systemPrompt: facts.isEmpty ? instructions : instructions + "\n\n" + facts
-        )
+        guard let reply = await aiService.generateHelpReply(
+            messages: history + [message],
+            systemPrompt: activity.context.isEmpty ? instructions : instructions + "\n\n" + activity.context
+        ) else { return nil }
+        return AdminWebAITryResponse(reply: reply, activityContext: activity.debugSummary)
     }
 
     func clearAdminWebAIMemory(_ patch: AdminWebAIMemoryClearPatch) async -> Bool {
@@ -2567,6 +2590,10 @@ extension AppModel {
                 return await model.adminWebUpdatesSnapshot()
             }
         )
+        await adminWebServer.setVoiceMemberActions { [weak self] action in
+            guard let model = self else { return "SwiftBot is shutting down." }
+            return await model.runAdminWebVoiceMemberAction(action)
+        }
         await adminWebServer.setAutomationSimulator { [weak self] request in
             guard let model = self else { return nil }
             return await model.simulateAdminWebAutomation(request)
@@ -4004,6 +4031,42 @@ extension AppModel {
 // MARK: - Host operations (admin web)
 
 extension AppModel {
+    /// Runs a deliberate moderation action from the live voice roster. The
+    /// roster lookup makes the action fail closed if the user left, switched
+    /// servers, or the browser's overview is stale between opening and
+    /// confirming its dialog.
+    func runAdminWebVoiceMemberAction(_ action: AdminWebVoiceMemberAction) async -> String? {
+        let token = normalizedDiscordToken(from: settings.token)
+        guard !token.isEmpty else {
+            return "No bot token is set. Add it in the SwiftBot app on the Mac."
+        }
+        guard activeVoice.contains(where: { $0.guildId == action.guildID && $0.userId == action.userID }) else {
+            return "That member is no longer in this voice channel. Refresh the overview and try again."
+        }
+
+        do {
+            switch action.action {
+            case .disconnect:
+                try await service.moveMember(
+                    guildId: action.guildID,
+                    userId: action.userID,
+                    channelId: "",
+                    token: token
+                )
+            case .kick:
+                try await service.kickMember(
+                    guildId: action.guildID,
+                    userId: action.userID,
+                    reason: "Removed by SwiftBot Web UI",
+                    token: token
+                )
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Runs one Web UI request to act on the host. nil means done; a string is
     /// the reason it couldn't be, shown to the person as-is.
     func runAdminWebHostOperation(_ operation: AdminWebHostOperation) async -> String? {

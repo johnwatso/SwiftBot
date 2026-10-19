@@ -91,6 +91,33 @@ enum MeshWitnessHealth: Equatable, Sendable {
         case .unreachable: "Unreachable"
         }
     }
+
+    /// Operator guidance only. A health response never grants or extends a lease.
+    func operatorDetail(leaseValid: Bool) -> String {
+        switch self {
+        case .checking:
+            return "Checking Ruru from this Mac."
+        case .ready:
+            return leaseValid ? "Ruru is reachable and this Mac holds a valid local lease."
+                : "Ruru is reachable. This Mac does not hold a valid local lease."
+        case .recovering:
+            return "Ruru is reachable but waiting out earlier leases after a restart. New grants and renewals are paused until recovery finishes."
+        case .unreachable:
+            let permission = leaseValid
+                ? "The current lease lasts only until its local deadline; SwiftBot stops guarded work if it cannot renew."
+                : "This Mac has no valid local lease and cannot take ownership."
+            return "This Mac cannot reach Ruru. Check the Ruru Mac, its network and Internet Access. " + permission
+        }
+    }
+
+    /// One Activity entry per observed outage/recovery edge, without network details or credentials.
+    func transitionMessage(from previous: Self?) -> String? {
+        guard self != previous else { return nil }
+        if self == .unreachable { return "Ruru is unreachable from this Mac. Check the Ruru Mac, its network and Internet Access. Existing lease deadlines still apply." }
+        if self == .recovering, previous == .unreachable { return "Ruru is reachable again and is waiting for earlier leases to expire." }
+        if self == .ready, previous == .unreachable || previous == .recovering { return "Ruru is reachable and accepting lease requests again." }
+        return nil
+    }
 }
 
 /// The outcome of renewing a lease. Ruru answering "no" is different from

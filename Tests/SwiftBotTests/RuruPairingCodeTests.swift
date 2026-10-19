@@ -66,6 +66,41 @@ final class RuruWitnessSettingsTests: XCTestCase {
 
 /// The SwiftMesh map's Ruru chip uses `GET /health`; it never affects ownership.
 final class MeshWitnessHealthTests: XCTestCase {
+    private func report(health: MeshWitnessHealth, validLease: Bool, mode: ClusterMode = .leader) -> OverviewHealthReport {
+        var settings = BotSettings()
+        settings.clusterMode = mode
+        return OverviewHealthReport(.init(
+            status: .running, settings: settings, events: [], commandLog: [], enabledAutomationCount: 1,
+            clusterNodes: [], clusterSnapshot: ClusterSnapshot(), diagnostics: ConnectionDiagnostics(),
+            lastGatewayEventName: "READY", intentsAccepted: true, lastVoiceStateAt: nil,
+            lastClusterStatusSuccessAt: nil, patchyLastCycleAt: nil, patchyIsCycleRunning: false,
+            memoryText: "--", witnessHealth: health, witnessLeaseValid: validLease
+        ))
+    }
+
+    func testWebOverviewDistinguishesOutageLeaseExpiryAndRestartRecovery() {
+        let holding = report(health: .unreachable, validLease: true)
+        XCTAssertEqual(holding.overall, .warning)
+        XCTAssertTrue(holding.attention.contains { $0.id == "ruru-reachability" && $0.detail.contains("local deadline") })
+        let expired = report(health: .unreachable, validLease: false, mode: .standby)
+        XCTAssertEqual(expired.overall, .critical)
+        XCTAssertTrue(expired.attention.contains { $0.id == "ruru-reachability" && $0.detail.contains("cannot take ownership") })
+        XCTAssertEqual(report(health: .recovering, validLease: false).overall, .warning)
+        XCTAssertFalse(report(health: .ready, validLease: false).attention.contains { $0.id == "ruru-reachability" })
+        XCTAssertFalse(report(health: .unreachable, validLease: false, mode: .standalone).attention.contains { $0.id == "ruru-reachability" })
+    }
+
+    func testOutageAndRecoveryActivityIsRecordedOncePerTransition() {
+        XCTAssertNotNil(MeshWitnessHealth.unreachable.transitionMessage(from: .ready))
+        XCTAssertNotNil(MeshWitnessHealth.unreachable.transitionMessage(from: .checking))
+        XCTAssertNil(MeshWitnessHealth.unreachable.transitionMessage(from: .unreachable))
+        XCTAssertNotNil(MeshWitnessHealth.recovering.transitionMessage(from: .unreachable))
+        XCTAssertNotNil(MeshWitnessHealth.ready.transitionMessage(from: .recovering))
+        XCTAssertNotNil(MeshWitnessHealth.ready.transitionMessage(from: .unreachable))
+        XCTAssertNil(MeshWitnessHealth.ready.transitionMessage(from: .checking))
+        XCTAssertNil(MeshWitnessHealth.ready.transitionMessage(from: .ready))
+    }
+
     private func client(status: Int, body: String?) async -> MeshWitnessClient {
         HealthStubURLProtocol.response = body.map { (status, Data($0.utf8)) }
         let configuration = URLSessionConfiguration.ephemeral

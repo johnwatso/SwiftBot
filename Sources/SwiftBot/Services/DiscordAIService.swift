@@ -234,25 +234,33 @@ actor DiscordAIService {
 
     typealias EngineFactory = @Sendable (String) -> any AIEngine
     typealias AppleAvailabilityProvider = @Sendable () -> Bool
+    typealias AppleModelNameProvider = @Sendable () -> String?
 
     private var configuration = Configuration()
     private let engineFactory: EngineFactory
     private let appleAvailability: AppleAvailabilityProvider
+    private let appleModelName: AppleModelNameProvider
+    /// FoundationModels availability can create a system session. Settings and
+    /// mesh reloads are not a reason to keep asking it after it has said no.
+    private var cachedAppleStatus: (isAvailable: Bool, modelName: String?)?
 
     init(session: URLSession = URLSession(configuration: .default)) {
         self.engineFactory = { systemPrompt in
             AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
         }
         self.appleAvailability = { Self.isAppleIntelligenceAvailable() }
+        self.appleModelName = { Self.activeAIModelName() }
         _ = session // accepted for API parity with the prior multi-provider init
     }
 
     init(
         engineFactory: @escaping EngineFactory,
-        appleAvailability: @escaping AppleAvailabilityProvider
+        appleAvailability: @escaping AppleAvailabilityProvider,
+        appleModelName: @escaping AppleModelNameProvider = { DiscordAIService.activeAIModelName() }
     ) {
         self.engineFactory = engineFactory
         self.appleAvailability = appleAvailability
+        self.appleModelName = appleModelName
     }
 
     func configureLocalAIDMReplies(enabled: Bool, systemPrompt: String) {
@@ -261,7 +269,11 @@ actor DiscordAIService {
     }
 
     func currentAIStatus() async -> Bool {
-        appleAvailability()
+        currentAppleStatus().isAvailable
+    }
+
+    func currentAIModelName() async -> String? {
+        currentAppleStatus().modelName
     }
 
     func generateSmartDMReply(
@@ -476,5 +488,16 @@ actor DiscordAIService {
 #else
         return nil
 #endif
+    }
+
+    private func currentAppleStatus() -> (isAvailable: Bool, modelName: String?) {
+        if let cachedAppleStatus {
+            return cachedAppleStatus
+        }
+
+        let isAvailable = appleAvailability()
+        let status = (isAvailable: isAvailable, modelName: isAvailable ? appleModelName() : nil)
+        cachedAppleStatus = status
+        return status
     }
 }

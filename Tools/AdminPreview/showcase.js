@@ -41,7 +41,7 @@ module.exports = function applyShowcase(fixtures) {
     ['280129381292318723', 'Riley', 'riley', 'Stream Room', 38],
     ['280129381292318724', 'Mia', 'mia', 'Stream Room', 6]
   ].map(([userId, username, avatar, channelName, mins]) => ({
-    userId, username, channelName, serverName: 'Swift Lounge',
+    userId, guildId: '1001', username, channelName, serverName: 'Swift Lounge',
     joinedText: `Joined ${mins}m ago`, joinedAt: minutesAgo(mins), avatarURL: AVATAR(avatar)
   }));
   overview.health.state = 'healthy';

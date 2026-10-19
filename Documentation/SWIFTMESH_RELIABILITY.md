@@ -70,6 +70,19 @@ Install Ruru on the independent Mac and use its Internet Access setup to enter a
 
 Once configured, Ruru appears on the SwiftMesh dashboard's Cluster Map above the Primary. Each Mac polls Ruru's unauthenticated `GET /health` every 15 seconds, which shows **Ready**, **Recovering** (a restart quarantine, 503) or **Unreachable**. The line to the Primary is solid, and the chip reads **Lease held**, only while this Mac holds an unexpired lease. Otherwise it is dashed. The probe is for display only and never grants or infers ownership.
 
+Ruru outages also appear on the native Overview's SwiftMesh service and the
+WebUI Overview, with guidance to check the Ruru Mac, network and Internet Access.
+Activity records each observed outage/recovery transition once. A failed check
+means **unreachable from this Mac**, not proof that Ruru's process stopped. The
+display distinguishes an existing valid local lease from missing/expired
+permission, and separates reachable restart quarantine from a network failure.
+The backup-node status page receives optional `ruruHealth` and `ruruLeaseValid`
+display fields through `/live`, without credentials or the Ruru endpoint. Older
+payloads omit those fields and retain the existing layout. These flags do not
+send Discord messages, grant permission, or change expiry, promotion or output
+gating. They require SwiftBot to be running; detecting loss of both applications
+or a shared network path requires monitoring from somewhere else.
+
 SwiftBot also reports bounded local operational status when the configured Ruru
 advertises that capability: configuration loading, credential approval, first
 shared snapshot, direct peer sync, and Discord connection. It is visible in

@@ -86,6 +86,15 @@ struct PresenceSegment: Codable, Hashable, Sendable {
     }
 }
 
+/// One member's recorded in-voice game activity, aggregated for a bounded
+/// server window. This is derived from Rewind segments; it is not a second
+/// game-history store.
+struct RewindGameSummary: Sendable, Hashable {
+    let game: String
+    let sessions: Int
+    let seconds: TimeInterval
+}
+
 enum PresenceActivityType {
     static let playing = 0
     static let streaming = 1

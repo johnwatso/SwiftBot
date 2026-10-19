@@ -155,6 +155,9 @@ extension AppModel {
                 guard let client = self?.meshWitnessClient else { return }
                 let health = await client.health()
                 guard !Task.isCancelled else { return }
+                if let health, let message = health.transitionMessage(from: self?.meshWitnessHealth) {
+                    self?.addEvent(ActivityEvent(timestamp: Date(), kind: health == .unreachable ? .warning : .info, message: message))
+                }
                 self?.meshWitnessHealth = health
                 // Automatic handback waits for Ruru to be ready (not in restart quarantine).
                 self?.meshPrimaryPreferenceTracker.setAuthorityReady(health == .ready)
@@ -245,6 +248,12 @@ extension AppModel {
 
     var meshOwnershipExpired: Bool {
         meshOwnershipDeadline.map { ContinuousClock.now >= $0 } ?? false
+    }
+
+    /// Diagnostic only: missing permission is not a valid lease, even before an expiry is known.
+    var meshHasValidLocalLease: Bool {
+        runtimeClusterMode == .leader && currentRuruLease != nil
+            && meshOwnershipDeadline.map { ContinuousClock.now < $0 } == true
     }
 
     func updateMeshOwnershipDeadline(_ deadline: ContinuousClock.Instant?) async {

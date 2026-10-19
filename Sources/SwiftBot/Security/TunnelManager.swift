@@ -88,16 +88,16 @@ actor TunnelManager: TunnelProvider {
     private var lastObservedPathSignature: String?
 
     /// Periodically GETs `{publicURL}/live` while the tunnel reports `.enabled`.
-    /// Process death and network changes are already handled elsewhere; this
-    /// catches the silent "process alive, edge says registered, but no traffic
-    /// flows" failure mode that operators see after the tunnel has been up for
-    /// hours. After `maxConsecutiveHealthFailures` failures (~30 min at the
-    /// 10-min cadence) the tunnel is force-restarted.
+    /// Process death and network changes are already handled elsewhere. This is
+    /// a diagnostic from the same host, not an independent availability check:
+    /// a DNS hairpin, edge issue, or local network policy can make the public
+    /// route fail even while a registered tunnel is healthy. It must therefore
+    /// never restart the tunnel by itself.
     private var healthCheckTask: Task<Void, Never>?
     private var consecutiveHealthFailures = 0
     private static let healthCheckInterval: UInt64 = 10 * 60 * 1_000_000_000
     private static let healthCheckTimeout: TimeInterval = 5
-    private static let maxConsecutiveHealthFailures = 3
+    private static let healthFailureNoticeThreshold = 3
     private let healthCheckSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = TunnelManager.healthCheckTimeout
@@ -503,15 +503,10 @@ actor TunnelManager: TunnelProvider {
         }
 
         consecutiveHealthFailures += 1
-        await logger?("⚠️ Tunnel health check failed (\(consecutiveHealthFailures)/\(Self.maxConsecutiveHealthFailures)) at \(url.absoluteString)")
-
-        if consecutiveHealthFailures >= Self.maxConsecutiveHealthFailures {
-            await logger?("Tunnel appears stale — forcing Cloudflare tunnel restart")
-            consecutiveHealthFailures = 0
-            consecutiveFailures = 0
-            lastRegistrationError = nil
-            await stop(clearDesiredConfiguration: false)
-            await startProcess(using: configuration)
+        if consecutiveHealthFailures == 1 {
+            await logger?("⚠️ Tunnel public-route check failed at \(url.absoluteString); retaining the registered tunnel")
+        } else if consecutiveHealthFailures == Self.healthFailureNoticeThreshold {
+            await logger?("⚠️ Tunnel public-route check has failed \(consecutiveHealthFailures) times; retaining the registered tunnel because this same-host probe is diagnostic only")
         }
     }
 

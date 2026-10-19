@@ -149,6 +149,26 @@ final class RewindActivityTests: XCTestCase {
         XCTAssertNil(miss)
     }
 
+    func testStoreSummarisesGamesFromTheExistingGuildScopedArchive() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = RewindActivityStore(rootURL: root)
+
+        await store.voiceStateChanged(guildID: "guild-1", userID: "user-1", channelID: "vc", now: base)
+        await store.record(presence: presence([activity("THE FINALS")]), now: base)
+        await store.record(presence: presence([]), now: base.addingTimeInterval(3_600))
+        await store.record(presence: presence([activity("Valorant")]), now: base.addingTimeInterval(3_600))
+        await store.record(presence: presence([]), now: base.addingTimeInterval(4_800))
+        await store.flush()
+
+        let summaries = await store.gameSummaries(
+            userID: "user-1", guildID: "guild-1", from: base.addingTimeInterval(1_800), to: base.addingTimeInterval(4_200)
+        )
+        XCTAssertEqual(summaries.map(\.game), ["THE FINALS", "Valorant"])
+        XCTAssertEqual(summaries[0].seconds, 1_800, accuracy: 0.1)
+        XCTAssertEqual(summaries[1].seconds, 600, accuracy: 0.1)
+    }
+
     func testPresenceIsOnlyRecordedInVoice() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

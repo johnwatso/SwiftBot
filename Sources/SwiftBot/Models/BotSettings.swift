@@ -365,7 +365,8 @@ struct BotSettings: Codable, Hashable {
     // fields are preserved in Archive/MultiProviderAI.swift.
     var localAIDMReplyEnabled: Bool = false
     /// Lets AI replies answer questions about members' activity ("when is
-    /// sam usually on?") from voice history and the Rewind archive.
+    /// Sam usually on?" or "what does Max play?") from voice history and the
+    /// Rewind archive's in-voice game presence.
     var aiActivityAnswersEnabled: Bool = true
     /// Who records into each recording folder, keyed "node|sourceUUID", so a
     /// clip's people are the ones in that person's voice channel.

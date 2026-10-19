@@ -60,4 +60,17 @@ final class PrimaryStopRoleTests: XCTestCase {
         for secret in ["token", "clusterID", "endpoint"] { XCTAssertFalse(json.contains(secret)) }
         XCTAssertEqual(MeshWitnessHealth.recovering.webValue, "recovering")
     }
+
+    func testPublicLivenessCarriesOnlyOptionalRuruDisplayFacts() throws {
+        var live = AdminWebLivePayload(status: "offline", discordConnected: false, clusterMode: "Standby",
+                                       runtimeState: "idle", botUsername: "Example", generatedAt: Date())
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(live)) as? [String: Any])
+        XCTAssertNil(json["ruruHealth"], "Old payloads omit optional Ruru fields")
+        live.ruruHealth = "unreachable"
+        live.ruruLeaseValid = false
+        json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(live)) as? [String: Any])
+        XCTAssertEqual(json["ruruHealth"] as? String, "unreachable")
+        XCTAssertEqual(json["ruruLeaseValid"] as? Bool, false)
+        for key in ["token", "clusterID", "endpoint", "host"] { XCTAssertNil(json[key]) }
+    }
 }

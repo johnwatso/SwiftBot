@@ -1123,7 +1123,7 @@ final class AppModel: ObservableObject {
 
     func refreshAIStatus() async {
         appleIntelligenceOnline = await aiService.currentAIStatus()
-        appleIntelligenceModelName = DiscordAIService.activeAIModelName()
+        appleIntelligenceModelName = await aiService.currentAIModelName()
     }
 
     // MARK: - Patchy (see AppModel+Patchy.swift)

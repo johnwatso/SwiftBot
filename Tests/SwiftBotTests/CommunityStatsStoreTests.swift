@@ -95,4 +95,5 @@ final class CommunityStatsStoreTests: XCTestCase {
         let series = await reloaded.rankHistory(since: start.addingTimeInterval(-1))
         XCTAssertEqual(series["p"]?.points.map(\.score), [28_000, 28_160])
     }
+
 }

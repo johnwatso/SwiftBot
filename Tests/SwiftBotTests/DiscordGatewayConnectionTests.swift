@@ -170,7 +170,7 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         )
         let factory = SocketFactoryQueue(sockets: [initialSocket, resumedSocket])
         let recorder = EventRecorder()
-        let connection = makeConnection(factory: factory, sleep: { _ in })
+        let connection = makeConnection(factory: factory, sleep: { _ in }, reconnectJitter: { _ in 0 })
 
         await connection.setOnConnectionState { state in
             await recorder.record(state: state)
@@ -189,6 +189,42 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         XCTAssertTrue(sent.contains(where: { $0.contains("\"op\":6") && $0.contains("session-1") }))
         XCTAssertFalse(sent.contains(where: { $0.contains("\"op\":2") }), "a resumable reconnect must not re-identify")
 
+        await connection.disconnect()
+    }
+
+    func testUnreadyReconnectsKeepIncreasingBackoffUntilReady() async {
+        let initialSocket = FakeGatewaySocket(
+            scriptedResults: [.failure(SocketFailure.disconnected)]
+        )
+        let helloThenFailure = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                .failure(SocketFailure.disconnected)
+            ]
+        )
+        let readyThenFailure = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                .success(#"{"op":0,"s":1,"t":"READY","d":{"session_id":"session-1"}}"#),
+                .failure(SocketFailure.disconnected)
+            ]
+        )
+        let factory = SocketFactoryQueue(sockets: [initialSocket, helloThenFailure, readyThenFailure, FakeGatewaySocket()])
+        let recorder = ReconnectDiagnosticRecorder()
+        let connection = makeConnection(factory: factory, sleep: { _ in }, reconnectJitter: { _ in 0 })
+        await connection.setOnReconnectDiagnostic { diagnostic in
+            await recorder.record(diagnostic)
+        }
+
+        await connection.connect(token: "bot-token")
+
+        let retried = await waitUntil {
+            await factory.createdCount() == 4
+        }
+
+        XCTAssertTrue(retried)
+        let delays = await recorder.diagnostics().map(\.delaySeconds)
+        XCTAssertEqual(delays, [2, 4, 2], "HELLO alone must not reset reconnect backoff, while READY must reset it")
         await connection.disconnect()
     }
 
@@ -252,7 +288,8 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         dateProvider: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (UInt64) async -> Void = { nanoseconds in
             try? await Task.sleep(nanoseconds: nanoseconds)
-        }
+        },
+        reconnectJitter: @escaping @Sendable (Int) -> Int = { _ in 0 }
     ) -> DiscordGatewayConnection {
         DiscordGatewayConnection(
             session: URLSession(configuration: .ephemeral),
@@ -262,7 +299,8 @@ final class DiscordGatewayConnectionTests: XCTestCase {
                     await factory.nextSocket()
                 },
                 dateProvider: dateProvider,
-                sleep: sleep
+                sleep: sleep,
+                reconnectJitter: reconnectJitter
             )
         )
     }
@@ -320,6 +358,18 @@ private actor EventRecorder {
 
     func closeCodes() -> [Int] {
         recordedCloseCodes
+    }
+}
+
+private actor ReconnectDiagnosticRecorder {
+    private var recorded: [DiscordGatewayConnection.ReconnectDiagnostic] = []
+
+    func record(_ diagnostic: DiscordGatewayConnection.ReconnectDiagnostic) {
+        recorded.append(diagnostic)
+    }
+
+    func diagnostics() -> [DiscordGatewayConnection.ReconnectDiagnostic] {
+        recorded
     }
 }
 

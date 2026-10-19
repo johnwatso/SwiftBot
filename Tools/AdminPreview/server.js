@@ -9,6 +9,8 @@
 //   node Tools/AdminPreview/server.js        → http://127.0.0.1:4179
 //   SHOWCASE=1 PORT=4180 node Tools/AdminPreview/server.js
 //                                            → tidy data for website screenshots
+//   HOST=0.0.0.0 PORT=4180 node Tools/AdminPreview/server.js
+//                                            → preview from other Macs on the LAN
 //                                              (showcase.js, screenshots.mjs)
 //
 // Announcer writes are applied to the in-memory fixtures, so add/edit/toggle/
@@ -27,6 +29,7 @@ const { execFile, execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '../../Sources/SwiftBot/Resources/admin');
 const PORT = Number(process.env.PORT || 4179);
+const HOST = process.env.HOST || '127.0.0.1';
 // Isolated standby preview. A test-owned file can change the runtime role
 // without adding promotion controls to the production status page.
 const STANDBY = process.env.STANDBY === '1';
@@ -463,6 +466,20 @@ async function handleAPI(req, res, pathname, query) {
 
   if (req.method === 'POST') {
     const body = await readBody(req);
+
+    // The real app sends these actions to Discord after its admin/session,
+    // CSRF, live-presence, and Primary-node checks. Preview only removes the
+    // fixture member so the UI can be exercised without any external effect.
+    if (pathname === '/api/voice/member/action') {
+      if (!['disconnect', 'kick'].includes(body.action) || !body.guildID || !body.userID) {
+        return sendJSON(res, { error: 'invalid_payload' }, 400);
+      }
+      const index = fixtures.overview.activeVoice.findIndex(member => member.guildId === body.guildID && member.userId === body.userID);
+      if (index < 0) return sendJSON(res, { error: 'failed', message: 'That member is no longer in this voice channel.' }, 409);
+      const [member] = fixtures.overview.activeVoice.splice(index, 1);
+      console.log(`[voice] ${body.action} ${member.username}`);
+      return sendJSON(res, { ok: true });
+    }
 
     // Host actions: bot lifecycle, tests, updates. Mutate the fixtures so the
     // page's follow-up reads see the change.
@@ -1087,7 +1104,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Admin WebUI preview on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Admin WebUI preview on http://${HOST}:${PORT}`);
   console.log(`Serving ${ROOT}`);
 });

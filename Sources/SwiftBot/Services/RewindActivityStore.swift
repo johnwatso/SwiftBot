@@ -190,6 +190,42 @@ actor RewindActivityStore {
         return (best, best.span(at: date))
     }
 
+    /// Totals playing segments from Rewind's existing per-server presence
+    /// archive. Rewind only records presence while a member is in voice, which
+    /// keeps the scope clear and avoids a separate game-session ledger.
+    func gameSummaries(userID: String, guildID: String, from start: Date, to end: Date) -> [RewindGameSummary] {
+        var totals: [String: (game: String, sessions: Int, seconds: TimeInterval)] = [:]
+        for segment in presence(userID: userID, guildID: guildID, from: start, to: end)
+            where segment.type == PresenceActivityType.playing {
+            let overlapStart = max(segment.startedAt, start)
+            let overlapEnd = min(segment.endedAt ?? end, end)
+            let seconds = overlapEnd.timeIntervalSince(overlapStart)
+            guard seconds > 0 else { continue }
+            let game = segment.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = game.lowercased()
+            guard !key.isEmpty else { continue }
+            var total = totals[key] ?? (game, 0, 0)
+            total.sessions += 1
+            total.seconds += seconds
+            totals[key] = total
+        }
+        return totals.values
+            .map { RewindGameSummary(game: $0.game, sessions: $0.sessions, seconds: $0.seconds) }
+            .sorted {
+                $0.seconds != $1.seconds
+                    ? $0.seconds > $1.seconds
+                    : $0.game.localizedCaseInsensitiveCompare($1.game) == .orderedAscending
+            }
+    }
+
+    /// Games currently observed in Rewind's in-voice presence tracker.
+    func activePlayingGames(userID: String, guildID: String) -> [String] {
+        Array(Set(tracker.liveSegments.compactMap { segment in
+            segment.userID == userID && segment.guildID == guildID && segment.type == PresenceActivityType.playing
+                ? segment.name : nil
+        })).sorted()
+    }
+
     /// Journal entries of the given kinds in a window, oldest first.
     func journal(guildID: String, events: Set<String>? = nil, from start: Date, to end: Date) -> [RewindJournalEntry] {
         flush()

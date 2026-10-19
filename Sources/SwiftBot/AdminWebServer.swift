@@ -38,6 +38,9 @@ struct AdminWebStatusPayload: Codable {
     /// A standby or worker node is controlled by the active Primary and must
     /// not accept direct browser configuration edits.
     let isFailoverManagedNode: Bool
+    /// Diagnostic reachability only; no authority address, identity or credentials.
+    var ruruHealth: String? = nil
+    var ruruLeaseValid: Bool? = nil
 }
 
 struct AdminWebLivePayload: Codable {
@@ -50,6 +53,8 @@ struct AdminWebLivePayload: Codable {
     /// Runtime browser access, independent of the saved role. Optional for
     /// older clients that consume this public, non-secret liveness response.
     var isFailoverManagedNode: Bool? = nil
+    var ruruHealth: String? = nil
+    var ruruLeaseValid: Bool? = nil
 }
 
 struct AdminWebMetricPayload: Codable {
@@ -319,6 +324,7 @@ struct AdminWebRecentCommandPayload: Codable {
 
 struct AdminWebActiveVoicePayload: Codable {
     let userId: String
+    let guildId: String
     let username: String
     let channelName: String
     let serverName: String
@@ -326,6 +332,20 @@ struct AdminWebActiveVoicePayload: Codable {
     var joinedAt: Date? = nil
     /// Server avatar when set, else their Discord avatar (cdn.discordapp.com).
     var avatarURL: String? = nil
+}
+
+/// A moderation action initiated from a live voice member in the admin WebUI.
+/// The server re-checks the member is still present before handing this to the
+/// app model, so a stale browser view cannot target a different session.
+struct AdminWebVoiceMemberAction: Codable {
+    enum Kind: String, Codable {
+        case disconnect
+        case kick
+    }
+
+    let guildID: String
+    let userID: String
+    let action: Kind
 }
 
 struct AdminWebDiscordUser: Codable, Sendable {
@@ -1195,7 +1215,8 @@ struct AdminWebAIBotsPayload: Codable {
     var isCustomPrompt = false
     /// SwiftBot's built-in instructions, for "Reset to default".
     var defaultPrompt = ""
-    /// Replies can answer "when is sam usually on?" from activity records.
+    /// Replies can answer member activity questions from voice, Rewind's
+    /// in-voice game presence, and message records.
     var activityAnswersEnabled = false
     let isFailoverManagedNode: Bool
     let personalities: [Personality]
@@ -1203,18 +1224,33 @@ struct AdminWebAIBotsPayload: Codable {
     let memory: Memory
 }
 
-/// Clears one conversation's memory, or every conversation when both
-/// fields are omitted.
+/// One earlier turn in the AI Settings test conversation. The browser owns the
+/// transcript; SwiftBot validates and uses it for one request, then discards it.
+struct AdminWebAITryTurn: Codable {
+    let role: String
+    let content: String
+}
+
 /// POST /api/aibots/try: one reply using `prompt` as the instructions,
-/// without saving them.
+/// optionally continuing a browser-local test conversation without saving it.
 struct AdminWebAITryRequest: Codable {
     let message: String
     let prompt: String
+    let history: [AdminWebAITryTurn]?
     /// The signed-in admin's Discord ID, so "how much have I been in
     /// voice?" is about them. Set by the server, never by the page.
     var askerID: String?
 }
 
+struct AdminWebAITryResponse: Codable {
+    let reply: String
+    /// Verified activity facts that informed this reply, for the admin-only
+    /// test conversation. Nil for ordinary model replies and no-data answers.
+    let activityContext: String?
+}
+
+/// Clears one conversation's memory, or every conversation when both
+/// fields are omitted.
 struct AdminWebAIMemoryClearPatch: Codable {
     let scopeID: String?
     let scopeType: String?
@@ -1768,7 +1804,7 @@ actor AdminWebServer {
     private var runPatchyCheckNow: (@Sendable () async -> Bool)?
     private var aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)?
     private var clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)?
-    private var tryAIReply: (@Sendable (AdminWebAITryRequest) async -> String?)?
+    private var tryAIReply: (@Sendable (AdminWebAITryRequest) async -> AdminWebAITryResponse?)?
     private var wikiBridgeProvider: (@Sendable () async -> AdminWebWikiBridgePayload)?
     private var updateWikiBridgeState: (@Sendable (AdminWebWikiBridgeStatePatch) async -> Bool)?
     private var createWikiSource: (@Sendable () async -> WikiSource?)?
@@ -1800,6 +1836,9 @@ actor AdminWebServer {
     /// `GameProviderCredentialResult` raw value.
     private var gameProviderCredentialUpdater: (@Sendable (String, String?) async -> String)?
     private var hostOperationRunner: (@Sendable (AdminWebHostOperation) async -> String?)?
+    /// Live voice moderation returns nil when it completes, otherwise a
+    /// human-readable problem that is safe to show in the WebUI.
+    private var voiceMemberActionRunner: (@Sendable (AdminWebVoiceMemberAction) async -> String?)?
     private var automationSimulator: (@Sendable (AdminWebAutomationSimulationRequest) async -> AdminWebAutomationSimulationPayload?)?
     /// The same redacted diagnostic report as the native Activity › Export.
     private var activityReportProvider: (@Sendable () async -> String)?
@@ -1925,7 +1964,7 @@ actor AdminWebServer {
         runPatchyCheckNow: @escaping @Sendable () async -> Bool,
         aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)? = nil,
         clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)? = nil,
-        tryAIReply: (@Sendable (AdminWebAITryRequest) async -> String?)? = nil,
+        tryAIReply: (@Sendable (AdminWebAITryRequest) async -> AdminWebAITryResponse?)? = nil,
         wikiBridgeProvider: @escaping @Sendable () async -> AdminWebWikiBridgePayload,
         updateWikiBridgeState: @escaping @Sendable (AdminWebWikiBridgeStatePatch) async -> Bool,
         createWikiSource: @escaping @Sendable () async -> WikiSource?,
@@ -2761,7 +2800,9 @@ actor AdminWebServer {
                     runtimeState: liveStatus?.runtimeState,
                     botUsername: botName,
                     generatedAt: Date(),
-                    isFailoverManagedNode: liveStatus?.isFailoverManagedNode
+                    isFailoverManagedNode: liveStatus?.isFailoverManagedNode,
+                    ruruHealth: liveStatus?.ruruHealth,
+                    ruruLeaseValid: liveStatus?.ruruLeaseValid
                 ))
             }
 
@@ -2856,6 +2897,30 @@ actor AdminWebServer {
                 botInfo: AdminWebBotInfoPayload(uptime: "--", errors: 0, state: "Stopped", cluster: nil)
             )
             return codableResponse(payload)
+        case ("POST", "/api/voice/member/action"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let action = try? decoder.decode(AdminWebVoiceMemberAction.self, from: request.body),
+                  Self.isDiscordSnowflake(action.guildID), Self.isDiscordSnowflake(action.userID) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard let runner = voiceMemberActionRunner else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            if let problem = await runner(action) {
+                return jsonResponse(["error": "failed", "message": problem], status: "409 Conflict")
+            }
+            let verb = action.action == .disconnect ? "Disconnected voice member" : "Kicked voice member"
+            audit(source: "Moderation", actor: actorLabel(session), action: verb,
+                  detail: "user \(action.userID) in server \(action.guildID)", level: "ok")
+            return jsonResponse(["ok": true])
         case ("GET", "/api/analytics"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -3856,14 +3921,21 @@ actor AdminWebServer {
             }
             guard var tryRequest = try? decoder.decode(AdminWebAITryRequest.self, from: request.body),
                   !tryRequest.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  tryRequest.message.count <= 1_000, tryRequest.prompt.count <= 4_000 else {
+                  tryRequest.message.count <= 1_000, tryRequest.prompt.count <= 4_000,
+                  (tryRequest.history ?? []).count <= 8,
+                  (tryRequest.history ?? []).allSatisfy({ turn in
+                      (turn.role == MessageRole.user.rawValue || turn.role == MessageRole.assistant.rawValue)
+                          && !turn.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          && turn.content.count <= 1_000
+                  }),
+                  (tryRequest.history ?? []).reduce(0, { $0 + $1.content.count }) <= 6_000 else {
                 return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
             }
             tryRequest.askerID = session.userID.hasPrefix("local:") ? nil : session.userID
             guard let reply = await tryAIReply?(tryRequest) else {
                 return jsonResponse(["error": "no_reply"], status: "503 Service Unavailable")
             }
-            return jsonResponse(["reply": reply])
+            return codableResponse(reply)
         case ("GET", "/api/wikibridge"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -5431,6 +5503,13 @@ actor AdminWebServer {
         value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
     }
 
+    /// Discord snowflakes are decimal unsigned integers. Keeping this check at
+    /// the HTTP boundary prevents malformed identifiers being interpolated into
+    /// a Discord REST route by a future action runner.
+    private static func isDiscordSnowflake(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 32 && value.allSatisfy(\.isNumber)
+    }
+
     private func randomToken() -> String {
         // Use 48 bytes to ensure we get a 64-character string after base64 encoding.
         // RFC 7636 (PKCE) requires code_verifier to be between 43 and 128 characters.
@@ -5449,6 +5528,12 @@ actor AdminWebServer {
         hostOperationRunner = run
         botPermissionsProvider = permissions
         updatesProvider = updates
+    }
+
+    func setVoiceMemberActions(
+        run: @escaping @Sendable (AdminWebVoiceMemberAction) async -> String?
+    ) {
+        voiceMemberActionRunner = run
     }
 
     static let hostOperationPaths: Set<String> = [
