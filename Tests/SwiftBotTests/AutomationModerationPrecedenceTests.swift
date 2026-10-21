@@ -405,6 +405,18 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
         XCTAssertEqual(sends.mockLogs, ["voice-1: 🔊 <@user-2> has joined #Lounge"])
     }
 
+    /// The older per-server voice notifications share the rule: SwiftBot's
+    /// own joins are not announced, while members' still are.
+    func testServerVoiceNotificationsSkipTheBotItself() {
+        model.botUserId = "bot-1"
+        var guild = GuildSettings()
+        guild.notificationChannelId = "notify-chan"
+        model.settings.guildSettings["g"] = guild
+
+        XCTAssertTrue(model.shouldNotifyVoiceEvent(guildId: "g", channelId: "voice-1", userId: "user-2"))
+        XCTAssertFalse(model.shouldNotifyVoiceEvent(guildId: "g", channelId: "voice-1", userId: "bot-1"))
+    }
+
     // MARK: - Live reaction and slash-command triggers
 
     private func gatewayJSON(_ text: String) throws -> DiscordJSON {

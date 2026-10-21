@@ -1729,7 +1729,7 @@ extension AppModel {
             await voiceSessionStore.recordJoin(userId: userId, username: displayName, guildId: guildId, channelId: next.channelId, channelName: next.channelName, at: now)
 
             if allowPrimarySideEffects,
-               shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId, userId: userId) {
                 let message = renderNotificationTemplate(
                     settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
                     username: displayName,
@@ -1766,7 +1766,7 @@ extension AppModel {
             await voiceSessionStore.recordChannelSwitch(userId: userId, username: displayName, guildId: guildId, newChannelId: next.channelId, newChannelName: next.channelName, at: now)
 
             if allowPrimarySideEffects,
-               shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId, userId: userId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId, userId: userId) {
                 let message = renderNotificationTemplate(
                     settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
                     username: displayName,
@@ -1807,7 +1807,7 @@ extension AppModel {
             await voiceSessionStore.recordLeave(userId: userId, guildId: guildId, at: now)
 
             if allowPrimarySideEffects,
-               shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) {
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId, userId: userId) {
                 let message = renderNotificationTemplate(
                     settings.guildSettings[guildId]?.leaveNotificationTemplate ?? GuildSettings().leaveNotificationTemplate,
                     username: displayName,
@@ -1929,8 +1929,10 @@ extension AppModel {
         return "#\(channelId.suffix(5))"
     }
 
-    func shouldNotifyVoiceEvent(guildId: String, channelId: String) -> Bool {
-        guard let guildSettings = settings.guildSettings[guildId],
+    /// SwiftBot's own joins (music, the Announcer, recording) are never announced.
+    func shouldNotifyVoiceEvent(guildId: String, channelId: String, userId: String) -> Bool {
+        guard userId != botUserId,
+              let guildSettings = settings.guildSettings[guildId],
               guildSettings.notificationChannelId != nil
         else { return false }
 
