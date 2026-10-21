@@ -263,8 +263,9 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
         await returning.setAutoReclaimPolicy(isConfiguredPrimary: false, afterHours: 0, automaticHandbackEnabled: true)
         await useAuthority(authority, node: returning, id: "node-b", witness: returningWitness)
         // The owner only prepares a handback for a registered target. A fixed
-        // wait here made the handback tests flaky under load.
-        for _ in 0..<60 where !(await owner.registeredWorkerNamesForTesting()).contains("Returning") {
+        // wait here made the handback tests flaky under load. Up to ten
+        // seconds covers a registration retry after the first one backs off.
+        for _ in 0..<200 where !(await owner.registeredWorkerNamesForTesting()).contains("Returning") {
             try? await Task.sleep(for: .milliseconds(50))
         }
         let returningListening = await returning.waitUntilListeningForTesting()

@@ -545,7 +545,9 @@ enum MeshTestPorts {
 
 extension ClusterCoordinator {
     /// Polls until the mesh listener reports ready. Returns false on timeout.
-    func waitUntilListeningForTesting(timeout: Duration = .seconds(3)) async -> Bool {
+    /// The limit is generous because a full suite run can delay the listener
+    /// by seconds; a ready listener still returns at once.
+    func waitUntilListeningForTesting(timeout: Duration = .seconds(10)) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             if currentSnapshot().serverState == .listening { return true }
