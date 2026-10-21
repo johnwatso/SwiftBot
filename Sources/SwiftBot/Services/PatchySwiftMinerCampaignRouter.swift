@@ -1,7 +1,7 @@
 import Foundation
 
-struct PatchySwiftMinerCampaignAnnouncement: Codable, Equatable {
-    struct DropArtwork: Codable, Equatable {
+struct PatchySwiftMinerCampaignAnnouncement: Codable, Hashable {
+    struct DropArtwork: Codable, Hashable {
         let dropId: String
         let name: String
         let imageURL: String
@@ -68,6 +68,41 @@ enum PatchySwiftMinerCampaignRouter {
         let gameName = normalizedGame(announcement.gameName)
         if configured == gameId || configured == gameName { return true }
         return configured.count >= 3 && (gameName.contains(configured) || configured.contains(gameName))
+    }
+
+    /// How many announced campaigns SwiftBot keeps for the game picker.
+    static let rememberedCampaignLimit = 60
+
+    /// Records `announcement` at the front of `campaigns`. Returns `false`
+    /// when that campaign was already announced, so it isn't posted again.
+    @discardableResult
+    static func remember(
+        _ announcement: PatchySwiftMinerCampaignAnnouncement,
+        in campaigns: inout [PatchySwiftMinerCampaignAnnouncement]
+    ) -> Bool {
+        let isNew = !campaigns.contains { $0.campaignId == announcement.campaignId }
+        campaigns.removeAll { $0.campaignId == announcement.campaignId }
+        campaigns.insert(announcement, at: 0)
+        if campaigns.count > rememberedCampaignLimit {
+            campaigns.removeLast(campaigns.count - rememberedCampaignLimit)
+        }
+        return isNew
+    }
+
+    /// One entry per game, newest campaign first, for the game picker.
+    static func knownGames(
+        from campaigns: [PatchySwiftMinerCampaignAnnouncement]
+    ) -> [PatchySwiftMinerCampaignAnnouncement] {
+        var seen = Set<String>()
+        return campaigns.filter { seen.insert(normalizedGame($0.gameName)).inserted }
+    }
+
+    /// The newest remembered campaign `target` would have posted.
+    static func latestCampaign(
+        for target: PatchySourceTarget,
+        in campaigns: [PatchySwiftMinerCampaignAnnouncement]
+    ) -> PatchySwiftMinerCampaignAnnouncement? {
+        campaigns.first { self.target(target, matches: $0) }
     }
 
     static func fallbackMessage(for announcement: PatchySwiftMinerCampaignAnnouncement) -> String {

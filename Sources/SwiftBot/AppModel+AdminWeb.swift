@@ -1287,6 +1287,17 @@ extension AppModel {
             textChannelsByServer: textChannelsByServer,
             rolesByServer: rolesByServer,
             steamAppNames: settings.patchy.steamAppNames,
+            swiftMinerLinked: settings.swiftMiner.enabled && settings.swiftMiner.isPaired,
+            swiftMinerGames: PatchySwiftMinerCampaignRouter
+                .knownGames(from: settings.patchy.swiftMinerCampaigns ?? [])
+                .map {
+                    AdminWebSwiftMinerGame(
+                        name: $0.gameName,
+                        artworkURL: $0.gameArtworkURL,
+                        latestCampaignName: $0.campaignName,
+                        latestEndsAt: $0.endsAt
+                    )
+                },
             isFailoverManagedNode: isFailoverManagedNode,
             botStatus: status.rawValue
         )
@@ -2133,6 +2144,8 @@ extension AppModel {
                         textChannelsByServer: [:],
                         rolesByServer: [:],
                         steamAppNames: [:],
+                        swiftMinerLinked: false,
+                        swiftMinerGames: [],
                         isFailoverManagedNode: false,
                         botStatus: "stopped"
                     )

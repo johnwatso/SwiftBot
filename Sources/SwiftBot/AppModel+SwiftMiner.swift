@@ -827,6 +827,17 @@ extension AppModel {
             return swiftMinerWebhookResponse(status: "400 Bad Request", payload: ["error": "invalid_campaign_payload"])
         }
 
+        // Every campaign is remembered, targeted or not, so the WebUI can
+        // offer its game. A campaign seen before is a redelivery: skip it.
+        var campaigns = settings.patchy.swiftMinerCampaigns ?? []
+        let isNewCampaign = PatchySwiftMinerCampaignRouter.remember(announcement, in: &campaigns)
+        settings.patchy.swiftMinerCampaigns = campaigns
+        guard isNewCampaign else {
+            persistSettingsQuietly()
+            appendPatchyLog("SwiftMiner campaign \(announcement.campaignName) already announced; skipped.")
+            return swiftMinerWebhookResponse(status: "200 OK", payload: ["ok": true, "delivered": 0, "duplicate": true])
+        }
+
         let targets = settings.patchy.sourceTargets.filter { target in
             target.isEnabled
                 && !target.channelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -834,6 +845,7 @@ extension AppModel {
         }
 
         guard !targets.isEmpty else {
+            persistSettingsQuietly()
             appendPatchyLog("SwiftMiner campaign ignored: no Patchy target for \(announcement.gameName).")
             return swiftMinerWebhookResponse(status: "202 Accepted", payload: ["ok": true, "delivered": false])
         }

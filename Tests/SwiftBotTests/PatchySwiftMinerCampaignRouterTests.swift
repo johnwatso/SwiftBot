@@ -54,4 +54,27 @@ final class PatchySwiftMinerCampaignRouterTests: XCTestCase {
         XCTAssertEqual(embeds[1]["title"] as? String, "One")
         XCTAssertEqual(embeds[3]["title"] as? String, "Three")
     }
+
+    func testRememberSkipsRedeliveredCampaignsAndListsEachGameOnce() {
+        func campaign(_ id: String, game: String) -> PatchySwiftMinerCampaignAnnouncement {
+            PatchySwiftMinerCampaignAnnouncement(
+                eventId: "evt_\(id)", campaignId: id, campaignName: "\(game) \(id)",
+                gameId: game.lowercased(), gameName: game, status: "active",
+                startsAt: nil, endsAt: nil, dropCount: 1, gameArtworkURL: nil,
+                dropArtwork: [], occurredAt: nil
+            )
+        }
+
+        var campaigns: [PatchySwiftMinerCampaignAnnouncement] = []
+        XCTAssertTrue(PatchySwiftMinerCampaignRouter.remember(campaign("a", game: "THE FINALS"), in: &campaigns))
+        XCTAssertTrue(PatchySwiftMinerCampaignRouter.remember(campaign("b", game: "Rust"), in: &campaigns))
+        XCTAssertTrue(PatchySwiftMinerCampaignRouter.remember(campaign("c", game: "THE FINALS"), in: &campaigns))
+        XCTAssertFalse(PatchySwiftMinerCampaignRouter.remember(campaign("b", game: "Rust"), in: &campaigns))
+
+        XCTAssertEqual(campaigns.map(\.campaignId), ["b", "c", "a"])
+        XCTAssertEqual(PatchySwiftMinerCampaignRouter.knownGames(from: campaigns).map(\.gameName), ["Rust", "THE FINALS"])
+
+        let target = PatchySourceTarget(source: .swiftMiner, swiftMinerGameName: "the finals", channelId: "channel-1")
+        XCTAssertEqual(PatchySwiftMinerCampaignRouter.latestCampaign(for: target, in: campaigns)?.campaignId, "c")
+    }
 }

@@ -231,7 +231,12 @@ extension AppModel {
             resolveSteamNameIfNeeded(for: target)
             let delivery: (ok: Bool, detail: String)
             if target.source == .swiftMiner {
-                let announcement = PatchySwiftMinerCampaignRouter.sampleAnnouncement(gameName: target.swiftMinerGameName)
+                // Preview the game's real latest campaign when SwiftMiner has
+                // announced one; otherwise a placeholder campaign.
+                let announcement = PatchySwiftMinerCampaignRouter.latestCampaign(
+                    for: target,
+                    in: settings.patchy.swiftMinerCampaigns ?? []
+                ) ?? PatchySwiftMinerCampaignRouter.sampleAnnouncement(gameName: target.swiftMinerGameName)
                 delivery = await sendPatchyNotificationDetailed(
                     channelId: target.channelId,
                     message: PatchySwiftMinerCampaignRouter.fallbackMessage(for: announcement),
@@ -273,12 +278,18 @@ extension AppModel {
             do {
                 resolveSteamNameIfNeeded(for: target)
                 if target.source == .swiftMiner {
+                    let latest = PatchySwiftMinerCampaignRouter.latestCampaign(
+                        for: target,
+                        in: settings.patchy.swiftMinerCampaigns ?? []
+                    )
+                    let status = latest.map { "Latest campaign: \($0.campaignName)" }
+                        ?? "No \(target.swiftMinerGameName) campaigns from SwiftMiner yet."
                     updatePatchyTargetRuntimeState(id: target.id) { entry in
                         entry.lastCheckedAt = Date()
-                        entry.lastStatus = "Waiting for SwiftMiner campaign events."
+                        entry.lastStatus = status
                     }
                     persistSettingsQuietly()
-                    appendPatchyLog("Pull [SwiftMiner] -> waiting for SwiftMiner campaign events")
+                    appendPatchyLog("Pull [SwiftMiner] -> \(status)")
                     return
                 }
                 let source = try PatchyRuntime.makeSource(from: target)

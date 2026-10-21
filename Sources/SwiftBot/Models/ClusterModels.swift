@@ -294,6 +294,10 @@ struct PatchySettings: Codable, Hashable {
     // appID -> Steam clienticon URL (.ico, up to 256x256). Cached when a Steam
     // target is added, used for the Patchy UI row art and the Discord thumbnail.
     var steamAppIcons: [String: String] = [:]
+    // Drops campaigns SwiftMiner has announced, newest first. Feeds the
+    // WebUI's game picker and stops a redelivered webhook posting twice.
+    // Optional so settings saved before it existed still decode.
+    var swiftMinerCampaigns: [PatchySwiftMinerCampaignAnnouncement]?
 
     // Legacy fields kept for migration compatibility.
     var source: PatchySourceKind = .nvidia

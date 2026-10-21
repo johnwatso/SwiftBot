@@ -16627,14 +16627,19 @@
       'Apple': 'macOS, iOS, Xcode and more',
       'Steam': 'Patch notes for a Steam game',
       'GitHub': 'Releases, tags or commits',
-      'SwiftMiner': 'Campaign events from SwiftMiner'
+      'SwiftMiner': 'Twitch Drops for a game'
     };
+
+    // SwiftMiner is only a choice once it's paired and switched on.
+    function patchySourceAvailable(kind) {
+      return kind !== 'SwiftMiner' || !!patchyData.swiftMinerLinked;
+    }
 
     // Step one of adding a target: pick what to watch. Nothing is saved
     // until the form's Add button, so Cancel never leaves a target behind.
     function openPatchyNewTarget() {
       const used = new Set((patchyData.targets || []).map(t => t.source));
-      const tiles = (patchyData.sourceKinds || []).map(kind => {
+      const tiles = (patchyData.sourceKinds || []).filter(patchySourceAvailable).map(kind => {
         const meta = patchySourceMeta(kind);
         const taken = PATCHY_DRIVER_SOURCES.includes(kind) && used.has(kind);
         return `
@@ -16667,7 +16672,7 @@
             githubBranchMode: 'main',
             appleProduct: 'macOS',
             appleIncludeBetas: false,
-            swiftMinerGameName: '',
+            swiftMinerGameName: (patchyData.swiftMinerGames || [])[0]?.name || '',
             pollingIntervalMinutes: 60,
             embedColorHex: '',
             summarizeWithAppleIntelligence: false,
@@ -16693,7 +16698,7 @@
       if (draft.source === 'Steam' && !/^\d+$/.test(draft.steamAppID || '')) return 'Enter the game’s Steam App ID (numbers only).';
       if (draft.source === 'GitHub' && !/^[\w.-]+\/[\w.-]+$/.test(draft.githubRepo || '')) return 'Enter the repository as owner/repo.';
       if (draft.source === 'GitHub' && draft.githubBranchMode === 'specific' && !(draft.githubBranch || '').trim()) return 'Enter the branch to watch.';
-      if (draft.source === 'SwiftMiner' && !(draft.swiftMinerGameName || '').trim()) return 'Enter the game to follow.';
+      if (draft.source === 'SwiftMiner' && !(draft.swiftMinerGameName || '').trim()) return 'Choose the game to follow.';
       if (!draft.channelId) return 'Choose a channel to post in.';
       return patchyDuplicateReason(draft);
     }
@@ -16794,7 +16799,8 @@
         button.disabled = true;
         try {
           // Upsert inserts unknown IDs, so a new target is created here, in one step.
-          await postJSON('/api/patchy/target/upsert', { target: draft });
+          const { swiftMinerCustomGame, ...target } = draft;
+          await postJSON('/api/patchy/target/upsert', { target });
           await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
           renderPatchyView();
           hideModal();
@@ -16851,7 +16857,7 @@
         .filter(t => t.id !== draft.id && PATCHY_DRIVER_SOURCES.includes(t.source))
         .map(t => t.source);
       const sourceOptions = (patchyData.sourceKinds || [])
-        .filter(kind => kind === draft.source || !usedDrivers.includes(kind))
+        .filter(kind => kind === draft.source || (!usedDrivers.includes(kind) && patchySourceAvailable(kind)))
         .map(kind => `<option value="${kind}" ${kind === draft.source ? 'selected' : ''}>${kind}</option>`).join('');
 
       let sourceFields = '';
@@ -16871,7 +16877,26 @@
           + (draft.githubBranchMode === 'specific' ? row('Branch name', input('peGithubBranch', draft.githubBranch, 'main', 'autocomplete="off" spellcheck="false"')) : '')
           + toggle('peGithubAll', draft.githubWatchAllCommits, 'Watch every commit', 'Post on each commit, not only tags and releases.');
       } else if (draft.source === 'SwiftMiner') {
-        sourceFields = row('Game', input('peSwiftMinerGame', draft.swiftMinerGameName, 'The Finals'));
+        // Games come from the campaigns SwiftMiner has announced; "Another
+        // game" covers one it hasn't seen Drops for yet.
+        const games = patchyData.swiftMinerGames || [];
+        const current = (draft.swiftMinerGameName || '').trim();
+        const match = games.find(g => g.name.toLowerCase() === current.toLowerCase());
+        const typing = !games.length || draft.swiftMinerCustomGame || (current && !match);
+        const picker = games.length
+          ? `<select id="peSwiftMinerGamePick" class="field-select" ${off}>
+              ${games.map(g => `<option value="${escapeHTML(g.name)}" ${!typing && match?.name === g.name ? 'selected' : ''}>${escapeHTML(g.name)}</option>`).join('')}
+              <option value="" ${typing ? 'selected' : ''}>Another game…</option>
+            </select>`
+          : '';
+        const typed = typing
+          ? input('peSwiftMinerGame', current, 'The game’s name on Twitch, e.g. THE FINALS', `autocomplete="off" ${games.length ? 'style="margin-top:8px;"' : ''}`)
+          : '';
+        const latest = !typing && match
+          ? `Latest campaign: <strong>${escapeHTML(match.latestCampaignName)}</strong>.`
+          : games.length ? '' : 'SwiftMiner hasn’t announced any Drops yet, so type the game.';
+        sourceFields = row('Game', picker + typed
+          + `<div class="ub-help">Posts an embed here when SwiftMiner finds new Drops for this game. ${latest}</div>`);
       } else if (PATCHY_DRIVER_SOURCES.includes(draft.source)) {
         sourceFields = `<div class="ub-help">Posts when ${escapeHTML(draft.source)} publishes a new driver.</div>`;
       }
@@ -16900,7 +16925,7 @@
           : '<div class="ub-help">No text channels found for this server.</div>')
         + row('Mention roles', rolesHTML)
         + (draft.source === 'SwiftMiner'
-          ? row('Posts', '<div class="ub-help" style="padding-top:8px;">Sent when a campaign event happens.</div>')
+          ? row('Posts', '<div class="ub-help" style="padding-top:8px;">When SwiftMiner finds a new Drops campaign.</div>')
           : row('Check every', `<div class="patchy-interval">${input('peInterval', String(draft.pollingIntervalMinutes || 15), '', 'type="number" min="5" max="1440"')}<span>minutes</span></div>`))
         + row('Accent colour', accentHTML)
         + (draft.source === 'SwiftMiner' ? '' : toggle('peAI', draft.summarizeWithAppleIntelligence, 'Summarise with Apple Intelligence', 'Shorten long patch notes before posting.'));
@@ -16926,7 +16951,7 @@
         ${status}
       `;
 
-      ['peSource', 'peGithubMode', 'peServer'].forEach(id => document.getElementById(id)?.addEventListener('change', rerender));
+      ['peSource', 'peGithubMode', 'peServer', 'peSwiftMinerGamePick'].forEach(id => document.getElementById(id)?.addEventListener('change', rerender));
       root.querySelectorAll('.patchy-accent-chip').forEach(chip => chip.addEventListener('click', () => {
         readPatchyEditorInto(draft);
         draft.embedColorHex = chip.dataset.color;
@@ -16955,7 +16980,12 @@
       if (el('peGithubMode')) draft.githubBranchMode = el('peGithubMode').value;
       text('peGithubBranch', 'githubBranch');
       check('peGithubAll', 'githubWatchAllCommits');
-      text('peSwiftMinerGame', 'swiftMinerGameName');
+      if (el('peSwiftMinerGamePick')) {
+        draft.swiftMinerCustomGame = !el('peSwiftMinerGamePick').value;
+        if (!draft.swiftMinerCustomGame) draft.swiftMinerGameName = el('peSwiftMinerGamePick').value;
+        else if (!el('peSwiftMinerGame')) draft.swiftMinerGameName = '';
+      }
+      if (draft.swiftMinerCustomGame !== false) text('peSwiftMinerGame', 'swiftMinerGameName');
 
       const serverChanged = el('peServer') && draft.serverId !== el('peServer').value;
       if (el('peServer')) {

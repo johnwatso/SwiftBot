@@ -528,7 +528,13 @@ const patchy = {
     patchyTarget('44444444-4444-4444-4444-444444444444', 'Apple', { isEnabled: false, lastStatus: 'Never checked', lastCheckedAt: null, lastRunAt: null })
   ],
   servers: serverOptions, textChannelsByServer: textByServer, rolesByServer: { '1001': roleOptions, '1002': [] },
-  steamAppNames: { '2073850': 'THE FINALS' }, isFailoverManagedNode: false, botStatus: 'running'
+  steamAppNames: { '2073850': 'THE FINALS' },
+  swiftMinerLinked: true,
+  swiftMinerGames: [
+    { name: 'THE FINALS', artworkURL: null, latestCampaignName: 'Season 8 Drops', latestEndsAt: '2026-11-01T00:00:00Z' },
+    { name: 'Rust', artworkURL: null, latestCampaignName: 'Rust Drops Round 41', latestEndsAt: null }
+  ],
+  isFailoverManagedNode: false, botStatus: 'running'
 };
 
 const aiPresets = [

@@ -1361,8 +1361,19 @@ struct AdminWebPatchyPayload: Codable {
     let textChannelsByServer: [String: [AdminWebSimpleOption]]
     let rolesByServer: [String: [AdminWebSimpleOption]]
     let steamAppNames: [String: String]
+    /// SwiftMiner is paired and switched on, so it can be offered as a source.
+    let swiftMinerLinked: Bool
+    /// Games SwiftMiner has announced Drops for, newest first.
+    let swiftMinerGames: [AdminWebSwiftMinerGame]
     let isFailoverManagedNode: Bool
     let botStatus: String
+}
+
+struct AdminWebSwiftMinerGame: Codable {
+    let name: String
+    let artworkURL: String?
+    let latestCampaignName: String
+    let latestEndsAt: String?
 }
 
 struct AdminWebPatchyStatePatch: Codable {
