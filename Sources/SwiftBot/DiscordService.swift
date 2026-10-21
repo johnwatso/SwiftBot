@@ -753,6 +753,10 @@ actor DiscordService {
         if case let .string(cid)? = map["channel_id"] { newChannel = cid } else { newChannel = nil }
 
         let username = parseUsername(from: map, userId: userId)
+        var roleIds: [String]?
+        if case let .object(member)? = map["member"], case let .array(roles)? = member["roles"] {
+            roleIds = roles.compactMap { if case let .string(id) = $0 { return id }; return nil }
+        }
         let transition = voiceRuleStateStore.applyEvent(guildID: guildId, userID: userId, channelID: newChannel, at: now)
 
         switch transition {
@@ -763,7 +767,8 @@ actor DiscordService {
                 guildId: guildId,
                 userId: userId,
                 username: username,
-                channelId: channelID
+                channelId: channelID,
+                roleIds: roleIds
             )
         case .moved(let fromChannelID, let toChannelID, let durationSeconds):
             return SwiftBotEvent.move(
@@ -773,7 +778,8 @@ actor DiscordService {
                 channelId: toChannelID,
                 fromChannelId: fromChannelID,
                 toChannelId: toChannelID,
-                durationSeconds: durationSeconds
+                durationSeconds: durationSeconds,
+                roleIds: roleIds
             )
         case .left(let channelID, let durationSeconds):
             return SwiftBotEvent.leave(
@@ -781,7 +787,8 @@ actor DiscordService {
                 userId: userId,
                 username: username,
                 channelId: channelID,
-                durationSeconds: durationSeconds
+                durationSeconds: durationSeconds,
+                roleIds: roleIds
             )
         }
     }

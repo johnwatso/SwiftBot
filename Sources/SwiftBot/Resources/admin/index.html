@@ -12621,6 +12621,7 @@
               <label>Command</label>
               <input id="autoCommandName" class="field-input" value="${escapeHTML(rule.trigger.commandName || '')}" placeholder="report">
             </div>
+            <p class="ub-help" id="autoCommandSlug">${automationSlashHint(rule.trigger.commandName)}</p>
           ` : ''}
           ${['messageCreated', 'reactionAdded', 'slashCommand'].includes(rule.trigger.kind) ? `
             <div class="automation-editor-row"><label>Trigger channel</label><select id="autoTriggerChannel" class="field-select" data-channel-picker><option value="">Any channel</option>${ctx.textChannels.map(channel => `<option value="${channel.id}" ${channel.id === rule.trigger.channelId ? 'selected' : ''}>#${escapeHTML(channel.name)}</option>`).join('')}</select></div>
@@ -12676,6 +12677,7 @@
       });
       root.querySelector('#autoCommandName')?.addEventListener('input', (e) => {
         rule.trigger.commandName = e.target.value;
+        root.querySelector('#autoCommandSlug').textContent = automationSlashHint(e.target.value);
       });
       root.querySelector('#autoTriggerChannel')?.addEventListener('change', (e) => { rule.trigger.channelId = e.target.value || null; });
       root.querySelector('#autoTriggerEmoji')?.addEventListener('input', (e) => { rule.trigger.reactionEmoji = e.target.value || null; });
@@ -13051,6 +13053,12 @@
 
     function automationScopes(selected) {
       return ['user','channel','guild','rule'].map(k => `<option value="${k}" ${k===selected?'selected':''}>${k==='guild'?'Server':k[0].toUpperCase()+k.slice(1)}</option>`).join('');
+    }
+    // Mirrors Automations.Trigger.slashCommandName.
+    function automationSlashHint(name) {
+      const slug = String(name || '').trim().replace(/^[\/!\s]+|[\/!\s]+$/g, '').toLowerCase()
+        .replace(/[^\p{L}\p{N}_-]/gu, '-').replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 32);
+      return slug ? `Members type /${slug}` : 'Letters, numbers, - and _ only';
     }
     function automationLocalDate(iso) {
       const date = iso ? new Date(iso) : new Date(Date.now()+3600000);

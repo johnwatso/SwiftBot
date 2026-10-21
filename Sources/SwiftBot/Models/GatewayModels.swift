@@ -114,9 +114,15 @@ enum SwiftBotEvent: Codable, Sendable {
         let nodeName: String
     }
 
-    case join(guildId: String, userId: String, username: String, channelId: String)
-    case leave(guildId: String, userId: String, username: String, channelId: String, durationSeconds: Int)
-    case move(guildId: String, userId: String, username: String, channelId: String, fromChannelId: String, toChannelId: String, durationSeconds: Int)
+    // `roleIds` is the member's roles from VOICE_STATE_UPDATE, for role conditions.
+    // Journaled events decode by these labels, so `roleIds` is appended rather than restructuring.
+    // swiftlint:disable enum_case_associated_values_count
+    case join(guildId: String, userId: String, username: String, channelId: String, roleIds: [String]? = nil)
+    case leave(guildId: String, userId: String, username: String, channelId: String, durationSeconds: Int, roleIds: [String]? = nil)
+    case move(
+        guildId: String, userId: String, username: String, channelId: String, fromChannelId: String, toChannelId: String, durationSeconds: Int,
+        roleIds: [String]? = nil)
+    // swiftlint:enable enum_case_associated_values_count
     case message(MessagePayload)
     case memberJoin(guildId: String, userId: String, username: String, joinedAt: Date?)
     case memberLeave(guildId: String, userId: String, username: String)
@@ -146,9 +152,9 @@ enum SwiftBotEvent: Codable, Sendable {
 
     var guildId: String {
         switch self {
-        case .join(let g, _, _, _): return g
-        case .leave(let g, _, _, _, _): return g
-        case .move(let g, _, _, _, _, _, _): return g
+        case .join(let g, _, _, _, _): return g
+        case .leave(let g, _, _, _, _, _): return g
+        case .move(let g, _, _, _, _, _, _, _): return g
         case .message(let p): return p.guildId
         case .memberJoin(let g, _, _, _): return g
         case .memberLeave(let g, _, _): return g
@@ -158,9 +164,9 @@ enum SwiftBotEvent: Codable, Sendable {
 
     var userId: String {
         switch self {
-        case .join(_, let u, _, _): return u
-        case .leave(_, let u, _, _, _): return u
-        case .move(_, let u, _, _, _, _, _): return u
+        case .join(_, let u, _, _, _): return u
+        case .leave(_, let u, _, _, _, _): return u
+        case .move(_, let u, _, _, _, _, _, _): return u
         case .message(let p): return p.userId
         case .memberJoin(_, let u, _, _): return u
         case .memberLeave(_, let u, _): return u
@@ -170,9 +176,9 @@ enum SwiftBotEvent: Codable, Sendable {
 
     var username: String {
         switch self {
-        case .join(_, _, let name, _): return name
-        case .leave(_, _, let name, _, _): return name
-        case .move(_, _, let name, _, _, _, _): return name
+        case .join(_, _, let name, _, _): return name
+        case .leave(_, _, let name, _, _, _): return name
+        case .move(_, _, let name, _, _, _, _, _): return name
         case .message(let p): return p.username
         case .memberJoin(_, _, let name, _): return name
         case .memberLeave(_, _, let name): return name
@@ -182,9 +188,9 @@ enum SwiftBotEvent: Codable, Sendable {
 
     var channelId: String {
         switch self {
-        case .join(_, _, _, let c): return c
-        case .leave(_, _, _, let c, _): return c
-        case .move(_, _, _, let c, _, _, _): return c
+        case .join(_, _, _, let c, _): return c
+        case .leave(_, _, _, let c, _, _): return c
+        case .move(_, _, _, let c, _, _, _, _): return c
         case .message(let p): return p.channelId
         case .memberJoin: return ""
         case .memberLeave: return ""
@@ -194,24 +200,24 @@ enum SwiftBotEvent: Codable, Sendable {
 
     var fromChannelId: String? {
         switch self {
-        case .move(_, _, _, _, let from, _, _): return from
-        case .leave(_, _, _, let from, _): return from
+        case .move(_, _, _, _, let from, _, _, _): return from
+        case .leave(_, _, _, let from, _, _): return from
         default: return nil
         }
     }
 
     var toChannelId: String? {
         switch self {
-        case .join(_, _, _, let to): return to
-        case .move(_, _, _, _, _, let to, _): return to
+        case .join(_, _, _, let to, _): return to
+        case .move(_, _, _, _, _, let to, _, _): return to
         default: return nil
         }
     }
 
     var durationSeconds: Int? {
         switch self {
-        case .leave(_, _, _, _, let d): return d
-        case .move(_, _, _, _, _, _, let d): return d
+        case .leave(_, _, _, _, let d, _): return d
+        case .move(_, _, _, _, _, _, let d, _): return d
         default: return nil
         }
     }
@@ -310,6 +316,7 @@ enum SwiftBotEvent: Codable, Sendable {
     var memberRoleIds: [String]? {
         switch self {
         case .message(let p): return p.roleIds
+        case .join(_, _, _, _, let roles), .leave(_, _, _, _, _, let roles), .move(_, _, _, _, _, _, _, let roles): return roles
         default: return nil
         }
     }

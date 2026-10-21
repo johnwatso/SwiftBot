@@ -139,13 +139,19 @@ actor AutomationService {
             return true
         case (.reactionAdded, .message):
             guard synthetic == .reactionAdded else { return false }
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
             if let emoji = trigger.reactionEmoji, !emoji.isEmpty {
                 return reactionEmojiMatches(emoji, event.messageContent ?? "")
             }
             return true
         case (.slashCommand, .message):
             guard synthetic == .slashCommand else { return false }
-            let name = (trigger.commandName ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/ ")).lowercased()
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
+            let name = trigger.slashCommandName
             guard !name.isEmpty else { return true }
             let content = (event.messageContent ?? "").lowercased()
             return content == "/" + name || content.hasPrefix("/" + name + " ")
@@ -1148,7 +1154,8 @@ extension Automations {
             }
             // Live events carry the command or the emoji as their content.
             if rule.trigger.kind == .slashCommand {
-                content = "/" + (rule.trigger.commandName ?? "command").trimmingCharacters(in: CharacterSet(charactersIn: "/ ")).lowercased()
+                let name = rule.trigger.slashCommandName
+                content = "/" + (name.isEmpty ? "command" : name)
             } else if rule.trigger.kind == .reactionAdded {
                 content = rule.trigger.reactionEmoji.flatMap { $0.isEmpty ? nil : $0 } ?? "⭐"
             }
@@ -1307,9 +1314,11 @@ extension AutomationService {
     func runScheduledRules(_ rules: [Automations.Rule], events: [DiscordScheduledEvent], token: String?, now: Date = Date()) async {
         guard !paused, memoryReadable, await dependencies.canExecute() else { return }
         for rule in rules where rule.enabled {
-            // Discord event announcements are one-off. Moving the event after
-            // admission must not create a second announcement for the same rule.
-            if rule.trigger.kind == .scheduledEvent, memory.scheduleCursors[rule.id] != nil { continue }
+            // Discord event announcements are one-off per event. Moving the
+            // event after admission must not announce it twice, but pointing
+            // the rule at a different event announces that one.
+            let cursorKey = Self.scheduleCursorKey(for: rule)
+            if rule.trigger.kind == .scheduledEvent, memory.scheduleCursors[cursorKey] != nil { continue }
             let occurrence: Date?
             var discordEvent: DiscordScheduledEvent?
             if rule.trigger.kind == .schedule {
@@ -1321,6 +1330,7 @@ extension AutomationService {
                     rule.trigger.eventCustomTime.flatMap(Automations.Schedule.parse)
                     ?? selected.startDate?.addingTimeInterval(Double(rule.trigger.eventOffsetSeconds ?? 0))
             }
+            // `rule.id` alone keyed event cursors before they were per event.
             guard let due = occurrence, due <= now, now.timeIntervalSince(due) <= 300,
                 due > (memory.scheduleCursors[rule.id] ?? .distantPast)
             else { continue }
@@ -1328,6 +1338,7 @@ extension AutomationService {
                 guildId: rule.trigger.guildId ?? "", userId: "", username: "Schedule", channelId: rule.trigger.channelId ?? "",
                 messageId: "schedule:" + String(Int(due.timeIntervalSince1970)), content: "", isDirectMessage: false, authorIsBot: false)
             payload.automationTrigger = rule.trigger.kind
+            if let discordEvent { payload.occurrenceId = "event:" + discordEvent.id + ":" + payload.messageId }
             payload.eventName = discordEvent?.name
             payload.eventDescription = discordEvent?.description
             payload.eventURL = discordEvent?.url
@@ -1336,16 +1347,20 @@ extension AutomationService {
             guard !evaluate(event: event, in: [rule], memory: memory).isEmpty else { continue }
             // Journal intent first. If a crash occurs before cursor persistence,
             // the deterministic execution ID still prevents repeating that run.
-            let id = rule.id + ":" + payload.messageId
+            let id = rule.id + ":" + (payload.occurrenceId ?? payload.messageId)
             do {
                 if journal.records[id] == nil {
                     try journal.save(AutomationExecutionCheckpoint(id: id, rule: AutomationWebhookVault.seal(rule), event: event))
                 }
                 var updated = memory
-                updated.scheduleCursors[rule.id] = due
+                updated.scheduleCursors[cursorKey] = due
                 try saveMemory(updated)
             } catch { dependencies.log("Schedule paused: " + error.localizedDescription); continue }
             Task { await self.execute(rule: rule, event: event, token: token) }
         }
+    }
+
+    nonisolated static func scheduleCursorKey(for rule: Automations.Rule) -> String {
+        rule.trigger.kind == .scheduledEvent ? rule.id + ":event:" + (rule.trigger.eventId ?? "") : rule.id
     }
 }

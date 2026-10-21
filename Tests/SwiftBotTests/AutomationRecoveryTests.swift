@@ -222,6 +222,32 @@ final class AutomationRecoveryTests: XCTestCase {
         XCTAssertEqual(sends, 3)
     }
 
+    func testRetargetedEventAnnouncementFiresForTheNewEvent() async throws {
+        let counter = Counter()
+        let service = engine(counter: counter)
+        let now = Date()
+        func serverEvent(_ id: String) -> DiscordScheduledEvent {
+            DiscordScheduledEvent(id: id, guildId: "g", name: id, description: nil, scheduledStartTime: ISO8601DateFormatter().string(from: now),
+                scheduledEndTime: nil, status: 1, image: nil, userCount: nil)
+        }
+        var announcement = Automations.Rule(id: "weekly", name: "Weekly", category: .events, trigger: .init(kind: .scheduledEvent, guildId: "g", eventId: "week-1"),
+            steps: [.init(kind: .sendMessage, sendTarget: .specificChannel, channelId: "c", content: "Live")])
+        await service.runScheduledRules([announcement], events: [serverEvent("week-1")], token: "test", now: now)
+        for _ in 0..<30 { if await counter.value == 1 { break }; try? await Task.sleep(for: .milliseconds(10)) }
+
+        // Same rule, edited to next week's event, which starts at the same time of day.
+        announcement.trigger.eventId = "week-2"
+        await service.runScheduledRules([announcement], events: [serverEvent("week-2")], token: "test", now: now.addingTimeInterval(1))
+        for _ in 0..<30 { if await counter.value == 2 { break }; try? await Task.sleep(for: .milliseconds(10)) }
+        var sends = await counter.value
+        XCTAssertEqual(sends, 2, "Pointing the rule at a different event announces that event")
+
+        await service.runScheduledRules([announcement], events: [serverEvent("week-2")], token: "test", now: now.addingTimeInterval(10))
+        try? await Task.sleep(for: .milliseconds(30))
+        sends = await counter.value
+        XCTAssertEqual(sends, 2, "Each event is still announced once")
+    }
+
     func testLegacyRulesStillDecodeAndUnbalancedBranchIsRejected() throws {
         let data = try JSONEncoder().encode(rule())
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

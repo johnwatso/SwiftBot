@@ -238,7 +238,7 @@ extension AppModel {
         }
         var names: [String] = []
         for rule in automationStore.rules where rule.enabled && rule.trigger.kind == .slashCommand {
-            let name = discordSlashSafeWikiCommandName(rule.trigger.commandName ?? "")
+            let name = rule.trigger.slashCommandName
             guard !name.isEmpty, !taken.contains(name) else { continue }
             taken.insert(name)
             names.append(name)
@@ -250,7 +250,7 @@ extension AppModel {
         automationSlashCommandNames().map { name in
             let rule = automationStore.rules.first {
                 $0.enabled && $0.trigger.kind == .slashCommand
-                    && discordSlashSafeWikiCommandName($0.trigger.commandName ?? "") == name
+                    && $0.trigger.slashCommandName == name
             }
             let title = (rule?.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return [

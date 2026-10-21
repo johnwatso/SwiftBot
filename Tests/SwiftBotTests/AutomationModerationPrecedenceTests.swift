@@ -428,6 +428,62 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
         XCTAssertFalse(names.contains("offline"))
     }
 
+    func testMultiWordSlashCommandRegistersAndRunsUnderOneName() async throws {
+        let quote = Automations.Rule(id: "quote", name: "Daily quote", trigger: .init(kind: .slashCommand, commandName: "/Daily Quote!"),
+            steps: [.init(kind: .log, logText: "Quote for {username}")])
+        model.automationStore.setRulesForTesting([quote])
+        XCTAssertEqual(model.automationSlashCommandNames(), ["daily-quote"])
+
+        let raw = try gatewayJSON(#"""
+        {"id":"interaction-2","token":"interaction-token","type":2,"guild_id":"guild-123","channel_id":"chan-9",
+         "member":{"roles":[],"user":{"id":"user-1","username":"reader"}},"data":{"name":"daily-quote"}}
+        """#)
+        guard case let .object(map) = raw, case let .object(data)? = map["data"] else { return XCTFail("fixture") }
+        let interaction = GatewayInteractionCreateEvent(
+            interactionID: "interaction-2", interactionToken: "interaction-token", interactionType: 2,
+            commandName: "daily-quote", data: data, rawMap: map)
+        await model.fireAutomations(for: AppModel.automationSlashEvent(from: interaction, name: "daily-quote"))
+
+        XCTAssertEqual(accumulator.mockLogs, ["Quote for reader"])
+    }
+
+    func testTriggerChannelRestrictsReactionAndSlashTriggers() {
+        func event(_ trigger: Automations.TriggerKind, channel: String) -> SwiftBotEvent {
+            var payload = SwiftBotEvent.MessagePayload(guildId: "g", userId: "u", username: "tester", channelId: channel,
+                messageId: "m-\(channel)", content: trigger == .slashCommand ? "/report" : "🚫", isDirectMessage: false, authorIsBot: false)
+            payload.automationTrigger = trigger
+            return .message(payload)
+        }
+        let reaction = Automations.Rule(id: "reaction", name: "Reaction", trigger: .init(kind: .reactionAdded, channelId: "reports", reactionEmoji: "🚫"), steps: [])
+        let slash = Automations.Rule(id: "slash", name: "Slash", trigger: .init(kind: .slashCommand, commandName: "report", channelId: "reports"), steps: [])
+
+        XCTAssertEqual(automationService.evaluate(event: event(.reactionAdded, channel: "reports"), in: [reaction]).count, 1)
+        XCTAssertTrue(automationService.evaluate(event: event(.reactionAdded, channel: "general"), in: [reaction]).isEmpty)
+        XCTAssertEqual(automationService.evaluate(event: event(.slashCommand, channel: "reports"), in: [slash]).count, 1)
+        XCTAssertTrue(automationService.evaluate(event: event(.slashCommand, channel: "general"), in: [slash]).isEmpty)
+    }
+
+    func testVoiceTriggersCarryMemberRolesForRoleConditions() throws {
+        let joined = SwiftBotEvent.join(guildId: "g", userId: "u", username: "tester", channelId: "voice", roleIds: ["member"])
+        let left = SwiftBotEvent.leave(guildId: "g", userId: "u", username: "tester", channelId: "voice", durationSeconds: 60, roleIds: ["muted"])
+        let hasRole = Automations.Rule(id: "has", name: "Has role", trigger: .init(kind: .userJoinedVoice),
+            filters: [.init(kind: .userHasAnyRole, roleIds: ["member"])], steps: [])
+        let lacksRole = Automations.Rule(id: "lacks", name: "Lacks role", trigger: .init(kind: .userLeftVoice),
+            filters: [.init(kind: .userHasNoneOfRoles, roleIds: ["member"])], steps: [])
+
+        XCTAssertEqual(automationService.evaluate(event: joined, in: [hasRole]).count, 1)
+        XCTAssertEqual(automationService.evaluate(event: left, in: [lacksRole]).count, 1)
+        var guest = lacksRole
+        guest.trigger.kind = .userJoinedVoice
+        XCTAssertTrue(automationService.evaluate(event: joined, in: [guest]).isEmpty)
+
+        // Journaled voice events written before roles were carried still decode.
+        let legacy = Data(#"{"join":{"guildId":"g","userId":"u","username":"tester","channelId":"voice"}}"#.utf8)
+        let decoded = try JSONDecoder().decode(SwiftBotEvent.self, from: legacy)
+        XCTAssertEqual(decoded.channelId, "voice")
+        XCTAssertNil(decoded.memberRoleIds)
+    }
+
     func testRemoveTimeoutExecutesWithoutSuppressingOrdinaryAutomations() async {
         let release = Automations.Rule(id: "release", name: "Release", category: .moderation,
             trigger: .init(kind: .messageCreated), steps: [.init(kind: .modifyMember, memberOp: .removeTimeout)])

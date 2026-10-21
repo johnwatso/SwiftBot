@@ -194,6 +194,19 @@ enum Automations {
         var eventOffsetSeconds: Int?
         var eventCustomTime: String?
 
+        /// The Discord name `commandName` registers under, e.g. "Daily Quote"
+        /// becomes `daily-quote`. Registration and matching both use this.
+        var slashCommandName: String {
+            let characters = (commandName ?? "")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/! ").union(.whitespacesAndNewlines))
+                .lowercased()
+                .map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "-" }
+            let collapsed = String(characters)
+                .replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+            return String(collapsed.prefix(32))
+        }
+
         func validate() throws {
             if kind == .schedule {
                 try schedule?.validate()
@@ -205,7 +218,7 @@ enum Automations {
                 if let offset = eventOffsetSeconds, offset < -2_592_000 || offset > 2_592_000 { throw ValidationError.invalidValue("Event offset must be within 30 days") }
             }
             if kind == .slashCommand {
-                guard let name = commandName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                guard !slashCommandName.isEmpty else {
                     throw ValidationError.invalidValue("Command name is required for slashCommand triggers")
                 }
             }
