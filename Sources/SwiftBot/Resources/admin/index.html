@@ -5839,6 +5839,11 @@
       text-align: center;
       padding: 22px 16px;
     }
+    /* Inside a card the card is the frame; a dashed box in it reads as a second card. */
+    #appShell :is(.ub-list, .glass) > .placeholder { border: 0; border-radius: 0; padding: 18px 16px; }
+
+    /* Events stacks three blocks (Discord events, announcements, runs); keep them apart. */
+    #eventsView > #discordEvents:not(:empty) { margin-bottom: 24px; }
 
     /* ---- Command palette ---- */
     .home-palette {
@@ -12122,6 +12127,7 @@
 
       if (!rules.length) {
         root.innerHTML = `
+          ${category === 'events' ? '<div class="ub-group-head"><h2>Announcements</h2></div>' : ''}
           <div class="ub-empty glass">
             <div class="ub-empty-title">No ${noun}s yet</div>
             <div class="ub-empty-sub">${category === 'events' ? 'Choose a Discord event above to schedule an announcement.' : 'Start from a template, or use New Rule to build one or describe it in plain English.'}</div>
