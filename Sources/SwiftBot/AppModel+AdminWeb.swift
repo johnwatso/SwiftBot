@@ -2180,6 +2180,15 @@ extension AppModel {
                 guard let model = self else { return false }
                 return await MainActor.run { model.pullAdminWebPatchyTarget(targetID) }
             },
+            searchSwiftMinerGames: { [weak self] query in
+                guard let model = self else { return .success([]) }
+                let (settings, session) = await MainActor.run { (model.settings.swiftMiner, model.discordRESTSession) }
+                do {
+                    return .success(try await SwiftMinerClient(settings: settings, session: session).searchGames(query: query))
+                } catch {
+                    return .failure(error)
+                }
+            },
             runPatchyCheckNow: { [weak self] in
                 guard let model = self else { return false }
                 return await MainActor.run { model.runAdminWebPatchyCheckNow() }

@@ -630,6 +630,10 @@ extension AppModel {
                 await handleSwiftMinerStatusRefreshButton(event: event, context: context)
                 return
             }
+            if customID == PatchySwiftMinerCampaignRouter.setupMinerCustomID {
+                await handleSwiftMinerSetupButton(event: event, context: context)
+                return
+            }
             if customID == SwiftMinerDMEmbedBuilders.prioritiesCustomID {
                 await handleSwiftMinerPrioritiesButton(event: event, context: context)
                 return

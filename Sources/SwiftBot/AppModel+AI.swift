@@ -334,6 +334,9 @@ extension AppModel {
             } else {
                 payload["embeds"] = embeds
             }
+            if let components = object["components"] as? [Any], !components.isEmpty {
+                payload["components"] = components
+            }
             if !roleMentionText.isEmpty {
                 payload["content"] = roleMentionText
             }

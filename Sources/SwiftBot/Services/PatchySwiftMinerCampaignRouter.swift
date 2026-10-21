@@ -64,11 +64,14 @@ enum PatchySwiftMinerCampaignRouter {
         let configured = normalizedGame(target.swiftMinerGameName)
         guard !configured.isEmpty else { return false }
 
-        let gameId = normalizedGame(announcement.gameId)
-        let gameName = normalizedGame(announcement.gameName)
-        if configured == gameId || configured == gameName { return true }
-        return configured.count >= 3 && (gameName.contains(configured) || configured.contains(gameName))
+        // Exact names only (ignoring case and accents): partial matching let
+        // "the" follow every game with "the" in its name.
+        return configured == normalizedGame(announcement.gameId)
+            || configured == normalizedGame(announcement.gameName)
     }
+
+    /// The "Set up a miner" button under a Drops post.
+    static let setupMinerCustomID = "swiftminer:setup:start"
 
     /// How many announced campaigns SwiftBot keeps for the game picker.
     static let rememberedCampaignLimit = 60
@@ -135,7 +138,17 @@ enum PatchySwiftMinerCampaignRouter {
             ])
         }
 
-        let payload: [String: Any] = ["embeds": embeds]
+        let setupButton: [String: Any] = [
+            "type": 2,
+            "style": 2,
+            "label": "Set up a miner",
+            "emoji": ["name": "⛏️"],
+            "custom_id": setupMinerCustomID
+        ]
+        let payload: [String: Any] = [
+            "embeds": embeds,
+            "components": [["type": 1, "components": [setupButton]]]
+        ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes]),
               let json = String(data: data, encoding: .utf8) else {
             return ""

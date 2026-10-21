@@ -258,6 +258,45 @@ extension AppModel {
         }
     }
 
+    /// "Set up a miner" under a Drops post: runs `/miner action:setup` for
+    /// whoever clicked. The reply is private, since it carries their code.
+    func handleSwiftMinerSetupButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        guard let userId = authorId(from: context.rawLikeMessage) else { return }
+        // Two SwiftMiner calls can outlast Discord's three-second reply window.
+        do {
+            try await service.respondToInteraction(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                payload: ["type": 5, "data": ["flags": 64]]
+            )
+        } catch {
+            logs.append("❌ Failed ACK for SwiftMiner setup button: \(error.localizedDescription)")
+            return
+        }
+
+        let message: String
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        if let account = (try? await client.projection(discordUserId: userId))?.account {
+            message = "You're already set up - SwiftMiner is mining as **@\(account.username)**. Use `/miner action:status` to check progress."
+        } else {
+            let result = await swiftMinerCommand(action: "setup", userId: userId, channelId: context.channelId)
+            message = result.ok
+                ? result.message
+                : "I couldn't start SwiftMiner setup right now - please try `/miner action:setup` in a moment. (\(result.message))"
+        }
+
+        guard let applicationID = botUserId, !applicationID.isEmpty else { return }
+        do {
+            try await service.editOriginalInteractionResponse(
+                applicationID: applicationID,
+                interactionToken: event.interactionToken,
+                content: message
+            )
+        } catch {
+            logs.append("❌ Failed SwiftMiner setup reply: \(error.localizedDescription)")
+        }
+    }
+
     func handleSwiftMinerPrioritiesButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
         let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
         let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)

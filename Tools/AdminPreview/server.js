@@ -416,6 +416,19 @@ async function handleAPI(req, res, pathname, query) {
       }
       case '/api/welcome-flow': return sendJSON(res, welcomeFlow);
       case '/api/patchy': return sendJSON(res, patchy);
+      case '/api/patchy/swiftminer/games': {
+        // Stands in for SwiftMiner's Twitch directory search.
+        const q = (query.get('q') || '').trim().toLowerCase();
+        const directory = ['THE FINALS', 'The Forest', 'Rust', 'Marvel Rivals', 'Marathon', 'Overwatch 2'];
+        const loose = q.replace(/[^a-z0-9]/g, '');
+        const games = directory
+          .filter(name => {
+            const n = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return n.includes(loose) || loose.slice(0, 4) === n.slice(0, 4);
+          })
+          .map((name, i) => ({ id: String(1000 + i), name, boxArtURL: null }));
+        return sendJSON(res, { games });
+      }
       case '/api/aibots': return sendJSON(res, fixtures.aibots);
       case '/api/swiftmesh': {
         const mesh = swiftMeshFixture();

@@ -1376,6 +1376,10 @@ struct AdminWebSwiftMinerGame: Codable {
     let latestEndsAt: String?
 }
 
+struct AdminWebSwiftMinerGameSearchPayload: Codable {
+    let games: [SwiftMinerGameSearchResult]
+}
+
 struct AdminWebPatchyStatePatch: Codable {
     let monitoringEnabled: Bool?
 }
@@ -1812,6 +1816,7 @@ actor AdminWebServer {
     private var deletePatchyTarget: (@Sendable (UUID) async -> Bool)?
     private var sendPatchyTestTarget: (@Sendable (UUID) async -> PatchyTestOutcome)?
     private var pullPatchyTarget: (@Sendable (UUID) async -> Bool)?
+    private var searchSwiftMinerGames: (@Sendable (String) async -> Result<[SwiftMinerGameSearchResult], Error>)?
     private var runPatchyCheckNow: (@Sendable () async -> Bool)?
     private var aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)?
     private var clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)?
@@ -1972,6 +1977,7 @@ actor AdminWebServer {
         deletePatchyTarget: @escaping @Sendable (UUID) async -> Bool,
         sendPatchyTestTarget: @escaping @Sendable (UUID) async -> PatchyTestOutcome,
         pullPatchyTarget: @escaping @Sendable (UUID) async -> Bool,
+        searchSwiftMinerGames: (@Sendable (String) async -> Result<[SwiftMinerGameSearchResult], Error>)? = nil,
         runPatchyCheckNow: @escaping @Sendable () async -> Bool,
         aiBotsProvider: (@Sendable () async -> AdminWebAIBotsPayload)? = nil,
         clearAIMemory: (@Sendable (AdminWebAIMemoryClearPatch) async -> Bool)? = nil,
@@ -2077,6 +2083,7 @@ actor AdminWebServer {
         self.deletePatchyTarget = deletePatchyTarget
         self.sendPatchyTestTarget = sendPatchyTestTarget
         self.pullPatchyTarget = pullPatchyTarget
+        self.searchSwiftMinerGames = searchSwiftMinerGames
         self.runPatchyCheckNow = runPatchyCheckNow
         self.aiBotsProvider = aiBotsProvider
         self.clearAIMemory = clearAIMemory
@@ -3626,6 +3633,26 @@ actor AdminWebServer {
                 return jsonResponse(["error": "pull_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+        case ("GET", "/api/patchy/swiftminer/games"):
+            // Admin-only: it spends SwiftMiner's Twitch API calls.
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            let query = (request.query["q"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard (2...100).contains(query.count) else {
+                return jsonResponse(["error": "invalid_query"], status: "400 Bad Request")
+            }
+            switch await searchSwiftMinerGames?(query) {
+            case .success(let games):
+                return codableResponse(AdminWebSwiftMinerGameSearchPayload(games: games))
+            case .failure(let error):
+                return jsonResponse(["error": "search_failed", "message": error.localizedDescription], status: "502 Bad Gateway")
+            case nil:
+                return jsonResponse(["error": "search_unavailable"], status: "503 Service Unavailable")
+            }
         case ("GET", "/api/gametracker"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()

@@ -241,6 +241,15 @@ struct SwiftMinerClient {
         return (try? decoder.decode(Response.self, from: data))?.paused ?? true
     }
 
+    /// Twitch games matching `query`, from SwiftMiner's game directory search.
+    func searchGames(query: String) async throws -> [SwiftMinerGameSearchResult] {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=?#")
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+        let data = try await request(path: "/v1/games/search?q=\(encoded)", method: "GET")
+        return try decoder.decode(SwiftMinerGameSearchResponse.self, from: data).games
+    }
+
     func controlMiner(discordUserId: String, action: String) async throws -> SwiftMinerControlResponse {
         let data = try await request(path: "/v1/users/\(discordUserId)/miner/\(action)", method: "POST")
         return try decoder.decode(SwiftMinerControlResponse.self, from: data)
@@ -295,6 +304,16 @@ struct SwiftMinerClient {
         }
         return data
     }
+}
+
+struct SwiftMinerGameSearchResult: Codable, Sendable {
+    let id: String
+    let name: String
+    let boxArtURL: String?
+}
+
+private struct SwiftMinerGameSearchResponse: Codable {
+    let games: [SwiftMinerGameSearchResult]
 }
 
 private struct SwiftMinerErrorEnvelope: Codable {

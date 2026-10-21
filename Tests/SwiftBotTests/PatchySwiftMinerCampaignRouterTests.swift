@@ -42,6 +42,10 @@ final class PatchySwiftMinerCampaignRouterTests: XCTestCase {
 
         XCTAssertTrue(PatchySwiftMinerCampaignRouter.target(matchingTarget, matches: announcement))
         XCTAssertFalse(PatchySwiftMinerCampaignRouter.target(otherTarget, matches: announcement))
+        for partial in ["the", "finals", "The finlas"] {
+            let target = PatchySourceTarget(source: .swiftMiner, swiftMinerGameName: partial, channelId: "channel-1")
+            XCTAssertFalse(PatchySwiftMinerCampaignRouter.target(target, matches: announcement), partial)
+        }
         XCTAssertEqual(announcement.dropArtwork.count, 3)
 
         let embedJSON = PatchySwiftMinerCampaignRouter.embedJSON(for: announcement, target: matchingTarget)
@@ -53,6 +57,11 @@ final class PatchySwiftMinerCampaignRouterTests: XCTestCase {
         XCTAssertEqual((embeds[0]["image"] as? [String: Any])?["url"] as? String, "https://cdn.example.com/finals.png")
         XCTAssertEqual(embeds[1]["title"] as? String, "One")
         XCTAssertEqual(embeds[3]["title"] as? String, "Three")
+
+        let rows = try XCTUnwrap(payload["components"] as? [[String: Any]])
+        let button = try XCTUnwrap((rows.first?["components"] as? [[String: Any]])?.first)
+        XCTAssertEqual(button["custom_id"] as? String, PatchySwiftMinerCampaignRouter.setupMinerCustomID)
+        XCTAssertEqual(button["label"] as? String, "Set up a miner")
     }
 
     func testRememberSkipsRedeliveredCampaignsAndListsEachGameOnce() {

@@ -16693,12 +16693,47 @@
       if (saved) showPatchyEditor(structuredClone(saved), { isNew: false });
     }
 
+    // A SwiftMiner game typed by hand rather than picked from the games
+    // SwiftMiner has already announced.
+    function patchySwiftMinerTyping(draft) {
+      const games = patchyData.swiftMinerGames || [];
+      const current = (draft.swiftMinerGameName || '').trim().toLowerCase();
+      return !games.length || !!draft.swiftMinerCustomGame || (!!current && !games.some(g => g.name.toLowerCase() === current));
+    }
+
+    // A typed game is checked against Twitch's directory through SwiftMiner,
+    // so a typo can't save a target that never posts.
+    function patchySwiftMinerExactGame(draft) {
+      const name = (draft.swiftMinerGameName || '').trim().toLowerCase();
+      return (draft.swiftMinerCheck?.games || []).find(g => g.name.toLowerCase() === name);
+    }
+
+    function patchySwiftMinerCheckHTML(draft) {
+      const name = (draft.swiftMinerGameName || '').trim();
+      const check = draft.swiftMinerCheck;
+      if (name.length < 2) return '';
+      if (!check || check.query !== name) return 'Checking Twitch…';
+      if (check.state === 'error') return `Couldn’t check this on Twitch: ${escapeHTML(check.message)}`;
+      const exact = patchySwiftMinerExactGame(draft);
+      if (exact) return `<i class="lucide" data-lucide="circle-check"></i> <strong>${escapeHTML(exact.name)}</strong> is a game on Twitch.`;
+      const suggestions = check.games.slice(0, 5)
+        .map(g => `<button type="button" class="chip patchy-game-suggestion" data-game="${escapeHTML(g.name)}">${escapeHTML(g.name)}</button>`)
+        .join(' ');
+      return `Twitch has no game called “${escapeHTML(name)}”.${suggestions ? ` Did you mean ${suggestions}` : ''}`;
+    }
+
     // What stops this target being saved, or '' when it's ready.
     function patchyValidationIssue(draft) {
       if (draft.source === 'Steam' && !/^\d+$/.test(draft.steamAppID || '')) return 'Enter the game’s Steam App ID (numbers only).';
       if (draft.source === 'GitHub' && !/^[\w.-]+\/[\w.-]+$/.test(draft.githubRepo || '')) return 'Enter the repository as owner/repo.';
       if (draft.source === 'GitHub' && draft.githubBranchMode === 'specific' && !(draft.githubBranch || '').trim()) return 'Enter the branch to watch.';
       if (draft.source === 'SwiftMiner' && !(draft.swiftMinerGameName || '').trim()) return 'Choose the game to follow.';
+      if (draft.source === 'SwiftMiner' && patchySwiftMinerTyping(draft)) {
+        const name = draft.swiftMinerGameName.trim();
+        if (name.length < 2) return 'Enter the game’s name.';
+        if (draft.swiftMinerCheck?.query !== name) return 'Checking the game on Twitch…';
+        if (draft.swiftMinerCheck.state === 'ok' && !patchySwiftMinerExactGame(draft)) return 'Choose a game Twitch knows.';
+      }
       if (!draft.channelId) return 'Choose a channel to post in.';
       return patchyDuplicateReason(draft);
     }
@@ -16799,7 +16834,10 @@
         button.disabled = true;
         try {
           // Upsert inserts unknown IDs, so a new target is created here, in one step.
-          const { swiftMinerCustomGame, ...target } = draft;
+          const { swiftMinerCustomGame, swiftMinerCheck, ...target } = draft;
+          // Save Twitch's exact spelling of a checked game.
+          const exact = patchySwiftMinerExactGame(draft);
+          if (exact) target.swiftMinerGameName = exact.name;
           await postJSON('/api/patchy/target/upsert', { target });
           await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
           renderPatchyView();
@@ -16882,7 +16920,7 @@
         const games = patchyData.swiftMinerGames || [];
         const current = (draft.swiftMinerGameName || '').trim();
         const match = games.find(g => g.name.toLowerCase() === current.toLowerCase());
-        const typing = !games.length || draft.swiftMinerCustomGame || (current && !match);
+        const typing = patchySwiftMinerTyping(draft);
         const picker = games.length
           ? `<select id="peSwiftMinerGamePick" class="field-select" ${off}>
               ${games.map(g => `<option value="${escapeHTML(g.name)}" ${!typing && match?.name === g.name ? 'selected' : ''}>${escapeHTML(g.name)}</option>`).join('')}
@@ -16891,6 +16929,7 @@
           : '';
         const typed = typing
           ? input('peSwiftMinerGame', current, 'The game’s name on Twitch, e.g. THE FINALS', `autocomplete="off" ${games.length ? 'style="margin-top:8px;"' : ''}`)
+            + '<div id="peSwiftMinerCheck" class="ub-help"></div>'
           : '';
         const latest = !typing && match
           ? `Latest campaign: <strong>${escapeHTML(match.latestCampaignName)}</strong>.`
@@ -16958,6 +16997,46 @@
         renderPatchyEditor(draft, readOnly, isNew);
       }));
       document.getElementById('peAccentCustom')?.addEventListener('change', rerender);
+      const gameInput = document.getElementById('peSwiftMinerGame');
+      if (gameInput && !readOnly) {
+        let timer;
+        const showCheck = () => {
+          const box = document.getElementById('peSwiftMinerCheck');
+          if (!box) return;
+          box.innerHTML = patchySwiftMinerCheckHTML(draft);
+          box.querySelectorAll('.patchy-game-suggestion').forEach(button => button.addEventListener('click', () => {
+            gameInput.value = button.dataset.game;
+            checkGame(0);
+          }));
+          refreshIcons();
+          updatePatchyEditorValidity(draft);
+        };
+        const checkGame = (delay = 350) => {
+          clearTimeout(timer);
+          const query = gameInput.value.trim();
+          draft.swiftMinerGameName = query;
+          showCheck();
+          if (query.length < 2 || draft.swiftMinerCheck?.query === query) return;
+          timer = setTimeout(async () => {
+            let check;
+            try {
+              const response = await fetch(`/api/patchy/swiftminer/games?q=${encodeURIComponent(query)}`);
+              const body = await response.json().catch(() => ({}));
+              check = response.ok
+                ? { query, state: 'ok', games: body.games || [] }
+                : { query, state: 'error', message: body.message || `request failed (${response.status})`, games: [] };
+            } catch (error) {
+              check = { query, state: 'error', message: error.message || 'request failed', games: [] };
+            }
+            // A newer keystroke owns the result now.
+            if ((draft.swiftMinerGameName || '').trim() !== query) return;
+            draft.swiftMinerCheck = check;
+            showCheck();
+          }, delay);
+        };
+        gameInput.addEventListener('input', () => checkGame());
+        checkGame(0);
+      }
       root.addEventListener('input', () => updatePatchyEditorValidity(draft));
       root.addEventListener('change', () => updatePatchyEditorValidity(draft));
       updatePatchyEditorValidity(draft);
