@@ -5842,6 +5842,25 @@
     /* Inside a card the card is the frame; a dashed box in it reads as a second card. */
     #appShell :is(.ub-list, .glass) > .placeholder { border: 0; border-radius: 0; padding: 18px 16px; }
 
+    /* Moderation's toolbar: search takes the room, the filter sizes to its options. */
+    #moderationView .section-actions > .field-select { width: auto; flex: 0 0 auto; }
+    #moderationView .section-actions > :is(.field-input, .field-select) { height: 38px; min-height: 38px; }
+
+    /* Announcer state header: actions drop below the status when they don't fit. */
+    .ac-state-head { flex-wrap: wrap; }
+    .ac-state-head > .section-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+    @media (max-width: 640px) {
+      .ac-state-head > .section-actions { flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
+      .ac-state-head > .section-actions > * { flex: 1 1 auto; }
+      .ac-state-head > span[style*="flex:1"] { display: none; }
+      /* Activity header: search on its own line, the three actions share the next. */
+      #activityView .section-sticky-row > .section-actions { flex: 1 1 100%; flex-wrap: wrap; margin-left: 0; }
+      #activityView .section-actions > .cmd-search { flex: 1 1 100%; }
+      #activityView .section-actions > .cmd-search input { width: 100%; }
+      #activityView .section-actions > .secondary-action { flex: 1; }
+    }
+
     /* Events stacks three blocks (Discord events, announcements, runs); keep them apart. */
     #eventsView > #discordEvents:not(:empty) { margin-bottom: 24px; }
 
