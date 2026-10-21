@@ -289,6 +289,8 @@ final class AppModel: ObservableObject {
     let meshWitnessClient = MeshWitnessClient()
     var ruruLeaseClient: RuruLeaseClient?
     var currentRuruLease: RuruLease?
+    var ruruConnectionGeneration = UUID()
+    var meshConfigurationSyncsInFlight = 0
     let recordingDirectory: RecordingDirectoryClient
     var recordingWitnessConfiguration = MeshWitnessConfiguration()
     var recordingCoordinationTask: Task<Void, Never>?
@@ -662,6 +664,10 @@ final class AppModel: ObservableObject {
             }
             #endif
 
+            // Configuring host services is not Start. Autostart, if enabled,
+            // goes through startBot after settings and handlers are ready.
+            await cluster.setDesiredBotRunning(false)
+            await service.setOutputAllowed(false)
             await startRateLimitCleanupTask()
 
             await voiceSessionStore.load()
@@ -843,8 +849,7 @@ final class AppModel: ObservableObject {
                 aiReplies: settings.clusterOffloadAIReplies,
                 wikiLookups: settings.clusterOffloadWikiLookups
             )
-            let initialRuntimeMode = await cluster.currentSnapshot().mode
-            await service.setOutputAllowed(initialRuntimeMode == .standalone || initialRuntimeMode == .leader)
+            await service.setOutputAllowed(false)
             await cluster.setTermChangedHandler { [weak self] newTerm in
                 guard let self else { return }
                 await MainActor.run { [weak self] in

@@ -37,6 +37,17 @@ UI origin, independently of recording sharing. Ruru can link to the fresh new
 owner's website in failover/recovery alerts; an advertised URL is not a
 reachability test and never changes ownership permission.
 
+Started Ruru-backed standbys now request exclusive ownership on a serial
+five-second retry loop, independently of peer-health monitoring and Preferred
+Primary. Local takeover preflight checks configuration, token, snapshot and
+credential approval before acquisition and again after the grant. In-flight
+configuration/credential imports block activation; replaced-connection replies
+cannot install permission. Discord output still independently enforces the
+monotonic lease deadline. The native console separates these local checks from
+transport health and Ruru-reported diagnostics. Stopped nodes and Workers never
+join the automatic acquisition loop. The coordinated return protocol remains;
+its automatic preferred-primary scheduling trigger is still outstanding.
+
 ### 1. Application Layer
 - **File:** `SwiftBotApp.swift`
 - **Purpose:** SwiftUI App entry point

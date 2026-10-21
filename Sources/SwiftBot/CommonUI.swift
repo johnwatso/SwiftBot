@@ -398,6 +398,57 @@ struct SettingsInlineAction: View {
     }
 }
 
+/// A caption row under a Settings window control, as in Otter's settings.
+struct SettingsSecondaryText: View {
+    let text: String
+    var tint: Color = .secondary
+
+    init(_ text: String, tint: Color = .secondary) {
+        self.text = text
+        self.tint = tint
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(tint)
+    }
+}
+
+/// A warning caption with the triangle glyph, as in Otter's settings.
+struct SettingsWarningText: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(Color.settingsWarningText)
+    }
+}
+
+extension Color {
+    /// Orange that stays readable on the light grouped-form background.
+    static let settingsWarningText = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? .systemOrange
+            : NSColor(srgbRed: 0.69, green: 0.33, blue: 0, alpha: 1)
+    })
+}
+
+extension View {
+    /// A standard bordered button for use inside a Settings window Form,
+    /// matching Otter and SwiftMiner.
+    func settingsActionButton() -> some View {
+        self
+            .labelStyle(.titleAndIcon)
+            .buttonStyle(.bordered)
+    }
+}
+
 /// Form-friendly wrapper for a preferences tab. Renders a native macOS
 /// grouped Form, applies consistent insets, and shows the failover read-only
 /// banner above the form when requested. Use as:
@@ -429,6 +480,8 @@ struct SettingsForm<Content: View>: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
                 }
+                // Form styling shared with the Otter and SwiftMiner settings
+                // windows: a fixed window, so the form scrolls.
                 Form {
                     content
                 }

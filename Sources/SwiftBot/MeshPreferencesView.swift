@@ -17,7 +17,9 @@ struct MeshPreferencesView: View {
     private static let defaultListenPort = 38787
 
     private var shouldShowMeshSettings: Bool { app.settings.clusterMode != .standalone }
-    private var canEditOffloadPolicy: Bool { app.settings.clusterMode == .leader }
+    private var canEditOffloadPolicy: Bool {
+        app.runtimeClusterMode == .leader && !app.isFailoverManagedNode
+    }
 
     private var leaderPortBinding: Binding<String> {
         Binding(
@@ -211,20 +213,20 @@ struct MeshPreferencesView: View {
 
     private var failoverSection: some View {
         Section {
-            Toggle("Automatically Restore Preferred Primary", isOn: $app.settings.clusterAutomaticHandbackEnabled)
+            Toggle("Automatic Return Preference", isOn: $app.settings.clusterAutomaticHandbackEnabled)
 
             if app.settings.clusterAutomaticHandbackEnabled {
                 Stepper(value: $app.settings.clusterAutoReclaimAfterHours, in: 0...72, step: 1) {
                     Text(app.settings.clusterAutoReclaimAfterHours == 0
-                         ? "Restore after 60 seconds of stable health and synchronisation"
-                         : "Restore after \(app.settings.clusterAutoReclaimAfterHours) hours of stable health and synchronisation")
+                         ? "Preferred delay: 60 seconds of stable health and synchronisation"
+                         : "Preferred delay: \(app.settings.clusterAutoReclaimAfterHours) hours of stable health and synchronisation")
                         .font(.subheadline)
                 }
             }
         } header: {
-            Text("Failover")
+            Text("Preferred Primary Return")
         } footer: {
-            Text(autoReclaimFooter)
+            Text(autoReclaimFooter + " Scheduling is not active in this build. Use Request Takeover on the preferred Mac for coordinated return. This saved preference does not disable standby takeover.")
         }
         .opacity(canConfigureAutomaticRestore ? 1 : 0.62)
         .disabled(!canConfigureAutomaticRestore)
@@ -283,21 +285,22 @@ struct MeshPreferencesView: View {
     }
 
     private var autoReclaimFooter: String {
-        let safety = " SwiftMesh still checks ownership, state synchronisation, and a valid handback before changing the Primary."
+        let safety = " Coordinated return requires synchronisation, a handback from the current owner and a Ruru grant."
         switch app.meshPrimaryPreference.status {
         case .current where app.meshPrimaryPreference.policy?.preferredPrimaryNodeID != nil:
             let preferred = app.meshPrimaryPreference.policy?.preferredPrimaryNodeID == app.meshLocalNodeID
             return (preferred
-                ? "Once this Mac is healthy and synchronised, it can automatically resume the Primary role."
-                : "Ruru currently prefers another Mac, so this Mac will not restore Primary automatically.") + safety
+                ? "Ruru currently prefers this Mac for Primary."
+                : "Ruru currently prefers another Mac for Primary.") + safety
         case .checking, .unavailable:
-            return "Automatic restore waits until Ruru’s Preferred Primary is known. Failover monitoring continues." + safety
+            return "Ruru’s Preferred Primary is currently unknown. Standby takeover still requires a lease." + safety
         default:
-            return "Once this Mac is healthy and synchronised, it can automatically resume the Primary role." + safety
+            return "Ruru has no current Preferred Primary selection." + safety
         }
     }
 
     private var workSharingFooter: String {
+        guard canEditOffloadPolicy else { return "Work Sharing is shared bot policy. Change it on the active Primary." }
         let available = app.clusterNodes.contains { $0.role == .worker && $0.status != .disconnected }
         return available
             ? "Distribute supported tasks to available Worker nodes."

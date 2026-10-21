@@ -33,7 +33,7 @@ struct ConsoleOverviewView: View {
                     status: snapshot.host,
                     details: details,
                     meshRole: meshRole,
-                    uptimeTitle: snapshot.isMonitoringFailover ? "Primary Uptime" : "Uptime",
+                    uptimeTitle: "Uptime",
                     onReviewIssue: open
                 )
 
@@ -66,16 +66,14 @@ struct ConsoleOverviewView: View {
         .confirmationDialog("Restart \(app.resolvedBotUsername)?", isPresented: $isConfirmingRestart) {
             Button("Restart") { restart() }
         } message: {
-            Text(app.runtimeClusterMode == .leader
-                 ? "SwiftBot disconnects from Discord for a moment. A Fail Over node may take over while it restarts."
-                 : "SwiftBot disconnects from Discord for a moment and then reconnects.")
+            Text(app.consoleRestartMessage)
         }
-        .confirmationDialog("Stop \(app.resolvedBotUsername)?", isPresented: $isConfirmingStop) {
-            Button(stopTitle, role: .destructive) {
+        .confirmationDialog("\(app.consoleStopTitle)?", isPresented: $isConfirmingStop) {
+            Button(app.consoleStopTitle, role: .destructive) {
                 Task { await app.stopBot() }
             }
         } message: {
-            Text(stopMessage)
+            Text(app.consoleStopMessage)
         }
     }
 
@@ -99,8 +97,8 @@ struct ConsoleOverviewView: View {
 
     private var overflowMenu: some View {
         Menu {
-            if hasActiveRuntime {
-                Button("\(stopTitle)…", systemImage: "stop.fill", role: .destructive) {
+            if app.consoleHasActiveBotRuntime {
+                Button("\(app.consoleStopTitle)…", systemImage: "stop.fill", role: .destructive) {
                     isConfirmingStop = true
                 }
                 Divider()
@@ -122,14 +120,6 @@ struct ConsoleOverviewView: View {
         .help("More")
     }
 
-    private var hasActiveRuntime: Bool {
-        let snapshot = app.consoleOverviewSnapshot
-        let primaryServicesActive = app.runtimeClusterMode == .leader
-            && app.clusterSnapshot.serverState != .stopped && app.clusterSnapshot.serverState != .inactive
-        return app.status != .stopped || snapshot.isMonitoringFailover
-            || snapshot.isWaitingForOwnership || primaryServicesActive
-    }
-
     @ViewBuilder
     private func lifecycleButton(for snapshot: ConsoleOverviewSnapshot) -> some View {
         if app.clusterSnapshot.runtimeState == .promoting, app.status != .running {
@@ -137,27 +127,27 @@ struct ConsoleOverviewView: View {
                 .buttonStyle(.glass)
                 .disabled(true)
         } else if snapshot.isWaitingForOwnership {
-            Button("Retry Start", systemImage: "arrow.clockwise") {
+            Button(app.consoleStartTitle, systemImage: "arrow.clockwise") {
                 Task { await app.startBot() }
             }
             .buttonStyle(.glass)
             .help("Retry startup. Discord opens only after Ruru grants this Mac ownership.")
-        } else if snapshot.isMonitoringFailover {
-            Button("View Failover Watch", systemImage: "point.3.connected.trianglepath.dotted") {
+        } else if snapshot.isStandbyServicesActive {
+            Button("View Standby Status", systemImage: "point.3.connected.trianglepath.dotted") {
                 onNavigate(.swiftMesh)
             }
             .buttonStyle(.glass)
-            .help("SwiftMesh is watching the Primary. Review its connection and failover status.")
+            .help("Review this Mac’s standby services and Ruru ownership status.")
         } else {
             switch app.status {
             case .stopped:
-                Button(app.settings.clusterMode == .standby ? "Start Failover Watch" : "Start", systemImage: "play.fill") {
+                Button(app.consoleStartTitle, systemImage: "play.fill") {
                     Task { await app.startBot() }
                 }
                 .buttonStyle(.glass)
                 .disabled(app.settings.clusterMode != .standby && app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help(app.settings.clusterMode == .standby
-                      ? "Start monitoring the Primary for failover."
+                      ? "Start this Mac’s standby services. Discord stays disconnected without ownership."
                       : app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                       ? "Add a bot token on the Discord page before starting."
                       : "Connect SwiftBot to Discord.")
@@ -169,20 +159,6 @@ struct ConsoleOverviewView: View {
                 .disabled(app.status == .connecting)
             }
         }
-    }
-
-    private var stopTitle: String {
-        if app.consoleOverviewSnapshot.isWaitingForOwnership { return "Stop Recovery" }
-        return app.runtimeClusterMode == .standby ? "Stop Failover Watch" : "Stop Bot"
-    }
-
-    private var stopMessage: String {
-        if app.consoleOverviewSnapshot.isWaitingForOwnership {
-            return "This Mac stops retrying startup. The current owner's bot keeps running."
-        }
-        return app.runtimeClusterMode == .standby
-            ? "This Mac stops watching the Primary and won’t take over if the Primary goes down."
-            : "The bot disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again."
     }
 
     // MARK: - Quick actions

@@ -9,7 +9,6 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
         clusterMode: ClusterMode = .standalone,
         clusterState: ClusterConnectionState = .inactive,
         unhealthyNodes: Int = 0,
-        watchActive: Bool = false,
         workerState: ClusterConnectionState = .connected,
         runtimeState: ClusterRuntimeState = .idle,
         recoveryActive: Bool = false,
@@ -30,7 +29,6 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
             clusterServerState: clusterState,
             clusterNodeCount: 2,
             clusterUnhealthyNodeCount: unhealthyNodes,
-            failoverWatchActive: watchActive,
             clusterWorkerState: workerState,
             clusterRuntimeState: runtimeState,
             primaryName: "DevMini",
@@ -42,6 +40,29 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
             tunnelEnabled: tunnelEnabled,
             tunnelStatus: AdminWebPublicAccessRuntimeStatus(state: tunnelState, publicURL: "https://bot.example.com", detail: "")
         )
+    }
+
+    func testReadyOrdinaryStandbyDoesNotOfferStartupRecoveryAsItsMainState() {
+        var input = inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, recoveryActive: true)
+        input.configuredClusterMode = .standby
+        input.takeoverReadiness = .ready
+        let snapshot = ConsoleOverviewSnapshot(input)
+        XCTAssertFalse(snapshot.isWaitingForOwnership)
+        XCTAssertTrue(snapshot.isStandbyServicesActive)
+        XCTAssertEqual(snapshot.host.badge, "Standby Ready")
+        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Standby Ready")
+        XCTAssertTrue(snapshot.host.headline.contains("until Ruru grants ownership"))
+    }
+
+    func testTakeoverBlockerDoesNotDependOnAnOverwrittenDiagnosticMessage() {
+        var input = inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, recoveryActive: true)
+        input.configuredClusterMode = .standby
+        input.takeoverReadiness = .blocked("Discord token has not been paired")
+        input.clusterDiagnostics = "Worker server listening"
+        let snapshot = ConsoleOverviewSnapshot(input)
+        XCTAssertEqual(snapshot.host.health, .warning)
+        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Takeover Blocked")
+        XCTAssertEqual(snapshot[.swiftMesh]?.detail, "Discord token has not been paired")
     }
 
     func testServicesAreListedInDisplayOrder() {
@@ -61,7 +82,7 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
     }
 
     func testStandbyReportsRuruOutageWithoutSuggestingPromotion() {
-        var input = inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, watchActive: true)
+        var input = inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening)
         input.witnessHealth = .unreachable
         let snapshot = ConsoleOverviewSnapshot(input)
         XCTAssertEqual(snapshot.host.health, .warning)
@@ -124,24 +145,24 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
     }
 
     func testStandbyNodeReportsStandingBy() {
-        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, watchActive: true))
+        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening))
         XCTAssertEqual(snapshot[.discord]?.summary, "Standing By")
-        XCTAssertEqual(snapshot[.discord]?.detail, "Connects only after takeover")
+        XCTAssertEqual(snapshot[.discord]?.detail, "Connects only with ownership")
         XCTAssertEqual(snapshot[.discord]?.health, .unavailable, "The local gateway is intentionally closed")
-        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Monitoring")
-        XCTAssertEqual(snapshot[.swiftMesh]?.detail, "Watching DevMini")
+        XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Standby")
+        XCTAssertEqual(snapshot[.swiftMesh]?.detail, "Services running · ownership required for Discord")
         XCTAssertEqual(snapshot[.swiftMesh]?.health, .healthy)
         XCTAssertEqual(snapshot.host.health, .healthy)
-        XCTAssertEqual(snapshot.host.badge, "Monitoring")
-        XCTAssertEqual(snapshot.host.headline, "SwiftBot is monitoring DevMini for failover.")
-        XCTAssertTrue(snapshot.isMonitoringFailover)
-        XCTAssertEqual(snapshot.servicesSummary, "Failover watch active")
+        XCTAssertEqual(snapshot.host.badge, "Standby")
+        XCTAssertEqual(snapshot.host.headline, "This Mac is standing by. Discord connects only with ownership.")
+        XCTAssertTrue(snapshot.isStandbyServicesActive)
+        XCTAssertEqual(snapshot.servicesSummary, "Standby services active")
     }
 
     func testReturningPrimaryWaitingForLeaseIsNotStopped() {
         let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, recoveryActive: true, diagnostics: "Takeover blocked: exclusive ownership unavailable"))
         XCTAssertTrue(snapshot.isWaitingForOwnership)
-        XCTAssertFalse(snapshot.isMonitoringFailover)
+        XCTAssertTrue(snapshot.isStandbyServicesActive)
         XCTAssertEqual(snapshot.host.badge, "Waiting for Ownership")
         XCTAssertEqual(snapshot.host.health, .pending)
         XCTAssertEqual(snapshot[.discord]?.summary, "Standing By")
@@ -152,7 +173,7 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
         let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .leader, clusterState: .listening, runtimeState: .promoting))
         XCTAssertEqual(snapshot.host.badge, "Taking Over…")
         XCTAssertEqual(snapshot[.discord]?.summary, "Starting…")
-        XCTAssertFalse(snapshot.isMonitoringFailover)
+        XCTAssertFalse(snapshot.isStandbyServicesActive)
     }
 
     func testRecoveryReadinessFailureIsVisible() {
@@ -162,59 +183,59 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
         XCTAssertTrue(snapshot[.swiftMesh]?.detail.contains("first sync") == true)
     }
 
-    func testStoppedWatchDoesNotClaimToMonitorEvenWithAListeningMesh() {
+    func testListeningStandbyDoesNotClaimToWatchPrimary() {
         let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening))
-        XCTAssertFalse(snapshot.isMonitoringFailover)
-        XCTAssertEqual(snapshot.host.badge, "Watch Stopped")
+        XCTAssertTrue(snapshot.isStandbyServicesActive)
+        XCTAssertEqual(snapshot.host.badge, "Standby")
         XCTAssertNil(snapshot.host.startedAt)
-        XCTAssertEqual(snapshot[.discord]?.summary, "Stopped")
+        XCTAssertEqual(snapshot[.discord]?.summary, "Standing By")
     }
 
-    func testActiveWatchStillShowsMeshAndWebFailures() {
-        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .failed, watchActive: true, webListening: false))
-        XCTAssertTrue(snapshot.isMonitoringFailover)
+    func testStandbyStillShowsMeshAndWebFailures() {
+        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .failed, webListening: false))
+        XCTAssertFalse(snapshot.isStandbyServicesActive)
         XCTAssertEqual(snapshot.host.health, .error)
         XCTAssertEqual(snapshot.host.badge, "Needs Attention")
         XCTAssertEqual(Set(snapshot.host.issues.map(\.kind)), [.swiftMesh, .webInterface])
     }
 
-    func testWatchShowsPrimaryConnectionProblem() {
-        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, watchActive: true, workerState: .failed))
+    func testStandbyShowsPrimaryConnectionProblem() {
+        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, workerState: .failed))
         XCTAssertEqual(snapshot.host.health, .warning)
         XCTAssertEqual(snapshot[.swiftMesh]?.summary, "Degraded")
-        XCTAssertTrue(snapshot.host.headline.contains("Failover watch is active"))
+        XCTAssertTrue(snapshot.host.headline.contains("standing by"))
     }
 
-    func testWatchShowsIsolationAndRecovery() {
-        let isolated = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, watchActive: true, runtimeState: .isolated))
-        XCTAssertEqual(isolated[.swiftMesh]?.summary, "Primary Unreachable")
+    func testStandbyShowsIsolationAndRecovery() {
+        let isolated = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, runtimeState: .isolated))
+        XCTAssertEqual(isolated[.swiftMesh]?.summary, "Connection Unavailable")
         XCTAssertEqual(isolated.host.health, .warning)
-        let recovering = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, watchActive: true, runtimeState: .recovering))
+        let recovering = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, clusterMode: .standby, clusterState: .listening, runtimeState: .recovering))
         XCTAssertEqual(recovering.host.badge, "Recovering…")
         XCTAssertEqual(recovering.host.health, .pending)
     }
 
     func testPromotedRuntimeShowsTheLocalDiscordConnection() {
-        let snapshot = ConsoleOverviewSnapshot(inputs(clusterMode: .leader, clusterState: .listening, watchActive: true))
-        XCTAssertFalse(snapshot.isMonitoringFailover)
+        let snapshot = ConsoleOverviewSnapshot(inputs(clusterMode: .leader, clusterState: .listening))
+        XCTAssertFalse(snapshot.isStandbyServicesActive)
         XCTAssertEqual(snapshot.host.badge, "Running")
         XCTAssertEqual(snapshot[.discord]?.summary, "Connected")
     }
 
-    func testMissingTokenStillNeedsAttentionWhileMonitoring() {
-        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, hasToken: false, clusterMode: .standby, clusterState: .listening, watchActive: true))
-        XCTAssertTrue(snapshot.isMonitoringFailover)
+    func testMissingTokenStillNeedsAttentionOnStandby() {
+        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, hasToken: false, clusterMode: .standby, clusterState: .listening))
+        XCTAssertTrue(snapshot.isStandbyServicesActive)
         XCTAssertEqual(snapshot.host.health, .warning)
         XCTAssertEqual(snapshot.host.issues.map(\.kind), [.discord])
     }
 
     func testOldGatewayRejectionDoesNotDescribeAClosedStandbyGateway() {
-        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, closeCode: 4004, clusterMode: .standby, clusterState: .listening, watchActive: true))
+        let snapshot = ConsoleOverviewSnapshot(inputs(botStatus: .stopped, closeCode: 4004, clusterMode: .standby, clusterState: .listening))
         XCTAssertEqual(snapshot[.discord]?.summary, "Standing By")
         XCTAssertEqual(snapshot.host.health, .healthy)
     }
 
-    func testCoordinatorSnapshotTracksWatchStartupAndStop() async {
+    func testCoordinatorDoesNotClaimRemovedPeerWatch() async {
         let coordinator = ClusterCoordinator()
         await coordinator.applySettings(mode: .standby, nodeName: "OverviewWatch", leaderAddress: "", listenPort: 0, sharedSecret: "")
         let unconfigured = await coordinator.currentSnapshot()
@@ -222,7 +243,7 @@ final class ConsoleOverviewSnapshotTests: XCTestCase {
 
         await coordinator.applySettings(mode: .standby, nodeName: "OverviewWatch", leaderAddress: "http://127.0.0.1:1", listenPort: 0, sharedSecret: "")
         let watching = await coordinator.currentSnapshot()
-        XCTAssertTrue(watching.isFailoverWatchActive)
+        XCTAssertFalse(watching.isFailoverWatchActive, "Peer monitoring was removed; a configured Primary address does not establish an active watch")
 
         await coordinator.stopAll()
         let stopped = await coordinator.currentSnapshot()

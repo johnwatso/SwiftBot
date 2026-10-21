@@ -313,16 +313,18 @@ extension AppModel {
             botStatus: status
         )
 
-        guard snapshot != lastPatchyMonitoringSnapshot else { return }
+        let shouldMonitor = settings.patchy.monitoringEnabled
+            && status == .running && shouldProcessPrimaryGatewayActions
+        let hasActiveMonitor = patchyMonitorTask.map { !$0.isCancelled } ?? false
+        // SwiftMesh can cancel the timer without changing this snapshot. A
+        // resumed owner must recreate it even when its settings are identical.
+        guard snapshot != lastPatchyMonitoringSnapshot || hasActiveMonitor != shouldMonitor else { return }
         lastPatchyMonitoringSnapshot = snapshot
 
         patchyMonitorTask?.cancel()
         patchyMonitorTask = nil
 
-        let currentMode = runtimeClusterMode
-        let isAuthorized = currentMode == .leader || currentMode == .standalone
-
-        guard settings.patchy.monitoringEnabled, status == .running, isAuthorized else {
+        guard shouldMonitor else {
             appendPatchyLog("Patchy monitoring paused.")
             return
         }
@@ -348,6 +350,7 @@ extension AppModel {
     }
 
     func runPatchyMonitoringCycle(trigger: String) async {
+        guard !Task.isCancelled, shouldProcessPrimaryGatewayActions else { return }
         guard status == .running || trigger == "Manual" || trigger == "Startup" else {
             return
         }
@@ -748,7 +751,7 @@ extension AppModel {
             Full notes:
             \(cleaned)
             """
-            return PatchySummaryInput(source: "Steam patch notes", text: text, fallback: fallback)
+            return PatchySummaryInput(source: "\(steam.newsItem.feedLabel) Steam patch notes", text: text, fallback: fallback)
         }
 
         return nil

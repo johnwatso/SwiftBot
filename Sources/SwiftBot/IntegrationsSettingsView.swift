@@ -20,7 +20,7 @@ struct IntegrationsSettingsView: View {
     var body: some View {
         SettingsForm(
             readOnlyBannerText: app.isFailoverManagedNode
-                ? "Read-only on Failover nodes. Integration settings sync from Primary."
+                ? "Game Tracking settings sync from the active Primary. Companion-app pairing belongs to this Mac."
                 : nil
         ) {
             IntegrationSection(title: "Game Tracking") {
@@ -34,6 +34,7 @@ struct IntegrationsSettingsView: View {
                     )
                 }
             }
+            .preferencesCardDisabled(when: app.isFailoverManagedNode)
 
             IntegrationSection(title: "Companion Apps") {
                 IntegrationRow(
@@ -49,7 +50,6 @@ struct IntegrationsSettingsView: View {
                 )
             }
         }
-        .preferencesCardDisabled(when: app.isFailoverManagedNode)
         .onAppear {
             if app.settings.swiftMiner.enabled {
                 app.cacheSwiftMinerArtworkIfNeeded()

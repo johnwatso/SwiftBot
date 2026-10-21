@@ -37,7 +37,12 @@ extension AppModel {
     /// Install recovery hooks before applying the configured placement. The
     /// coordinator, rather than saved preferences, owns the live output role.
     func configureMeshRecovery() async {
-        recordingWitnessConfiguration = .init()
+        let previousWitness = recordingWitnessConfiguration
+        let previousNodeID = meshLocalNodeID
+        await cluster.setPromotionReadinessHandler { [weak self] in
+            guard let self else { return "host unavailable" }
+            return await self.meshPromotionReadiness()
+        }
         do {
             let enrollment = try await meshCredentialStore.loadOrCreateLocalEnrollment()
             if settings.clusterMode == .leader {
@@ -55,20 +60,25 @@ extension AppModel {
             } else {
                 ruruLeaseClient = nil
             }
-            currentRuruLease = nil
+            let sameConnection = witness == previousWitness && enrollment.nodeID == previousNodeID
+            if !sameConnection {
+                ruruConnectionGeneration = UUID()
+                currentRuruLease = nil
+                await service.setOutputAllowed(false)
+                await updateMeshOwnershipDeadline(witness.isConfigured ? ContinuousClock.now : nil)
+            }
+            let generation = ruruConnectionGeneration
             let leaseClient = ruruLeaseClient
             updateMeshWitnessMonitoring(witness)
             if witness.isConfigured && settings.clusterMode != .standalone {
                 await cluster.setOwnershipHandlers(acquire: { [weak self] term in
                     guard let self, let leaseClient else { return nil }
                     do {
-                        let lease = try await leaseClient.acquire()
-                        guard Int(lease.term) >= term else {
+                        let lease = try await leaseClient.acquire(minimumTerm: Int64(term))
+                        guard await self.installRuruLease(lease, generation: generation, deadline: lease.deadline) else {
                             try? await leaseClient.release(lease)
                             return nil
                         }
-                        await self.setRuruLease(lease)
-                        await self.updateMeshOwnershipDeadline(lease.deadline)
                         return Int(lease.term)
                     } catch {
                         return nil
@@ -76,32 +86,36 @@ extension AppModel {
                 }, renew: { [weak self] term in
                     guard let self, let leaseClient else { return .lost }
                     let lease = await self.currentRuruLease
-                    guard let lease else { return .lost }
+                    guard let lease, lease.term == Int64(term),
+                          await self.ruruConnectionGeneration == generation else { return .lost }
                     do {
                         let renewed = try await leaseClient.renew(lease)
-                        await self.setRuruLease(renewed)
-                        await self.updateMeshOwnershipDeadline(renewed.deadline)
+                        guard await self.installRuruLease(renewed, generation: generation, deadline: renewed.deadline) else { return .lost }
                         return .renewed
                     } catch RuruError.ownershipLost {
-                        await self.setRuruLease(nil)
-                        await self.updateMeshOwnershipDeadline(ContinuousClock.now)
+                        _ = await self.installRuruLease(nil, generation: generation, deadline: ContinuousClock.now)
                         return .lost
                     } catch {
                         return .unreachable(stillValid: lease.isValid)
                     }
                 }, release: { [weak self] term in
-                    guard let self else { return }
+                    guard let self, await self.ruruConnectionGeneration == generation,
+                          let lease = await self.currentRuruLease, lease.term == Int64(term) else { return }
                     await self.service.setOutputAllowed(false)
-                    if let leaseClient, let lease = await self.currentRuruLease {
-                        try? await leaseClient.release(lease)
+                    if let leaseClient { try? await leaseClient.release(lease) }
+                    if await self.currentRuruLease?.term == lease.term {
+                        _ = await self.installRuruLease(nil, generation: generation, deadline: nil)
                     }
-                    await self.setRuruLease(nil)
-                }, witnessFingerprint: witness.ownershipFingerprint)
+                }, witnessFingerprint: witness.ownershipFingerprint, preservingOwnership: sameConnection)
             } else {
                 await cluster.setOwnershipHandlers(acquire: nil, renew: nil, release: nil)
                 await updateMeshOwnershipDeadline(nil)
             }
         } catch {
+            ruruConnectionGeneration = UUID()
+            currentRuruLease = nil
+            ruruLeaseClient = nil
+            recordingWitnessConfiguration = .init()
             if await Self.loadWitnessSettingsOffMain().isConfigured && settings.clusterMode != .standalone {
                 await cluster.setOwnershipHandlers(acquire: { _ in nil }, renew: { _ in .lost }, release: { _ in },
                                                    witnessFingerprint: (await Self.loadWitnessSettingsOffMain()).ownershipFingerprint)
@@ -114,10 +128,6 @@ extension AppModel {
             await self?.status == .running
         }
         await cluster.setDemotionHandler { [weak self] in await self?.meshDidDemote() }
-        await cluster.setPromotionReadinessHandler { [weak self] in
-            guard let self else { return "host unavailable" }
-            return await self.meshPromotionReadiness()
-        }
         await cluster.setHandbackDrainHandler { [weak self] in
             guard let self else { return false }
             return await self.freezeMeshWrites()
@@ -242,8 +252,14 @@ extension AppModel {
         await cluster.setPrimaryPreference(preference)
     }
 
-    func setRuruLease(_ lease: RuruLease?) {
+    /// Drops replies from a replaced connection or a stopped session. A delayed
+    /// grant must be released by its original client rather than installed here.
+    @discardableResult
+    func installRuruLease(_ lease: RuruLease?, generation: UUID, deadline: ContinuousClock.Instant?) async -> Bool {
+        guard generation == ruruConnectionGeneration else { return false }
         currentRuruLease = lease
+        await updateMeshOwnershipDeadline(deadline)
+        return generation == ruruConnectionGeneration
     }
 
     var meshOwnershipExpired: Bool {
@@ -284,11 +300,14 @@ extension AppModel {
     }
 
     func meshPromotionReadiness() async -> String? {
+        guard meshConfigurationSyncsInFlight == 0 else { return "shared configuration or credentials are being installed" }
+        guard !automationStore.hasLoadFailure else { return "automation rules could not be loaded" }
         guard automationStore.isLoaded else { return "automation rules are not loaded" }
         guard !settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Discord token has not been paired" }
         guard await store.meshSnapshotVersion() != nil else { return "shared configuration has not completed its first sync" }
         guard let enrollment = try? await meshCredentialStore.loadOrCreateLocalEnrollment(),
               await meshCredentialStore.authorizedPublicKey(nodeID: enrollment.nodeID) != nil else { return "this failover has no credential approval" }
+        guard meshConfigurationSyncsInFlight == 0 else { return "shared configuration or credentials are being installed" }
         return nil
     }
 
@@ -316,7 +335,7 @@ extension AppModel {
         } else {
             peerState = .ready
         }
-        return MeshOperationalReadiness.evaluate(automationsLoaded: automationStore.isLoaded,
+        return MeshOperationalReadiness.evaluate(automationsLoaded: automationStore.isLoaded && !automationStore.hasLoadFailure,
                                                  hasDiscordToken: !settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                                                  hasSnapshot: hasSnapshot, credentialsApproved: credentialsApproved,
                                                  peerState: peerState, discordConnected: status == .running)
@@ -416,6 +435,7 @@ extension AppModel {
         await publishMeshPrimaryPreference()
         lastPublishedRole = nil
         clusterSnapshot = await cluster.currentSnapshot()
+        ruruConnectionGeneration = UUID()
         currentRuruLease = nil
         await updateMeshOwnershipDeadline(nil)
     }
@@ -442,6 +462,10 @@ extension AppModel {
               revision >= version.revision, let grants = payload.authorizedCredentialGrants,
               let token = payload.discordToken, !token.isEmpty,
               payload.ruruWitness?.isValid ?? true else { return false }
+        meshConfigurationSyncsInFlight += 1
+        defer { meshConfigurationSyncsInFlight -= 1 }
+        let local = await cluster.currentSnapshot()
+        guard local.mode == .standby, local.runtimeState != .promoting, local.runtimeState != .demoting else { return false }
         do {
             try await meshCredentialStore.replaceGrants(grants)
             settings.token = token

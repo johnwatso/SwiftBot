@@ -3,6 +3,89 @@ import XCTest
 
 final class PatchyValidationTests: XCTestCase {
     @MainActor
+    func testMonitoringRestartsAfterMeshCancelsTimerWithoutChangingSettings() {
+        let app = AppModel()
+        app.settings.patchy.monitoringEnabled = true
+        app.status = .running
+        let snapshot = app.lastPatchyMonitoringSnapshot
+        app.patchyMonitorTask?.cancel()
+        app.patchyMonitorTask = nil
+        defer { app.patchyMonitorTask?.cancel() }
+
+        app.configurePatchyMonitoring()
+
+        XCTAssertEqual(app.lastPatchyMonitoringSnapshot, snapshot)
+        XCTAssertNotNil(app.patchyMonitorTask)
+        XCTAssertEqual(app.patchyMonitorTask?.isCancelled, false)
+    }
+
+    @MainActor
+    func testMonitoringReplacesCancelledTimerAndResumesAfterWritePause() {
+        let app = AppModel()
+        app.settings.patchy.monitoringEnabled = true
+        app.status = .running
+        app.patchyMonitorTask?.cancel()
+        defer { app.patchyMonitorTask?.cancel() }
+
+        app.configurePatchyMonitoring()
+        XCTAssertEqual(app.patchyMonitorTask?.isCancelled, false)
+
+        let task = app.patchyMonitorTask
+        app.meshWritesPaused = true
+        app.configurePatchyMonitoring()
+        XCTAssertNil(app.patchyMonitorTask)
+        XCTAssertEqual(task?.isCancelled, true)
+
+        app.configurePatchyMonitoring()
+        XCTAssertNil(app.patchyMonitorTask, "Settings refreshes must not restart monitoring during handback.")
+
+        app.meshWritesPaused = false
+        app.configurePatchyMonitoring()
+        XCTAssertEqual(app.patchyMonitorTask?.isCancelled, false)
+    }
+
+    @MainActor
+    func testMonitoringDoesNotStartOnStandbyOrWorker() {
+        for mode in [ClusterMode.standby, .worker] {
+            let app = AppModel()
+            app.lastPublishedRole = mode
+            app.settings.patchy.monitoringEnabled = true
+            app.status = .running
+
+            app.configurePatchyMonitoring()
+
+            XCTAssertNil(app.patchyMonitorTask)
+        }
+    }
+
+    @MainActor
+    func testUnchangedSettingsKeepTheActiveMonitor() {
+        let app = AppModel()
+        app.settings.patchy.monitoringEnabled = true
+        app.status = .running
+        let task = app.patchyMonitorTask
+        defer { app.patchyMonitorTask?.cancel() }
+
+        app.configurePatchyMonitoring()
+
+        XCTAssertEqual(task?.isCancelled, false, "An ordinary settings refresh must not cancel the running timer.")
+    }
+
+    @MainActor
+    func testPausedOrCancelledCycleDoesNotAdvanceCheckTime() async {
+        let app = AppModel()
+        app.meshWritesPaused = true
+        await app.runPatchyMonitoringCycle(trigger: "Manual")
+        XCTAssertNil(app.patchyLastCycleAt)
+
+        app.meshWritesPaused = false
+        let task = Task { await app.runPatchyMonitoringCycle(trigger: "Manual") }
+        task.cancel()
+        await task.value
+        XCTAssertNil(app.patchyLastCycleAt)
+    }
+
+    @MainActor
     func testAddingEnabledPatchyTargetEnablesMonitoring() async {
         let app = AppModel()
         app.settings.patchy.monitoringEnabled = false

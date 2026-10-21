@@ -26,6 +26,11 @@ final class MeshSnapshotTests: XCTestCase {
         backup.adminWebUI.additionalTunnelHostnames = [AdditionalTunnelHostname(hostname: "local.example.com", service: "http://localhost:8080", label: "Local companion")]
         backup.clusterNodeName = "Backup Mac"
         backup.clusterMode = .standby
+        backup.autoStart = true
+        backup.presenceMode = .menuBar
+        backup.adminWebUI.localAuthEnabled = true
+        backup.adminWebUI.localAuthUsername = "backup-admin"
+        backup.swiftMiner.enabled = true
         try await destination.save(backup)
         let snapshotValue = await origin.exportMeshSyncedFiles(excludingFileNames: [], leaderTerm: 3)
         let snapshot = try XCTUnwrap(snapshotValue)
@@ -41,6 +46,11 @@ final class MeshSnapshotTests: XCTestCase {
         XCTAssertEqual(loaded.prefix, "?")
         XCTAssertEqual(loaded.adminWebUI.discordOAuth.clientID, "shared-discord-app")
         XCTAssertEqual(loaded.adminWebUI.hostname, "swiftbot2.example.com")
+        XCTAssertTrue(loaded.autoStart)
+        XCTAssertEqual(loaded.presenceMode, .menuBar)
+        XCTAssertTrue(loaded.adminWebUI.localAuthEnabled)
+        XCTAssertEqual(loaded.adminWebUI.localAuthUsername, "backup-admin")
+        XCTAssertTrue(loaded.swiftMiner.enabled)
         XCTAssertEqual(loaded.adminWebUI.additionalTunnelHostnames, backup.adminWebUI.additionalTunnelHostnames)
         let mergedIdentity = try MeshBotConfiguration.mergingSharedData(Data(base64Encoded: settingsFile.base64Data)!, into: JSONEncoder().encode(backup))
         let identity = try JSONDecoder().decode(BotSettings.self, from: mergedIdentity)

@@ -15,7 +15,7 @@ struct WebUIPreferencesView: View {
     var body: some View {
         SettingsForm(
             readOnlyBannerText: app.isFailoverManagedNode
-                ? "This Mac keeps its own WebUI and tunnel. Discord sign-in settings sync from the active Primary."
+                ? "This Mac keeps its own website, tunnel and local sign-in. Discord sign-in and access policy sync from the active Primary."
                 : nil
         ) {
             Section {
@@ -34,7 +34,6 @@ struct WebUIPreferencesView: View {
 
             Section {
                 AdminWebAuthenticationSection()
-                    .disabled(app.isFailoverManagedNode)
             } header: {
                 ConsoleSectionHeader(title: "Authentication")
                 .id(WebUISectionID.authentication)
@@ -1168,6 +1167,7 @@ struct AdminWebAuthenticationSection: View {
                 settings: $app.settings.adminWebUI.discordOAuth,
                 redirectURL: app.adminWebDiscordRedirectURL()
             )
+            .disabled(app.isFailoverManagedNode)
 
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
@@ -1180,8 +1180,7 @@ struct AdminWebAuthenticationSection: View {
                         Text("Local Sign-In")
                             .font(.subheadline.weight(.semibold))
                         Text(
-                            "Use a username and password on this Mac or local network. "
-                                + "Password sign-in is blocked through Cloudflare; configure Discord sign-in for public access."
+                            "Password sign-in for this Mac and local network. Unavailable through Cloudflare."
                         )
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -1253,6 +1252,7 @@ struct AdminWebAuthenticationSection: View {
                     }
                 }
             }
+            .disabled(app.isFailoverManagedNode)
 
         }
     }

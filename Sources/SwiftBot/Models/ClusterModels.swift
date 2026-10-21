@@ -1109,6 +1109,32 @@ struct ClusterStatusResponse: Codable, Hashable {
     var nodes: [ClusterNodeStatus]
 }
 
+/// Local preflight evidence, separate from Ruru's grant and diagnostic reports.
+enum MeshTakeoverReadiness: Hashable, Sendable {
+    case stopped
+    case checking
+    case blocked(String)
+    case ready
+
+    var title: String {
+        switch self {
+        case .stopped: "Not participating"
+        case .checking: "Checking takeover readiness"
+        case .blocked: "Takeover blocked"
+        case .ready: "Ready — ownership required"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .stopped: "Start this Mac’s standby services to participate."
+        case .checking: "Checking local configuration and credentials before requesting ownership."
+        case .blocked(let reason): reason
+        case .ready: "Local checks passed. Discord stays disconnected until Ruru grants ownership."
+        }
+    }
+}
+
 struct ClusterSnapshot: Hashable {
     var mode: ClusterMode = .standalone
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
@@ -1131,9 +1157,10 @@ struct ClusterSnapshot: Hashable {
     var runtimeState: ClusterRuntimeState = .idle
     /// The local health-watch task is running; independent of Discord's gateway.
     var isFailoverWatchActive: Bool = false
-    /// A returning Primary is retrying its lease while another owner or Ruru
-    /// recovery prevents activation. This is distinct from a stopped watch.
+    /// A started candidate is checking readiness and retrying Ruru ownership.
+    /// Neither this flag nor local readiness grants output permission.
     var isOwnershipRecoveryActive: Bool = false
+    var takeoverReadiness: MeshTakeoverReadiness = .stopped
     /// When set, a Handover Test is queued to begin at this timestamp. The
     /// Primary publishes this so the Failover can show a heads-up banner via
     /// the regular mesh-sync pull (works through NAT, unlike the inbound

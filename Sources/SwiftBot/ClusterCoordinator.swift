@@ -279,8 +279,8 @@ actor ClusterCoordinator {
     private var ownershipRenew: (@Sendable (Int) async -> MeshOwnershipRenewal)?
     private var ownershipRelease: (@Sendable (Int) async -> Void)?
     private var ownershipTask: Task<Void, Never>?
-    /// Retries `acquire` while this Mac should own the bot but has no leader
-    /// to watch: a configured Primary that lost its lease or started without one.
+    /// One serial retry loop for started Ruru candidates. Peer observations and
+    /// Preferred Primary never grant or reserve ownership.
     private var ownershipRecoveryTask: Task<Void, Never>?
     private var ownershipRecoveryGeneration = 0
     private var ownershipRenewalInterval: Duration = .seconds(5)
@@ -339,6 +339,7 @@ actor ClusterCoordinator {
 
     func setPromotionReadinessHandler(_ handler: @escaping @Sendable () async -> String?) {
         promotionReadinessHandler = handler
+        startOwnershipRecoveryIfNeeded()
     }
 
     func setHandbackCatchupHandler(_ handler: @escaping @Sendable (String, Int) async -> Bool) {
@@ -355,7 +356,13 @@ actor ClusterCoordinator {
 
     func setDesiredBotRunning(_ running: Bool) {
         desiredBotRunning = running
-        if !running { promotionTask?.cancel() }
+        if !running {
+            promotionTask?.cancel()
+            ownershipRecoveryTask?.cancel()
+            ownershipRecoveryTask = nil
+            ownershipRecoveryGeneration += 1
+            snapshot.takeoverReadiness = .stopped
+        }
         startOwnershipRecoveryIfNeeded()
     }
 
@@ -375,9 +382,10 @@ actor ClusterCoordinator {
         acquire: (@Sendable (Int) async -> Int?)?,
         renew: (@Sendable (Int) async -> MeshOwnershipRenewal)?,
         release: (@Sendable (Int) async -> Void)?,
-        witnessFingerprint: String? = nil
+        witnessFingerprint: String? = nil,
+        preservingOwnership: Bool = true
     ) async {
-        let keepsOwnership = ownershipGranted && ownershipAcquire != nil && acquire != nil
+        let keepsOwnership = preservingOwnership && ownershipGranted && ownershipAcquire != nil && acquire != nil
             && localWitnessFingerprint == witnessFingerprint
         ownershipAcquire = acquire
         ownershipRenew = renew
@@ -389,7 +397,7 @@ actor ClusterCoordinator {
             ownershipRecoveryTask?.cancel()
             ownershipRecoveryTask = nil
             ownershipGranted = mode == .leader
-        } else if mode == .leader {
+        } else if mode == .leader, desiredBotRunning {
             if keepsOwnership {
                 if ownershipTask == nil { startOwnershipRenewal() }
                 return
@@ -401,6 +409,7 @@ actor ClusterCoordinator {
                 await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: nil)
             }
         }
+        startOwnershipRecoveryIfNeeded()
     }
 
     func setCredentialAuthorization(
@@ -426,6 +435,10 @@ actor ClusterCoordinator {
         if let acquire = ownershipAcquire {
             guard let granted = await acquire(minimumTerm), granted >= minimumTerm,
                   granted >= leaderTerm else { return false }
+            guard desiredBotRunning else {
+                await ownershipRelease?(granted)
+                return false
+            }
             grantedTerm = granted
         } else {
             grantedTerm = max(leaderTerm, minimumTerm)
@@ -498,18 +511,21 @@ actor ClusterCoordinator {
             : "this Mac's Ruru (\(localWitnessFingerprint ?? "")) differs from the Primary's (\(required))"
     }
 
-    /// Whether this Standby should keep trying to acquire the lease itself.
-    /// Only without a leader to monitor, which otherwise drives promotion.
+    /// Ordinary standbys need a configured Ruru identity and a local preflight.
+    /// Preference affects coordinated return, not eligibility after owner loss.
     private func shouldRecoverOwnership() -> Bool {
         guard mode == .standby, ownershipAcquire != nil, desiredBotRunning, !handbackInProgress else { return false }
         let preferred = primaryPreference.freshPreferredNodeID(at: .now)
-        return isConfiguredPrimary || (!credentialNodeID.isEmpty && preferred == credentialNodeID)
+        let ordinaryStandby = configuredMode == .standby && localWitnessFingerprint != nil
+            && promotionReadinessHandler != nil
+        return ordinaryStandby || isConfiguredPrimary || (!credentialNodeID.isEmpty && preferred == credentialNodeID)
     }
 
     private func startOwnershipRecoveryIfNeeded() {
         guard ownershipRecoveryTask == nil, shouldRecoverOwnership() else { return }
         ownershipRecoveryGeneration += 1
         let generation = ownershipRecoveryGeneration
+        snapshot.takeoverReadiness = .checking
         ownershipRecoveryTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, await self.shouldRecoverOwnership() else { break }
@@ -522,7 +538,10 @@ actor ClusterCoordinator {
     }
 
     private func clearOwnershipRecoveryTask(_ generation: Int) {
-        if generation == ownershipRecoveryGeneration { ownershipRecoveryTask = nil }
+        if generation == ownershipRecoveryGeneration {
+            ownershipRecoveryTask = nil
+            startOwnershipRecoveryIfNeeded()
+        }
     }
 
     /// Read-only catchup precedes a transfer. The active owner stays frozen until
@@ -545,11 +564,16 @@ actor ClusterCoordinator {
         }
         if let reason = witnessMismatchReason() {
             snapshot.diagnostics = "Handback blocked: \(reason)"
+            promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return false
         }
+        guard mode == .standby, !promotionInProgress, desiredBotRunning else { return false }
         handbackInProgress = true
-        defer { handbackInProgress = false }
+        defer {
+            handbackInProgress = false
+            startOwnershipRecoveryIfNeeded()
+        }
         let request = HandbackTransfer(
             transferID: UUID(), targetNodeName: nodeName,
             targetAddress: localWorkerAdvertisedBaseURL(), leaderTerm: leaderTerm,
@@ -573,6 +597,7 @@ actor ClusterCoordinator {
         if let reason = witnessMismatchReason() {
             _ = await postHandback(prepared, phase: "abort", baseURL: baseURL)
             snapshot.diagnostics = "Handback blocked: \(reason)"
+            promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return false
         }
@@ -1602,7 +1627,7 @@ actor ClusterCoordinator {
             configuredMode = mode
             configuredLeaderAddress = normalizedConfiguredAddress
             self.mode = mode
-            if self.mode == .leader {
+            if self.mode == .leader, desiredBotRunning {
                 if await acquireOwnership(minimumTerm: self.leaderTerm) {
                     startOwnershipRenewal()
                     await onTermChanged?(self.leaderTerm)
@@ -1622,6 +1647,17 @@ actor ClusterCoordinator {
             meshLogger.debug("Preserving elected runtime mode \(self.mode.rawValue, privacy: .public) while applying local settings")
         }
 
+        // Start after Stop may keep the same configured role. A settings save
+        // alone must not reacquire, but an explicit Start still needs a grant.
+        if self.mode == .leader, desiredBotRunning, !ownershipGranted {
+            if await acquireOwnership(minimumTerm: self.leaderTerm) {
+                startOwnershipRenewal()
+                await onTermChanged?(self.leaderTerm)
+            } else {
+                self.mode = .standby
+            }
+        }
+
         snapshot.mode = self.mode
         snapshot.nodeName = self.nodeName
         snapshot.listenPort = listenPort
@@ -1638,6 +1674,8 @@ actor ClusterCoordinator {
         restartOutboundPolling()
         await reconcileFollowerStatePoll()
         await refreshWorkerHealth()
+        // Ruru arbitrates retry attempts. There is no peer-health election.
+        startOwnershipRecoveryIfNeeded()
         await publishSnapshot()
     }
 
@@ -1739,6 +1777,11 @@ actor ClusterCoordinator {
         if mode == .standby, let reason = promotionBlockReason { snapshot.diagnostics = reason }
         snapshot.isFailoverWatchActive = false
         snapshot.isOwnershipRecoveryActive = mode == .standby && ownershipRecoveryTask != nil
+        if !desiredBotRunning {
+            snapshot.takeoverReadiness = .stopped
+        } else if mode == .standby, ownershipAcquire == nil || localWitnessFingerprint == nil {
+            snapshot.takeoverReadiness = .blocked("Connect this Mac to Ruru to enable automatic takeover.")
+        }
         return snapshot
     }
 
@@ -2723,11 +2766,20 @@ actor ClusterCoordinator {
     }
 
     private func performPromotion(grantedTerm: Int?) async {
-        guard mode == .standby, !promotionInProgress, !handbackInProgress, desiredBotRunning, leaderTerm < Int.max else { return }
+        guard mode == .standby, !promotionInProgress, !handbackInProgress, desiredBotRunning else { return }
+        guard leaderTerm < Int.max else {
+            let reason = "Ownership term limit reached; service recovery requires operator review."
+            snapshot.takeoverReadiness = .blocked(reason)
+            snapshot.diagnostics = "Takeover blocked: \(reason)"
+            promotionBlockReason = snapshot.diagnostics
+            await publishSnapshot()
+            return
+        }
         promotionInProgress = true
         defer { promotionInProgress = false }
         if let failure = await promotionReadinessHandler?() {
             snapshot.diagnostics = "Takeover blocked: \(failure)"
+            snapshot.takeoverReadiness = .blocked(failure)
             promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return
@@ -2737,10 +2789,12 @@ actor ClusterCoordinator {
         // its owner has already closed: refusing now would leave no owner.
         if grantedTerm == nil, let reason = witnessMismatchReason() {
             snapshot.diagnostics = "Takeover blocked: \(reason)"
+            snapshot.takeoverReadiness = .blocked(reason)
             promotionBlockReason = snapshot.diagnostics
             await publishSnapshot()
             return
         }
+        snapshot.takeoverReadiness = .ready
         let nextTerm = max(leaderTerm + 1, grantedTerm ?? 0)
         guard await acquireOwnership(minimumTerm: nextTerm), mode == .standby else {
             snapshot.diagnostics = "Takeover blocked: exclusive ownership unavailable"
@@ -2751,6 +2805,26 @@ actor ClusterCoordinator {
         guard !Task.isCancelled, desiredBotRunning else {
             ownershipGranted = false
             await ownershipRelease?(leaderTerm)
+            return
+        }
+        // Freeze new follower imports before the final local check. A sync
+        // may have started while Ruru was deciding the grant; release rather
+        // than activate on partially installed state.
+        snapshot.runtimeState = .promoting
+        if let failure = await promotionReadinessHandler?() {
+            ownershipGranted = false
+            await ownershipRelease?(leaderTerm)
+            snapshot.runtimeState = .idle
+            snapshot.takeoverReadiness = .blocked(failure)
+            snapshot.diagnostics = "Takeover blocked: \(failure)"
+            promotionBlockReason = snapshot.diagnostics
+            await publishSnapshot()
+            return
+        }
+        guard !Task.isCancelled, desiredBotRunning, mode == .standby else {
+            ownershipGranted = false
+            await ownershipRelease?(leaderTerm)
+            snapshot.runtimeState = .idle
             return
         }
         promotionBlockReason = nil
@@ -2991,8 +3065,9 @@ actor ClusterCoordinator {
         followerStates.removeAll()
         snapshot.followerStates = [:]
 
-        // Demotion complete — runtime state settles back to idle.
+        // Demotion complete — output has closed before any Ruru recovery.
         snapshot.runtimeState = .idle
+        startOwnershipRecoveryIfNeeded()
         await publishSnapshot()
     }
 

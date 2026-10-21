@@ -31,7 +31,7 @@ struct StandaloneSetupView: View {
 
     private enum StandaloneStep {
         case entry, validating, proceedingToDashboard, confirmed, failed
-        case localSignIn, internetAccess
+        case localSignIn, internetAccess, intelligence
     }
 
     private var errorMessageToShow: String? {
@@ -90,6 +90,9 @@ struct StandaloneSetupView: View {
                     .transition(.opacity)
             case .internetAccess:
                 internetAccessStepView
+                    .transition(.opacity)
+            case .intelligence:
+                intelligenceStepView
                     .transition(.opacity)
             }
         }
@@ -393,9 +396,9 @@ struct StandaloneSetupView: View {
                 Button {
                     saveLocalAuthSettings()
                     app.saveSettings()
-                    app.completeOnboarding()
+                    step = .intelligence
                 } label: {
-                    Text("Skip & Go to Dashboard")
+                    Text("Skip Internet Access")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -564,15 +567,27 @@ struct StandaloneSetupView: View {
 
                 Button {
                     app.saveSettings()
-                    app.completeOnboarding()
+                    step = .intelligence
                 } label: {
-                    Text(cfTokenVerified ? "Skip & Go to Dashboard" : "Skip for Now")
+                    Text(cfTokenVerified ? "Skip Internet Access" : "Skip for Now")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .font(.callout)
                 .disabled(isSettingUpInternetAccess)
             }
+        }
+    }
+
+    // MARK: - Step 4: Cloud summaries (optional)
+
+    private var intelligenceStepView: some View {
+        IntelligenceBridgeSetupView(
+            completionTitle: "Go to Dashboard",
+            skipTitle: "Skip for Now"
+        ) {
+            app.saveSettings()
+            app.completeOnboarding()
         }
     }
 
@@ -655,7 +670,7 @@ struct StandaloneSetupView: View {
                 isSettingUpInternetAccess = false
                 internetAccessSetupProgress = nil
                 app.saveSettings()
-                app.completeOnboarding()
+                step = .intelligence
             } catch {
                 isSettingUpInternetAccess = false
                 internetAccessSetupError = app.userFacingAdminWebPublicAccessMessage(for: error)

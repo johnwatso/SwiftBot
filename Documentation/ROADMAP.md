@@ -9,6 +9,106 @@
 
 ## Recent Engineering Log
 
+### 2026-10-21 — Ordinary standby takeover through Ruru
+
+- [x] Started, configured standbys with a Ruru identity and local preflight now
+  share the existing serial five-second ownership retry loop. Readiness is
+  checked before acquisition and again after a grant. Preference does not
+  reserve the next lease; a non-preferred backup can take over after expiry.
+  Stopped nodes, Workers and legacy nodes gain no automatic election path.
+- [x] Added local takeover readiness to SwiftMesh and Overview, separately from
+  transport health, reported operational status and output permission. Missing
+  initial configuration, credentials/approval, damaged automation rules and
+  unfinished imports are named blockers. A ready backup still waits for Ruru;
+  normal standby waiting no longer appears as a failed Primary startup.
+- [x] Protected configuration/credential installation across promotion and
+  rechecked local state after the grant. A grant received during an unfinished
+  import is returned before activation. Repeated connection setup preserves a
+  valid same-identity lease; replies from replaced connections/stopped sessions
+  cannot overwrite the current lease/deadline. Acquisition uses RuruClient's
+  existing minimum-term API.
+- Validation: Debug build and 183 selected Xcode tests passed, including owner
+  crash with an outstanding monotonic grant, simultaneous ready backups,
+  unavailable Ruru/recovery, blocked/unblocked readiness, Start/Stop, bounded
+  retry refreshes, post-grant state changes, same-connection refresh and stale
+  reply rejection. Tests use fake authorities/output callbacks, isolated stores,
+  mock HTTP transport and loopback sockets. Offscreen light/dark checks covered
+  ready and blocked states in SwiftMesh and Overview; the temporary renderer
+  was removed afterwards.
+- [ ] Automatic Preferred Primary return still needs its scheduling trigger:
+  the checked coordinated handback protocol remains, but the trigger was removed
+  with peer monitoring. A raw acquisition cannot displace a live owner. Settings
+  now explicitly identify this as a saved return preference with inactive scheduling.
+- [ ] Shared administration through the current owner and the richer standby
+  node dashboard remain the next UI phase. A physical two-Mac/Ruru/Discord
+  failover/return/partition drill, sleep/wake and target Intel validation remain
+  unperformed. No deployment, commit, version or release metadata change.
+
+### 2026-10-21 — Failover host-console controls, first pass
+
+- [x] Standby Macs retain appearance, updates, local startup, local sign-in,
+  cache clearing and companion-app pairing. Restrictions now apply to shared
+  Discord credentials, OAuth/access policy and game-provider configuration
+  rather than whole mixed settings pages. Full bot setup and the permission
+  sheet's Kick & re-invite workflow remain guarded.
+- [x] Discord's read-only token connection test is available on standby.
+  Overview and Discord share lifecycle labels and explanations based on runtime
+  ownership, standby services and recovery; promoted backups show Stop Bot.
+  Shared Work Sharing policy follows runtime ownership rather than configured
+  placement. Removed obsolete watch claims from Overview and its fixtures/tests:
+  peer monitoring was deliberately removed in `655a60d` / `134d3a5`.
+- [x] Restored the existing eligible Ruru recovery loop after settings apply
+  and after demotion, including recovery following a Ruru restart. A handback
+  refusal now retains its specific Ruru mismatch diagnostic rather than an
+  earlier generic promotion refusal.
+  Host bootstrap leaves running intent/output off until Start or autostart;
+  settings/handler refresh after Stop cannot reacquire. Explicit Start with
+  unchanged placement still obtains a grant, and late grants after Stop are
+  returned before local ownership is published.
+- [ ] Next: shared administration through the current owner and an authenticated
+  standby node dashboard. Browser write guards, lease deadlines and fencing
+  remain in place.
+- [x] Ordinary-standby automatic acquisition is implemented in the subsequent
+  takeover entry above. Physical deployment validation remains outstanding;
+  Ruru does not push promotion instructions.
+- Validation: Debug build and the final 159 selected Xcode tests passed with
+  no exclusions, covering lease refusal/expiry, recovery after Ruru restart,
+  preference/handback, stopped intent, late grants and local/shared replication.
+  Updated obsolete tests to use an exclusive authority grant instead of removed
+  peer-health election, and permit harmless refused acquisition attempts while
+  still asserting release-before-successor ownership. Temporary offscreen
+  light/dark rendering covered Discord, Integrations, Web Interface and Updates;
+  the renderer was removed afterwards.
+  Debug disables Sparkle, so real Release update/relaunch remains unverified.
+  No live two-Mac/Ruru/Discord drill, deployment, version or release metadata change.
+
+### 2026-10-21 — Apple Intelligence Shortcut bridges
+
+- [x] Added three signed, bundled PCC workflows: `SwiftBot Gaming Patch
+  Update`, `SwiftBot Software Update`, and `SwiftBot General Patch`. The native
+  setup step guides the user through Apple’s three required one-time Add
+  Shortcut confirmations and then authorizes all three for unattended use.
+- [x] Each Shortcut owns its finished editorial style rather than receiving a
+  generated prompt from SwiftBot. Gaming prioritises balance and gameplay;
+  software prioritises drivers, compatibility, security, and upgrade impact;
+  general patches prioritise user-visible changes, migrations, and known
+  issues. All three include a SwiftBot-owned App Intent so Shortcuts can show
+  the signed app's real icon. Their fallback tile uses lavender sparkles rather
+  than an unrelated bird glyph.
+- [x] Each workflow validates its input and Cloud response and returns a
+  structured bridge error that activates SwiftBot’s fallback path rather than
+  becoming a malformed summary.
+- [x] Patchy now tries the bridge before direct Foundation Models and its
+  deterministic fallback. Prompts retain a common compact Discord style while
+  applying source-specific priorities for THE FINALS, games, drivers, Apple
+  releases, and GitHub updates.
+- [x] Direct Private Cloud Compute construction is entitlement-gated so an
+  unsigned or unentitled build cannot abort before the fallback path runs.
+- Validation: all three workflows passed the macOS 27 schema validator and
+  signed successfully. Focused app tests and the Debug build were rerun after
+  the three-profile routing and setup changes. No version, feed, or release
+  metadata changed.
+
 ### 2026-10-18 — Grounded Apple Intelligence activity answers
 
 - [x] Activity questions now resolve a Discord member locally, collect only
@@ -1014,6 +1114,12 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 ---
 
 ## Session log
+
+### 2026-10-21 — Patchy polling recovery and role autocomplete
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Patchy recreates a missing/cancelled polling timer after SwiftMesh resumes writes even when its settings snapshot is unchanged. Monitoring and cycles respect paused writes, runtime ownership and cancellation. Reused channel typeahead for Patchy's mention roles, with filtered suggestions, keyboard selection and removable chips; changing servers clears the old roles. Regression checks reproduced the timer failure with the previous guard; focused app tests, AMD package tests, JavaScript syntax and browser preview checks cover the change. Live scheduled Discord delivery on the affected Mac remains unverified. No version/release metadata changes or publication. |
 
 ### 2026-10-08 — Takeover activation and returning Primary status
 

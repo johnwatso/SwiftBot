@@ -7,6 +7,41 @@ extension AppModel {
 
     // MARK: - Bot Lifecycle
 
+    // Shared by Overview and Discord: configured placement determines the next
+    // Start, while the runtime role determines what Stop actually shuts down.
+    var consoleHasActiveBotRuntime: Bool {
+        let snapshot = consoleOverviewSnapshot
+        let primaryServicesActive = runtimeClusterMode == .leader
+            && clusterSnapshot.serverState != .stopped && clusterSnapshot.serverState != .inactive
+        return status != .stopped || snapshot.isStandbyServicesActive
+            || snapshot.isWaitingForOwnership || primaryServicesActive
+    }
+
+    var consoleStartTitle: String {
+        if consoleOverviewSnapshot.isWaitingForOwnership { return "Retry Start" }
+        return settings.clusterMode == .standby ? "Start Standby Services" : "Start"
+    }
+
+    var consoleStopTitle: String {
+        if consoleOverviewSnapshot.isWaitingForOwnership { return "Stop Recovery" }
+        return runtimeClusterMode == .standby ? "Stop Standby Services" : "Stop Bot"
+    }
+
+    var consoleStopMessage: String {
+        if consoleOverviewSnapshot.isWaitingForOwnership {
+            return "This Mac stops retrying startup. The current owner’s bot keeps running."
+        }
+        return runtimeClusterMode == .standby
+            ? "This Mac stops its SwiftMesh listener and peer sync. The active Primary keeps running."
+            : "The bot disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again."
+    }
+
+    var consoleRestartMessage: String {
+        runtimeClusterMode == .leader
+            ? "SwiftBot disconnects from Discord for a moment. A Fail Over node may take over while it restarts."
+            : "SwiftBot disconnects from Discord for a moment and then reconnects."
+    }
+
     func startBot() async {
         // Worker mode is temporarily disabled pending UX redesign.
         // The underlying code is preserved; re-enable by removing this guard when ready.
@@ -17,8 +52,9 @@ extension AppModel {
             return
         }
 
-        await cluster.setDesiredBotRunning(true)
+        // Install credentials and the preflight before enabling candidacy.
         await configureMeshRecovery()
+        await cluster.setDesiredBotRunning(true)
         await cluster.applySettings(
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,

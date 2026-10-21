@@ -5,103 +5,80 @@ struct UpdatesPreferencesView: View {
     @EnvironmentObject var updater: AppUpdater
 
     var body: some View {
-        SettingsForm(
-            readOnlyBannerText: app.isFailoverManagedNode
-                ? "Read-only on Failover nodes. These settings sync from Primary."
-                : nil
-        ) {
+        SettingsForm {
             Section {
-                HStack(spacing: 8) {
-                    updateChannelOption(.stable)
-                    updateChannelOption(.beta)
-                }
+                LabeledContent("Version", value: infoValue("CFBundleShortVersionString"))
+                LabeledContent("Build", value: infoValue("CFBundleVersion"))
+            } header: {
+                Text("Installed Version")
+            }
 
-                if updater.selectedChannel == .beta {
-                    Label("Beta channel enabled. Updates will come from the beta appcast feed.", systemImage: "flask.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-
-                Toggle("Prompt for available updates", isOn: automaticUpdateChecksBinding)
-                    .disabled(!updater.canCheckForUpdates)
-                Text("Check in the background and show Sparkle's update prompt when user action is needed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Allow unattended updates", isOn: automaticUpdatesBinding)
-                    .disabled(!updater.canCheckForUpdates || !updater.automaticallyChecksForUpdates)
-                Text("Download and install eligible updates in the background when macOS does not require authorization.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                LabeledContent("Check for Updates") {
-                    Button("Check Now…") {
-                        updater.checkForUpdates()
+            Section {
+                Picker("Update Channel", selection: channelBinding) {
+                    ForEach(AppUpdater.UpdateChannel.allCases) { channel in
+                        Text(channel.label).tag(channel)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(!updater.canCheckForUpdates)
                 }
+                .pickerStyle(.segmented)
+                .disabled(updater.isDisabledForDebugBuild)
+                if updater.selectedChannel == .beta {
+                    SettingsSecondaryText("Updates come from the beta appcast feed.")
+                }
+
+                Toggle("Check for updates automatically", isOn: automaticUpdateChecksBinding)
+                    .disabled(!updater.canCheckForUpdates)
+                SettingsSecondaryText("Checks in the background and prompts when an update is available.")
+
+                Toggle("Install updates unattended", isOn: automaticUpdatesBinding)
+                    .disabled(!updater.canCheckForUpdates || !updater.automaticallyChecksForUpdates)
+                SettingsSecondaryText("Downloads and installs in the background without asking, whenever macOS does not require authorization.")
 
                 if updater.isReadyToInstall {
-                    LabeledContent("Version \(updater.availableVersion ?? "") is downloaded") {
-                        Button("Install and Relaunch") {
-                            updater.installPendingUpdate()
-                        }
-                        .buttonStyle(.borderedProminent)
+                    Button {
+                        updater.installPendingUpdate()
+                    } label: {
+                        Label("Install \(updater.availableVersion ?? "Update") and Relaunch", systemImage: "arrow.down.circle")
                     }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("If automatic updates fail, you can download the latest version manually from:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Link("GitHub Releases", destination: URL(string: "https://github.com/johnwatso/SwiftBot/releases")!)
-                        .font(.caption)
-                        .underline()
+                    .labelStyle(.titleAndIcon)
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        updater.checkForUpdates()
+                    } label: {
+                        Label("Check for Updates…", systemImage: "arrow.clockwise")
+                    }
+                    .settingsActionButton()
+                    .disabled(!updater.canCheckForUpdates)
                 }
 
                 if updater.isDisabledForDebugBuild {
-                    Text("Updates are off in Debug builds, so Sparkle can't install a release over the app Xcode built.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    SettingsWarningText("Updates are off in Debug builds, so Sparkle can't install a release over the app Xcode built.")
                 } else if !updater.isConfigured {
-                    Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
-                        .font(.caption)
+                    SettingsWarningText("This build has no update feed or signing key, so updates are unavailable.")
+                }
+
+                HStack(spacing: 4) {
+                    Text("If updates fail, download the latest version from")
                         .foregroundStyle(.secondary)
+                    Link("GitHub Releases", destination: URL(string: "https://github.com/johnwatso/SwiftBot/releases")!)
                 }
+                .font(.caption)
             } header: {
-                Label("Software Updates", systemImage: "arrow.clockwise")
-            } footer: {
-                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                   let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                    Text("Version \(version) (Build \(build))")
-                }
+                Text("Updates")
             }
         }
-        .preferencesCardDisabled(when: app.isFailoverManagedNode)
     }
 
-    @ViewBuilder
-    private func updateChannelOption(_ channel: AppUpdater.UpdateChannel) -> some View {
-        let isSelected = updater.selectedChannel == channel
-        Button {
+    private func infoValue(_ key: String) -> String {
+        Bundle.main.infoDictionary?[key] as? String ?? "–"
+    }
+
+    private var channelBinding: Binding<AppUpdater.UpdateChannel> {
+        Binding {
+            updater.selectedChannel
+        } set: { channel in
             updater.setUpdateChannel(channel)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: channel.symbolName)
-                Text(channel.label)
-            }
-            .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? .white.opacity(0.42) : .white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
-        )
     }
 
     private var automaticUpdateChecksBinding: Binding<Bool> {

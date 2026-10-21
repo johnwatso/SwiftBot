@@ -30,7 +30,6 @@ private enum ConsoleOverviewPreviewData {
             clusterServerState: .connected,
             clusterNodeCount: 2,
             clusterUnhealthyNodeCount: 0,
-            failoverWatchActive: standby,
             clusterWorkerState: .connected,
             primaryName: "DevMini",
             webEnabled: !standby,
@@ -56,8 +55,8 @@ private struct ConsoleOverviewPreviewPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 ConsolePageHeader(title: "Overview", subtitle: snapshot.host.headline, accessoriesBesideTitle: true) {
-                    if snapshot.isMonitoringFailover {
-                        Button("View Failover Watch", systemImage: "point.3.connected.trianglepath.dotted") {}
+                    if snapshot.isStandbyServicesActive {
+                        Button("View Standby Status", systemImage: "point.3.connected.trianglepath.dotted") {}
                             .buttonStyle(.glass)
                     }
                 }
@@ -65,14 +64,14 @@ private struct ConsoleOverviewPreviewPage: View {
                     botName: "SwiftBot - Dev",
                     status: snapshot.host,
                     details: ConsoleOverviewPreviewData.details,
-                    meshRole: snapshot.isMonitoringFailover ? "Fail Over" : "Primary",
-                    uptimeTitle: snapshot.isMonitoringFailover ? "Primary Uptime" : "Uptime",
+                    meshRole: snapshot.isStandbyServicesActive ? "Fail Over" : "Primary",
+                    uptimeTitle: "Uptime",
                     onReviewIssue: { _ in }
                 )
                 ServiceStatusSection(services: snapshot.services, summary: snapshot.servicesSummary, onSelect: { _ in })
                 HStack(alignment: .top, spacing: 28) {
                     QuickActionsSection(actions: ConsoleOverviewPreviewData.actions)
-                    SystemDetailsSection(details: ConsoleOverviewPreviewData.details, meshRole: snapshot.isMonitoringFailover ? "Fail Over" : "Primary")
+                    SystemDetailsSection(details: ConsoleOverviewPreviewData.details, meshRole: snapshot.isStandbyServicesActive ? "Fail Over" : "Primary")
                 }
             }
             .padding(36)

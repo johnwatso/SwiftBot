@@ -18,11 +18,12 @@ struct ConsoleOverviewSnapshot: Equatable {
         /// Every node in the mesh, this Mac included.
         var clusterNodeCount: Int
         var clusterUnhealthyNodeCount: Int
-        var failoverWatchActive: Bool = false
         var clusterWorkerState: ClusterConnectionState = .inactive
         var clusterRuntimeState: ClusterRuntimeState = .idle
         var primaryName: String = "the Primary"
         var ownershipRecoveryActive: Bool = false
+        var configuredClusterMode: ClusterMode? = nil
+        var takeoverReadiness: MeshTakeoverReadiness? = nil
         var clusterDiagnostics: String = ""
         var witnessHealth: MeshWitnessHealth? = nil
         var witnessLeaseValid: Bool = false
@@ -33,18 +34,23 @@ struct ConsoleOverviewSnapshot: Equatable {
 
         var tunnelEnabled: Bool
         var tunnelStatus: AdminWebPublicAccessRuntimeStatus
+
+        var standbyServicesActive: Bool {
+            clusterMode == .standby && [.starting, .listening, .connected].contains(clusterServerState)
+        }
     }
 
     let host: HostStatus
     let services: [ConsoleServiceStatus]
-    let isMonitoringFailover: Bool
+    let isStandbyServicesActive: Bool
     let isWaitingForOwnership: Bool
 
     init(_ inputs: Inputs) {
         let services = ConsoleServiceKind.allCases.map { Self.status(for: $0, inputs) }
         self.services = services
-        self.isMonitoringFailover = inputs.clusterMode == .standby && inputs.failoverWatchActive
+        self.isStandbyServicesActive = inputs.standbyServicesActive
         self.isWaitingForOwnership = inputs.clusterMode == .standby && inputs.ownershipRecoveryActive
+            && inputs.configuredClusterMode != .standby
         self.host = Self.hostStatus(inputs, services: services)
     }
 
@@ -56,8 +62,8 @@ struct ConsoleOverviewSnapshot: Equatable {
     var servicesSummary: String {
         let troubled = services.filter(\.health.needsAttention).count
         if troubled > 0 { return troubled == 1 ? "1 needs attention" : "\(troubled) need attention" }
-        if isMonitoringFailover { return "Failover watch active" }
         if isWaitingForOwnership { return "Waiting for ownership" }
+        if isStandbyServicesActive { return "Standby services active" }
         let healthy = services.filter { $0.health == .healthy }.count
         return healthy == services.count ? "All services healthy" : "\(healthy) of \(services.count) running"
     }
@@ -76,29 +82,44 @@ struct ConsoleOverviewSnapshot: Equatable {
             return make(.pending, "Taking Over…", "SwiftBot is opening its Discord connection as Primary.", nil)
         }
 
-        if inputs.clusterMode == .standby, inputs.ownershipRecoveryActive {
+        if inputs.clusterMode == .standby, inputs.ownershipRecoveryActive, inputs.configuredClusterMode != .standby {
             if let worst = issues.first?.health {
                 return make(worst, "Needs Attention", "SwiftBot is waiting to start. Review the service details below.", nil)
             }
             return make(.pending, "Waiting for Ownership", "SwiftBot is waiting for Ruru ownership before connecting to Discord.", nil)
         }
 
-        if inputs.clusterMode == .standby, inputs.failoverWatchActive {
+        if inputs.clusterMode == .standby {
             if let worst = issues.first?.health {
-                let count = issues.count == 1 ? "1 service needs" : "\(issues.count) services need"
-                return make(worst, "Needs Attention", "Failover watch is active, but \(count) attention.", inputs.uptimeStartedAt)
+                return make(worst, "Needs Attention", "This Mac is standing by. Review the service details below.", nil)
             }
             switch inputs.clusterRuntimeState {
             case .promoting:
-                return make(.pending, "Taking Over…", "SwiftBot is preparing to take over from \(inputs.primaryName).", nil)
+                return make(.pending, "Taking Over…", "SwiftBot is preparing its Discord connection.", nil)
             case .demoting:
-                return make(.pending, "Standing Down…", "SwiftBot is returning control to \(inputs.primaryName).", nil)
+                return make(.pending, "Standing Down…", "SwiftBot is closing its Discord connection.", nil)
             case .recovering:
-                return make(.pending, "Recovering…", "Failover watch is checking \(inputs.primaryName) after a connection interruption.", inputs.uptimeStartedAt)
+                return make(.pending, "Recovering…", "SwiftBot is recovering its standby services.", nil)
             case .idle, .isolated:
                 break
             }
-            return make(.healthy, "Monitoring", "SwiftBot is monitoring \(inputs.primaryName) for failover.", inputs.uptimeStartedAt)
+            if inputs.clusterServerState == .starting {
+                return make(.pending, "Starting Standby…", "SwiftBot is starting this Mac’s standby services.", nil)
+            }
+            if inputs.standbyServicesActive {
+                if inputs.ownershipRecoveryActive, let readiness = inputs.takeoverReadiness {
+                    switch readiness {
+                    case .checking:
+                        return make(.pending, "Checking Standby", readiness.detail, nil)
+                    case .ready:
+                        return make(.healthy, "Standby Ready", readiness.detail, nil)
+                    case .blocked, .stopped:
+                        break
+                    }
+                }
+                return make(.healthy, "Standby", "This Mac is standing by. Discord connects only with ownership.", nil)
+            }
+            return make(.disabled, "Standby Stopped", "This Mac’s standby services are stopped.", nil)
         }
 
         guard inputs.hasToken else {
@@ -107,9 +128,6 @@ struct ConsoleOverviewSnapshot: Equatable {
 
         switch inputs.botStatus {
         case .stopped:
-            if inputs.clusterMode == .standby {
-                return make(.disabled, "Watch Stopped", "Failover watch is stopped. This Mac is not monitoring the Primary.", nil)
-            }
             return make(.disabled, "Stopped", "SwiftBot is stopped.", nil)
         case .connecting:
             return make(.pending, "Starting", "SwiftBot is connecting to Discord…", nil)
@@ -144,11 +162,11 @@ struct ConsoleOverviewSnapshot: Equatable {
         if inputs.clusterRuntimeState == .promoting, inputs.botStatus == .stopped {
             return make(.pending, "Starting…", "Opening gateway after takeover")
         }
-        if inputs.clusterMode == .standby, inputs.failoverWatchActive || inputs.ownershipRecoveryActive {
+        if inputs.clusterMode == .standby, inputs.standbyServicesActive || inputs.ownershipRecoveryActive {
             if inputs.ownershipRecoveryActive {
                 return make(.unavailable, "Standing By", "Waiting for ownership")
             }
-            return make(.unavailable, "Standing By", "Connects only after takeover")
+            return make(.unavailable, "Standing By", "Connects only with ownership")
         }
         if let code = inputs.lastGatewayCloseCode,
            ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(code) {
@@ -201,6 +219,9 @@ struct ConsoleOverviewSnapshot: Equatable {
                         health.operatorDetail(leaseValid: inputs.witnessLeaseValid))
         }
 
+        if inputs.clusterMode == .standby, case .blocked(let reason)? = inputs.takeoverReadiness {
+            return make(.warning, "Takeover Blocked", reason)
+        }
         let role = inputs.clusterMode.displayName
         let peers = max(0, inputs.clusterNodeCount - 1)
         let peersText = peers == 1 ? "1 peer" : "\(peers) peers"
@@ -210,29 +231,41 @@ struct ConsoleOverviewSnapshot: Equatable {
                 return make(.pending, "Taking Over…", "Preparing the Discord connection")
             }
             if inputs.clusterMode == .standby, inputs.ownershipRecoveryActive {
+                if let readiness = inputs.takeoverReadiness {
+                    switch readiness {
+                    case .blocked:
+                        return make(.warning, "Takeover Blocked", readiness.detail)
+                    case .checking:
+                        return make(.pending, "Checking", readiness.detail)
+                    case .ready where inputs.configuredClusterMode == .standby:
+                        return make(.healthy, "Standby Ready", readiness.detail)
+                    case .ready, .stopped:
+                        break
+                    }
+                }
                 if inputs.clusterDiagnostics.hasPrefix("Takeover blocked:"),
                    !inputs.clusterDiagnostics.contains("exclusive ownership unavailable") {
                     return make(.warning, "Takeover Blocked", inputs.clusterDiagnostics)
                 }
                 return make(.pending, "Waiting", "Waiting for Ruru ownership")
             }
-            if inputs.clusterMode == .standby, inputs.failoverWatchActive {
+            if inputs.standbyServicesActive {
                 switch inputs.clusterRuntimeState {
                 case .promoting:
                     return make(.pending, "Taking Over…", "Preparing the Discord connection")
                 case .demoting:
                     return make(.pending, "Standing Down…", "Returning control to the Primary")
                 case .isolated:
-                    return make(.warning, "Primary Unreachable", "Still watching \(inputs.primaryName)")
+                    return make(.warning, "Connection Unavailable", "Check this Mac’s connection to the Primary")
                 case .recovering:
-                    return make(.pending, "Recovering…", "Checking \(inputs.primaryName)")
+                    return make(.pending, "Recovering…", "Restoring standby services")
                 case .idle:
                     break
                 }
                 if inputs.clusterUnhealthyNodeCount > 0 || inputs.clusterWorkerState == .failed || inputs.clusterWorkerState == .degraded {
-                    return make(.warning, "Degraded", "Watch active · check Primary connection")
+                    return make(.warning, "Degraded", "Check this Mac’s connection to the Primary")
                 }
-                return make(.healthy, "Monitoring", "Watching \(inputs.primaryName)")
+                return make(.healthy, "Standby", "Services running · ownership required for Discord")
             }
             if inputs.clusterUnhealthyNodeCount > 0 {
                 return make(.warning, "Degraded", "\(inputs.clusterUnhealthyNodeCount) of \(peersText) unreachable")
@@ -296,11 +329,12 @@ extension AppModel {
             clusterServerState: clusterSnapshot.serverState,
             clusterNodeCount: clusterNodes.count,
             clusterUnhealthyNodeCount: clusterNodes.filter { $0.status != .healthy }.count,
-            failoverWatchActive: clusterSnapshot.isFailoverWatchActive,
             clusterWorkerState: clusterSnapshot.workerState,
             clusterRuntimeState: clusterSnapshot.runtimeState,
             primaryName: clusterNodes.first { $0.role == .leader }?.displayName ?? "the Primary",
             ownershipRecoveryActive: clusterSnapshot.isOwnershipRecoveryActive,
+            configuredClusterMode: settings.clusterMode,
+            takeoverReadiness: clusterSnapshot.takeoverReadiness,
             clusterDiagnostics: clusterSnapshot.diagnostics,
             witnessHealth: meshWitnessEndpoint.isEmpty ? nil : meshWitnessHealth,
             witnessLeaseValid: meshHasValidLocalLease,

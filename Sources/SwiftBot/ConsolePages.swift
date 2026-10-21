@@ -13,17 +13,34 @@ struct DiscordPage: View {
     var body: some View {
         ConsoleSettingsPage(title: "Discord", subtitle: "Bot identity, connection, and server access.") {
             HStack(spacing: 12) {
-                if app.status == .stopped {
-                    Button("Start", systemImage: "play.fill") {
+                if app.clusterSnapshot.runtimeState == .promoting, app.status != .running {
+                    Button("Starting…", systemImage: "arrow.clockwise") {}
+                        .buttonStyle(.glass)
+                        .disabled(true)
+                } else if app.consoleOverviewSnapshot.isWaitingForOwnership {
+                    Button(app.consoleStartTitle, systemImage: "arrow.clockwise") {
+                        Task { await app.startBot() }
+                    }
+                    .buttonStyle(.glass)
+                    .help("Discord opens only after Ruru grants this Mac ownership.")
+                } else if app.consoleOverviewSnapshot.isStandbyServicesActive {
+                    Button("View Standby Status", systemImage: "point.3.connected.trianglepath.dotted") {
+                        app.requestedSidebarItem = .swiftMesh
+                    }
+                    .buttonStyle(.glass)
+                } else if app.status == .stopped {
+                    Button(app.consoleStartTitle, systemImage: "play.fill") {
                         Task { await app.startBot() }
                     }
                     .buttonStyle(.glassProminent)
-                    .disabled(!hasToken)
+                    .disabled(app.settings.clusterMode != .standby && !hasToken)
                 } else {
                     Button("Restart", systemImage: "arrow.clockwise") { isConfirmingRestart = true }
                         .buttonStyle(.glass)
                         .disabled(app.status == .connecting)
-                    Button("Stop", systemImage: "stop.fill") { isConfirmingStop = true }
+                }
+                if app.consoleHasActiveBotRuntime {
+                    Button(app.consoleStopTitle, systemImage: "stop.fill") { isConfirmingStop = true }
                         .buttonStyle(.glass)
                 }
             }
@@ -34,25 +51,23 @@ struct DiscordPage: View {
                     status: status,
                     facts: [
                         ("Bot", app.resolvedBotUsername),
-                        ("Role", app.settings.clusterMode.displayName),
+                        ("Role", app.runtimeClusterMode.displayName),
                         ("Known Servers", String(app.connectedServers.count)),
                         ("Bot Token", hasToken ? "Configured" : "Not configured")
                     ],
-                    footnote: app.isFailoverManagedNode ? "The Primary node manages Discord settings and sends messages." : nil
+                    footnote: app.isFailoverManagedNode ? "This Mac’s Discord output is paused. Host settings and connection diagnostics remain available." : nil
                 )
             }
         } content: {
             DiscordPreferencesView()
             statusSections
         }
-        .confirmationDialog("Stop \(app.resolvedBotUsername)?", isPresented: $isConfirmingStop) {
-            Button(app.settings.clusterMode == .standby ? "Stop Failover Watch" : "Stop Bot", role: .destructive) {
+        .confirmationDialog("\(app.consoleStopTitle)?", isPresented: $isConfirmingStop) {
+            Button(app.consoleStopTitle, role: .destructive) {
                 Task { await app.stopBot() }
             }
         } message: {
-            Text(app.settings.clusterMode == .standby
-                 ? "This Mac stops watching the Primary and won’t take over if the Primary goes down."
-                 : "The bot disconnects from Discord and leaves voice channels. Commands, automations, and monitors pause until you start it again.")
+            Text(app.consoleStopMessage)
         }
         .confirmationDialog("Restart \(app.resolvedBotUsername)?", isPresented: $isConfirmingRestart) {
             Button("Restart") {
@@ -62,9 +77,7 @@ struct DiscordPage: View {
                 }
             }
         } message: {
-            Text(app.settings.clusterMode == .leader
-                 ? "SwiftBot disconnects briefly. A Fail Over node may take over while it restarts."
-                 : "SwiftBot disconnects briefly and then reconnects.")
+            Text(app.consoleRestartMessage)
         }
     }
 
@@ -99,7 +112,9 @@ struct DiscordPage: View {
                 Text("Servers")
             } footer: {
                 if app.status != .running || app.isFailoverManagedNode {
-                    Text("Last known servers. Connect to Discord to refresh this list.")
+                    Text(app.isFailoverManagedNode
+                         ? "Last known servers. SwiftMesh refreshes this list from the active Primary."
+                         : "Last known servers. Connect to Discord to refresh this list.")
                 }
             }
 
@@ -136,7 +151,7 @@ struct DiscordPage: View {
                             }
                             .buttonStyle(.bordered)
                             .buttonBorderShape(.capsule)
-                            .disabled(!hasToken || !app.canRunTestConnection || isTesting || app.isFailoverManagedNode)
+                            .disabled(!hasToken || !app.canRunTestConnection || isTesting)
                         }
                     }
                 }

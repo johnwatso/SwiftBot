@@ -18,7 +18,7 @@ struct DiscordPreferencesView: View {
 
     var body: some View {
         SettingsForm(readOnlyBannerText: app.isFailoverManagedNode
-            ? "Discord settings are managed by the Primary node." : nil) {
+            ? "The active Primary manages shared bot credentials. Startup and connection diagnostics belong to this Mac." : nil) {
             Section {
                 ConsoleSettingRow(title: "Bot Token", symbol: "key") {
                     HStack(spacing: 8) {
@@ -29,6 +29,7 @@ struct DiscordPreferencesView: View {
                             .buttonBorderShape(.capsule)
                     }
                 }
+                .disabled(app.isFailoverManagedNode)
 
                 ConsoleSettingRow(title: "Invite Bot", symbol: "person.badge.plus") {
                     HStack(spacing: 6) {
@@ -45,14 +46,17 @@ struct DiscordPreferencesView: View {
                         SettingsInlineAction("Check Permissions", systemImage: "checkmark.shield") {
                             showingPermissionsCheck = true
                         }
-                        .disabled(!canGenerateInviteLink)
+                        .disabled(!canGenerateInviteLink || app.isFailoverManagedNode)
+                        .help(app.isFailoverManagedNode
+                              ? "Use the active Primary: this sheet also offers Kick & re-invite."
+                              : "Review the bot’s server permissions.")
                     }
                 }
 
                 ConsoleSettingRow(
-                    title: "Connect at Launch",
+                    title: app.settings.clusterMode == .standby ? "Start Standby Services at Launch" : "Start at Launch",
                     symbol: "power",
-                    subtitle: "Start the bot when SwiftBot opens."
+                    subtitle: "Start this Mac’s configured role when SwiftBot opens. Discord connects only with ownership."
                 ) {
                     ConsoleRowSwitch(isOn: $app.settings.autoStart)
                 }
@@ -65,7 +69,6 @@ struct DiscordPreferencesView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .preferencesCardDisabled(when: app.isFailoverManagedNode)
 
         }
         .sheet(isPresented: $showingTokenEditor, onDismiss: resetTokenEditor) {

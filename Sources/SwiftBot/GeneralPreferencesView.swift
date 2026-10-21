@@ -3,15 +3,15 @@ import AppKit
 
 struct GeneralPreferencesView: View {
     @EnvironmentObject var app: AppModel
-    @Environment(\.openWindow) private var openWindow
     @State private var showRunSetupPrompt = false
     @State private var showClearCachePrompt = false
+    @State private var showIntelligenceBridgeSetup = false
+    @State private var intelligenceBridgeStatus: ShortcutIntelligenceBridge.Status?
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
 
     var body: some View {
-        SettingsForm(readOnlyBannerText: app.isFailoverManagedNode
-            ? "Bot settings are read-only on Failover nodes. Recording folders stay local to this Mac." : nil) {
+        SettingsForm {
             Section {
                 Picker("Show SwiftBot as", selection: $app.settings.presenceMode) {
                     ForEach(AppPresenceMode.allCases) { mode in
@@ -19,15 +19,33 @@ struct GeneralPreferencesView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .disabled(app.isFailoverManagedNode)
                 LaunchAtLoginToggle()
-                Button("Open Discord Settings…") {
-                    app.requestedSidebarItem = .discord
-                    openWindow(id: "main")
-                }
-                    .buttonStyle(.borderless)
             } header: {
-                Text("Startup & Services")
+                Text("Application")
+            }
+
+            Section {
+                LabeledContent("Private Cloud Compute") {
+                    if intelligenceBridgeStatus?.isReady == true {
+                        Label("Ready", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+                SettingsSecondaryText(intelligenceBridgeStatus?.detail ?? "Checking SwiftBot’s Apple Intelligence Shortcuts…")
+
+                Button {
+                    showIntelligenceBridgeSetup = true
+                } label: {
+                    Label(
+                        intelligenceBridgeStatus?.isReady == true ? "Manage Shortcuts…" : "Set Up Shortcuts…",
+                        systemImage: "sparkles"
+                    )
+                }
+                .settingsActionButton()
+                .disabled(intelligenceBridgeStatus?.isSupported == false)
+                SettingsSecondaryText("Patchy summarises releases through three optional SwiftBot Shortcuts, then falls back to the on-device model.")
+            } header: {
+                Text("Apple Intelligence")
             }
 
             Section {
@@ -36,8 +54,8 @@ struct GeneralPreferencesView: View {
                 } label: {
                     Label("Run Setup Wizard…", systemImage: "wand.and.stars")
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+                .settingsActionButton()
+                .disabled(app.isFailoverManagedNode)
                 .confirmationDialog(
                     "Run setup again?",
                     isPresented: $showRunSetupPrompt,
@@ -48,19 +66,16 @@ struct GeneralPreferencesView: View {
                 } message: {
                     Text("Returns you to the initial configuration screens. Existing settings are preserved.")
                 }
-            } header: {
-                Text("Setup")
-            }
-            .preferencesCardDisabled(when: app.isFailoverManagedNode)
+                SettingsSecondaryText(app.isFailoverManagedNode
+                    ? "Run shared bot setup on the active Primary. This Mac’s preferences remain available here."
+                    : "Walk through the initial configuration again. Existing settings are kept.")
 
-            Section {
                 Button(role: .destructive) {
                     showClearCachePrompt = true
                 } label: {
                     Label("Clear Cached Data…", systemImage: "trash")
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+                .settingsActionButton()
                 .confirmationDialog(
                     "Clear cached server data?",
                     isPresented: $showClearCachePrompt,
@@ -79,17 +94,32 @@ struct GeneralPreferencesView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Removes cached channel, role, and member names from previously-connected servers. Your settings and token are kept. Restart the bot to repopulate from the current server.")
+                    Text("Removes cached channel, role, and member names on this Mac. Settings and credentials are kept. Names return with the next Discord connection or SwiftMesh sync.")
                 }
+                SettingsSecondaryText("Use this after moving SwiftBot to a different server so stale names don't linger.")
             } header: {
-                Text("Cached Data")
-            } footer: {
-                Text("Use this after moving SwiftBot to a different server so stale names don't linger.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text("Maintenance")
             }
-            .preferencesCardDisabled(when: app.isFailoverManagedNode)
         }
+        .task {
+            intelligenceBridgeStatus = await ShortcutIntelligenceBridge.shared.status()
+        }
+        .sheet(
+            isPresented: $showIntelligenceBridgeSetup,
+            onDismiss: {
+                Task { intelligenceBridgeStatus = await ShortcutIntelligenceBridge.shared.status() }
+            },
+            content: {
+                IntelligenceBridgeSetupView(
+                    completionTitle: "Done",
+                    skipTitle: "Close"
+                ) {
+                    showIntelligenceBridgeSetup = false
+                }
+                .padding(28)
+                .frame(width: 520, height: 560)
+            }
+        )
         .overlay(alignment: .topTrailing) {
             if let transientToastMessage {
                 Text(transientToastMessage)
@@ -99,7 +129,7 @@ struct GeneralPreferencesView: View {
                     .background(.ultraThinMaterial, in: Capsule())
                     .overlay(
                         Capsule()
-                            .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                            .strokeBorder(.separator, lineWidth: 1)
                     )
                     .padding(.trailing, 18)
                     .padding(.top, 10)

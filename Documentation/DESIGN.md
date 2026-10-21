@@ -221,6 +221,47 @@ Avoid a credential/port table or a large explanatory paragraph. The verified
 state has a compact connection result and Open Recordings when sharing was chosen.
 The Ruru operator approves the website; the joining user should see that clearly.
 
+## Native console during failover
+
+A standby remains a manageable Mac. General appearance, app updates, startup,
+local sign-in, website/tunnel configuration, recording storage/sharing and local
+companion pairing remain available regardless of bot ownership. Shared Discord
+credentials, Discord OAuth/access policy and game-provider settings remain
+managed by the active Primary. Work Sharing policy follows runtime ownership,
+including a promoted backup, rather than the configured Primary role.
+
+Apply restrictions to the affected control or shared group, never an entire
+mixed settings page. Explain which settings sync and which belong to this Mac.
+The full setup wizard stays on the active Primary because it can replace shared
+bot configuration. A token REST connection probe is safe on standby; the
+permission-check sheet stays guarded because it also offers Kick & re-invite.
+
+Overview and Discord use the same lifecycle wording. Active standby services can be
+stopped while Discord is disconnected; a promoted backup stops the bot, and a
+returning Primary waiting for ownership offers Retry Start and Stop Recovery.
+Host configuration starts with bot-running intent off. Only an explicit Start
+or the completed autostart path enables ownership acquisition. A settings save
+after Stop cannot restart acquisition; a grant arriving after Stop is returned.
+Eligible Ruru ownership recovery resumes after settings reconciliation and
+after demotion, without restoring the removed peer-health election.
+
+Started Ruru-backed standbys retry ownership every five seconds after local
+preflight; workers and stopped nodes do not participate. SwiftMesh and Overview
+show checking, a specific blocker, or Ready — ownership required. Running the
+listener alone is never takeover readiness. Ordinary standbys waiting for Ruru
+do not display the returning Primary's Retry Start state.
+
+A previously validated snapshot remains usable after its owner disappears;
+snapshot age and reported operational readiness remain diagnostics. Configuration
+and credential imports block activation, and the final post-grant check returns
+the grant if local installation is still in progress. Preferred Primary remains
+advisory. Coordinated handback is supported, but automatic return scheduling is
+still a separate migration item after peer monitoring removal.
+
+Host controls do not grant ownership or bypass output deadlines. Shared editing
+from any node and a richer standby website are a subsequent phase; the existing
+browser mutation guard remains in place.
+
 ## Standby WebUI
 
 The standby homepage is a small status surface with role, bot control, Discord

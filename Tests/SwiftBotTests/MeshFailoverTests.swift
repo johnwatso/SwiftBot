@@ -117,11 +117,25 @@ final class MeshFailoverTests: XCTestCase {
 
     // MARK: - Startup Reconciliation
 
-    func testReturningPrimaryStartsAsStandbyWhenHealthyLeaderExists() async {
+    func testReturningPrimaryWaitsForRuruWhenAnotherNodeHoldsTheLease() async {
+        actor Authority {
+            var owner: String?
+            var term = 0
+            func acquire(_ node: String, minimum: Int) -> Int? {
+                guard owner == nil || owner == node else { return nil }
+                term = max(term + 1, minimum)
+                owner = node
+                return term
+            }
+            func release(_ node: String) { if owner == node { owner = nil } }
+        }
+        let authority = Authority()
         let sharedSecret = "reconcile-secret"
         let activeLeaderAddress = "http://127.0.0.1:39220"
 
         let activeLeader = ClusterCoordinator()
+        await activeLeader.setOwnershipHandlers(acquire: { await authority.acquire("active", minimum: $0) },
+            renew: { _ in .renewed }, release: { _ in await authority.release("active") })
         await activeLeader.applySettings(
             mode: .leader,
             nodeName: "ActiveLeader",
@@ -135,6 +149,8 @@ final class MeshFailoverTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 200_000_000)
 
         let returningPrimary = ClusterCoordinator()
+        await returningPrimary.setOwnershipHandlers(acquire: { await authority.acquire("returning", minimum: $0) },
+            renew: { _ in .renewed }, release: { _ in await authority.release("returning") })
         await returningPrimary.applySettings(
             mode: .leader,
             nodeName: "ReturningPrimary",
@@ -145,7 +161,7 @@ final class MeshFailoverTests: XCTestCase {
         )
 
         let reconciledMode = await returningPrimary.testCurrentMode()
-        XCTAssertEqual(reconciledMode, .standby, "Returning node must demote to standby when a healthy leader already exists")
+        XCTAssertEqual(reconciledMode, .standby, "Ruru’s refused grant keeps the returning node in standby")
 
         var registered = false
         for _ in 0..<15 {

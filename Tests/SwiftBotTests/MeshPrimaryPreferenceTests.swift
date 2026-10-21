@@ -295,9 +295,10 @@ final class MeshPrimaryPreferenceHandbackTests: XCTestCase {
         XCTAssertTrue(returningOwns)
         XCTAssertEqual(holder, "node-b")
         XCTAssertGreaterThan(finalTerm, startTerm)
-        // The old owner released before the new one acquired; nothing was refused.
+        // Preference may trigger an acquisition attempt before handback; Ruru
+        // can refuse that harmlessly. Only the coordinated release grants a successor.
         XCTAssertEqual(Array(events.suffix(2)), ["release:node-a", "acquire:node-b:\(finalTerm)"])
-        XCTAssertFalse(events.contains { $0.hasPrefix("refused") })
+        XCTAssertEqual(events.filter { $0.hasPrefix("acquire:") }.count, 2)
         await returning.stopAll()
         await owner.stopAll()
     }

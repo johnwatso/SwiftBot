@@ -225,6 +225,10 @@ struct SwiftBotApp: App {
             switch url.host {
             case "swiftminer-pair":
                 handleSwiftMinerPairingDeepLink(url)
+            case "intelligence-bridge":
+                Task {
+                    await ShortcutIntelligenceBridge.shared.handleCallback(url)
+                }
             default:
                 break
             }

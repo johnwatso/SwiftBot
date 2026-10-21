@@ -15310,15 +15310,17 @@
       renderChips();
     }
 
-    // Type-ahead for any channel <select> marked data-channel-picker. The
+    // Type-ahead for channel and role selects. The
     // select stays in the DOM (hidden) as the source of truth, so the code that
     // reads .value / .selectedOptions or listens for "change" is unchanged;
     // this only replaces how a channel is found. Same combobox as the
     // Announcer's text-channel picker: never renders more than
     // AC_CHANNEL_RESULT_LIMIT matches. A <select multiple> gets chips.
-    function enhanceChannelSelect(select) {
-      if (select.dataset.channelPickerReady) return;
-      select.dataset.channelPickerReady = 'true';
+    function enhanceDiscordSelect(select) {
+      if (select.dataset.pickerReady) return;
+      select.dataset.pickerReady = 'true';
+      const entity = select.hasAttribute('data-role-picker') ? 'role' : 'channel';
+      const entities = `${entity}s`;
       const multiple = select.multiple;
       const listID = `chPicker${Math.random().toString(36).slice(2, 9)}`;
       const wrap = document.createElement('div');
@@ -15329,8 +15331,8 @@
           ${multiple ? '<i class="lucide" data-lucide="search"></i>' : ''}
           <input class="${multiple ? 'ac-combo-input' : 'field-select ch-picker-input'}" type="text" autocomplete="off" spellcheck="false"
                  role="combobox" aria-expanded="false" aria-controls="${listID}"
-                 aria-label="${escapeHTML(select.getAttribute('aria-label') || 'Channel')}"
-                 placeholder="${multiple ? 'Search channels to add…' : 'Search channels…'}">
+                 aria-label="${escapeHTML(select.getAttribute('aria-label') || (entity === 'role' ? 'Role' : 'Channel'))}"
+                 aria-autocomplete="list" placeholder="Search ${entities}${multiple ? ' to add' : ''}…">
         </div>
         <div id="${listID}" class="ac-combo-list" role="listbox" hidden></div>
       `;
@@ -15343,7 +15345,7 @@
       const options = () => Array.from(select.options);
       const groupOf = (option) => option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.label : '';
       const labelOf = (option) => option.textContent.trim();
-      const searchText = (option) => `${labelOf(option)} ${groupOf(option)}`.replace(/#/g, '').toLowerCase();
+      const searchText = (option) => `${labelOf(option)} ${groupOf(option)}`.replace(/[#@]/g, '').toLowerCase();
       let activeIndex = -1;
       let matches = [];
 
@@ -15363,7 +15365,7 @@
                 <i class="lucide" data-lucide="x"></i>
               </button>
             </span>`).join('')
-          : '<span class="ac-chips-empty">No channels chosen yet.</span>';
+          : `<span class="ac-chips-empty">No ${entities} chosen yet.</span>`;
         chipsNode.querySelectorAll('.ac-chip-remove').forEach(btn => {
           btn.addEventListener('click', () => setSelected(select.options[Number(btn.dataset.index)], false));
         });
@@ -15371,7 +15373,7 @@
       }
 
       function renderOptions() {
-        const query = input.value.trim().replace(/^#/, '').toLowerCase();
+        const query = input.value.trim().replace(/^[#@]/, '').toLowerCase();
         // A single picker shows every channel until the text differs from the
         // current choice, so focusing it doesn't filter down to one row.
         const filtering = query && !(!multiple && select.selectedOptions[0] && input.value === labelOf(select.selectedOptions[0]));
@@ -15380,7 +15382,7 @@
           .filter(o => !filtering || searchText(o).includes(query));
 
         if (matches.length === 0) {
-          listNode.innerHTML = `<div class="ac-combo-empty">${filtering ? 'No channels match' : 'All channels added'}</div>`;
+          listNode.innerHTML = `<div class="ac-combo-empty">${filtering ? `No ${entities} match` : `All ${entities} added`}</div>`;
           activeIndex = -1;
           return;
         }
@@ -15452,7 +15454,9 @@
 
       input.addEventListener('focus', () => { if (!multiple) input.select(); openList(); });
       input.addEventListener('input', () => { activeIndex = -1; openList(); });
-      input.addEventListener('blur', () => setTimeout(() => { closeList(); syncInput(); }, 120));
+      input.addEventListener('blur', () => setTimeout(() => {
+        if (document.activeElement !== input) { closeList(); syncInput(); }
+      }, 120));
       select.addEventListener('change', () => { if (document.activeElement !== input) syncInput(); });
 
       input.addEventListener('keydown', (event) => {
@@ -15482,10 +15486,10 @@
       renderChips();
     }
 
-    // Views and dialogs render with innerHTML, so pick up channel selects
+    // Views and dialogs render with innerHTML, so pick up these selects
     // wherever they appear instead of wiring each one by hand.
     new MutationObserver(() => {
-      document.querySelectorAll('select[data-channel-picker]:not([data-channel-picker-ready])').forEach(enhanceChannelSelect);
+      document.querySelectorAll('select[data-channel-picker]:not([data-picker-ready]), select[data-role-picker]:not([data-picker-ready])').forEach(enhanceDiscordSelect);
     }).observe(document.body, { childList: true, subtree: true });
 
     function renderAnnouncerEditor(config) {
@@ -16114,11 +16118,8 @@
       const roles = patchyData.rolesByServer?.[draft.serverId] || [];
       const selectedRoles = new Set(draft.roleIDs || []);
       const rolesHTML = roles.length
-        ? `<div class="patchy-role-list">${roles.map(role => `
-            <label class="patchy-role-chip">
-              <input type="checkbox" class="pe-role" value="${escapeHTML(role.id)}" ${selectedRoles.has(role.id) ? 'checked' : ''} ${off}>
-              <span>@${escapeHTML(role.name)}</span>
-            </label>`).join('')}</div>`
+        ? `<select id="peRoles" multiple data-role-picker aria-label="Roles to mention" ${off}>${roles.map(role => `
+            <option value="${escapeHTML(role.id)}" ${selectedRoles.has(role.id) ? 'selected' : ''}>@${escapeHTML(role.name)}</option>`).join('')}</select>`
         : '<div class="ub-help">No roles found for this server.</div>';
 
       const accents = ['#76B900', '#ED1C24', '#0071C5', '#2563EB', '#7C3AED', '#0D9488', '#F59E0B'];
@@ -16193,8 +16194,8 @@
       check('peGithubAll', 'githubWatchAllCommits');
       text('peSwiftMinerGame', 'swiftMinerGameName');
 
+      const serverChanged = el('peServer') && draft.serverId !== el('peServer').value;
       if (el('peServer')) {
-        const serverChanged = draft.serverId !== el('peServer').value;
         draft.serverId = el('peServer').value;
         if (serverChanged) {
           // Channels and roles belong to a server; reset them when it changes.
@@ -16205,8 +16206,8 @@
       if (el('peChannel') && textChannelsForServer(draft.serverId).some(c => c.id === el('peChannel').value)) {
         draft.channelId = el('peChannel').value;
       }
-      if (document.querySelector('.pe-role')) {
-        draft.roleIDs = [...document.querySelectorAll('.pe-role:checked')].map(box => box.value);
+      if (!serverChanged && el('peRoles')) {
+        draft.roleIDs = [...el('peRoles').selectedOptions].map(option => option.value);
       }
       if (el('peInterval')) {
         const minutes = parseInt(el('peInterval').value, 10);

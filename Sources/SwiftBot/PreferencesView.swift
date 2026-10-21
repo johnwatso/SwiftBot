@@ -18,13 +18,13 @@ struct PreferencesView: View {
             TabView(selection: $selectedTab) {
                 GeneralPreferencesView()
                     .tabItem {
-                        Label("General", systemImage: "gear")
+                        Label("General", systemImage: "gearshape")
                     }
                     .tag(Self.generalTab)
 
                 UpdatesPreferencesView()
                     .tabItem {
-                        Label("Updates", systemImage: "arrow.clockwise")
+                        Label("Updates", systemImage: "arrow.clockwise.circle")
                     }
                     .tag(Self.updatesTab)
             }
@@ -34,9 +34,12 @@ struct PreferencesView: View {
                     selectedTab = Self.generalTab
                 }
             }
+            .padding(.top, -2)
             .autosavesPreferences(for: app)
         }
-        .frame(width: 720, height: 480)
+        // A fixed, compact height keeps the window from resizing between
+        // tabs; each tab's form scrolls when it needs more room. Matches Otter.
+        .frame(width: 520, height: 360, alignment: .top)
         .background(
             // Hidden view that observes onboarding state and closes window when complete
             PreferencesWindowCloser()

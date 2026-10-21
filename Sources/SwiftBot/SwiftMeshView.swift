@@ -46,7 +46,11 @@ struct SwiftMeshView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The current Primary will demote on its next sync. This may briefly interrupt Discord activity while roles change.")
+            if app.recordingWitnessConfiguration.isValid {
+                Text("SwiftBot checks readiness and requests a coordinated handback or a Ruru lease. Discord connects only after ownership is granted; this action cannot override another Mac’s lease.")
+            } else {
+                Text("This legacy deployment has no Ruru ownership protection. Manual promotion cannot establish exclusive permission during a network interruption.")
+            }
         }
         .confirmationDialog(
             "Run SwiftMesh Handover Test?",
@@ -75,6 +79,9 @@ struct SwiftMeshView: View {
 
     private var statusContent: some View {
         VStack(alignment: .leading, spacing: 24) {
+            if app.runtimeClusterMode == .standby {
+                takeoverReadinessSection
+            }
             clusterMapSection
 
             // Handover Test panel — Configured Primary only, requires at least
@@ -112,6 +119,24 @@ struct SwiftMeshView: View {
             clusterHealthSection
             activityAndWorkSection
             advancedDiagnosticsSection
+        }
+    }
+
+    private var takeoverReadinessSection: some View {
+        let readiness = app.clusterSnapshot.takeoverReadiness
+        return SwiftMeshSection(title: "Takeover", symbol: "shield.lefthalf.filled") {
+            ConsoleSettingRow(title: "Local readiness", symbol: "checkmark.shield", subtitle: readiness.detail) {
+                Text(readiness.title)
+                    .foregroundStyle(takeoverReadinessColor)
+            }
+        }
+    }
+
+    private var takeoverReadinessColor: Color {
+        switch app.clusterSnapshot.takeoverReadiness {
+        case .ready: .green
+        case .blocked: .orange
+        case .checking, .stopped: .secondary
         }
     }
 
@@ -1545,7 +1570,9 @@ struct PromoteToPrimaryPanel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
-            Text("Auto-reclaim disabled. Promote manually any time.")
+            Text(snapshot.isOwnershipRecoveryActive
+                 ? "Takeover requests check local readiness and require a Ruru grant."
+                 : "Automatic takeover is not participating. Review local readiness above.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1555,10 +1582,11 @@ struct PromoteToPrimaryPanel: View {
     private var promoteButton: some View {
         if !snapshot.isHandoverTestActive {
             Button(action: onPromote) {
-                Label("Promote to Primary", systemImage: "arrow.up.circle.fill")
+                Label("Request Takeover", systemImage: "arrow.up.circle.fill")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
+            .help("Retry readiness checks and request ownership. This never bypasses local checks or a Ruru lease.")
         }
     }
 

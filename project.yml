@@ -66,6 +66,9 @@ targets:
       - path: Sources/SwiftBot/Resources/admin
         type: folder
         buildPhase: resources
+      - path: Sources/SwiftBot/Resources/Shortcuts
+        type: folder
+        buildPhase: resources
       - path: Sources/SwiftBot/Resources/Assets.xcassets
         type: file
         buildPhase: resources

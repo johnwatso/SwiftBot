@@ -12,6 +12,7 @@ final class AutomationStore {
 
     private(set) var rules: [Automations.Rule] = []
     private(set) var isLoaded: Bool = false
+    private(set) var hasLoadFailure = false
 
     private let fileURL: URL
     private let logger = Logger(subsystem: "com.swiftbot", category: "automations.store")
@@ -34,6 +35,7 @@ final class AutomationStore {
     // MARK: - Load / Save
 
     func load() {
+        hasLoadFailure = false
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             rules = []
             isLoaded = true
@@ -49,6 +51,7 @@ final class AutomationStore {
             logger.info("Loaded \(self.rules.count) automation(s)")
         } catch {
             logger.error("Failed to load automations: \(error.localizedDescription)")
+            hasLoadFailure = true
             rules = []
             isLoaded = true
         }

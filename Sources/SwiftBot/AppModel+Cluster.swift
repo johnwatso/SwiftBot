@@ -559,6 +559,10 @@ extension AppModel {
 
     @discardableResult
     func applyMeshSyncedConfigFiles(_ data: Data, sourceDescription: String) async -> Bool {
+        meshConfigurationSyncsInFlight += 1
+        defer { meshConfigurationSyncsInFlight -= 1 }
+        let local = await cluster.currentSnapshot()
+        guard local.mode == .standby, local.runtimeState != .promoting, local.runtimeState != .demoting else { return false }
         let result = await store.importMeshSnapshot(data, minimumLeaderTerm: await cluster.currentLeaderTerm())
         guard result.accepted else {
             logs.append("SwiftMesh rejected configuration: \(result.rejectionReason ?? "invalid snapshot")")

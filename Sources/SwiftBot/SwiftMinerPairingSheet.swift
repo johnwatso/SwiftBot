@@ -36,7 +36,7 @@ struct SwiftMinerPairingSheet: View {
                         Toggle("Relay SwiftMiner events to Discord", isOn: $app.settings.swiftMiner.enabled)
                     }
                 } footer: {
-                    Text("Notifications are configured in SwiftMiner. SwiftBot only relays approved events to Discord.")
+                    Text("Pairing stays on this Mac. Notifications are configured in SwiftMiner; this Mac relays approved events only while it owns bot output.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
