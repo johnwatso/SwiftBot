@@ -2644,86 +2644,6 @@
         text-align: left;
       }
     }
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(12px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 220ms ease;
-    }
-
-    .modal-overlay.active {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .modal {
-      width: min(520px, 95vw);
-      max-height: 90vh;
-      display: flex;
-      flex-direction: column;
-      border-radius: var(--radius-xl);
-      padding: 22px 24px;
-      /* Lift the sheet off the scrim — the shared .glass shadow is tuned for
-         in-page cards and reads flat against a dimmed backdrop. */
-      box-shadow:
-        0 24px 64px rgba(0, 0, 0, 0.28),
-        0 2px 8px rgba(0, 0, 0, 0.12);
-      transform: translateY(12px) scale(0.98);
-      transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .modal-overlay.active .modal {
-      transform: translateY(0) scale(1);
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 18px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--glass-stroke);
-    }
-
-    .modal-title {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--cv-text-strong);
-    }
-
-    .modal-body {
-      display: grid;
-      gap: 16px;
-      overflow-y: auto;
-      min-height: 0;
-      flex: 1;
-      /* Room for the focus ring on controls flush against the scroll edge. */
-      margin: 0 -4px;
-      padding: 0 4px;
-    }
-
-    .modal-header,
-    .modal-footer {
-      flex: none;
-    }
-
-    .modal-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-top: 20px;
-      padding-top: 16px;
-      border-top: 1px solid var(--glass-stroke);
-    }
-
     .mesh-pair-modal .modal { width: min(560px, 95vw); padding: 26px; background: var(--cv-shell-bg); }
     .mesh-pair-intro { margin: 0; color: var(--cv-text-muted); font-size: 14px; line-height: 1.5; }
     .mesh-pair-connections { padding: 0 16px; border-radius: 14px; background: var(--cv-surface-2); border: 1px solid var(--cv-border); }
@@ -3258,8 +3178,7 @@
     }
 
     /* Buttons — primary / secondary tuned to Canvas blues */
-    #appShell .primary-action,
-    #modalOverlay .primary-action {
+    #appShell .primary-action {
       background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 88%, #fff), var(--accent, #2563eb));
       color: #fff;
       border: 0;
@@ -3270,15 +3189,11 @@
       box-shadow: 0 10px 20px -8px color-mix(in srgb, var(--accent, #2563eb) 45%, transparent);
       transition: transform 0.15s ease, background 0.2s ease;
     }
-    #appShell .primary-action:hover,
-    #modalOverlay .primary-action:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 75%, #fff), color-mix(in srgb, var(--accent, #2563eb) 92%, #fff)); }
-    #appShell .primary-action:active,
-    #modalOverlay .primary-action:active { transform: scale(0.97); }
+    #appShell .primary-action:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 75%, #fff), color-mix(in srgb, var(--accent, #2563eb) 92%, #fff)); }
+    #appShell .primary-action:active { transform: scale(0.97); }
 
     #appShell .secondary-action,
-    #appShell .mini-btn,
-    #modalOverlay .secondary-action,
-    #modalOverlay .mini-btn {
+    #appShell .mini-btn {
       background: var(--cv-surface-1);
       border: 1px solid var(--cv-border-softer);
       color: var(--cv-text-body);
@@ -3288,9 +3203,7 @@
       transition: background 0.2s ease;
     }
     #appShell .secondary-action:hover,
-    #appShell .mini-btn:hover,
-    #modalOverlay .secondary-action:hover,
-    #modalOverlay .mini-btn:hover { background: var(--cv-surface-1-strong); }
+    #appShell .mini-btn:hover { background: var(--cv-surface-1-strong); }
 
     /* Panel titles inside overview/diagnostics cards */
     #appShell .panel-title {
@@ -4747,8 +4660,7 @@
     #appShell .section-label,
     #appShell .library-section-label,
     #appShell .control-label,
-    #appShell .field-label,
-    #modalOverlay .automation-editor-section h3 {
+    #appShell .field-label {
       text-transform: none;
       letter-spacing: 0;
       font-size: 12.5px;
@@ -4852,13 +4764,7 @@
     #appShell input[type="time"],
     #appShell input[type="date"],
     #appShell select,
-    #appShell textarea,
-    #modalOverlay .field-input,
-    #modalOverlay .field-select,
-    #modalOverlay input[type="text"],
-    #modalOverlay input[type="number"],
-    #modalOverlay select,
-    #modalOverlay textarea {
+    #appShell textarea {
       font: inherit;
       font-size: 14px;
       color: var(--text);
@@ -4871,12 +4777,9 @@
       box-shadow: none;
       transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
     }
-    #appShell textarea,
-    #modalOverlay textarea { line-height: 1.45; }
+    #appShell textarea { line-height: 1.45; }
     #appShell .field-select,
-    #appShell select,
-    #modalOverlay .field-select,
-    #modalOverlay select {
+    #appShell select {
       appearance: none;
       -webkit-appearance: none;
       padding-right: 34px;
@@ -4893,10 +4796,7 @@
     #appShell .field-select:focus,
     #appShell input:focus-visible,
     #appShell select:focus,
-    #appShell textarea:focus,
-    #modalOverlay .field-input:focus,
-    #modalOverlay select:focus,
-    #modalOverlay textarea:focus {
+    #appShell textarea:focus {
       border-color: transparent;
       box-shadow: 0 0 0 3px var(--ub-focus);
     }
@@ -4904,17 +4804,14 @@
     #appShell textarea::placeholder { color: var(--muted); opacity: 0.8; }
 
     /* Buttons: pills. Primary is filled; the rest are soft fills. */
-    #appShell .primary-action,
-    #modalOverlay .primary-action {
+    #appShell .primary-action {
       border-radius: 999px;
       padding: 9px 18px;
       font-size: 14px;
       box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent, #2563eb) 70%, transparent);
     }
     #appShell .secondary-action,
-    #appShell .mini-btn,
-    #modalOverlay .secondary-action,
-    #modalOverlay .mini-btn {
+    #appShell .mini-btn {
       border-radius: 999px;
       background: var(--ub-fill);
       border: 1px solid var(--ub-stroke);
@@ -4926,17 +4823,14 @@
       gap: 6px;
     }
     #appShell .secondary-action:hover,
-    #appShell .mini-btn:hover,
-    #modalOverlay .secondary-action:hover,
-    #modalOverlay .mini-btn:hover { background: var(--ub-fill-hover); }
+    #appShell .mini-btn:hover { background: var(--ub-fill-hover); }
     #appShell .primary-action.mini-btn { background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #2563eb) 88%, #fff), var(--accent, #2563eb)); border: 0; color: #fff; }
     #appShell .mini-btn svg,
     #appShell .secondary-action svg,
     #appShell .primary-action svg { width: 15px; height: 15px; }
     #appShell .icon-btn { border-radius: 999px; }
     #appShell button:focus-visible { outline: 2px solid var(--ub-focus); outline-offset: 2px; }
-    #appShell input[type="checkbox"]:not(.switch input),
-    #modalOverlay input[type="checkbox"] { width: 17px; height: 17px; }
+    #appShell input[type="checkbox"]:not(.switch input) { width: 17px; height: 17px; }
 
     /* Chips and small badges: sentence-case pills. */
     #appShell .chip,
@@ -5008,19 +4902,7 @@
       margin-left: auto;
     }
 
-    /* Dialog footer: secondary actions pinned left, Cancel/Save right. */
-    .modal-footer-start {
-      display: flex;
-      gap: 8px;
-      margin-right: auto;
-      flex-wrap: wrap;
-    }
-    #modalOverlay .secondary-action.is-destructive, #appShell .secondary-action.is-destructive { color: #ff453a; }
-    #modalOverlay .primary-action.is-destructive, #modalOverlay .primary-action.is-destructive:hover {
-      background: linear-gradient(180deg, color-mix(in srgb, #ff453a 88%, #fff), #ff453a);
-      box-shadow: 0 10px 20px -8px color-mix(in srgb, #ff453a 45%, transparent);
-    }
-    #modalOverlay .secondary-action svg { width: 15px; height: 15px; }
+    #appShell .secondary-action.is-destructive { color: #ff453a; }
 
     /* ---- Shared list page: status bar, grouped rows, editor status (Patchy, Lookup) ---- */
     #appShell .ub-status {
@@ -5120,8 +5002,6 @@
     .ub-item.is-off .ub-item-text { opacity: 0.55; }
     #appShell .badge.patchy-dup { color: #ff453a; border-color: rgba(255, 69, 58, 0.35); background: rgba(255, 69, 58, 0.10); }
 
-    .modal-hint.is-ok { color: #30d158; }
-    .modal-hint.is-error { color: #ff453a; }
 
     /* Patchy editor dialog */
     .patchy-role-list { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -5140,9 +5020,6 @@
     .patchy-role-chip input { width: 14px; height: 14px; margin: 0; }
     .patchy-interval { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
     .patchy-interval .field-input { width: 96px; }
-    #modalOverlay .patchy-accent-grid { align-items: center; margin-top: 2px; }
-    #modalOverlay .patchy-accent-chip { appearance: none; padding: 0; border: 2px solid transparent; }
-    #modalOverlay .patchy-accent-chip.selected { border-color: var(--text); box-shadow: 0 0 0 2px rgba(47, 124, 246, 0.6); }
     .patchy-accent-custom { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer; }
     .ub-editor-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .ub-editor-stat {
@@ -5187,8 +5064,6 @@
     .ub-tile-sub { font-size: 12px; color: var(--muted); }
     .ub-help { margin-top: 6px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
     .ub-help strong { color: var(--text); }
-    .modal-hint { font-size: 12.5px; color: #ff9f0a; align-self: center; text-align: right; }
-    .modal-hint:empty { display: none; }
     #modalOverlay .patchy-accent-auto {
       display: grid;
       place-items: center;
@@ -5198,7 +5073,6 @@
       background: var(--ub-fill);
       border: 1px dashed var(--ub-stroke);
     }
-    #modalOverlay .primary-action:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
     @media (max-width: 640px) {
       .ub-item-status { max-width: none; }
@@ -5296,18 +5170,6 @@
       .wiki-grid-commands .we-cmd-desc { display: none; }
     }
 
-    /* Dialogs on phones: labels above fields, footer actions on their own row. */
-    @media (max-width: 640px) {
-      #modalOverlay .automation-editor-row { flex-direction: column; gap: 6px; }
-      #modalOverlay .automation-editor-row > label { width: auto; padding-top: 0; }
-      #modalOverlay .automation-editor-row > div > .field-input,
-      #modalOverlay .automation-editor-row > div > .field-select { width: 100%; }
-      #modalOverlay .modal-footer { flex-wrap: wrap; align-items: center; }
-      #modalOverlay .modal-footer-start { flex-basis: 100%; margin-right: 0; }
-      #modalOverlay .modal-hint { flex-basis: 100%; text-align: left; }
-      #modalOverlay .modal-footer > .secondary-action,
-      #modalOverlay .modal-footer > .primary-action { flex: 1; }
-    }
 
     /* ---- Grouped settings rows (Settings) ---- */
     .ub-settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
@@ -5573,7 +5435,7 @@
     /* Announcement style: summary row on the page, editor in a dialog */
     .gt-style-swatch { width: 34px; height: 34px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--gt-swatch, #f1c40f); color: #1b1b1f; }
     .gt-style-swatch svg { width: 17px; height: 17px; }
-    .gt-style-modal .modal { width: min(1040px, 94vw); }
+    #modalOverlay.gt-style-modal .modal { width: min(1040px, 100%); }
     .gt-style-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 18px; align-items: start; }
     @media (max-width: 860px) { .gt-style-editor { grid-template-columns: minmax(0, 1fr); } }
     .gt-style-editor .automation-editor-row { align-items: center; }
@@ -6521,16 +6383,13 @@
       border-radius: 6px;
     }
 
-    #appShell .primary-action,
-    #modalOverlay .primary-action {
+    #appShell .primary-action {
       border-radius: 8px;
       padding: 7px 12px;
       box-shadow: none;
     }
     #appShell .secondary-action,
-    #appShell .mini-btn,
-    #modalOverlay .secondary-action,
-    #modalOverlay .mini-btn {
+    #appShell .mini-btn {
       border-radius: 8px;
       padding: 7px 11px;
     }
@@ -6666,6 +6525,719 @@
       #appShell .view { padding: 14px 16px 24px; }
       #appShell .section-sticky .section-mini-title { font-size: 19px; }
     }
+
+    /* ============================================================
+       Dialogs — the one stylesheet for :is(#modalOverlay, #confirmOverlay) (showModal) and
+       #confirmOverlay (confirmDialog, which stacks above it).
+       Last in the file on purpose. Everything a dialog draws comes
+       from the --dlg-* tokens below, so light and dark are tuned
+       here rather than per editor.
+       Layout: header (icon, title, status, subtitle, close), a
+       scrolling body, and a footer that stays put. Sections are a
+       heading above one softly filled group of rows.
+       ============================================================ */
+    :is(#modalOverlay, #confirmOverlay) {
+      --dlg-scrim: rgba(4, 6, 12, 0.55);
+      --dlg-bg: #1d1e23;
+      --dlg-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 32px 80px -16px rgba(0, 0, 0, 0.7), 0 4px 14px rgba(0, 0, 0, 0.3);
+      --dlg-divider: rgba(255, 255, 255, 0.07);
+      --dlg-group-bg: rgba(255, 255, 255, 0.035);
+      --dlg-group-border: rgba(255, 255, 255, 0.06);
+      --dlg-card-bg: rgba(255, 255, 255, 0.045);
+      --dlg-card-border: rgba(255, 255, 255, 0.08);
+      --dlg-card-shadow: none;
+      --dlg-control-bg: rgba(255, 255, 255, 0.06);
+      --dlg-control-bg-hover: rgba(255, 255, 255, 0.08);
+      --dlg-control-border: rgba(255, 255, 255, 0.10);
+      --dlg-control-border-hover: rgba(255, 255, 255, 0.20);
+      --dlg-popover-bg: #2a2b31;
+      --dlg-btn-bg: rgba(255, 255, 255, 0.08);
+      --dlg-btn-bg-hover: rgba(255, 255, 255, 0.13);
+      --dlg-icon-tile: rgba(255, 255, 255, 0.07);
+      --dlg-switch-off: rgba(255, 255, 255, 0.16);
+      --dlg-text: rgba(255, 255, 255, 0.94);
+      --dlg-text-2: rgba(235, 235, 245, 0.78);
+      --dlg-text-3: rgba(235, 235, 245, 0.56);
+      --dlg-focus: color-mix(in srgb, var(--accent, #2f7cf6) 55%, transparent);
+      --dlg-success: #30d158;
+      --dlg-info: #64a8ff;
+      --dlg-warning: #ffa733;
+      --dlg-danger: #ff6961;
+      --dlg-radius: 18px;
+      --dlg-control-radius: 10px;
+      --dlg-pad: 24px;
+      /* Content written against the older tokens follows the dialog palette. */
+      --ub-fill: var(--dlg-btn-bg);
+      --ub-fill-hover: var(--dlg-btn-bg-hover);
+      --ub-stroke: var(--dlg-control-border);
+      --ub-divider: var(--dlg-divider);
+      --ub-focus: var(--dlg-focus);
+      --text: var(--dlg-text);
+      --muted: var(--dlg-text-3);
+      accent-color: var(--accent, #2f7cf6);
+    }
+    html[data-theme="light"] :is(#modalOverlay, #confirmOverlay) {
+      --dlg-scrim: rgba(30, 33, 45, 0.24);
+      --dlg-bg: #fcfcfd;
+      --dlg-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 30px 70px -18px rgba(22, 26, 44, 0.32), 0 3px 10px rgba(22, 26, 44, 0.07);
+      --dlg-divider: rgba(0, 0, 0, 0.07);
+      --dlg-group-bg: #f4f4f7;
+      --dlg-group-border: rgba(0, 0, 0, 0.045);
+      --dlg-card-bg: #ffffff;
+      --dlg-card-border: rgba(0, 0, 0, 0.08);
+      --dlg-card-shadow: 0 1px 2px rgba(20, 24, 40, 0.05);
+      --dlg-control-bg: #ffffff;
+      --dlg-control-bg-hover: #ffffff;
+      --dlg-control-border: rgba(0, 0, 0, 0.11);
+      --dlg-control-border-hover: rgba(0, 0, 0, 0.22);
+      --dlg-popover-bg: #ffffff;
+      --dlg-btn-bg: rgba(0, 0, 0, 0.05);
+      --dlg-btn-bg-hover: rgba(0, 0, 0, 0.085);
+      --dlg-icon-tile: rgba(0, 0, 0, 0.045);
+      --dlg-switch-off: rgba(0, 0, 0, 0.13);
+      --dlg-text: #1d1d1f;
+      --dlg-text-2: #3c3c43;
+      --dlg-text-3: #6e6e78;
+      --dlg-success: #1f9d3a;
+      --dlg-info: #0a6cff;
+      --dlg-warning: #c25e00;
+      --dlg-danger: #d70015;
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme]) :is(#modalOverlay, #confirmOverlay) {
+        --dlg-scrim: rgba(30, 33, 45, 0.24);
+        --dlg-bg: #fcfcfd;
+        --dlg-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 30px 70px -18px rgba(22, 26, 44, 0.32), 0 3px 10px rgba(22, 26, 44, 0.07);
+        --dlg-divider: rgba(0, 0, 0, 0.07);
+        --dlg-group-bg: #f4f4f7;
+        --dlg-group-border: rgba(0, 0, 0, 0.045);
+        --dlg-card-bg: #ffffff;
+        --dlg-card-border: rgba(0, 0, 0, 0.08);
+        --dlg-card-shadow: 0 1px 2px rgba(20, 24, 40, 0.05);
+        --dlg-control-bg: #ffffff;
+        --dlg-control-bg-hover: #ffffff;
+        --dlg-control-border: rgba(0, 0, 0, 0.11);
+        --dlg-control-border-hover: rgba(0, 0, 0, 0.22);
+        --dlg-popover-bg: #ffffff;
+        --dlg-btn-bg: rgba(0, 0, 0, 0.05);
+        --dlg-btn-bg-hover: rgba(0, 0, 0, 0.085);
+        --dlg-icon-tile: rgba(0, 0, 0, 0.045);
+        --dlg-switch-off: rgba(0, 0, 0, 0.13);
+        --dlg-text: #1d1d1f;
+        --dlg-text-2: #3c3c43;
+        --dlg-text-3: #6e6e78;
+        --dlg-success: #1f9d3a;
+        --dlg-info: #0a6cff;
+        --dlg-warning: #c25e00;
+        --dlg-danger: #d70015;
+      }
+    }
+
+    /* ---- Shell ---- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: var(--dlg-scrim);
+      backdrop-filter: blur(8px) saturate(120%);
+      -webkit-backdrop-filter: blur(8px) saturate(120%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 180ms ease, visibility 0s linear 180ms;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: opacity 180ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) .modal {
+      position: relative;
+      width: min(580px, 100%);
+      max-height: min(900px, calc(100dvh - 48px));
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      overflow: hidden;
+      color: var(--dlg-text);
+      background: var(--dlg-bg);
+      border: 0;
+      border-radius: var(--dlg-radius);
+      box-shadow: var(--dlg-shadow);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      transform: translateY(8px) scale(0.985);
+      transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    :is(#modalOverlay, #confirmOverlay).active .modal { transform: none; }
+    :is(#modalOverlay, #confirmOverlay).automation-editor-modal .modal { width: min(820px, 100%); }
+    :is(#modalOverlay, #confirmOverlay).modal-sm .modal { width: min(440px, 100%); }
+    :is(#modalOverlay, #confirmOverlay) .modal:focus { outline: none; }
+
+    /* ---- Header ---- */
+    :is(#modalOverlay, #confirmOverlay) .modal-header {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 0;
+      padding: 20px 18px 14px var(--dlg-pad);
+      border-bottom: 1px solid transparent;
+      transition: border-color 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay).is-scrolled .modal-header { border-bottom-color: var(--dlg-divider); }
+    :is(#modalOverlay, #confirmOverlay) .modal-header-icon {
+      flex: none;
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      color: var(--brand, var(--dlg-text-2));
+      background: color-mix(in srgb, var(--brand, #8e8e93) 14%, transparent);
+    }
+    :is(#modalOverlay, #confirmOverlay) .modal-header-icon:empty { display: none; }
+    :is(#modalOverlay, #confirmOverlay) .modal-header-icon svg { width: 24px; height: 24px; }
+    :is(#modalOverlay, #confirmOverlay) .modal-header-icon .patchy-brand-icon { fill: currentColor; }
+    :is(#modalOverlay, #confirmOverlay) .modal-heading { flex: 1; min-width: 0; display: grid; gap: 3px; }
+    :is(#modalOverlay, #confirmOverlay) .modal-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+    :is(#modalOverlay, #confirmOverlay) .modal-title {
+      min-width: 0;
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.25;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      color: var(--dlg-text);
+      overflow-wrap: anywhere;
+    }
+    :is(#modalOverlay, #confirmOverlay) .modal-subtitle {
+      font-size: 13.5px;
+      line-height: 1.4;
+      color: var(--dlg-text-3);
+    }
+    :is(#modalOverlay, #confirmOverlay) .modal-subtitle:empty { display: none; }
+    :is(#modalOverlay, #confirmOverlay) .modal-status:empty { display: none; }
+    :is(#modalOverlay, #confirmOverlay) .modal-header > .modal-close {
+      flex: none;
+      align-self: flex-start;
+      width: 32px;
+      height: 32px;
+      min-height: 32px;
+      padding: 0;
+      border-radius: 50%;
+      color: var(--dlg-text-2);
+    }
+    :is(#modalOverlay, #confirmOverlay) .modal-header > .modal-close svg { width: 16px; height: 16px; }
+
+    /* Status pill: header state and anywhere else a dialog reports one. */
+    :is(#modalOverlay, #confirmOverlay) .dlg-pill {
+      --tone: var(--dlg-text-3);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px 3px 8px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--tone);
+      background: color-mix(in srgb, var(--tone) 13%, transparent);
+      white-space: nowrap;
+    }
+    :is(#modalOverlay, #confirmOverlay) .dlg-pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    :is(#modalOverlay, #confirmOverlay) .dlg-pill[data-tone="success"] { --tone: var(--dlg-success); }
+    :is(#modalOverlay, #confirmOverlay) .dlg-pill[data-tone="info"] { --tone: var(--dlg-info); }
+    :is(#modalOverlay, #confirmOverlay) .dlg-pill[data-tone="warning"] { --tone: var(--dlg-warning); }
+    :is(#modalOverlay, #confirmOverlay) .dlg-pill[data-tone="danger"] { --tone: var(--dlg-danger); }
+
+    /* ---- Body ---- */
+    :is(#modalOverlay, #confirmOverlay) .modal-body {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      align-content: start;
+      gap: 22px;
+      margin: 0;
+      padding: 6px var(--dlg-pad) 22px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--dlg-text);
+    }
+    /* Editors render into one wrapper div; give its sections the same rhythm. */
+    :is(#modalOverlay, #confirmOverlay) :not(.modal-body) > .automation-editor-section + .automation-editor-section { margin-top: 22px; }
+    :is(#modalOverlay, #confirmOverlay) .modal-body > p { margin: 0; }
+    :is(#modalOverlay, #confirmOverlay) .modal-body p + p { margin-top: 0; }
+
+    /* ---- Footer ---- */
+    :is(#modalOverlay, #confirmOverlay) .modal-footer {
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin: 0;
+      padding: 14px 18px 18px var(--dlg-pad);
+      border-top: 1px solid transparent;
+      transition: border-color 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay).has-more .modal-footer { border-top-color: var(--dlg-divider); }
+    :is(#modalOverlay, #confirmOverlay) .modal-footer:empty { display: none; }
+    :is(#modalOverlay, #confirmOverlay) .modal-footer-start {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-right: auto;
+    }
+    :is(#modalOverlay, #confirmOverlay) .modal-hint { font-size: 13px; line-height: 1.35; color: var(--dlg-warning); align-self: center; text-align: right; }
+    :is(#modalOverlay, #confirmOverlay) .modal-hint.is-ok { color: var(--dlg-success); }
+    :is(#modalOverlay, #confirmOverlay) .modal-hint.is-error { color: var(--dlg-danger); }
+    :is(#modalOverlay, #confirmOverlay) .modal-hint:empty { display: none; }
+
+    /* ---- Sections: a heading, then one softly filled group ----
+       The group is drawn by ::before from the heading's row down, so every
+       editor's existing <div class="automation-editor-section"><h3>… markup
+       gets the heading outside the fill without extra wrappers. */
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section {
+      position: relative;
+      isolation: isolate;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-content: start;
+      margin: 0;
+      padding: 0 18px 16px;
+      background: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: var(--dlg-group-bg);
+      border: 1px solid var(--dlg-group-border);
+      border-radius: 14px;
+      pointer-events: none;
+    }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:has(> h3:first-child, > summary:first-child)::before { grid-row: 2 / auto; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:not(:has(> h3:first-child, > summary:first-child)) { padding-top: 16px; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > :is(h3, summary):first-child + * { margin-top: 16px; }
+    :is(#modalOverlay, #confirmOverlay) details.automation-editor-section:not([open]) { padding-bottom: 0; }
+    :is(#modalOverlay, #confirmOverlay) details.automation-editor-section:not([open])::before { display: none; }
+
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > h3,
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > summary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 18px 0 10px;
+      padding: 0;
+      border: 0;
+      font-size: 14px;
+      line-height: 1.3;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      text-transform: none;
+      color: var(--dlg-text);
+    }
+    /* The section's own heading sits above the group; later ones are subheadings inside it. */
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > :is(h3, summary):first-child { gap: 12px; margin: 0 -18px 10px; font-size: 15.5px; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > summary { cursor: pointer; list-style: none; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > summary::-webkit-details-marker { display: none; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > :is(h3, summary) > svg.lucide {
+      flex: none;
+      width: 28px;
+      height: 28px;
+      padding: 6px;
+      margin: 0;
+      border-radius: 8px;
+      color: var(--dlg-text-2);
+      background: var(--dlg-icon-tile);
+      stroke-width: 1.9;
+    }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section > :is(h3, summary):first-child > svg.lucide {
+      width: 34px;
+      height: 34px;
+      padding: 8px;
+      margin: 0;
+      border-radius: 10px;
+      color: var(--dlg-text-2);
+      background: var(--dlg-icon-tile);
+      stroke-width: 1.9;
+    }
+    :is(#modalOverlay, #confirmOverlay) details.automation-editor-section > summary::after {
+      content: "";
+      width: 16px;
+      height: 16px;
+      margin-left: auto;
+      background: var(--ub-chevron) center / 16px no-repeat;
+      transform: rotate(-90deg);
+      transition: transform 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) details.automation-editor-section[open] > summary::after { transform: none; }
+
+    /* Groups of cards (templates, stats) stand on the dialog itself — no fill around them. */
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:has(> .ub-tile-grid, > .ub-editor-stats) { padding-inline: 0; padding-bottom: 0; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:has(> .ub-tile-grid, > .ub-editor-stats) > :is(h3, summary):first-child { margin-inline: 0; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:has(> .ub-tile-grid, > .ub-editor-stats)::before { display: none; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:has(> .ub-tile-grid, > .ub-editor-stats):not(:has(> h3:first-child, > summary:first-child)) { padding-top: 0; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-section:has(> .ub-tile-grid, > .ub-editor-stats) > :is(h3, summary):first-child + * { margin-top: 4px; }
+
+    /* ---- Rows: label column + control ---- */
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-row { display: flex; align-items: flex-start; gap: 16px; margin: 0 0 14px; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-row:last-child { margin-bottom: 0; }
+    :is(#modalOverlay, #confirmOverlay) .automation-editor-row > label {
+      width: 140px;
+      flex: none;
+      padding-top: 9px;
+      font-size: 13.5px;
+      line-height: 1.35;
+      font-weight: 500;
+      color: var(--dlg-text-2);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ac-field-label { font-size: 13.5px; font-weight: 500; color: var(--dlg-text-2); }
+    :is(#modalOverlay, #confirmOverlay) :is(.ub-help, .ac-toggle-desc) { font-size: 12.5px; line-height: 1.45; color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ub-help { margin-top: 6px; }
+    :is(#modalOverlay, #confirmOverlay) .ub-help strong { color: var(--dlg-text); font-weight: 600; }
+    :is(#modalOverlay, #confirmOverlay) .ac-divider { margin: 16px -18px; background: var(--dlg-divider); }
+    :is(#modalOverlay, #confirmOverlay) :is(.ac-note, .wiki-quickstart) {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: var(--dlg-control-radius);
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--dlg-text-2);
+      background: var(--dlg-control-bg);
+      border: 1px solid var(--dlg-control-border);
+    }
+    :is(#modalOverlay, #confirmOverlay) .patchy-dup-note { margin: 0; color: var(--dlg-danger); background: color-mix(in srgb, var(--dlg-danger) 8%, transparent); border-color: color-mix(in srgb, var(--dlg-danger) 25%, transparent); }
+
+    /* ---- Fields ---- */
+    :is(#modalOverlay, #confirmOverlay) :is(.field-input, .field-select, select, textarea,
+      input:is(:not([type]), [type="text"], [type="number"], [type="url"], [type="search"], [type="email"], [type="password"], [type="time"], [type="date"], [type="datetime-local"])) {
+      font: inherit;
+      font-size: 14px;
+      color: var(--dlg-text);
+      height: auto;
+      min-height: 38px;
+      padding: 8px 12px;
+      background-color: var(--dlg-control-bg);
+      border: 1px solid var(--dlg-control-border);
+      border-radius: var(--dlg-control-radius);
+      box-shadow: none;
+      outline: none;
+      transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) textarea { line-height: 1.45; }
+    :is(#modalOverlay, #confirmOverlay) :is(.field-select, select) {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 36px;
+      background-image: var(--ub-chevron);
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 15px 15px;
+    }
+    :is(#modalOverlay, #confirmOverlay) select[multiple] { padding-right: 12px; background-image: none; }
+    :is(#modalOverlay, #confirmOverlay) :is(.field-input, .field-select, select, textarea, input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"])):hover:not(:disabled, :focus) {
+      background-color: var(--dlg-control-bg-hover);
+      border-color: var(--dlg-control-border-hover);
+    }
+    :is(#modalOverlay, #confirmOverlay) :is(.field-input, .field-select, select, textarea, input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"])):focus {
+      border-color: var(--accent, #2f7cf6);
+      box-shadow: 0 0 0 3px var(--dlg-focus);
+    }
+    :is(#modalOverlay, #confirmOverlay) :is(input, textarea)::placeholder { color: var(--dlg-text-3); opacity: 0.85; }
+    :is(#modalOverlay, #confirmOverlay) :is(input, select, textarea, button):disabled { cursor: not-allowed; }
+    :is(#modalOverlay, #confirmOverlay) :is(.field-input, .field-select, select, textarea, input):disabled { opacity: 0.55; }
+    :is(#modalOverlay, #confirmOverlay) input[type="checkbox"],
+    :is(#modalOverlay, #confirmOverlay) input[type="radio"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent, #2f7cf6); cursor: pointer; }
+    :is(#modalOverlay, #confirmOverlay) input[type="checkbox"]:focus-visible,
+    :is(#modalOverlay, #confirmOverlay) input[type="radio"]:focus-visible { outline: 2px solid var(--accent, #2f7cf6); outline-offset: 2px; }
+    :is(#modalOverlay, #confirmOverlay) .wiki-grid .field-input { min-height: 34px; padding: 6px 10px; }
+
+    /* Option rows (title + description) use a switch rather than a bare checkbox. */
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle {
+      align-items: flex-start;
+      gap: 12px;
+      margin: 0 -10px 2px;
+      padding: 8px 10px;
+      border-radius: var(--dlg-control-radius);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle:hover { background: color-mix(in srgb, var(--dlg-text) 3.5%, transparent); }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle-title { font-size: 14px; font-weight: 500; color: var(--dlg-text); }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle > input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      position: relative;
+      flex: none;
+      width: 38px;
+      height: 22px;
+      margin: 0;
+      border-radius: 999px;
+      background: var(--dlg-switch-off);
+      transition: background-color 180ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle > input[type="checkbox"]::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+      transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle > input[type="checkbox"]:checked { background: #30d158; }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle > input[type="checkbox"]:checked::before { transform: translateX(16px); }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle > input[type="checkbox"]:disabled { opacity: 0.5; }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle:has(> input:disabled) { cursor: not-allowed; }
+    :is(#modalOverlay, #confirmOverlay) .ac-toggle:has(> input:disabled):hover { background: transparent; }
+
+    /* Type-ahead pickers (channels, roles): the list is a popover-style surface. */
+    :is(#modalOverlay, #confirmOverlay) .ac-combo-list {
+      margin-top: 6px;
+      padding: 5px;
+      border-radius: 12px;
+      background: var(--dlg-popover-bg);
+      border: 1px solid var(--dlg-control-border);
+      box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.28);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ac-combo-option { padding: 7px 10px; border-radius: 8px; font-size: 13.5px; color: var(--dlg-text); }
+    :is(#modalOverlay, #confirmOverlay) .ac-combo-option.is-active { background: color-mix(in srgb, var(--accent, #2f7cf6) 14%, transparent); }
+    :is(#modalOverlay, #confirmOverlay) :is(.ac-combo-empty, .ac-combo-more, .ac-combo-group) { color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ac-combo > svg { color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ac-chip {
+      padding: 4px 5px 4px 10px;
+      font-size: 12.5px;
+      color: var(--dlg-text);
+      background: var(--dlg-control-bg);
+      border: 1px solid var(--dlg-control-border);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ac-chips-empty { font-size: 12.5px; color: var(--dlg-text-3); }
+
+    /* Colour swatches. */
+    :is(#modalOverlay, #confirmOverlay) .patchy-accent-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+    :is(#modalOverlay, #confirmOverlay) .patchy-accent-chip {
+      appearance: none;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border-radius: 50%;
+      border: 0;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      transition: box-shadow 150ms ease, transform 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) .patchy-accent-chip:hover:not(:disabled) { transform: scale(1.08); }
+    :is(#modalOverlay, #confirmOverlay) .patchy-accent-chip.selected { box-shadow: 0 0 0 2px var(--dlg-bg), 0 0 0 4px var(--accent, #2f7cf6); }
+    :is(#modalOverlay, #confirmOverlay) .patchy-accent-chip:focus-visible { outline: 2px solid var(--accent, #2f7cf6); outline-offset: 3px; }
+    :is(#modalOverlay, #confirmOverlay) .patchy-accent-auto { color: var(--dlg-text-2); background: var(--dlg-control-bg); box-shadow: inset 0 0 0 1px var(--dlg-control-border); }
+    :is(#modalOverlay, #confirmOverlay) input[type="color"] { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+    :is(#modalOverlay, #confirmOverlay) input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    :is(#modalOverlay, #confirmOverlay) input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1); }
+    :is(#modalOverlay, #confirmOverlay) input[type="color"]::-moz-color-swatch { border: 0; border-radius: 50%; }
+
+    /* ---- Buttons ---- */
+    :is(#modalOverlay, #confirmOverlay) :is(.primary-action, .secondary-action, .mini-btn) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 0 16px;
+      border-radius: 999px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 550;
+      line-height: 1;
+      white-space: nowrap;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 100ms ease, filter 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) .primary-action {
+      color: #fff;
+      background: var(--accent, #2f7cf6);
+      border: 0;
+      font-weight: 600;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(0, 0, 0, 0.14);
+    }
+    :is(#modalOverlay, #confirmOverlay) .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--accent, #2f7cf6) 88%, #fff); }
+    :is(#modalOverlay, #confirmOverlay) :is(.secondary-action, .mini-btn) {
+      color: var(--dlg-text);
+      background: var(--dlg-btn-bg);
+      border: 0;
+      box-shadow: none;
+    }
+    :is(#modalOverlay, #confirmOverlay) :is(.secondary-action, .mini-btn):hover:not(:disabled) { background: var(--dlg-btn-bg-hover); }
+    :is(#modalOverlay, #confirmOverlay) .mini-btn { min-height: 32px; padding: 0 12px; font-size: 13px; }
+    :is(#modalOverlay, #confirmOverlay) :is(.primary-action, .secondary-action, .mini-btn):active:not(:disabled) { transform: scale(0.97); }
+    :is(#modalOverlay, #confirmOverlay) :is(.primary-action, .secondary-action, .mini-btn):disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+    :is(#modalOverlay, #confirmOverlay) :is(.primary-action, .secondary-action, .mini-btn):focus-visible { outline: 2px solid var(--accent, #2f7cf6); outline-offset: 2px; }
+    :is(#modalOverlay, #confirmOverlay) :is(.primary-action, .secondary-action, .mini-btn) svg { width: 16px; height: 16px; flex: none; }
+    :is(#modalOverlay, #confirmOverlay) .mini-btn svg { width: 14px; height: 14px; }
+    :is(#modalOverlay, #confirmOverlay) .secondary-action.is-destructive {
+      color: var(--dlg-danger);
+      background: color-mix(in srgb, var(--dlg-danger) 10%, transparent);
+    }
+    :is(#modalOverlay, #confirmOverlay) .secondary-action.is-destructive:hover:not(:disabled) { background: color-mix(in srgb, var(--dlg-danger) 16%, transparent); }
+    :is(#modalOverlay, #confirmOverlay) .primary-action.is-destructive,
+    :is(#modalOverlay, #confirmOverlay) .primary-action.is-destructive:hover:not(:disabled) { background: #e5372c; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.14); }
+    :is(#modalOverlay, #confirmOverlay) .wiki-grid .we-remove { width: 32px; min-height: 32px; padding: 0; }
+
+    /* Repeating cards inside a group (automation steps and conditions). */
+    :is(#modalOverlay, #confirmOverlay) :is(.automation-filter-card, .automation-step-card, .sweep-task) {
+      padding: 14px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      background: var(--dlg-card-bg);
+      border: 1px solid var(--dlg-card-border);
+      box-shadow: var(--dlg-card-shadow);
+    }
+    :is(#modalOverlay, #confirmOverlay) :is(.automation-filter-header, .automation-step-header) {
+      justify-content: flex-start;
+      gap: 6px;
+      margin-bottom: 12px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--dlg-text);
+    }
+    :is(#modalOverlay, #confirmOverlay) :is(.automation-filter-header, .automation-step-header) > :first-child { margin-right: auto; }
+    :is(#modalOverlay, #confirmOverlay) :is(.auto-step-up, .auto-step-down, .auto-step-remove) { width: 32px; padding: 0; }
+
+    /* Choice cards: one option of several (roles, presets, access modes). */
+    :is(#modalOverlay, #confirmOverlay) :is(.access-mode, .ai-preset) {
+      --choice: var(--accent, #2f7cf6);
+      background: var(--dlg-card-bg);
+      border: 1px solid var(--dlg-card-border);
+      box-shadow: var(--dlg-card-shadow);
+      transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) .ai-preset { --choice: var(--tint, var(--accent, #2f7cf6)); }
+    :is(#modalOverlay, #confirmOverlay) :is(.access-mode, .ai-preset):hover { background: var(--dlg-card-bg); border-color: color-mix(in srgb, var(--choice) 40%, var(--dlg-card-border)); }
+    :is(#modalOverlay, #confirmOverlay) :is(.access-mode, .ai-preset).is-selected {
+      border-color: var(--choice);
+      box-shadow: 0 0 0 1px var(--choice);
+      background: color-mix(in srgb, var(--choice) 7%, var(--dlg-card-bg));
+    }
+    :is(#modalOverlay, #confirmOverlay) .access-mode-desc { color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .field-label { font-size: 13px; font-weight: 500; color: var(--dlg-text-2); }
+
+    /* ---- Template and choice tiles ---- */
+    :is(#modalOverlay, #confirmOverlay) .ub-tile-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile-group-title { margin: 18px 2px 8px; font-size: 13px; font-weight: 600; color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile {
+      align-items: flex-start;
+      gap: 12px;
+      padding: 13px 14px;
+      border-radius: 14px;
+      color: var(--dlg-text);
+      background: var(--dlg-card-bg);
+      border: 1px solid var(--dlg-card-border);
+      box-shadow: var(--dlg-card-shadow);
+      transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease, transform 150ms ease;
+    }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile:hover:not([disabled]) {
+      transform: translateY(-1px);
+      background: var(--dlg-card-bg);
+      border-color: color-mix(in srgb, var(--accent, #2f7cf6) 45%, var(--dlg-card-border));
+      box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--accent, #2f7cf6) 55%, transparent);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile:is(.is-selected, .selected, [aria-pressed="true"]) {
+      border-color: var(--accent, #2f7cf6);
+      box-shadow: 0 0 0 1px var(--accent, #2f7cf6);
+      background: color-mix(in srgb, var(--accent, #2f7cf6) 6%, var(--dlg-card-bg));
+    }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile .ub-item-icon { width: 36px; height: 36px; border-radius: 10px; }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile-sub { font-size: 12.5px; line-height: 1.4; color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ub-tile[disabled] { opacity: 0.5; }
+    :is(#modalOverlay, #confirmOverlay) .patchy-picker-lede { margin: 0; color: var(--dlg-text-2); font-size: 14px; }
+
+    /* ---- Status strip: one group, cells split by hairlines ---- */
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0;
+      padding: 4px 0;
+      border-radius: 14px;
+      background: var(--dlg-group-bg);
+      border: 1px solid var(--dlg-group-border);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      column-gap: 10px;
+      row-gap: 2px;
+      padding: 10px 16px;
+      background: none;
+      border-radius: 0;
+      box-shadow: inset 1px 0 0 var(--dlg-divider);
+    }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat:first-child { box-shadow: none; }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat > svg { grid-row: 1 / 3; width: 20px; height: 20px; color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat > svg.is-ok { color: var(--dlg-success); }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat > svg.is-error { color: var(--dlg-danger); }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat > :not(svg) { grid-column: -2; }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat span { font-size: 12px; color: var(--dlg-text-3); }
+    :is(#modalOverlay, #confirmOverlay) .ub-editor-stat strong {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--dlg-text);
+      white-space: normal;
+      overflow: visible;
+      overflow-wrap: anywhere;
+    }
+
+    /* ---- Small screens ---- */
+    @media (max-width: 640px) {
+      :is(#modalOverlay, #confirmOverlay) { --dlg-pad: 18px; padding: 12px; }
+      :is(#modalOverlay, #confirmOverlay) .modal { max-height: calc(100dvh - 24px); }
+      :is(#modalOverlay, #confirmOverlay) .modal-header { padding-top: 16px; }
+      :is(#modalOverlay, #confirmOverlay) .modal-title { font-size: 17.5px; }
+      :is(#modalOverlay, #confirmOverlay) .automation-editor-row { flex-direction: column; align-items: stretch; gap: 6px; }
+      :is(#modalOverlay, #confirmOverlay) .automation-editor-row > label { width: auto; padding-top: 0; }
+      :is(#modalOverlay, #confirmOverlay) .automation-editor-row > div > :is(.field-input, .field-select) { width: 100%; }
+      :is(#modalOverlay, #confirmOverlay) .modal-footer { flex-wrap: wrap; }
+      :is(#modalOverlay, #confirmOverlay) .modal-footer-start { flex-basis: 100%; margin-right: 0; }
+      :is(#modalOverlay, #confirmOverlay) .modal-hint { flex-basis: 100%; text-align: left; }
+      :is(#modalOverlay, #confirmOverlay) .modal-footer > :is(.secondary-action, .primary-action) { flex: 1; }
+      :is(#modalOverlay, #confirmOverlay) .ub-editor-stats { grid-template-columns: minmax(0, 1fr); }
+      :is(#modalOverlay, #confirmOverlay) .ub-editor-stat { box-shadow: inset 0 1px 0 var(--dlg-divider); }
+      :is(#modalOverlay, #confirmOverlay) .ub-editor-stat:first-child { box-shadow: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      :is(#modalOverlay, #confirmOverlay), :is(#modalOverlay, #confirmOverlay) .modal { transition: none; }
+      :is(#modalOverlay, #confirmOverlay) .modal { transform: none; }
+    }
+    :root[data-motion="reduce"] :is(#modalOverlay, #confirmOverlay) .modal { transform: none; }
+    /* Confirmations open over an editor, under toasts (1100). */
+    #confirmOverlay { z-index: 1050; }
+    #confirmOverlay .modal-header { padding-bottom: 6px; }
+    #confirmOverlay .modal-body { padding-bottom: 18px; }
+    #confirmOverlay #confirmMessage { margin: 0; font-size: 14px; color: var(--dlg-text-2); white-space: pre-line; }
+    #confirmOverlay #confirmMessage:empty { display: none; }
   </style>
   <script src="/assets/node-role.js" defer></script>
 </head>
@@ -7631,7 +8203,12 @@
         const message = action === 'stop'
           ? 'Stop the bot? It disconnects from Discord and leaves any voice channels. Commands, automations, and monitors stay paused until you start it again from here.'
           : 'Restart the bot? It disconnects from Discord and connects again, which takes a few seconds.';
-        if (!confirm(message + (leader ? ' SwiftMesh stops too, so a Fail Over node may take over.' : ''))) return;
+        if (!(await confirmDialog({
+          title: action === 'stop' ? 'Stop the bot?' : 'Restart the bot?',
+          message: message.replace(/^(Stop|Restart) the bot\? /, '') + (leader ? ' SwiftMesh stops too, so a Fail Over node may take over.' : ''),
+          confirmLabel: action === 'stop' ? 'Stop' : 'Restart',
+          destructive: action === 'stop'
+        }))) return;
       }
       botActionPending = true;
       if (currentView === 'settings') renderSettingsView();
@@ -7841,7 +8418,11 @@
         }
       });
       panels.querySelector('#updInstall')?.addEventListener('click', async () => {
-        if (!confirm(`Install version ${updatesData.availableVersion || ''} now? SwiftBot quits, updates and reopens. The bot is offline for about a minute, and this page reloads when it’s back.`)) return;
+        if (!(await confirmDialog({
+          title: `Install version ${updatesData.availableVersion || ''} now?`,
+          message: 'SwiftBot quits, updates and reopens. The bot is offline for about a minute, and this page reloads when it’s back.',
+          confirmLabel: 'Install'
+        }))) return;
         if (await post('/api/updates/install', {}, 'Couldn’t start the install.')) {
           setMessage('Installing the update. This page reloads when SwiftBot is back.', 'success');
           waitForRelaunch();
@@ -8306,29 +8887,114 @@
     // so editors that change state as you go can undo on Cancel.
     let modalDismissHandler = null;
 
+    // Where focus returns when the dialog closes.
+    let modalReturnFocus = null;
+
+    // options: wide | small (size), extraClass, and optional header extras —
+    // subtitle (text), icon (trusted HTML; style --brand on the overlay via
+    // iconColor) and status ({ label, tone: success|info|warning|danger }).
     function showModal(title, content, footer, options) {
       modalDismissHandler = null;
+      const overlay = document.getElementById('modalOverlay');
+      const wasOpen = overlay.classList.contains('active');
+      if (!wasOpen) modalReturnFocus = document.activeElement;
       document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalSubtitle').textContent = options?.subtitle || '';
+      const icon = document.getElementById('modalIcon');
+      icon.innerHTML = options?.icon || '';
+      icon.style.setProperty('--brand', options?.iconColor || '');
+      const status = document.getElementById('modalStatus');
+      status.innerHTML = options?.status?.label
+        ? `<span class="dlg-pill" data-tone="${escapeHTML(options.status.tone || '')}">${escapeHTML(options.status.label)}</span>`
+        : '';
       document.getElementById('modalBody').innerHTML = content;
       document.getElementById('modalFooter').innerHTML = footer || '';
-      const overlay = document.getElementById('modalOverlay');
       overlay.classList.toggle('automation-editor-modal', !!options?.wide);
+      overlay.classList.toggle('modal-sm', !!options?.small);
       if (overlay.dataset.extraClass) overlay.classList.remove(overlay.dataset.extraClass);
       overlay.dataset.extraClass = options?.extraClass || '';
       if (options?.extraClass) overlay.classList.add(options.extraClass);
       overlay.classList.add('active');
+      overlay.setAttribute('aria-hidden', 'false');
+      document.getElementById('modalBody').scrollTop = 0;
+      if (icon.innerHTML || status.innerHTML) refreshIcons();
+      updateModalScrollEdges();
+      // Focus the first field (not a button: Enter shouldn't fire an action),
+      // else the dialog itself so Tab starts inside it.
+      requestAnimationFrame(() => {
+        if (!overlay.classList.contains('active')) return;
+        const dialog = overlay.querySelector('.modal');
+        if (dialog.contains(document.activeElement) && document.activeElement !== dialog) return;
+        const field = overlay.querySelector('#modalBody :is(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), textarea, select):not(:disabled)');
+        (field && field.offsetParent && !window.matchMedia('(pointer: coarse)').matches ? field : dialog).focus({ preventScroll: true });
+        updateModalScrollEdges();
+      });
     }
 
     function hideModal() {
       const overlay = document.getElementById('modalOverlay');
       overlay.classList.remove('active');
-      overlay.classList.remove('automation-editor-modal');
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.classList.remove('automation-editor-modal', 'modal-sm', 'is-scrolled', 'has-more');
       if (overlay.dataset.extraClass) overlay.classList.remove(overlay.dataset.extraClass);
       overlay.dataset.extraClass = '';
       const onDismiss = modalDismissHandler;
       modalDismissHandler = null;
       onDismiss?.();
+      const target = modalReturnFocus;
+      modalReturnFocus = null;
+      if (!overlay.classList.contains('active') && target?.isConnected && typeof target.focus === 'function') target.focus({ preventScroll: true });
     }
+
+    // Hairlines under the header / above the footer only while content
+    // scrolls beneath them.
+    function updateModalScrollEdges() {
+      const overlay = document.getElementById('modalOverlay');
+      const body = document.getElementById('modalBody');
+      if (!overlay || !body) return;
+      overlay.classList.toggle('is-scrolled', body.scrollTop > 2);
+      overlay.classList.toggle('has-more', body.scrollHeight - body.clientHeight - body.scrollTop > 2);
+    }
+
+    // Escape closes; Tab stays inside the open dialog.
+    function handleModalKeydown(event) {
+      const overlay = document.getElementById('modalOverlay');
+      // A Replay story plays above the dialog and owns the keyboard.
+      if (!overlay?.classList.contains('active') || document.querySelector('.rs-overlay')) return;
+      if (event.key === 'Escape') {
+        // Pickers and menus inside the dialog close themselves first.
+        if (event.defaultPrevented || event.target.closest?.('[aria-expanded="true"]')) return;
+        event.preventDefault();
+        hideModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const dialog = overlay.querySelector('.modal');
+      const focusable = [...dialog.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+        .filter(el => !el.disabled && el.type !== 'hidden' && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+      if (!focusable.length) { event.preventDefault(); dialog.focus(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', handleModalKeydown);
+    window.addEventListener('resize', updateModalScrollEdges, { passive: true });
+    // The dialog markup comes after this script.
+    const watchModalBody = () => {
+      const body = document.getElementById('modalBody');
+      if (!body) return;
+      body.addEventListener('scroll', updateModalScrollEdges, { passive: true });
+      if (window.ResizeObserver) new ResizeObserver(updateModalScrollEdges).observe(body);
+      new MutationObserver(updateModalScrollEdges).observe(body, { childList: true, subtree: true });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchModalBody);
+    else watchModalBody();
 
     // The server's explanation from a failed postJSON, or a fallback.
     function requestErrorText(error, fallback = 'That didn’t work.') {
@@ -8347,7 +9013,7 @@
         <span id="confirmHint" class="modal-hint"></span>
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
         <button id="confirmDestructive" class="primary-action is-destructive" type="button">${escapeHTML(label)}</button>
-      `);
+      `, { small: true });
       document.getElementById('confirmDestructive').addEventListener('click', async (e) => {
         const button = e.currentTarget;
         button.disabled = true;
@@ -8358,6 +9024,54 @@
           document.getElementById('confirmHint').textContent = requestErrorText(error);
           button.disabled = false;
         }
+      });
+    }
+
+    // The in-app confirm(): resolves true when the person confirms, false on
+    // Cancel or Escape. It has its own overlay above #modalOverlay, so an
+    // open editor stays put underneath while it asks.
+    let confirmDialogFinish = null;
+    function confirmDialog({ title, message = '', confirmLabel = 'OK', destructive = false }) {
+      confirmDialogFinish?.(false);
+      const overlay = document.getElementById('confirmOverlay');
+      const ok = document.getElementById('confirmOK');
+      const cancel = document.getElementById('confirmCancel');
+      const returnFocus = document.activeElement;
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMessage').textContent = message;
+      ok.textContent = confirmLabel;
+      ok.classList.toggle('is-destructive', destructive);
+      overlay.classList.add('active');
+      overlay.setAttribute('aria-hidden', 'false');
+      return new Promise(resolve => {
+        // Captured first so the editor underneath never sees these keys.
+        const onKey = (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            finish(false);
+          } else if (event.key === 'Tab') {
+            event.preventDefault();
+            event.stopPropagation();
+            (document.activeElement === ok ? cancel : ok).focus();
+          }
+        };
+        const finish = (confirmed) => {
+          confirmDialogFinish = null;
+          overlay.classList.remove('active');
+          overlay.setAttribute('aria-hidden', 'true');
+          ok.onclick = null;
+          cancel.onclick = null;
+          document.removeEventListener('keydown', onKey, true);
+          if (returnFocus?.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus({ preventScroll: true });
+          resolve(confirmed);
+        };
+        confirmDialogFinish = finish;
+        ok.onclick = () => finish(true);
+        cancel.onclick = () => finish(false);
+        document.addEventListener('keydown', onKey, true);
+        // Destructive questions default to Cancel, like macOS alerts.
+        requestAnimationFrame(() => (destructive ? cancel : ok).focus());
       });
     }
 
@@ -11467,7 +12181,12 @@
         row.querySelector('[data-announcement-remove]')?.addEventListener('click', () => confirmRemoveEventAnnouncement(rule));
         row.querySelector('.auto-rule-enabled')?.addEventListener('change', async () => {
           const toggle = row.querySelector('.auto-rule-enabled');
-          if (toggle.checked && rule.steps?.some(s => s.kind === 'modifyMember' && s.memberOp === 'ban') && !confirm(`Enable "${rule.name}"? Matching members will be banned. Review its conditions and use Simulate first.`)) {
+          if (toggle.checked && rule.steps?.some(s => s.kind === 'modifyMember' && s.memberOp === 'ban') && !(await confirmDialog({
+            title: `Enable “${rule.name}”?`,
+            message: 'Matching members will be banned. Review its conditions and use Simulate first.',
+            confirmLabel: 'Enable',
+            destructive: true
+          }))) {
             toggle.checked = false;
             return;
           }
@@ -11590,7 +12309,7 @@
       document.getElementById('automationEditorSave')?.addEventListener('click', saveAutomationFromEditor);
       document.getElementById('automationEditorSimulate')?.addEventListener('click', openAutomationSimulator);
       document.getElementById('automationEditorDelete')?.addEventListener('click', async () => {
-        if (!confirm(`Delete "${rule.name || 'this rule'}"?`)) return;
+        if (!(await confirmDialog({ title: `Delete “${rule.name || 'this rule'}”?`, message: 'This can’t be undone.', confirmLabel: 'Delete', destructive: true }))) return;
         await postJSON('/api/automations/delete', { id: rule.id });
         await loadAutomations(category);
         renderAutomationsView(category);
@@ -11712,7 +12431,12 @@
       const { rule, category } = automationEditorState;
       if (!rule.name?.trim()) { alert('Give the rule a name.'); return; }
       if (!rule.steps?.length) { alert('Add at least one step.'); return; }
-      if (rule.enabled && rule.steps.some(s => s.kind === 'modifyMember' && s.memberOp === 'ban') && !confirm(`Save "${rule.name}" with bans enabled? Every member matching its conditions will be banned.`)) return;
+      if (rule.enabled && rule.steps.some(s => s.kind === 'modifyMember' && s.memberOp === 'ban') && !(await confirmDialog({
+        title: `Save “${rule.name}” with bans enabled?`,
+        message: 'Every member matching its conditions will be banned.',
+        confirmLabel: 'Save',
+        destructive: true
+      }))) return;
       rule.category = category;
       const saveButton = document.getElementById('automationEditorSave');
       if (saveButton) saveButton.disabled = true;
@@ -14144,7 +14868,7 @@
       render();
 
       document.getElementById('gtEditorDelete')?.addEventListener('click', async () => {
-        if (!confirm(`Remove ${existing.displayName}? Their saved baseline is removed too.`)) return;
+        if (!(await confirmDialog({ title: `Remove ${existing.displayName}?`, message: 'Their saved baseline is removed too.', confirmLabel: 'Remove', destructive: true }))) return;
         await postGameTrackerUpdate({ action: 'deletePlayer', playerID: existing.id });
         hideModal();
       });
@@ -14519,12 +15243,12 @@
         button.disabled = false;
       });
       document.getElementById('sweepEditorRun')?.addEventListener('click', async () => {
-        if (!confirm(`Run "${existing.name}" now? This acts on Discord immediately.`)) return;
+        if (!(await confirmDialog({ title: `Run “${existing.name}” now?`, message: 'This acts on Discord immediately.', confirmLabel: 'Run now' }))) return;
         await runSweepPolicy(existing.id);
         hideModal();
       });
       document.getElementById('sweepEditorDelete')?.addEventListener('click', async () => {
-        if (!confirm(`Delete "${existing.name}"?`)) return;
+        if (!(await confirmDialog({ title: `Delete “${existing.name}”?`, message: 'This can’t be undone.', confirmLabel: 'Delete', destructive: true }))) return;
         await postJSON('/api/sweep/policy/delete', { policyID: existing.id });
         await loadSweep();
         renderSweepView();
@@ -14801,7 +15525,7 @@
     }
 
     async function deleteSweepPolicy(id) {
-      if (!confirm('Delete this Sweep rule?')) return;
+      if (!(await confirmDialog({ title: 'Delete this Sweep rule?', message: 'This can’t be undone.', confirmLabel: 'Delete', destructive: true }))) return;
       await postJSON('/api/sweep/policy/delete', { policyID: id });
       await loadSweep();
       renderSweepView();
@@ -14982,7 +15706,7 @@
         }
       });
       document.getElementById('announcerDisconnect')?.addEventListener('click', async () => {
-        if (!confirm('Disconnect the announcer? Automatic joins and recovery pause for one hour.')) return;
+        if (!(await confirmDialog({ title: 'Disconnect the announcer?', message: 'Automatic joins and recovery pause for one hour.', confirmLabel: 'Disconnect', destructive: true }))) return;
         try {
           await postJSON('/api/announcer/disconnect', {});
           setMessage('Announcer disconnected. Automatic joins paused for one hour.', 'success');
@@ -15084,7 +15808,7 @@
       `, { wide: true });
 
       document.getElementById('announcerEditorDelete')?.addEventListener('click', async () => {
-        if (!confirm(`Delete "${config.name || 'this voice channel'}"?`)) return;
+        if (!(await confirmDialog({ title: `Delete “${config.name || 'this voice channel'}”?`, message: 'This can’t be undone.', confirmLabel: 'Delete', destructive: true }))) return;
         await postJSON('/api/announcer/config/delete', { id: config.id });
         await loadAnnouncer();
         renderAnnouncerView();
@@ -15965,7 +16689,13 @@
           <button class="secondary-action" type="button" data-action="hideModal">${readOnly ? 'Close' : 'Cancel'}</button>
           ${readOnly ? '' : '<button id="patchyEditorSave" class="primary-action" type="button">Save</button>'}`;
 
-      showModal(title, '<div id="patchyEditorBody"></div>', footer, { wide: true });
+      showModal(title, '<div id="patchyEditorBody"></div>', footer, {
+        wide: true,
+        icon: patchySourceIconHTML(meta),
+        iconColor: meta.color,
+        subtitle: PATCHY_SOURCE_BLURBS[draft.source] || '',
+        status: isNew ? null : (draft.isEnabled ? { label: 'Active', tone: 'success' } : { label: 'Paused' })
+      });
       renderPatchyEditor(draft, readOnly, isNew);
 
       document.getElementById('patchyEditorBack')?.addEventListener('click', openPatchyNewTarget);
@@ -16018,7 +16748,7 @@
         show(...result);
       }));
       document.getElementById('patchyEditorDelete')?.addEventListener('click', async () => {
-        if (!confirm('Delete this Patchy target?')) return;
+        if (!(await confirmDialog({ title: 'Delete this Patchy target?', message: 'This can’t be undone.', confirmLabel: 'Delete', destructive: true }))) return;
         await postJSON('/api/patchy/target/delete', { targetID });
         await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
         renderPatchyView();
@@ -16142,12 +16872,12 @@
         + row('Accent colour', accentHTML)
         + (draft.source === 'SwiftMiner' ? '' : toggle('peAI', draft.summarizeWithAppleIntelligence, 'Summarise with Apple Intelligence', 'Shorten long patch notes before posting.'));
 
-      const statusRow = (label, value, full) => `<div class="ub-editor-stat"><span>${label}</span><strong title="${escapeHTML(full || '')}">${escapeHTML(value)}</strong></div>`;
+      const statusRow = (icon, label, value, full) => `<div class="ub-editor-stat"><i class="lucide" data-lucide="${icon}"></i><span>${label}</span><strong title="${escapeHTML(full || '')}">${escapeHTML(value)}</strong></div>`;
       const status = isNew ? '' : section('activity', 'Status', `
         <div class="ub-editor-stats">
-          ${statusRow('Last check', relativeTime(draft.lastCheckedAt) || 'Never', formatTime(draft.lastCheckedAt))}
-          ${statusRow('Last post', relativeTime(draft.lastRunAt) || 'Never', formatTime(draft.lastRunAt))}
-          ${statusRow('Result', draft.lastStatus || 'Never checked')}
+          ${statusRow('refresh-cw', 'Last check', relativeTime(draft.lastCheckedAt) || 'Never', formatTime(draft.lastCheckedAt))}
+          ${statusRow('send', 'Last post', relativeTime(draft.lastRunAt) || 'Never', formatTime(draft.lastRunAt))}
+          ${statusRow('file-text', 'Latest result', draft.lastStatus || 'Never checked')}
         </div>`);
 
       // New targets chose their source in step one; editing can still switch it.
@@ -16457,7 +17187,7 @@
         hideModal();
       });
       document.getElementById('wikiEditorDelete')?.addEventListener('click', async () => {
-        if (!confirm(`Delete "${draft.name || 'this source'}" and its commands?`)) return;
+        if (!(await confirmDialog({ title: `Delete “${draft.name || 'this source'}”?`, message: 'Its commands are deleted too.', confirmLabel: 'Delete', destructive: true }))) return;
         await postJSON('/api/wikibridge/source/delete', { sourceID });
         await reload();
         hideModal();
@@ -16645,10 +17375,10 @@
       const topItems = (usage?.topItems || []).slice(0, 3).map(item => item.title).join(', ');
       const statusSection = isNew ? '' : section('activity', 'Status', `
         <div class="ub-editor-stats" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-          <div class="ub-editor-stat"><span>Last lookup</span><strong title="${escapeHTML(formatTime(draft.lastLookupAt))}">${escapeHTML(relativeTime(draft.lastLookupAt) || 'Never')}</strong></div>
-          <div class="ub-editor-stat"><span>Result</span><strong>${escapeHTML(draft.lastStatus || 'Never used')}</strong></div>
-          <div class="ub-editor-stat"><span>This week</span><strong>${usage?.lookupsThisWeek || 0} lookup${usage?.lookupsThisWeek === 1 ? '' : 's'}</strong></div>
-          <div class="ub-editor-stat"><span>Asked for most</span><strong>${escapeHTML(topItems || '—')}</strong></div>
+          <div class="ub-editor-stat"><i class="lucide" data-lucide="clock"></i><span>Last lookup</span><strong title="${escapeHTML(formatTime(draft.lastLookupAt))}">${escapeHTML(relativeTime(draft.lastLookupAt) || 'Never')}</strong></div>
+          <div class="ub-editor-stat"><i class="lucide" data-lucide="file-text"></i><span>Result</span><strong>${escapeHTML(draft.lastStatus || 'Never used')}</strong></div>
+          <div class="ub-editor-stat"><i class="lucide" data-lucide="chart-column"></i><span>This week</span><strong>${usage?.lookupsThisWeek || 0} lookup${usage?.lookupsThisWeek === 1 ? '' : 's'}</strong></div>
+          <div class="ub-editor-stat"><i class="lucide" data-lucide="search"></i><span>Asked for most</span><strong>${escapeHTML(topItems || '—')}</strong></div>
         </div>`);
 
       root.innerHTML = sourceSection + commandsSection + trySection + formattingSection + aliasesSection + advanced + statusSection;
@@ -19144,8 +19874,8 @@
           </div>` : ''}
           ${draft.mode === 'Leader' ? `
           <div class="automation-editor-section">
-            <h3>Preferred Primary recovery</h3>
-            <label><input id="meshEdAutomatic" type="checkbox" ${draft.automaticHandback ? 'checked' : ''}> Return to this Primary automatically after catchup</label>
+            <h3><i class="lucide" data-lucide="rotate-ccw"></i> Preferred Primary recovery</h3>
+            <label class="ac-toggle"><input id="meshEdAutomatic" type="checkbox" ${draft.automaticHandback ? 'checked' : ''}><span class="ac-toggle-text"><span class="ac-toggle-title">Return to this Primary automatically after catchup</span></span></label>
             ${field('meshEdReclaim', 'Additional stability window (hours)', draft.autoReclaim, 'type="number" min="0" max="72"')}
             <div class="ub-help">0 uses 60 seconds of stable health. Handback freezes the current owner and copies the latest shared state before this Mac starts sending.</div>
           </div>` : ''}
@@ -21054,14 +21784,33 @@
       }
     })();
   </script>
-  <div id="modalOverlay" class="modal-overlay">
-    <div class="modal glass">
+  <div id="modalOverlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
       <div class="modal-header">
-        <div class="modal-title" id="modalTitle">Modal Title</div>
-        <button class="mini-btn" type="button" data-action="hideModal" aria-label="Close"><i class="lucide" data-lucide="x"></i></button>
+        <div class="modal-header-icon" id="modalIcon" aria-hidden="true"></div>
+        <div class="modal-heading">
+          <div class="modal-title-row">
+            <h2 class="modal-title" id="modalTitle">Modal Title</h2>
+            <span class="modal-status" id="modalStatus"></span>
+          </div>
+          <div class="modal-subtitle" id="modalSubtitle"></div>
+        </div>
+        <button class="mini-btn modal-close" type="button" data-action="hideModal" aria-label="Close"><i class="lucide" data-lucide="x"></i></button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+  <div id="confirmOverlay" class="modal-overlay modal-sm" aria-hidden="true">
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+      <div class="modal-header">
+        <div class="modal-heading"><h2 class="modal-title" id="confirmTitle"></h2></div>
+      </div>
+      <div class="modal-body"><p id="confirmMessage"></p></div>
+      <div class="modal-footer">
+        <button id="confirmCancel" class="secondary-action" type="button">Cancel</button>
+        <button id="confirmOK" class="primary-action" type="button">OK</button>
+      </div>
     </div>
   </div>
   <!-- Every setMessage() result. It used to sit in the hidden Overview
