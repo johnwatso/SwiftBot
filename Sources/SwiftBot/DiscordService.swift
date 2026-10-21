@@ -34,6 +34,10 @@ actor DiscordService {
     func setBotTokenForTesting(_ token: String) {
         botToken = token
     }
+
+    func handleGatewayPayloadForTesting(_ payload: GatewayPayload) async {
+        await handleInboundGatewayPayload(payload)
+    }
     #endif
 
     private let discordLogger = Logger(subsystem: "com.swiftbot", category: "discord")
@@ -46,6 +50,8 @@ actor DiscordService {
     private var automationService: AutomationService?
     private var automationSnapshotProvider: (@Sendable () async -> [Automations.Rule])?
     private var voiceRuleStateStore = VoiceRuleStateStore()
+    /// From READY, so the bot's own voice joins don't fire voice automations.
+    private var gatewayBotUserId: String?
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
     private var channelTypeById: [String: Int] = [:]
     private var guildNamesById: [String: String] = [:]
@@ -680,6 +686,11 @@ actor DiscordService {
     private func processRuleActionsIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0 else { return }
 
+        if payload.t == "READY", case let .object(map)? = payload.d,
+           case let .object(user)? = map["user"], case let .string(id)? = user["id"] {
+            gatewayBotUserId = id
+        }
+
         // Prevent standby nodes from executing rule actions
         guard outputAllowed else { return }
 
@@ -752,12 +763,15 @@ actor DiscordService {
         let newChannel: String?
         if case let .string(cid)? = map["channel_id"] { newChannel = cid } else { newChannel = nil }
 
+        // Still applied below, so the bot's own presence stays tracked.
+        let isBotItself = userId == gatewayBotUserId
         let username = parseUsername(from: map, userId: userId)
         var roleIds: [String]?
         if case let .object(member)? = map["member"], case let .array(roles)? = member["roles"] {
             roleIds = roles.compactMap { if case let .string(id) = $0 { return id }; return nil }
         }
         let transition = voiceRuleStateStore.applyEvent(guildID: guildId, userID: userId, channelID: newChannel, at: now)
+        guard !isBotItself else { return nil }
 
         switch transition {
         case .ignored:

@@ -358,6 +358,53 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
         XCTAssertTrue(accumulator.mockDMs.isEmpty, "The ordinary reply must not run once moderation bans the author")
     }
 
+    // MARK: - Live voice triggers
+
+    /// The "Voice join notify" template, fed raw gateway payloads through
+    /// DiscordService the way a live voice join arrives.
+    func testVoiceJoinGatewayPayloadPostsTheVoiceJoinNotification() async throws {
+        let sends = ThreadSafeAccumulator()
+        let deps = AutomationService.Dependencies(
+            sendMessage: { channel, content, _ in sends.appendLog(line: "\(channel): \(content)") },
+            sendPayloadMessage: { _, _, _ in }, sendDM: { _, _ in }, addReaction: { _, _, _, _ in },
+            deleteMessage: { _, _, _ in }, addRole: { _, _, _, _ in }, removeRole: { _, _, _, _ in },
+            timeoutMember: { _, _, _, _ in }, kickMember: { _, _, _, _ in }, moveMember: { _, _, _, _ in },
+            sendWebhook: { _, _ in }, resolveChannelName: { _, _ in "Lounge" }, resolveGuildName: { _ in "Guild" },
+            log: { _ in }, recordAutomationRun: { _, _, _, _, _, _ in })
+        let engine = AutomationService(aiService: DiscordAIService(session: URLSession.shared), dependencies: deps)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = AutomationStore(fileURL: folder.appendingPathComponent("automations.json"))
+        let notify = try XCTUnwrap(AutomationTemplate.catalog(for: .automation).first { $0.id == "voice-join-notify" }).rule
+        store.setRulesForTesting([notify])
+        let service = DiscordService(session: URLSession(configuration: .ephemeral))
+        await service.setOutputAllowed(true)
+        await service.setBotTokenForTesting("bot-token-999")
+        await service.setAutomationService(engine, store: store)
+
+        func dispatch(_ type: String, _ json: String) async throws {
+            await service.handleGatewayPayloadForTesting(GatewayPayload(op: 0, d: try gatewayJSON(json), s: nil, t: type))
+        }
+        func voiceState(_ user: String, channel: String?, muted: Bool = false) -> String {
+            #"{"guild_id":"g","user_id":"\#(user)","channel_id":\#(channel.map { "\"\($0)\"" } ?? "null"),"self_mute":\#(muted),"member":{"roles":[],"user":{"id":"\#(user)","username":"name-\#(user)"}}}"#
+        }
+
+        try await dispatch("READY", #"{"session_id":"s","user":{"id":"bot-1","username":"SwiftBot"}}"#)
+        // Someone already in voice when the bot connects is not announced.
+        try await dispatch("GUILD_CREATE", #"{"id":"g","name":"Guild","voice_states":[{"user_id":"early","channel_id":"voice-1"}]}"#)
+        try await dispatch("VOICE_STATE_UPDATE", voiceState("early", channel: "voice-1", muted: true))
+        // A member joining is announced in that voice channel's chat.
+        try await dispatch("VOICE_STATE_UPDATE", voiceState("user-2", channel: "voice-1"))
+        // Muting is not a second join.
+        try await dispatch("VOICE_STATE_UPDATE", voiceState("user-2", channel: "voice-1", muted: true))
+        // The bot joining voice for music or the Announcer is not announced.
+        try await dispatch("VOICE_STATE_UPDATE", voiceState("bot-1", channel: "voice-1"))
+        try await dispatch("VOICE_STATE_UPDATE", voiceState("bot-1", channel: nil))
+        try await dispatch("VOICE_STATE_UPDATE", voiceState("bot-1", channel: "voice-1"))
+
+        XCTAssertEqual(sends.mockLogs, ["voice-1: 🔊 <@user-2> has joined #Lounge"])
+    }
+
     // MARK: - Live reaction and slash-command triggers
 
     private func gatewayJSON(_ text: String) throws -> DiscordJSON {
