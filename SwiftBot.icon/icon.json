@@ -1,8 +1,8 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.71777,0.42358,0.95312,1.00000",
-      "display-p3:0.41187,0.52930,0.95703,1.00000"
+      "display-p3:0.69020,0.42353,0.94902,1.00000",
+      "display-p3:0.22745,0.25098,0.76863,1.00000"
     ],
     "orientation" : {
       "start" : {
@@ -11,17 +11,86 @@
       },
       "stop" : {
         "x" : 0.5,
-        "y" : 0.7
+        "y" : 1
       }
     }
   },
   "groups" : [
     {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.10196,0.09804,0.27451,1.00000"
+              }
+            }
+          ],
+          "image-name" : "Eyes.svg",
+          "name" : "Eyes",
+          "position" : {
+            "scale" : 1.35,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.10196,0.09804,0.27451,1.00000"
+              }
+            }
+          ],
+          "image-name" : "Beak.svg",
+          "name" : "Beak",
+          "position" : {
+            "scale" : 1.35,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Face",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
       "blur-material" : 0.5,
       "layers" : [
         {
-          "image-name" : "SwiftBird3.png",
-          "name" : "SwiftBird3",
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:1.00000,1.00000,1.00000,1.00000",
+              "display-p3:0.92549,0.91765,0.98431,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.5,
+                "y" : 0
+              },
+              "stop" : {
+                "x" : 0.5,
+                "y" : 1
+              }
+            }
+          },
+          "image-name" : "Head.svg",
+          "name" : "Head",
           "position" : {
             "scale" : 1.35,
             "translation-in-points" : [
@@ -32,6 +101,7 @@
         }
       ],
       "lighting" : "combined",
+      "name" : "Bird",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
