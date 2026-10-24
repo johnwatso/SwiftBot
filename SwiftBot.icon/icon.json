@@ -3,17 +3,7 @@
     "linear-gradient" : [
       "display-p3:0.69020,0.42353,0.94902,1.00000",
       "display-p3:0.22745,0.25098,0.76863,1.00000"
-    ],
-    "orientation" : {
-      "start" : {
-        "x" : 0.5,
-        "y" : 0
-      },
-      "stop" : {
-        "x" : 0.5,
-        "y" : 1
-      }
-    }
+    ]
   },
   "groups" : [
     {
@@ -77,18 +67,9 @@
             "linear-gradient" : [
               "display-p3:1.00000,1.00000,1.00000,1.00000",
               "display-p3:0.92549,0.91765,0.98431,1.00000"
-            ],
-            "orientation" : {
-              "start" : {
-                "x" : 0.5,
-                "y" : 0
-              },
-              "stop" : {
-                "x" : 0.5,
-                "y" : 1
-              }
-            }
+            ]
           },
+          "hidden" : false,
           "image-name" : "Head.svg",
           "name" : "Head",
           "position" : {
@@ -114,9 +95,6 @@
     }
   ],
   "supported-platforms" : {
-    "circles" : [
-      "watchOS"
-    ],
     "squares" : "shared"
   }
 }
