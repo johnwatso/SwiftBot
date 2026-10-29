@@ -281,7 +281,8 @@ public actor HLSPackager {
 
         // Writer: segmented fMP4 output conforming to the Apple HLS profile.
         // No output file URL — segments are delivered to the delegate.
-        let collector = HLSSegmentCollector(directory: dir, segmentSeconds: segmentSeconds, progressive: quality != nil)
+        let stopRequest = MediaPumpStopRequest()
+        let collector = HLSSegmentCollector(directory: dir, segmentSeconds: segmentSeconds, progressive: quality != nil, stopRequest: stopRequest)
         let writer = AVAssetWriter(contentType: UTType.mpeg4Movie)
         writer.outputFileTypeProfile = .mpeg4AppleHLS
         writer.preferredOutputSegmentInterval = CMTime(seconds: segmentSeconds, preferredTimescale: 600)
@@ -331,37 +332,27 @@ public actor HLSPackager {
         }
         writer.startSession(atSourceTime: .zero)
 
-        let idleReader = QueueConfined(value: reader)
-        let idleWriter = QueueConfined(value: writer)
         let idleMonitor = Task {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(15)) } catch { return }
                 guard quality != nil else { continue }
                 let access = try? dir.appendingPathComponent(".access").resourceValues(forKeys: [.contentModificationDateKey])
                 if Date().timeIntervalSince(access?.contentModificationDate ?? .distantPast) > 90 {
-                    idleReader.value.cancelReading()
-                    idleWriter.value.cancelWriting()
+                    stopRequest.request()
                     return
                 }
             }
         }
         defer { idleMonitor.cancel() }
 
-        // Pump video and audio concurrently; each input drains its reader output
-        // on its own serial queue and marks itself finished at end-of-stream.
-        // Both tracks must be appended before finishWriting so the segmenter can
-        // interleave them on time boundaries.
-        await withTaskCancellationHandler {
-            await Self.pumpSamples(
-                video: (videoOutput, videoInput),
-                audio: (audioOutput != nil && audioInput != nil) ? (audioOutput!, audioInput!) : nil,
-                reader: reader, writer: writer, sourceStart: startTime
-            )
-        } onCancel: {
-            // Let both writer-input callbacks register and drain before cancelling
-            // the writer; cancelling it here races requestMediaDataWhenReady.
-            idleReader.value.cancelReading()
-        }
+        // Interleave both tracks on one queue. Cancellation only signals the
+        // pump; reader teardown must never overlap copyNextSampleBuffer().
+        await Self.pumpSamples(
+            video: (videoOutput, videoInput),
+            audio: (audioOutput != nil && audioInput != nil) ? (audioOutput!, audioInput!) : nil,
+            reader: reader, writer: writer, sourceStart: startTime, stopRequest: stopRequest
+        )
+        idleMonitor.cancel()
         if Task.isCancelled {
             writer.cancelWriting()
             try? collector.finish()
@@ -385,74 +376,85 @@ public actor HLSPackager {
         try collector.finish()
     }
 
-    /// Drains the video (and optional audio) reader outputs into their writer
-    /// inputs, copying compressed sample buffers. Each input runs on its own
-    /// serial queue; a `DispatchGroup` waits for both to reach end-of-stream
-    /// before resuming. The AVFoundation objects never cross a task boundary,
-    /// so this stays clear of Swift 6 `sending` diagnostics.
+    /// Interleaves both tracks on a shared serial queue. Readiness callbacks,
+    /// failure checks and reader cancellation are serialized; completed tracks
+    /// ignore late callbacks before touching any AVFoundation object.
     static func pumpSamples(
         video: (AVAssetReaderTrackOutput, AVAssetWriterInput),
         audio: (AVAssetReaderTrackOutput, AVAssetWriterInput)?,
-        reader: AVAssetReader, writer: AVAssetWriter, sourceStart: CMTime = .zero
+        reader: AVAssetReader, writer: AVAssetWriter, sourceStart: CMTime = .zero,
+        stopRequest: MediaPumpStopRequest = MediaPumpStopRequest()
     ) async {
-        let resumer = ContinuationResumer()
         let group = DispatchGroup()
+        let queue = DispatchQueue(label: "com.swiftbot.media.hls.samples")
+        let sessionReader = QueueConfined(value: reader)
+        let sessionWriter = QueueConfined(value: writer)
 
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            resumer.set(continuation)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                func drain(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput) {
+                    group.enter()
+                    let finished = Once()
+                    let sendableOutput = QueueConfined(value: output)
+                    let sendableInput = QueueConfined(value: input)
+                    let timer = DispatchSource.makeTimerSource(queue: queue)
 
-            func drain(_ output: AVAssetReaderTrackOutput, into input: AVAssetWriterInput, label: String) {
-                group.enter()
-                let queue = DispatchQueue(label: label)
-                let finished = Once()
-                // AVFoundation invokes this callback only on `queue`. Wrap the
-                // queue-confined references so Swift's @Sendable checking does
-                // not mistake the callback handoff for concurrent access.
-                let sendableOutput = QueueConfined(value: output)
-                let sendableInput = QueueConfined(value: input)
-                // A failed reader/writer can stop readiness callbacks entirely.
-                // Observe failure on the same queue so every group entry is balanced.
-                let sessionReader = QueueConfined(value: reader)
-                let sessionWriter = QueueConfined(value: writer)
-                let timer = DispatchSource.makeTimerSource(queue: queue)
-                timer.schedule(deadline: .now() + .milliseconds(250), repeating: .milliseconds(250))
-                timer.setEventHandler {
-                    if [.failed, .cancelled].contains(sessionReader.value.status) || [.failed, .cancelled].contains(sessionWriter.value.status) {
-                        if finished.run() {
-                            if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }
-                            group.leave()
-                        }
+                    @Sendable func finish() {
+                        guard finished.run() else { return }
                         timer.cancel()
+                        timer.setEventHandler {}
+                        if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }
+                        group.leave()
                     }
-                }
-                timer.resume()
-                input.requestMediaDataWhenReady(on: queue) {
-                    while sendableInput.value.isReadyForMoreMediaData {
-                        if let sample = sendableOutput.value.copyNextSampleBuffer() {
+
+                    @Sendable func shouldStop() -> Bool {
+                        if stopRequest.isRequested, sessionReader.value.status == .reading {
+                            sessionReader.value.cancelReading()
+                        }
+                        return stopRequest.isRequested
+                            || [.failed, .cancelled].contains(sessionReader.value.status)
+                            || [.failed, .cancelled].contains(sessionWriter.value.status)
+                    }
+
+                    // Failures and cancellation must also complete inputs whose
+                    // writer has stopped issuing readiness callbacks.
+                    timer.schedule(deadline: .now() + .milliseconds(250), repeating: .milliseconds(250))
+                    timer.setEventHandler {
+                        guard !finished.hasRun else { return }
+                        if shouldStop() { finish() }
+                    }
+                    timer.resume()
+                    input.requestMediaDataWhenReady(on: queue) {
+                        guard !finished.hasRun else { return }
+                        if shouldStop() { finish(); return }
+                        while sendableInput.value.isReadyForMoreMediaData {
+                            if shouldStop() { finish(); return }
+                            guard let sample = sendableOutput.value.copyNextSampleBuffer() else {
+                                finish()
+                                return
+                            }
                             // Segmented writers preserve sample timestamps. Rebase
                             // both tracks together so every seek stream starts at 0.
                             if CMSampleBufferGetPresentationTimeStamp(sample) < sourceStart { continue }
                             guard let rebased = Self.rebasedSample(sample, subtracting: sourceStart),
                                   sendableInput.value.append(rebased) else {
-                                if finished.run() { timer.cancel(); if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }; group.leave() }
+                                stopRequest.request()
+                                finish()
                                 return
                             }
-                        } else {
-                            if finished.run() { timer.cancel(); if sessionWriter.value.status == .writing { sendableInput.value.markAsFinished() }; group.leave() }
-                            return
                         }
                     }
                 }
-            }
 
-            drain(video.0, into: video.1, label: "com.swiftbot.media.hls.video")
-            if let audio {
-                drain(audio.0, into: audio.1, label: "com.swiftbot.media.hls.audio")
-            }
+                drain(video.0, into: video.1)
+                if let audio { drain(audio.0, into: audio.1) }
 
-            group.notify(queue: DispatchQueue(label: "com.swiftbot.media.hls.done")) {
-                resumer.resume()
+                // Resume only after the final callback has returned. Every later
+                // callback checks its terminal flag before accessing the session.
+                group.notify(queue: queue) { continuation.resume() }
             }
+        } onCancel: {
+            stopRequest.request()
         }
     }
 
@@ -488,6 +490,12 @@ private final class Once: @unchecked Sendable {
     private let lock = NSLock()
     private var fired = false
 
+    var hasRun: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return fired
+    }
+
     func run() -> Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -497,24 +505,22 @@ private final class Once: @unchecked Sendable {
     }
 }
 
-/// Resume-once guard for a `CheckedContinuation` captured by an AVFoundation
-/// callback that may fire repeatedly.
-private final class ContinuationResumer: @unchecked Sendable {
+/// Cross-thread stop requests carry no AVFoundation references. Only the sample
+/// queue acts on them, after any active read/append has returned.
+final class MediaPumpStopRequest: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<Void, Never>?
+    private var requested = false
 
-    func set(_ continuation: CheckedContinuation<Void, Never>) {
+    var isRequested: Bool {
         lock.lock()
-        self.continuation = continuation
-        lock.unlock()
+        defer { lock.unlock() }
+        return requested
     }
 
-    func resume() {
+    func request() {
         lock.lock()
-        let cont = continuation
-        continuation = nil
+        requested = true
         lock.unlock()
-        cont?.resume()
     }
 }
 
@@ -535,11 +541,13 @@ private final class HLSSegmentCollector: NSObject, AVAssetWriterDelegate, @unche
     private let progressive: Bool
     private var writeError: Error?
     private var bytesWritten = 0
+    private let stopRequest: MediaPumpStopRequest
 
-    init(directory: URL, segmentSeconds: Double, progressive: Bool) {
+    init(directory: URL, segmentSeconds: Double, progressive: Bool, stopRequest: MediaPumpStopRequest) {
         self.directory = directory
         self.segmentSeconds = segmentSeconds
         self.progressive = progressive
+        self.stopRequest = stopRequest
     }
 
     func assetWriter(
@@ -569,8 +577,7 @@ private final class HLSSegmentCollector: NSObject, AVAssetWriterDelegate, @unche
             }
         } catch {
             writeError = error
-            let failedWriter = QueueConfined(value: writer)
-            DispatchQueue.global(qos: .utility).async { failedWriter.value.cancelWriting() }
+            stopRequest.request()
         }
     }
 

@@ -440,6 +440,72 @@ final class RecordingReliabilityTests: XCTestCase {
         XCTAssertNil(wrongOffset, "An offset cannot reuse another timeline's revision")
     }
 
+    func testSamplePumpHonoursCancellationBeforeCallbacksRegister() async throws {
+        try await exerciseSamplePump(cancelBeforeStarting: true, stopDuringRead: false)
+    }
+
+    func testSamplePumpStopsBothTracksAfterAnInFlightRead() async throws {
+        try await exerciseSamplePump(cancelBeforeStarting: false, stopDuringRead: true)
+    }
+
+    func testSamplePumpIgnoresLateCallbacksAfterFinishing() async throws {
+        try await exerciseSamplePump(cancelBeforeStarting: false, stopDuringRead: false)
+    }
+
+    private func exerciseSamplePump(cancelBeforeStarting: Bool, stopDuringRead: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.mov")
+        try await Self.writeStreamingFixture(to: source)
+        let asset = AVURLAsset(url: source)
+        let reader = try AVAssetReader(asset: asset)
+        let writer = try AVAssetWriter(outputURL: root.appendingPathComponent("output.mov"), fileType: .mov)
+        let stopRequest = MediaPumpStopRequest()
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        let videoOutput = StopDuringReadOutput(track: try XCTUnwrap(videoTracks.first), outputSettings: nil)
+        videoOutput.stopRequest = stopDuringRead ? stopRequest : nil
+        let audioOutput = AVAssetReaderTrackOutput(track: try XCTUnwrap(audioTracks.first), outputSettings: nil)
+        reader.add(videoOutput)
+        reader.add(audioOutput)
+        let videoInput = ReplayableReadinessInput(mediaType: .video, outputSettings: nil)
+        let audioInput = ReplayableReadinessInput(mediaType: .audio, outputSettings: nil)
+        writer.add(videoInput)
+        writer.add(audioInput)
+        XCTAssertTrue(reader.startReading())
+        XCTAssertTrue(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        let done = expectation(description: "Both tracks stop without hanging")
+        let session = SamplePumpTestSession(reader: reader, writer: writer, videoOutput: videoOutput,
+            audioOutput: audioOutput, videoInput: videoInput, audioInput: audioInput)
+        let task = Task {
+            if cancelBeforeStarting { withUnsafeCurrentTask { $0?.cancel() } }
+            await HLSPackager.pumpSamples(video: (session.videoOutput, session.videoInput), audio: (session.audioOutput, session.audioInput),
+                reader: session.reader, writer: session.writer, stopRequest: stopRequest)
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 10)
+        await task.value
+
+        if cancelBeforeStarting || stopDuringRead {
+            XCTAssertEqual(reader.status, .cancelled)
+            XCTAssertEqual(videoOutput.readCount, stopDuringRead ? 1 : 0)
+            writer.cancelWriting()
+        } else {
+            XCTAssertEqual(reader.status, .completed)
+            await writer.finishWriting()
+            XCTAssertEqual(writer.status, .completed)
+        }
+        // Explicitly replay callbacks after terminal teardown: no status/readiness
+        // access is permitted, even if AVFoundation already queued more work.
+        for input in [videoInput, audioInput] {
+            let checks = input.readinessChecks
+            await input.replayCallback()
+            XCTAssertEqual(input.readinessChecks, checks, "A finished track must ignore stale callbacks")
+        }
+    }
+
     private static func writeStreamingFixture(to url: URL) async throws {
         let videoURL = url.deletingLastPathComponent().appendingPathComponent("video.mp4")
         let audioURL = url.deletingLastPathComponent().appendingPathComponent("audio.m4a")
@@ -542,4 +608,70 @@ actor RecordingDownloadCollector {
         data.append(bytes)
         maximumChunk = max(maximumChunk, bytes.count)
     }
+}
+
+/// Requests shutdown while a real copyNextSampleBuffer call is in flight.
+/// Only the pump queue reads/writes readCount; the test observes it after join.
+private final class StopDuringReadOutput: AVAssetReaderTrackOutput {
+    var stopRequest: MediaPumpStopRequest?
+    private(set) var readCount = 0
+
+    override func copyNextSampleBuffer() -> CMSampleBuffer? {
+        readCount += 1
+        stopRequest?.request()
+        return super.copyNextSampleBuffer()
+    }
+}
+
+/// Replays on the original callback queue, after the pump has completed.
+private final class ReplayableReadinessInput: AVAssetWriterInput, @unchecked Sendable {
+    private let stateLock = NSLock()
+    private var checks = 0
+    private var callback: (@Sendable () -> Void)?
+    private var callbackQueue: DispatchQueue?
+
+    var readinessChecks: Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return checks
+    }
+
+    override var isReadyForMoreMediaData: Bool {
+        stateLock.lock()
+        checks += 1
+        stateLock.unlock()
+        return super.isReadyForMoreMediaData
+    }
+
+    override func requestMediaDataWhenReady(on queue: DispatchQueue, using block: @escaping @Sendable () -> Void) {
+        stateLock.lock()
+        callback = block
+        callbackQueue = queue
+        stateLock.unlock()
+        super.requestMediaDataWhenReady(on: queue, using: block)
+    }
+
+    func replayCallback() async {
+        await withCheckedContinuation { continuation in
+            stateLock.lock()
+            let block = callback
+            let queue = callbackQueue
+            stateLock.unlock()
+            guard let queue, let block else { continuation.resume(); return }
+            queue.async {
+                block()
+                continuation.resume()
+            }
+        }
+    }
+}
+
+/// AVFoundation references are exclusively handed to the pump task until join.
+private struct SamplePumpTestSession: @unchecked Sendable {
+    let reader: AVAssetReader
+    let writer: AVAssetWriter
+    let videoOutput: AVAssetReaderTrackOutput
+    let audioOutput: AVAssetReaderTrackOutput
+    let videoInput: AVAssetWriterInput
+    let audioInput: AVAssetWriterInput
 }

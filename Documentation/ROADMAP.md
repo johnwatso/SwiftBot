@@ -9,6 +9,12 @@
 
 ## Recent Engineering Log
 
+### 2026-10-27 — WebUI video playback crash
+
+- [x] `_working-tree_`: Serialized HLS audio/video sample reads and reader cancellation on one queue. Task cancellation, idle expiry and segment-write failures now signal the pump instead of tearing down AVFoundation objects from another thread. Terminal guards reject late readiness/timer callbacks before accessing the reader/writer; completion waits for the last callback to return.
+- [x] Added real A/V pump regressions for cancellation before callback registration, a stop request during a sample read, and deliberately replayed callbacks after teardown. Existing streaming, audio preservation and seek coverage is retained.
+- Validation: Debug app build and all 25 focused `HLSPackagerTests` / `RecordingReliabilityTests` passed, including the three new regressions; `git diff --check` passed. Existing unrelated repository warnings remain. The screenshot identifies `copyNextSampleBuffer()` as the crash site, consistent with the removed race; the original gameplay recording has not been replayed. No release metadata changed.
+
 ### 2026-10-21 — Ordinary standby takeover through Ruru
 
 - [x] Started, configured standbys with a Ruru identity and local preflight now
