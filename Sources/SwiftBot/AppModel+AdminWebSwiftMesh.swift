@@ -1,4 +1,5 @@
 import Foundation
+import RuruClient
 
 /// The WebUI's SwiftMesh page: the same state and actions as `SwiftMeshView`.
 extension AppModel {
@@ -76,7 +77,8 @@ extension AppModel {
             ),
             nodes: nodes,
             iconOptions: SwiftMeshNodeIconCatalog.all.map { .init(symbol: $0.symbol, label: $0.label) },
-            witness: await adminWebSwiftMeshWitness()
+            witness: await adminWebSwiftMeshWitness(),
+            ruruPairing: ruruWebPairing
         )
     }
 
@@ -134,10 +136,58 @@ extension AppModel {
                 settings.clusterNodeIconOverrides.removeValue(forKey: node.displayName)
             }
             saveSettings()
+        case "ruruPair":
+            return startAdminWebRuruPairing(request.pairingCode ?? "")
+        case "ruruPairCancel":
+            ruruWebPairingTask?.cancel()
+            ruruWebPairingTask = nil
+            ruruWebPairing = nil
+            return nil
         default:
             return "Unknown action."
         }
         refreshClusterStatus()
+        return nil
+    }
+
+    /// Pairs with Ruru from the web page: the browser sends only Ruru's
+    /// address and a single-use code, and the token Ruru releases after
+    /// approval goes straight to Keychain. Only a first connection is allowed
+    /// here; changing or removing Ruru stays on this Mac.
+    private func startAdminWebRuruPairing(_ text: String) -> String? {
+        guard !MeshWitnessSettingsStore.load().isConfigured else {
+            return "Ruru is already connected. Change it on this Mac in SwiftMesh → Ruru."
+        }
+        guard ruruWebPairingTask == nil else { return "A pairing request is already waiting for approval in Ruru." }
+        guard let invite = RuruPairingInvite(text) else {
+            return "Paste the whole line Ruru shows under Pair a Server, such as ruru.example.com 7KQ4-M2XP."
+        }
+        let nodeID = meshLocalNodeID, nodeName = settings.clusterNodeName
+        guard !nodeID.isEmpty else { return "This Mac's SwiftMesh identity isn't ready yet. Try again in a moment." }
+        ruruWebPairing = .init(state: "waiting")
+        ruruWebPairingTask = Task { [weak self] in
+            let result: AdminWebSwiftMeshPayload.RuruPairing
+            do {
+                let config = try await RuruPairing.pair(endpoint: invite.endpoint, code: invite.code,
+                                                        nodeID: nodeID, nodeName: nodeName)
+                let saved = MeshWitnessConfiguration(endpoint: config.endpoint.absoluteString,
+                                                     clusterID: config.clusterID, token: config.token)
+                if MeshWitnessSettingsStore.save(saved) {
+                    await self?.configureMeshRecovery()
+                    result = .init(state: "connected")
+                } else {
+                    result = .init(state: "failed", message: "Ruru approved this Mac, but its settings couldn't be saved to Keychain.")
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                result = .init(state: "failed", message: error.localizedDescription)
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.ruruWebPairing = result
+            self.ruruWebPairingTask = nil
+            self.logs.append(result.state == "connected" ? "Ruru connected from the Web UI." : "Ruru pairing from the Web UI failed: \(result.message ?? "")")
+        }
         return nil
     }
 }

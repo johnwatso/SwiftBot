@@ -19362,11 +19362,11 @@
       const state = MESH_WITNESS_STATUS[witness.health] || MESH_WITNESS_STATUS.checking;
       const label = witness.leaseHeld && witness.health === 'ready' ? 'Lease held' : state.label;
       return `
-          <article class="mesh-node mesh-witness${state.status === 'disconnected' ? ' is-off' : ''}" style="--role:#ff9f0a;" title="Ownership witness at ${escapeHTML(witness.host)}">
+          <article class="mesh-node mesh-witness${state.status === 'disconnected' ? ' is-off' : ''}" style="--role:#ff9f0a;" title="Ruru at ${escapeHTML(witness.host)}">
             <div class="mesh-node-header">
               <span class="mesh-node-icon"><i class="lucide" data-lucide="shield-check"></i></span>
               <span class="mesh-node-name">Ruru</span>
-              <span class="mesh-node-role">Witness</span>
+              <span class="mesh-node-role">Ownership</span>
             </div>
             <div class="mesh-node-sub">
               <span class="mesh-status-dot" style="background:${state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span>
@@ -19566,6 +19566,7 @@
     let swiftMeshData = null;
     let swiftMeshPollTimer = null;
     let swiftMeshTickTimer = null;
+    let swiftMeshRuruTimer = null;
 
     async function loadSwiftMesh() {
       const response = await fetch('/api/swiftmesh');
@@ -19670,6 +19671,20 @@
       const valueRow = (title, value, desc = '') => row(title, desc, `<span class="ub-row-value">${escapeHTML(value)}</span>`);
       const switchRow = (id, title, desc, on) => row(title, desc,
         `<label class="switch"><input id="${id}" type="checkbox" ${on ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>`);
+      // Ruru before it's connected: a paste-in pairing, or the request waiting in Ruru.
+      const ruruSetupRow = () => {
+        const pairing = mesh.ruruPairing;
+        if (pairing?.state === 'waiting') {
+          return row('<span class="mesh-status-dot" style="background:var(--muted);"></span> Ruru',
+            'Waiting for approval. In Ruru, open the SwiftBot service and approve this Mac.',
+            '<button id="meshRuruCancel" class="secondary-action" type="button">Cancel</button>');
+        }
+        const desc = pairing?.state === 'failed'
+          ? escapeHTML(pairing.message || 'Pairing didn’t finish.') + ' Create a new code in Ruru and try again.'
+          : 'Ruru runs on a separate Mac and gives one Mac at a time permission to run the bot, so a network split can’t leave both running it.';
+        return row('<span class="mesh-status-dot" style="background:var(--muted);"></span> Ruru', desc,
+          '<button id="meshRuruConnect" class="secondary-action" type="button">Connect Ruru…</button>');
+      };
       const group = (title, body, action = '') => `
         <section class="ub-group">
           <div class="ub-group-head"><h2>${title}</h2>${action}</div>
@@ -19753,6 +19768,9 @@
         : `${mesh.lastJobRoute.charAt(0).toUpperCase() + mesh.lastJobRoute.slice(1)} · ${mesh.lastJobNode}`;
 
       panels.innerHTML = isStandalone ? `
+        ${group('Ruru', mesh.witness
+          ? valueRow('Ruru', 'Connected', `${escapeHTML(mesh.witness.host)} will give one Mac at a time permission to run the bot.`)
+          : ruruSetupRow())}
         <section class="ub-group">
           <div class="ub-group-head"><h2>Set up SwiftMesh</h2></div>
           <div class="mesh-choices">
@@ -19765,7 +19783,6 @@
                   : 'Pair with a Mac that already runs SwiftBot. This one stays in sync and takes over if it goes down.'}</span>
               </button>`).join('')}
           </div>
-          <p class="ub-help settings-host-note"><i class="lucide" data-lucide="shield-check"></i> Optional: add Ruru, an ownership witness on a third Mac, so the Primary and Fail Over can never both run the bot during a network split. Set it up in SwiftBot under SwiftMesh → Ruru.</p>
         </section>
         ${group('This Mac', `
           <button id="meshEdit" class="ub-row ub-row-link" type="button">
@@ -19799,9 +19816,9 @@
               : w.health === 'recovering' ? 'Ruru is reachable and waiting out earlier leases after a restart. New grants and renewals are paused.'
               : `Ruru at ${escapeHTML(w.host)} grants one Mac at a time permission to run the bot.`
             : 'Optional. Without Ruru, a network split between the Macs can leave both running the bot.';
-          const witnessRow = row(`<span class="mesh-status-dot" style="background:${!w ? 'var(--muted)' : state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span> Ruru ownership witness`, desc,
+          const witnessRow = row(`<span class="mesh-status-dot" style="background:${!w ? 'var(--muted)' : state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span> Ruru`, desc,
             `<span class="ub-row-value">${escapeHTML(value)}</span>`);
-          if (!w) return witnessRow;
+          if (!w) return ruruSetupRow();
           // Preferred Primary is Ruru's intent; Current Owner is who runs the bot now.
           const preferred = w.preferredPrimary ? w.preferredPrimary + (w.preferredIsThisMac ? ' (this Mac)' : '') : null;
           const preferredValue = {
@@ -19818,7 +19835,7 @@
             + valueRow('Current Owner', w.currentOwner || 'None', 'The Mac running the bot right now.')
             + valueRow('Preferred Primary', preferredValue, preferredDesc);
         })())}
-        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Manage' : 'Set up'} Ruru on the Primary in SwiftMesh → Ruru. Its connection is included automatically when you pair a backup.</p>
+        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Change or disconnect Ruru on this Mac in SwiftMesh → Ruru. ' : ''}Backups you pair get the Ruru connection automatically.</p>
         ${isLeader ? group('Work sharing', `
           ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
           ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
@@ -19881,6 +19898,40 @@
         'Promote', () => act('promote')));
       panels.querySelectorAll('[data-mesh-forget]').forEach(btn => btn.addEventListener('click', () => confirmThen(`Forget ${btn.dataset.meshForget}?`,
         'It’s removed from the map until it connects again.', 'Forget', () => act('forget', btn.dataset.meshForget))));
+      panels.querySelector('#meshRuruCancel')?.addEventListener('click', () => act('ruruPairCancel'));
+      panels.querySelector('#meshRuruConnect')?.addEventListener('click', () => {
+        showModal('Connect Ruru', `
+          <p class="ub-help" style="margin-top:0;">In Ruru, open the SwiftBot service and choose <strong>Pair a Server → Create Code</strong>. Copy the line it shows and paste it here. You’ll approve this Mac in Ruru; no token is copied.</p>
+          <label class="mesh-field"><span class="field-label">Pairing code</span><input id="meshRuruCode" class="field-input" placeholder="ruru.example.com 7KQ4-M2XP" autocomplete="off" spellcheck="false"></label>`, `
+          <span id="meshRuruHint" class="modal-hint"></span>
+          <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+          <button id="meshRuruRequest" class="primary-action" type="button">Request Pairing</button>`);
+        const input = document.getElementById('meshRuruCode');
+        input.focus();
+        document.getElementById('meshRuruRequest').addEventListener('click', async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            await postJSON('/api/swiftmesh/action', { action: 'ruruPair', pairingCode: input.value });
+            hideModal();
+          } catch (err) {
+            let message = 'That didn’t work.';
+            try { message = JSON.parse(err.message).error || message; } catch {}
+            document.getElementById('meshRuruHint').textContent = message;
+            e.currentTarget.disabled = false;
+            return;
+          }
+          await loadSwiftMesh().catch(() => {});
+          renderSwiftMeshView();
+        });
+      });
+      // Check back quickly while a pairing waits for approval in Ruru.
+      clearTimeout(swiftMeshRuruTimer);
+      if (mesh.ruruPairing?.state === 'waiting') {
+        swiftMeshRuruTimer = setTimeout(async () => {
+          if (currentView !== 'swiftmesh' || document.getElementById('modalOverlay')?.classList.contains('active')) return;
+          try { await loadSwiftMesh(); renderSwiftMeshView(); } catch {}
+        }, 2000);
+      }
       panels.querySelector('#meshRefresh')?.addEventListener('click', async (e) => {
         e.currentTarget.disabled = true;
         await postJSON('/api/swiftmesh/refresh', {}).catch(() => {});

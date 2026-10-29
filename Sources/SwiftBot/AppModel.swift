@@ -305,6 +305,9 @@ final class AppModel: ObservableObject {
     /// Local SwiftBot readiness last submitted to Ruru; display only.
     @Published var meshOperationalReadiness: MeshOperationalReadiness?
     var meshWitnessHealthTask: Task<Void, Never>?
+    /// Ruru pairing started from the WebUI; it waits for approval in Ruru.
+    @Published var ruruWebPairing: AdminWebSwiftMeshPayload.RuruPairing?
+    var ruruWebPairingTask: Task<Void, Never>?
     /// Ruru's Preferred Primary, polled every 5 s while witness-backed SwiftMesh runs.
     @Published var meshPrimaryPreference = MeshPrimaryPreference()
     var meshPrimaryPreferenceTracker = MeshPrimaryPreferenceTracker()

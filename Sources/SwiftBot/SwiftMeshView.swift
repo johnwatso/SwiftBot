@@ -183,7 +183,7 @@ struct SwiftMeshView: View {
                 )
                 Divider()
                 MeshHealthRow(
-                    title: "Ruru Witness",
+                    title: "Ruru",
                     detail: ruruHealthDetail,
                     status: ruruHealthStatus,
                     tone: ruruHealthTone,
@@ -1123,9 +1123,9 @@ private struct ClusterMapWitnessChip: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
         )
-        .help("Ownership witness at \(witness.host)")
+        .help("Ruru at \(witness.host)")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Ruru ownership witness, \(statusText)")
+        .accessibilityLabel("Ruru, \(statusText)")
     }
 }
 

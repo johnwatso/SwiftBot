@@ -168,6 +168,13 @@ struct AdminWebSwiftMeshPayload: Codable {
         var currentOwner: String = ""
     }
     var witness: Witness?
+    /// A pairing started from the web page. Holds no credentials.
+    struct RuruPairing: Codable, Equatable {
+        /// "waiting", "connected" or "failed".
+        let state: String
+        var message: String?
+    }
+    var ruruPairing: RuruPairing?
 }
 
 /// GET /api/member/replay: a member's own Replay for one of their servers.
@@ -209,12 +216,15 @@ struct AdminWebOperatorsPatch: Codable {
 
 /// POST /api/swiftmesh/action.
 struct AdminWebSwiftMeshAction: Codable {
-    /// "handoverTest", "cancelHandoverTest", "promote", "forget" or "setIcon".
+    /// "handoverTest", "cancelHandoverTest", "promote", "forget", "setIcon",
+    /// "ruruPair" or "ruruPairCancel".
     let action: String
     /// The node's display name, for "forget" and "setIcon".
     var node: String?
     /// An SF Symbol from `iconOptions` for "setIcon"; nil returns to auto-detect.
     var icon: String?
+    /// For "ruruPair": the line Ruru shows, such as `ruru.example.com 7KQ4-M2XP`.
+    var pairingCode: String?
 }
 
 /// One-off things the Web UI asks the host to do right now: run the bot,

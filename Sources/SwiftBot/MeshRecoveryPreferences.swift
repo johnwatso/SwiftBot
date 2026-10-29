@@ -18,7 +18,7 @@ struct MeshWitnessPreferencesSection: View {
     var body: some View {
         Section {
             ConsoleSettingRow(
-                title: witness.isConfigured ? "Witness" : "No Witness Configured",
+                title: witness.isConfigured ? "Ruru" : "Ruru Not Set Up",
                 symbol: "shield.lefthalf.filled",
                 subtitle: witnessSummary
             ) {
@@ -31,7 +31,7 @@ struct MeshWitnessPreferencesSection: View {
             }
 
             if witness.isConfigured {
-                LabeledContent("Witness Host") {
+                LabeledContent("Ruru Address") {
                     Text(URL(string: witness.endpoint)?.host ?? witness.endpoint)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -65,7 +65,7 @@ struct MeshWitnessPreferencesSection: View {
                 ? "Required before creating a new SwiftMesh deployment."
                 : "Legacy peer deployment: migrate to Ruru for partition-safe ownership."
         }
-        guard witness.isValid else { return "The saved witness details are incomplete." }
+        guard witness.isValid else { return "The saved Ruru details are incomplete." }
         return "\(URL(string: witness.endpoint)?.host ?? witness.endpoint)"
     }
 
@@ -97,8 +97,6 @@ private struct MeshWitnessEditor: View {
     @State private var manual: MeshWitnessConfiguration
     @State private var typedCode = ""
     @State private var address: String
-    /// Connection details Ruru released after approval, shown for review.
-    @State private var approved: MeshWitnessConfiguration?
     @State private var waiting: Task<Void, Never>?
     @State private var showAdvanced = false
     @State private var error: String?
@@ -121,40 +119,36 @@ private struct MeshWitnessEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Set Up Ruru").font(.title2)
-            Text("Run Ruru on a Mac separate from both bot Macs. In Ruru, open this service’s Connection Details → Pair a Server → Create Code, then enter the code here. You’ll approve the request in Ruru; no token is copied.")
+            Text("In Ruru, open the SwiftBot service and choose Pair a Server → Create Code, then copy the line it shows and paste it here. You’ll approve this Mac in Ruru; no token is copied.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let approved {
-                Form {
-                    LabeledContent("Address") { Text(approved.endpoint).textSelection(.enabled) }
-                    LabeledContent("Cluster ID", value: approved.clusterID)
-                }
-                .formStyle(.grouped)
-                .scrollDisabled(true)
-                .fixedSize(horizontal: false, vertical: true)
-                Button("Pair Again") { self.approved = nil; error = nil }
-            } else {
-                Form {
-                    TextField("Pairing code", text: $typedCode, prompt: Text("7KQ4-M2XP"))
-                        .font(.body.monospaced())
-                    TextField("Ruru address", text: $address, prompt: Text("https://ruru.example.com"))
-                }
-                .formStyle(.grouped)
-                .scrollDisabled(true)
-                .fixedSize(horizontal: false, vertical: true)
-                .disabled(waiting != nil)
-                HStack {
-                    if waiting != nil {
-                        ProgressView().controlSize(.small)
-                        Text("Waiting for approval in Ruru…").foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Stop Waiting") { cancelWaiting() }
-                    } else {
-                        Spacer()
-                        Button("Request Pairing", action: requestPairing)
-                            .disabled(code == nil || !MeshWitnessConfiguration.isValidEndpoint(trimmedAddress))
-                    }
+            Form {
+                TextField("Pairing code", text: $typedCode, prompt: Text("ruru.example.com 7KQ4-M2XP"))
+                    .font(.body.monospaced())
+                TextField("Ruru address", text: $address, prompt: Text("https://ruru.example.com"))
+            }
+            .formStyle(.grouped)
+            .scrollDisabled(true)
+            .fixedSize(horizontal: false, vertical: true)
+            .disabled(waiting != nil)
+            .onChange(of: typedCode) { _, text in
+                // A pasted `address code` line fills both fields.
+                guard let invite = RuruPairingInvite(text) else { return }
+                address = invite.endpoint.absoluteString
+                typedCode = invite.code
+            }
+            HStack {
+                if waiting != nil {
+                    ProgressView().controlSize(.small)
+                    Text("Approve this Mac in Ruru…").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Stop Waiting") { cancelWaiting() }
+                } else {
+                    Spacer()
+                    Button("Request Pairing", action: requestPairing)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(code == nil || !MeshWitnessConfiguration.isValidEndpoint(trimmedAddress))
                 }
             }
 
@@ -185,13 +179,10 @@ private struct MeshWitnessEditor: View {
 
             HStack {
                 if existing.isConfigured {
-                    Button("Remove Witness", role: .destructive) { commit(.init()) }
+                    Button("Disconnect Ruru", role: .destructive) { commit(.init()) }
                 }
                 Spacer()
                 Button("Cancel") { cancelWaiting(); dismiss() }
-                Button("Connect") { if let approved { commit(approved) } }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(approved == nil)
             }
         }
         .padding(24)
@@ -199,8 +190,8 @@ private struct MeshWitnessEditor: View {
         .onDisappear { cancelWaiting() }
     }
 
-    /// Sends the code to Ruru and waits for approval there. Nothing is saved
-    /// until the operator reviews the result and chooses Connect.
+    /// Sends the code to Ruru and waits for approval there. Approving in Ruru
+    /// is the operator's confirmation, so the result is saved straight away.
     private func requestPairing() {
         guard let code else { return }
         guard MeshWitnessConfiguration.isValidEndpoint(trimmedAddress) else {
@@ -218,9 +209,10 @@ private struct MeshWitnessEditor: View {
                 guard let url = URL(string: address) else { return }
                 let ruruConfig = try await RuruPairing.pair(endpoint: url, code: code,
                                                             nodeID: nodeID, nodeName: nodeName)
-                approved = MeshWitnessConfiguration(endpoint: ruruConfig.endpoint.absoluteString,
-                                                     clusterID: ruruConfig.clusterID, token: ruruConfig.token)
-                typedCode = ""
+                waiting = nil
+                commit(MeshWitnessConfiguration(endpoint: ruruConfig.endpoint.absoluteString,
+                                                clusterID: ruruConfig.clusterID, token: ruruConfig.token))
+                return
             } catch is CancellationError {
             } catch {
                 self.error = error.localizedDescription
@@ -236,7 +228,7 @@ private struct MeshWitnessEditor: View {
 
     private func commit(_ value: MeshWitnessConfiguration) {
         guard MeshWitnessSettingsStore.save(value) else {
-            error = "The witness settings could not be saved to Keychain. Your previous settings are unchanged."
+            error = "The Ruru settings could not be saved to Keychain. Your previous settings are unchanged."
             return
         }
         onSave(value)

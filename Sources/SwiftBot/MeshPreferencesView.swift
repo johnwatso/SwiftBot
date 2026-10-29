@@ -132,9 +132,9 @@ struct MeshPreferencesView: View {
         }
         .alert("Set Up Ruru First", isPresented: $showRuruRequired) {
             Button("Set Up Ruru…") { showRuruSetup = true }
-            Button("OK", role: .cancel) { }
+            Button("Not Now", role: .cancel) { }
         } message: {
-            Text("New SwiftMesh deployments require an independent Ruru service. Set it up now, create a pairing code in Ruru, approve this Mac there, then choose a Primary or Fail Over role. A newly paired standby inherits the Ruru connection through protected SwiftMesh credential sync. Existing legacy peer deployments remain available until you migrate them deliberately.")
+            Text("SwiftMesh needs Ruru running on a separate Mac before this Mac can take a role. Connect it once here; backups you pair later get the connection automatically.")
         }
     }
 

@@ -440,7 +440,13 @@ async function handleAPI(req, res, pathname, query) {
           { symbol: 'server.rack', label: 'Server rack' }
         ];
         // Ruru, the ownership witness (display state only, like the app).
-        if (mesh.configuredMode !== 'Standalone') mesh.witness = { host: 'ruru.example.com', health: 'ready', leaseHeld: mesh.configuredMode === 'Leader', preferenceStatus: 'current', preferredPrimary: 'Studio', preferredIsThisMac: false, currentOwner: 'Preview Mac (this Mac)' };
+        // A web pairing "approves" six seconds after it's requested.
+        if (meshState.ruruPairing?.state === 'waiting' && Date.now() - meshState.ruruPairing.at > 6000) {
+          meshState.ruruPairing = { state: 'connected' };
+          meshState.ruruConnected = true;
+        }
+        if (meshState.ruruPairing) mesh.ruruPairing = { state: meshState.ruruPairing.state, message: meshState.ruruPairing.message };
+        if (mesh.configuredMode !== 'Standalone' || meshState.ruruConnected) mesh.witness = { host: 'ruru.example.com', health: 'ready', leaseHeld: mesh.configuredMode === 'Leader', preferenceStatus: 'current', preferredPrimary: 'Studio', preferredIsThisMac: false, currentOwner: 'Preview Mac (this Mac)' };
         return sendJSON(res, mesh);
       }
       case '/api/operators': return sendJSON(res, operatorsFixture());
@@ -887,6 +893,15 @@ async function handleAPI(req, res, pathname, query) {
         case 'setIcon':
           if (body.icon) meshState.icons[body.node] = body.icon; else delete meshState.icons[body.node];
           console.log(`[swiftmesh] icon ${body.node} → ${body.icon || 'auto'}`);
+          break;
+        case 'ruruPair':
+          // Same shape check as RuruPairingInvite: `host code`.
+          if (!/^\S+\.\S+\s+[2-9A-HJKMNP-TV-Z]{4}[-\s]?[2-9A-HJKMNP-TV-Z]{4}$/i.test(String(body.pairingCode || '').trim()))
+            return sendJSON(res, { error: 'Paste the whole line Ruru shows under Pair a Server, such as ruru.example.com 7KQ4-M2XP.' }, 409);
+          meshState.ruruPairing = { state: 'waiting', at: Date.now() };
+          break;
+        case 'ruruPairCancel':
+          meshState.ruruPairing = null;
           break;
         default:
           return sendJSON(res, { error: 'Unknown action.' }, 400);

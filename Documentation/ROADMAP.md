@@ -1110,6 +1110,7 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 - [x] ~~Strip dead OpenAI image-gen toggles from `Sources/SwiftBot/Resources/admin/index.html`~~ — cleaned up; three dead UI clusters removed, replaced with single Apple Intelligence panels.
 - [x] ~~Decide fate of `FoundationModelsSpikeTests`~~ — removed. Was a P1.1 milestone gate for the Apple Intelligence decision; that decision is made, ongoing latency/quality belongs in telemetry not a CI gate. Preserved in git history.
 - [x] ~~Rename internal `case aiBots`, `struct AIBotsView`, JSON key `aiBots:`~~ — done. Swift symbols → `appleIntelligence` / `AppleIntelligenceView` / `AppleIntelligenceDashboardSummary`; AdminWeb JSON field → `appleIntelligence`; admin HTML JS updated to match. File renamed `AIBotsView.swift` → `AppleIntelligenceView.swift`.
+- [ ] Local-network Ruru. SwiftBot only accepts an `https://` Ruru address (or plain HTTP on the same Mac), so Ruru needs Cloudflare and a domain before any pairing can happen. Allow a LAN-only Ruru, e.g. `http://ruru-mac.local:38990` discovered over Bonjour, so two Macs at home can pair without a domain. Needs a deliberate call on transport security for the bearer token and lease traffic on the LAN, and changes in both `MeshWitnessConfiguration.isValidEndpoint` and RuruClient's `RuruPairingInvite`.
 
 ---
 

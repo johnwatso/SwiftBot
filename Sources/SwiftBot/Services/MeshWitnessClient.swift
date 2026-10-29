@@ -363,15 +363,9 @@ actor MeshWitnessClient {
 
 }
 
-/// Ruru’s code alphabet: no 0/1/I/L/O/U.
 /// "7kq4 m2xp" → "7KQ4-M2XP"; nil if the text isn’t a short code.
 enum RuruPairingCode {
-    private static let alphabet = Set("23456789ABCDEFGHJKMNPQRSTVWXYZ")
-    static func normalized(_ text: String) -> String? {
-        let cleaned = text.uppercased().filter { $0 != "-" && $0 != " " && !$0.isNewline }
-        guard cleaned.count == 8, cleaned.allSatisfy(alphabet.contains) else { return nil }
-        return String(cleaned.prefix(4)) + "-" + String(cleaned.suffix(4))
-    }
+    static func normalized(_ text: String) -> String? { RuruPairing.normalizedCode(text) }
 }
 
 extension RuruPairing.Failure: @retroactive LocalizedError {
