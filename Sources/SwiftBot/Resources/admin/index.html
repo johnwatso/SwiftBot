@@ -19681,7 +19681,7 @@
         }
         const desc = pairing?.state === 'failed'
           ? escapeHTML(pairing.message || 'Pairing didn’t finish.') + ' Create a new code in Ruru and try again.'
-          : 'Ruru runs on a separate Mac and gives one Mac at a time permission to run the bot, so a network split can’t leave both running it.';
+          : 'Ruru runs on a separate Mac and gives one Mac in a mesh at a time permission to run the bot. It doesn’t guard a Mac running on its own, so don’t run the same bot on a second Mac.';
         return row('<span class="mesh-status-dot" style="background:var(--muted);"></span> Ruru', desc,
           '<button id="meshRuruConnect" class="secondary-action" type="button">Connect Ruru…</button>');
       };

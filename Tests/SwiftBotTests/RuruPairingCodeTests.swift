@@ -45,13 +45,23 @@ final class RuruWitnessSettingsTests: XCTestCase {
         XCTAssertEqual(MeshWitnessSettingsStore.load(), existing)
     }
 
-    func testValidInheritedWitnessIsSavedButInvalidPayloadCannotReplaceIt() {
-        XCTAssertTrue(MeshWitnessSettingsStore.inherit(fixtureConfiguration))
-        XCTAssertEqual(MeshWitnessSettingsStore.load(), fixtureConfiguration)
-        XCTAssertFalse(MeshWitnessSettingsStore.inherit(.init(endpoint: "http://not-ruru.example", clusterID: "bad", token: "short")))
-        XCTAssertEqual(MeshWitnessSettingsStore.load(), fixtureConfiguration)
-        XCTAssertTrue(MeshWitnessSettingsStore.inherit(nil), "Older Primaries omit this optional field")
-        XCTAssertEqual(MeshWitnessSettingsStore.load(), fixtureConfiguration)
+    func testPeerConnectionCompatibilityWithNoLocalConnection() {
+        let none = MeshWitnessConfiguration()
+        XCTAssertTrue(MeshWitnessSettingsStore.canInherit(fixtureConfiguration, existing: none))
+        XCTAssertFalse(MeshWitnessSettingsStore.canInherit(.init(endpoint: "http://not-ruru.example", clusterID: "bad", token: "short"), existing: none))
+        XCTAssertTrue(MeshWitnessSettingsStore.canInherit(nil, existing: none), "Current Primaries omit this optional field")
+    }
+
+    func testPeerConnectionMustMatchThisNodesAuthority() {
+        let local = MeshWitnessConfiguration(endpoint: "https://RURU.example.com:443/", clusterID: fixtureConfiguration.clusterID,
+                                             token: String(repeating: "l", count: 40))
+        XCTAssertTrue(MeshWitnessSettingsStore.canInherit(fixtureConfiguration, existing: local))
+        var other = fixtureConfiguration
+        other.endpoint = "https://ruru.example.com:8443"
+        XCTAssertFalse(MeshWitnessSettingsStore.canInherit(other, existing: local))
+        other = fixtureConfiguration
+        other.clusterID = "another-service"
+        XCTAssertFalse(MeshWitnessSettingsStore.canInherit(other, existing: local))
     }
 
 

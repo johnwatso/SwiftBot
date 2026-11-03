@@ -12,6 +12,7 @@ struct StandaloneSetupView: View {
     @State private var isLoadingInviteURL: Bool = false
     @State private var inviteLoadFailed: Bool = false
     @State private var errorMessage: String?
+    @State private var showRuruSetup = false
 
     // Local sign-in onboarding state
     @State private var localUsernameDraft = "admin"
@@ -97,6 +98,12 @@ struct StandaloneSetupView: View {
             }
         }
         .animation(.smooth(duration: 0.22), value: step)
+        .sheet(isPresented: $showRuruSetup) {
+            MeshWitnessEditor(configuration: MeshWitnessSettingsStore.load(), nodeID: app.meshLocalNodeID,
+                              nodeName: app.settings.clusterNodeName) { _ in
+                Task { await app.configureMeshRecovery() }
+            }
+        }
     }
 
     // MARK: - Subviews
@@ -139,6 +146,19 @@ struct StandaloneSetupView: View {
                 .foregroundStyle(.secondary)
                 .font(.callout)
                 .padding(.top, 4)
+
+                Button("Connect to Ruru…") {
+                    Task {
+                        await app.configureMeshRecovery()
+                        showRuruSetup = true
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                Text("Ruru doesn’t protect a Mac running on its own yet. Don’t run the same bot on a second Mac: both would connect to Discord.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
         }
     }

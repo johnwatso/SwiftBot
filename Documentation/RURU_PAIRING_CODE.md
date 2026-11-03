@@ -44,41 +44,20 @@ Keychain and never reaches the browser. The WebUI only makes a first
 connection: changing or disconnecting Ruru stays in the native app.
 
 **Advanced** keeps manual entry of the endpoint, cluster ID and bearer token.
-Saved settings are carried to failovers in new SwiftMesh Join Codes.
+Each Mac must pair with Ruru itself: a node-bound token belongs only to the Mac
+for which Ruru issued it. Credential sync no longer sends or saves a Ruru
+connection. If an older Primary sends one for a different configured authority,
+credential sync stops. A backup that already inherited a Primary's token keeps
+it until that Mac is paired again.
 
-## Adding a backup from the Primary's WebUI
+## Backup enrollment status
 
-Configure the Primary and connect it to Ruru once. On the backup Mac, install
-SwiftBot, open the Primary's HTTPS WebUI, sign in as a Discord admin and choose
-**SwiftMesh → Pair SwiftBot → Continue in SwiftBot → Set Up Backup**.
-
-That handoff includes the Primary addresses, a credential enrollment and the
-same Ruru service connection. The backup needs no separate Ruru code, bearer
-token, Discord bot token or mesh settings. Local confirmation is required on
-both fresh and existing installations; the link itself never confirms joining
-or enables recording sharing.
-
-Setup closes any previous bot connection, persists the new identity and installs
-the Ruru ownership handlers before starting the passive mesh runtime. It verifies
-the Primary, authenticates with Ruru's read-only `GET /v1/service`, checks its
-lease capability and `/health` readiness, and completes the first configuration
-and credential sync. The authenticated Primary health must agree with the
-backup's ownership authority. Only after promotion readiness succeeds does it
-enable automatic takeover monitoring and persist auto-start. Setup never
-acquires a Ruru lease or opens Discord's Gateway.
-
-Errors leave takeover disabled for this setup and offer retry with the same link.
-The ordinary throttled settings save is suppressed during setup; pairing owns
-ordered persistence so role/term updates cannot complete onboarding prematurely.
-The backup's listener port, WebUI, tunnels and companion configuration remain
-local. Its own public website and recording sharing can be configured separately;
-recording website approval is still an independent Ruru operator decision.
-
-Existing invitations without Ruru retain **legacy peer** compatibility and clear a
-previous service's Ruru connection. New SwiftMesh setup requires Ruru; generate
-a fresh link after configuring it. Legacy pairs remain operable for deliberate
-migration but do not have partition-safe exclusive ownership. Use matching
-SwiftBot builds for this flow.
+The former Primary WebUI Join Code flow was removed in the SwiftMesh
+simplification. Pairing both Macs with Ruru does not discover the Primary,
+approve SwiftMesh credential access, or complete initial configuration sync.
+A complete Ruru-led enrollment flow remains to be implemented and validated
+on two Macs. Existing peer-only deployments are not protected against network
+partitions by Ruru.
 
 Lease grants of 10–300 seconds are accepted, matching Ruru's per-service lease
 lengths. New SwiftBot services use 300 seconds; existing services retain their

@@ -52,14 +52,27 @@ enum MeshWitnessSettingsStore {
         return KeychainHelper.update(Data(value.utf8), account: account)
     }
 
-    /// Installs a Ruru connection received through SwiftMesh's sealed,
-    /// credential-authorized channel. A missing value keeps legacy pairs
-    /// unchanged; an invalid value can never overwrite a working Keychain
-    /// configuration.
-    @discardableResult static func inherit(_ configuration: MeshWitnessConfiguration?) -> Bool {
+    /// Whether a connection sent by an older Primary is compatible with this
+    /// node's own. Its token is never saved, because Ruru tokens can be bound
+    /// to one node. A different configured authority must be resolved explicitly.
+    static func canInherit(_ configuration: MeshWitnessConfiguration?, existing: MeshWitnessConfiguration) -> Bool {
         guard let configuration else { return true }
         guard configuration.isValid else { return false }
-        return save(configuration)
+        guard existing.isConfigured else { return true }
+        guard existing.isValid,
+              let incoming = URLComponents(string: configuration.endpoint),
+              let local = URLComponents(string: existing.endpoint) else { return false }
+        func endpointPath(_ path: String) -> String {
+            var result = path
+            while result.hasSuffix("/") { result.removeLast() }
+            return result
+        }
+        return configuration.clusterID == existing.clusterID
+            && incoming.scheme?.lowercased() == local.scheme?.lowercased()
+            && incoming.host?.lowercased() == local.host?.lowercased()
+            && (incoming.port ?? (incoming.scheme?.lowercased() == "https" ? 443 : 80))
+                == (local.port ?? (local.scheme?.lowercased() == "https" ? 443 : 80))
+            && endpointPath(incoming.path) == endpointPath(local.path)
     }
 }
 

@@ -42,7 +42,9 @@ struct MeshWitnessPreferencesSection: View {
         } header: {
             Text("Ruru")
         } footer: {
-            Text("Ruru helps prevent multiple Macs from becoming Primary during network interruptions.")
+            Text(app.settings.clusterMode == .standalone
+                 ? "This Mac runs on its own, so Ruru isn’t guarding it. Don’t run the same bot on a second Mac: both would connect to Discord."
+                 : "Ruru helps prevent multiple Macs from becoming Primary during network interruptions.")
         }
         .sheet(isPresented: $showWitnessEditor) {
             MeshWitnessEditor(configuration: witness, nodeID: app.meshLocalNodeID,
@@ -62,8 +64,8 @@ struct MeshWitnessPreferencesSection: View {
     private var witnessSummary: String {
         guard witness.isConfigured else {
             return app.settings.clusterMode == .standalone
-                ? "Required before creating a new SwiftMesh deployment."
-                : "Legacy peer deployment: migrate to Ruru for partition-safe ownership."
+                ? "Not needed while this Mac runs on its own."
+                : "Existing peer deployment: not protected by Ruru."
         }
         guard witness.isValid else { return "The saved Ruru details are incomplete." }
         return "\(URL(string: witness.endpoint)?.host ?? witness.endpoint)"
@@ -76,8 +78,9 @@ struct MeshWitnessPreferencesSection: View {
 
     private var protectionText: String {
         guard witness.isValid else {
-            return app.settings.clusterMode == .standalone ? "Set up Ruru before pairing" : "Legacy peer only"
+            return app.settings.clusterMode == .standalone ? "Not active" : "Legacy peer only"
         }
+        guard app.settings.clusterMode != .standalone else { return "Not active: this Mac runs on its own" }
         guard app.meshWitnessHealth == .ready else { return "Waiting for Ruru" }
         if app.runtimeClusterMode == .leader, !app.meshOwnershipExpired {
             return "Lease held on this Mac"
@@ -86,7 +89,7 @@ struct MeshWitnessPreferencesSection: View {
     }
 }
 
-private struct MeshWitnessEditor: View {
+struct MeshWitnessEditor: View {
     @Environment(\.dismiss) private var dismiss
     /// The saved settings. Advanced edits a copy, so Cancel or a failed
     /// pairing leaves them untouched.
@@ -171,7 +174,7 @@ private struct MeshWitnessEditor: View {
             }
 
             Text("""
-                Settings are saved in this Mac’s Keychain and inherited by a newly paired SwiftMesh standby through the sealed credential sync. Existing legacy pairs keep their current settings until you migrate them deliberately.
+                Ruru connection details are stored securely on this Mac. Connecting to Ruru does not yet set up or synchronise a backup.
                 """)
                 .font(.caption)
                 .foregroundStyle(.secondary)

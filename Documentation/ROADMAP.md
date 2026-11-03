@@ -16,6 +16,20 @@
 - Reconnects still retry on fatal close codes such as 4004 (authentication failed); this is unchanged and should be reviewed separately.
 - `DiscordGatewayConnectionTests` covers this with fake sockets. It has not been run against live Discord.
 
+### 2026-11-04 — Stop sharing Ruru tokens through SwiftMesh
+
+- Credential sync no longer sends or saves a Ruru connection, replacing the 2026-11-03 legacy inheritance. A standby holding a Primary's node-bound token would be refused at takeover, and a shared token could act as any node. A backup that already inherited a token must be paired again; nothing detects this yet.
+- Native and WebUI copy now says Ruru does not guard a Standalone Mac, and warns against running the same bot on a second Mac. This is wording only: two Standalone Macs can still both connect to Discord.
+- Target direction: no port forwarding, with SwiftBots on separate WANs. Ruru acts as a directory and SwiftBot performs its own sync. Removing the manual SwiftMesh setup controls should not land until a working replacement exists.
+- Decision: support a two-Mac mode with Ruru on the failover Mac. If that Mac goes offline, for example in a power cut, the Primary should stay online. Ruru on that Mac cannot meet this alone. The design is unresolved between a small independent lease authority and an explicitly weaker availability-first mode, whose duplicate-action risk has no demonstrated time bound. A Discord liveness marker was considered and dropped. Not yet built or tested; it also depends on backup enrollment and sync.
+- The focused AdminWebCopy, MeshReliability, MeshSealedResponse and Ruru settings suites passed under Xcode. No live Ruru, two-Mac or visual test was performed.
+
+### 2026-11-03 — Preserve each server's Ruru credential
+
+- Credential sync now retains a backup's own Ruru token when its authority and service match the Primary's, and refuses a different configured authority before installing shared credentials. Legacy inheritance remains available when no Ruru connection is configured. Corrected the pairing guide: the old WebUI Join Code flow is no longer present.
+- SwiftBot Debug build and six isolated `RuruWitnessSettingsTests` passed under Xcode. No live Ruru or two-Mac sync was exercised.
+- Ruru-led peer discovery, explicit SwiftMesh credential approval, first-sync enrollment and real two-Mac failover validation remain unfinished. Pairing with Ruru alone does not make a backup ready.
+
 ### 2026-10-27 — WebUI video playback crash
 
 - [x] `_working-tree_`: Serialized HLS audio/video sample reads and reader cancellation on one queue. Task cancellation, idle expiry and segment-write failures now signal the pump instead of tearing down AVFoundation objects from another thread. Terminal guards reject late readiness/timer callbacks before accessing the reader/writer; completion waits for the last callback to return.
