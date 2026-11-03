@@ -228,6 +228,83 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         await connection.disconnect()
     }
 
+    func testInvalidSessionBacksOffInsteadOfIdentifyingImmediately() async {
+        let rejected = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                .success(#"{"op":9,"d":false}"#)
+            ]
+        )
+        let replacement = FakeGatewaySocket(
+            scriptedResults: [.success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#)]
+        )
+        let factory = SocketFactoryQueue(sockets: [rejected, replacement])
+        let recorder = ReconnectDiagnosticRecorder()
+        let connection = makeConnection(factory: factory, sleep: { _ in }, reconnectJitter: { _ in 0 })
+        await connection.setOnReconnectDiagnostic { diagnostic in
+            await recorder.record(diagnostic)
+        }
+
+        await connection.connect(token: "bot-token")
+
+        let identified = await waitUntil {
+            await replacement.sentTexts().contains(where: { $0.contains("\"op\":2") })
+        }
+
+        XCTAssertTrue(identified)
+        let rejectedIdentifies = await rejected.sentTexts().filter { $0.contains("\"op\":2") }.count
+        XCTAssertEqual(rejectedIdentifies, 1, "Op 9 must not trigger another IDENTIFY on the same socket")
+        let delays = await recorder.diagnostics().map(\.delaySeconds)
+        XCTAssertEqual(delays, [2])
+        await connection.disconnect()
+    }
+
+    func testNearlySpentIdentifyBudgetWaitsForReset() async {
+        let held = FakeGatewaySocket(
+            scriptedResults: [.success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#)]
+        )
+        let afterReset = FakeGatewaySocket(
+            scriptedResults: [.success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#)]
+        )
+        let factory = SocketFactoryQueue(sockets: [held, afterReset])
+        let limits = SessionStartLimitQueue(limits: [
+            .init(remaining: 20, resetAfterSeconds: 3600),
+            .init(remaining: 1000, resetAfterSeconds: 1)
+        ])
+        let recorder = ReconnectDiagnosticRecorder()
+        let connection = makeConnection(
+            factory: factory,
+            sleep: { _ in },
+            reconnectJitter: { _ in 0 },
+            sessionStartLimit: { _, _ in await limits.next() }
+        )
+        await connection.setOnReconnectDiagnostic { diagnostic in
+            await recorder.record(diagnostic)
+        }
+
+        await connection.connect(token: "bot-token")
+
+        let identified = await waitUntil {
+            await afterReset.sentTexts().contains(where: { $0.contains("\"op\":2") })
+        }
+
+        XCTAssertTrue(identified)
+        let heldSent = await held.sentTexts()
+        XCTAssertFalse(heldSent.contains(where: { $0.contains("\"op\":2") }))
+        let delays = await recorder.diagnostics().map(\.delaySeconds)
+        XCTAssertEqual(delays, [3600])
+        await connection.disconnect()
+    }
+
+    func testSessionStartLimitDecodesAndRoundsResetUp() {
+        let body = #"{"url":"wss://gateway.discord.gg","shards":1,"session_start_limit":{"total":1000,"remaining":42,"reset_after":1500,"max_concurrency":1}}"#
+        XCTAssertEqual(
+            DiscordGatewayConnection.SessionStartLimit(gatewayBotResponse: Data(body.utf8)),
+            .init(remaining: 42, resetAfterSeconds: 2)
+        )
+        XCTAssertNil(DiscordGatewayConnection.SessionStartLimit(gatewayBotResponse: Data("{}".utf8)))
+    }
+
     /// A ten-minute delay used to hold the receive loop, which awaits each
     /// payload handler: later messages and heartbeat ACKs went unread.
     func testDelayedAutomationDoesNotHoldTheReceiveLoop() async {
@@ -289,7 +366,8 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         sleep: @escaping @Sendable (UInt64) async -> Void = { nanoseconds in
             try? await Task.sleep(nanoseconds: nanoseconds)
         },
-        reconnectJitter: @escaping @Sendable (Int) -> Int = { _ in 0 }
+        reconnectJitter: @escaping @Sendable (Int) -> Int = { _ in 0 },
+        sessionStartLimit: @escaping @Sendable (URLSession, String) async -> DiscordGatewayConnection.SessionStartLimit? = { _, _ in nil }
     ) -> DiscordGatewayConnection {
         DiscordGatewayConnection(
             session: URLSession(configuration: .ephemeral),
@@ -300,7 +378,8 @@ final class DiscordGatewayConnectionTests: XCTestCase {
                 },
                 dateProvider: dateProvider,
                 sleep: sleep,
-                reconnectJitter: reconnectJitter
+                reconnectJitter: reconnectJitter,
+                sessionStartLimit: sessionStartLimit
             )
         )
     }
@@ -370,6 +449,18 @@ private actor ReconnectDiagnosticRecorder {
 
     func diagnostics() -> [DiscordGatewayConnection.ReconnectDiagnostic] {
         recorded
+    }
+}
+
+private actor SessionStartLimitQueue {
+    private var limits: [DiscordGatewayConnection.SessionStartLimit]
+
+    init(limits: [DiscordGatewayConnection.SessionStartLimit]) {
+        self.limits = limits
+    }
+
+    func next() -> DiscordGatewayConnection.SessionStartLimit? {
+        limits.isEmpty ? nil : limits.removeFirst()
     }
 }
 

@@ -37,7 +37,42 @@ actor DiscordGatewayConnection {
         var reconnectJitter: @Sendable (Int) -> Int = { baseDelaySeconds in
             Int.random(in: 0...max(1, baseDelaySeconds / 4))
         }
+        /// Discord's remaining IDENTIFY budget. Nil when it can't be read.
+        var sessionStartLimit: @Sendable (URLSession, String) async -> SessionStartLimit? = { session, token in
+            await DiscordGatewayConnection.fetchSessionStartLimit(session: session, token: token)
+        }
     }
+
+    /// `session_start_limit` from `GET /gateway/bot`. Discord counts it per bot
+    /// token, so it includes IDENTIFY calls made by any other Mac using the token.
+    struct SessionStartLimit: Sendable, Equatable {
+        let remaining: Int
+        let resetAfterSeconds: Int
+
+        init(remaining: Int, resetAfterSeconds: Int) {
+            self.remaining = remaining
+            self.resetAfterSeconds = resetAfterSeconds
+        }
+
+        init?(gatewayBotResponse data: Data) {
+            struct Response: Decodable {
+                struct Limit: Decodable {
+                    let remaining: Int
+                    let reset_after: Int
+                }
+                let session_start_limit: Limit
+            }
+            guard let limit = (try? JSONDecoder().decode(Response.self, from: data))?.session_start_limit else {
+                return nil
+            }
+            remaining = limit.remaining
+            resetAfterSeconds = max(1, (limit.reset_after + 999) / 1000)
+        }
+    }
+
+    /// Exceeding the IDENTIFY limit ends every session and resets the bot token.
+    /// Staying offline until the limit resets is the safer failure.
+    private static let sessionStartReserve = 20
 
     private static let logger = Logger(subsystem: "com.swiftbot", category: "discord.gateway")
 
@@ -240,6 +275,7 @@ actor DiscordGatewayConnection {
                     return
                 }
             } else {
+                guard await mayIdentify(token: token, generation: generation) else { return }
                 await identify(token: token)
                 await onConnectionState?(.running)
             }
@@ -251,12 +287,13 @@ actor DiscordGatewayConnection {
         case 9:
             // Discord rejected the resumable session. The next IDENTIFY must
             // be fresh; retaining its sequence/session ID would make every
-            // following reconnect retry the same invalid resume.
+            // following reconnect retry the same invalid resume. Reconnecting
+            // applies backoff: identifying straight away could loop on repeated
+            // rejections and spend the daily IDENTIFY limit.
             resumeOnHelloGeneration = nil
             sequence = nil
             sessionId = nil
-            await identify(token: token)
-            await onConnectionState?(.running)
+            await scheduleReconnect(reason: "Gateway invalidated the session (op 9)")
         case 11:
             if let sent = heartbeatSentAt {
                 let latencyMs = max(
@@ -314,14 +351,38 @@ actor DiscordGatewayConnection {
         }
     }
 
-    private func scheduleReconnect(reason: String, closeCode: Int? = nil) async {
+    /// Whether a fresh IDENTIFY may be sent. When Discord's budget is nearly
+    /// spent, this closes the socket and waits for the budget to reset.
+    private func mayIdentify(token: String, generation: Int) async -> Bool {
+        let limit = await dependencies.sessionStartLimit(session, token)
+        guard generation == connectionGeneration, !userInitiatedDisconnect else { return false }
+        guard let limit, limit.remaining <= Self.sessionStartReserve else { return true }
+        await scheduleReconnect(
+            reason: "Discord IDENTIFY limit nearly reached (\(limit.remaining) left)",
+            minimumDelaySeconds: limit.resetAfterSeconds
+        )
+        socket?.cancel(with: .goingAway, reason: nil)
+        return false
+    }
+
+    private static func fetchSessionStartLimit(session: URLSession, token: String) async -> SessionStartLimit? {
+        guard let url = URL(string: "https://discord.com/api/v10/gateway/bot") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        request.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return SessionStartLimit(gatewayBotResponse: data)
+    }
+
+    private func scheduleReconnect(reason: String, closeCode: Int? = nil, minimumDelaySeconds: Int = 0) async {
         guard !userInitiatedDisconnect else { return }
         guard reconnectTask == nil else { return }
         guard let token = botToken, !token.isEmpty else { return }
 
         reconnectAttempts += 1
         let baseDelaySeconds = min(30, 1 << min(reconnectAttempts, 5))
-        let delaySeconds = baseDelaySeconds + max(0, dependencies.reconnectJitter(baseDelaySeconds))
+        let delaySeconds = max(minimumDelaySeconds, baseDelaySeconds + max(0, dependencies.reconnectJitter(baseDelaySeconds)))
         let generation = connectionGeneration
         await onConnectionState?(.reconnecting)
         await onReconnectDiagnostic?(ReconnectDiagnostic(

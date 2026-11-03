@@ -9,6 +9,13 @@
 
 ## Recent Engineering Log
 
+### 2026-11-04 — Protect the Discord IDENTIFY limit
+
+- Exceeding Discord's daily IDENTIFY limit ends all sessions and resets the bot token. A fresh IDENTIFY now reads `session_start_limit` from `GET /gateway/bot` first. With 20 or fewer left, the bot stays offline until the limit resets. If the limit can't be read, IDENTIFY proceeds as before.
+- An invalid session (op 9) now reconnects with backoff instead of sending IDENTIFY immediately, which could loop on repeated rejections.
+- Reconnects still retry on fatal close codes such as 4004 (authentication failed); this is unchanged and should be reviewed separately.
+- `DiscordGatewayConnectionTests` covers this with fake sockets. It has not been run against live Discord.
+
 ### 2026-10-27 — WebUI video playback crash
 
 - [x] `_working-tree_`: Serialized HLS audio/video sample reads and reader cancellation on one queue. Task cancellation, idle expiry and segment-write failures now signal the pump instead of tearing down AVFoundation objects from another thread. Terminal guards reject late readiness/timer callbacks before accessing the reader/writer; completion waits for the last callback to return.
