@@ -9,6 +9,11 @@
 
 ## Recent Engineering Log
 
+### 2026-11-04 — Build without a sibling Ruru checkout
+
+- ShipHook no longer needs `../ruru`: `project.yml` pins Ruru's public repository to commit `574cb55`, the same way `swift-webauthn` is pinned. A tagged `RuruClient` release can replace the pin later.
+- With no sibling folder present, 52 focused tests and an unsigned Release build passed. The built Info.plist kept its version, build number, `SUFeedURL` and `SUPublicEDKey`. It was not run through ShipHook, and using the owner-location lookup will need a new pin.
+
 ### 2026-11-04 — Protect the Discord IDENTIFY limit
 
 - Exceeding Discord's daily IDENTIFY limit ends all sessions and resets the bot token. A fresh IDENTIFY now reads `session_start_limit` from `GET /gateway/bot` first. With 20 or fewer left, the bot stays offline until the limit resets. If the limit can't be read, IDENTIFY proceeds as before.

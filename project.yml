@@ -47,9 +47,10 @@ packages:
     # value, then regenerate the project with `xcodegen`.
     exactVersion: 4.0.0
   Ruru:
-    # Consume the sibling checkout until RuruClient's next tagged release
-    # includes operational-status.v1.
-    path: ../ruru
+    url: https://github.com/johnwatso/ruru.git
+    # Pinned to a commit until RuruClient's next tagged release. For local
+    # work against an unreleased client, use `path: ../ruru` temporarily.
+    revision: 574cb5517ed7ae20a6ad683afaedc84b6b958619
 
 targets:
   SwiftBot:
