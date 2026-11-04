@@ -6,7 +6,7 @@ reproduced here to satisfy the attribution terms those licenses require.
 
 This file is generated — edit `scripts/generate_third_party_notices.py` and re-run it
 rather than editing this file by hand. Package versions reflect the pins in
-`SwiftBot.xcodeproj/.../Package.resolved` as of 2026-10-03.
+`SwiftBot.xcodeproj/.../Package.resolved` as of 2026-11-05.
 
 SwiftBot's own license is in [LICENSE](LICENSE).
 
@@ -29,6 +29,8 @@ SwiftBot's own license is in [LICENSE](LICENSE).
 * [Swift Collections](#swift-collections)
 * [Swift System](#swift-system)
 * [libdave-swift](#libdave-swift)
+* [Ruru](#ruru)
+* [cloudflared](#cloudflared)
 * [Appendix A: Apache License 2.0](#appendix-a-apache-license-20)
 
 ## Swift WebAuthn
@@ -1107,9 +1109,53 @@ next framework rebuild, per the workflow in that repository's `THIRD_PARTY_NOTIC
 
 ---
 
+## Ruru
+
+* Version: `574cb551`
+* Upstream: https://github.com/johnwatso/ruru
+* Used for: RuruClient, the client for the Ruru lease authority.
+
+License text (`LICENSE`):
+
+```
+MIT License
+
+Copyright (c) 2026 johnwatso
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## cloudflared
+
+* Version: `2026.10.7`
+* Upstream: https://github.com/cloudflare/cloudflared
+* Used for: Cloudflare Tunnel connector for the WebUI's public address. Bundled as Cloudflare's unmodified release binary.
+
+Copyright Cloudflare, Inc. Licensed under the Apache License, Version 2.0 — full text in [Appendix A](#appendix-a-apache-license-20).
+
+---
+
 ## Appendix A: Apache License 2.0
 
-Applies to: Swift WebAuthn, Swift Log, SwiftNIO, SwiftNIO SSL, Swift Crypto, Swift Certificates, Swift ASN.1, Swift Markdown, Swift Atomics, Swift Collections, Swift System.
+Applies to: Swift WebAuthn, Swift Log, SwiftNIO, SwiftNIO SSL, Swift Crypto, Swift Certificates, Swift ASN.1, Swift Markdown, Swift Atomics, Swift Collections, Swift System, cloudflared.
 
 ```
 Apache License

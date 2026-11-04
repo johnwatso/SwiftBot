@@ -132,4 +132,23 @@ else
     echo "ℹ️  Beta appcast not found (optional)"
 fi
 
+# 6. Flag an outdated bundled cloudflared. It ships inside the app and is pinned
+# by hand, so nothing else notices when Cloudflare publishes security fixes.
+# Warns rather than fails: whether to ship an update is a release decision, and
+# a network failure here shouldn't block one.
+CLOUDFLARED_VERSION=$("$ROOT_DIR/Sources/SwiftBot/Resources/cloudflared" --version 2>/dev/null | awk '{print $3}' || true)
+CLOUDFLARED_LATEST_URL=$(curl --silent --location --max-time 15 --output /dev/null --write-out '%{url_effective}' https://github.com/cloudflare/cloudflared/releases/latest || true)
+CLOUDFLARED_LATEST="${CLOUDFLARED_LATEST_URL##*/}"
+if [[ -z "$CLOUDFLARED_VERSION" ]]; then
+    echo "⚠️  Warning: Could not read the bundled cloudflared version"
+elif [[ "$CLOUDFLARED_LATEST" != 20* ]]; then
+    echo "⚠️  Warning: Could not check the latest cloudflared release (bundled: $CLOUDFLARED_VERSION)"
+elif [[ "$CLOUDFLARED_VERSION" != "$CLOUDFLARED_LATEST" ]]; then
+    echo "⚠️  Warning: Bundled cloudflared is $CLOUDFLARED_VERSION but the latest release is $CLOUDFLARED_LATEST"
+    echo "   Replace it with Cloudflare's cloudflared-darwin-arm64.tgz binary (verify the release's SHA-256, don't re-sign it),"
+    echo "   then re-run scripts/generate_third_party_notices.py."
+else
+    echo "✅ Bundled cloudflared is the latest release ($CLOUDFLARED_VERSION)"
+fi
+
 echo "✨ Sparkle pipeline validation complete."

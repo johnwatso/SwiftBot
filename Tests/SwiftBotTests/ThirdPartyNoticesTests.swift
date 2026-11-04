@@ -23,7 +23,9 @@ final class ThirdPartyNoticesTests: XCTestCase {
         "Swift Atomics",
         "Swift Collections",
         "Swift System",
-        "libdave-swift"
+        "libdave-swift",
+        "Ruru",
+        "cloudflared"
     ]
 
     func testNoticesShipInsideTheAppBundle() throws {
@@ -64,6 +66,24 @@ final class ThirdPartyNoticesTests: XCTestCase {
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
             .components(separatedBy: ", ")
         XCTAssertTrue(users.contains("SwiftNIO"), "Apache appendix does not cover SwiftNIO: \(appliesLine)")
+    }
+
+    func testCloudflaredNoticeMatchesTheBundledBinary() throws {
+        let process = Process()
+        process.executableURL = try TunnelManager.resolveCloudflaredBinaryURL()
+        process.arguments = ["--version"]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+
+        let versionLine = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let version = try XCTUnwrap(versionLine.split(separator: " ").dropFirst(2).first)
+        let notices = try XCTUnwrap(AcknowledgementsView.loadNotices())
+        XCTAssertTrue(
+            notices.contains("## cloudflared\n\n* Version: `\(version)`"),
+            "Bundled cloudflared is \(version) — re-run scripts/generate_third_party_notices.py"
+        )
     }
 
     func testLibdaveIsRecordedAsUnresolvedRatherThanAsserted() throws {

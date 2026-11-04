@@ -26,6 +26,7 @@ import argparse
 import glob
 import json
 import os
+import subprocess
 import sys
 from datetime import date
 
@@ -34,6 +35,7 @@ RESOLVED = os.path.join(
     REPO_ROOT, "SwiftBot.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 )
 OUTPUT = os.path.join(REPO_ROOT, "THIRD-PARTY-NOTICES.md")
+CLOUDFLARED = os.path.join(REPO_ROOT, "Sources/SwiftBot/Resources/cloudflared")
 
 # identity -> (display name, checkout directory, what SwiftBot uses it for)
 PACKAGES = {
@@ -54,6 +56,7 @@ PACKAGES = {
     "swift-collections": ("Swift Collections", "swift-collections", "Transitive dependency of SwiftNIO."),
     "swift-system": ("Swift System", "swift-system", "Transitive dependency of SwiftNIO."),
     "libdave-swift": ("libdave-swift", "libdave-swift", "Discord DAVE end-to-end encrypted voice."),
+    "ruru": ("Ruru", "ruru", "RuruClient, the client for the Ruru lease authority."),
 }
 
 LICENSE_FILENAMES = ("LICENSE.txt", "LICENSE", "LICENSE.md", "COPYING", "COPYING.txt", "UNLICENSE")
@@ -155,6 +158,12 @@ def load_pins() -> dict[str, dict]:
     return result
 
 
+def cloudflared_version() -> str:
+    # Asks the bundled binary, so replacing it can't leave a stale version here.
+    output = subprocess.run([CLOUDFLARED, "--version"], capture_output=True, text=True, check=True).stdout
+    return output.split()[2]
+
+
 def anchor(name: str) -> str:
     return name.lower().replace(" ", "-").replace(".", "")
 
@@ -175,7 +184,7 @@ def build(checkouts: str) -> str:
 
     toc = "\n".join(
         f"* [{PACKAGES[i][0]}](#{anchor(PACKAGES[i][0])})" for i in ordered
-    ) + "\n* [Appendix A: Apache License 2.0](#appendix-a-apache-license-20)"
+    ) + "\n* [cloudflared](#cloudflared)\n* [Appendix A: Apache License 2.0](#appendix-a-apache-license-20)"
 
     for identity in ordered:
         display, folder, purpose = PACKAGES[identity]
@@ -224,6 +233,21 @@ def build(checkouts: str) -> str:
             lines.append("")
 
         sections.append("\n".join(lines).rstrip() + "\n")
+
+    apache_users.append("cloudflared")
+    sections.append(
+        "\n".join([
+            "## cloudflared",
+            "",
+            f"* Version: `{cloudflared_version()}`",
+            "* Upstream: https://github.com/cloudflare/cloudflared",
+            "* Used for: Cloudflare Tunnel connector for the WebUI's public address. "
+            "Bundled as Cloudflare's unmodified release binary.",
+            "",
+            "Copyright Cloudflare, Inc. Licensed under the Apache License, Version 2.0 — "
+            "full text in [Appendix A](#appendix-a-apache-license-20).",
+        ]) + "\n"
+    )
 
     apache_source = None
     for identity in ordered:

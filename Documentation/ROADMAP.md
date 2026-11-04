@@ -21,6 +21,7 @@
 - Close codes Discord says not to reconnect after (4004, 4010-4014) now stop the gateway instead of retrying. The bot stays stopped and shows why until the token or intents are fixed and it's started again. Replacing the token restarts it, and the operator alert still fires after 5 minutes.
 - The Cloudflare tunnel no longer gives up after 5 failed starts. It retries without limit, up to every 30 seconds, or every 5 minutes after Cloudflare refuses it, because the connector's log can't separate a temporary refusal from a permanent one. Not yet tested by cutting the internet on a real Mac. Ruru's own tunnel code still has the 5-start limit.
 - Updated the bundled `cloudflared` from 2026.5.1 to 2026.10.7, keeping Cloudflare's notarized arm64 binary. DNS create and delete no longer need fields Cloudflare documents as removed (`zone_id`, and everything but `id` on delete). Checked with mocked responses and a local connector run, not against the live Cloudflare API or a live tunnel.
+- `scripts/validate_sparkle.sh` now warns when the bundled `cloudflared` is behind Cloudflare's latest release. It only runs when someone runs that script, because ShipHook's build steps aren't configured from this repo. `THIRD-PARTY-NOTICES.md` now lists `cloudflared` and Ruru, and a test fails if the listed `cloudflared` version doesn't match the bundled binary.
 - `DiscordGatewayConnectionTests` covers this with fake sockets. It has not been run against live Discord.
 
 ### 2026-11-04 — Stop sharing Ruru tokens through SwiftMesh
