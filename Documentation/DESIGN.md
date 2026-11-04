@@ -209,17 +209,15 @@ the new console.
 
 ## SwiftMesh pairing
 
-The main entry is the Primary’s WebUI → SwiftMesh → Pair SwiftBot, opened on the
-Mac being added. The browser dialog shows the Primary, included Ruru connection,
-a local recording-sharing switch and Continue in SwiftBot. Keep copying a Join
-Code under a fallback disclosure. Carry the switch into native confirmation;
-never enable sharing just because a link arrived.
+SwiftMesh settings lead with the Ruru connection. Do not expose manual role,
+peer address, port, transport-secret, handback or work-sharing configuration
+as the normal setup flow. Existing configurations continue to operate; adding
+a backup through Ruru remains unavailable until enrollment and initial sync
+are implemented. Ruru connectivity alone must not be described as a ready
+backup.
 
-Native confirmation uses the console’s quiet surfaces, a clear title, compact
-connection rows, one sharing panel and a short settings-replacement notice.
-Avoid a credential/port table or a large explanatory paragraph. The verified
-state has a compact connection result and Open Recordings when sharing was chosen.
-The Ruru operator approves the website; the joining user should see that clearly.
+Recording sharing remains a separate local choice and requires Ruru operator
+approval of the website. Connecting a server must not silently enable sharing.
 
 ## Native console during failover
 

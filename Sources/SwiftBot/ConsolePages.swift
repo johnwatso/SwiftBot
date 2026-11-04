@@ -588,7 +588,7 @@ struct SwiftMeshPage: View {
 
     private var subtitle: String {
         isStandalone
-            ? "This Mac runs on its own. Choose a role to join a mesh."
+            ? "Connect this Mac to Ruru to get started."
             : "\(app.settings.clusterMode.displayName) node · failover and work sharing across Macs."
     }
 }

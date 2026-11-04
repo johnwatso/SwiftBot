@@ -32,11 +32,29 @@
 - Decision: support a two-Mac mode with Ruru on the failover Mac. If that Mac goes offline, for example in a power cut, the Primary should stay online. Ruru on that Mac cannot meet this alone. The design is unresolved between a small independent lease authority and an explicitly weaker availability-first mode, whose duplicate-action risk has no demonstrated time bound. A Discord liveness marker was considered and dropped. Not yet built or tested; it also depends on backup enrollment and sync.
 - The focused AdminWebCopy, MeshReliability, MeshSealedResponse and Ruru settings suites passed under Xcode. No live Ruru, two-Mac or visual test was performed.
 
+### 2026-11-04 — Remove manual SwiftMesh setup controls
+
+- Removed role, network, transport-secret, handback and work-sharing editors from the native SwiftMesh settings and the WebUI. Both lead with Ruru; existing mesh configuration and runtime behaviour are unchanged. The WebUI retains operational status and failover actions for existing deployments.
+- Adding a backup through Ruru is not yet available. Ruru-led peer discovery, approval and initial sync remain needed before the simplified setup can replace the former manual workflow; connecting Ruru alone does not make a backup ready.
+- Xcode's focused AdminWebCopy and Ruru settings suites passed (13 tests), and the admin page's inline JavaScript passed `node --check`. No live pairing, two-Mac test or visual review was performed.
+
 ### 2026-11-03 — Preserve each server's Ruru credential
 
 - Credential sync now retains a backup's own Ruru token when its authority and service match the Primary's, and refuses a different configured authority before installing shared credentials. Legacy inheritance remains available when no Ruru connection is configured. Corrected the pairing guide: the old WebUI Join Code flow is no longer present.
 - SwiftBot Debug build and six isolated `RuruWitnessSettingsTests` passed under Xcode. No live Ruru or two-Mac sync was exercised.
 - Ruru-led peer discovery, explicit SwiftMesh credential approval, first-sync enrollment and real two-Mac failover validation remain unfinished. Pairing with Ruru alone does not make a backup ready.
+
+### 2026-11-02 — Make Ruru the SwiftMesh entry point
+
+- Moved role, network and transport controls under Advanced in the native settings and grouped WebUI mesh controls and diagnostics under Advanced; the WebUI leads with the Ruru connection.
+- Existing role and sync mechanics are unchanged. Ruru-led peer discovery and working backup enrollment remain unfinished; a Ruru connection is not reported as a ready backup.
+
+
+### 2026-11-02 — Simplify the SwiftMesh entry points
+
+- Exposed Ruru setup during onboarding and in standalone SwiftMesh settings, and moved transport and return preferences under Advanced. Clarified that connecting Ruru does not itself enroll or synchronise a backup; removed references to the unavailable join-code flow from the WebUI.
+- A complete Ruru-led backup enrollment, secure discovery and credential sync, browser setup, and real two-Mac validation remain open.
+
 
 ### 2026-10-27 — WebUI video playback crash
 

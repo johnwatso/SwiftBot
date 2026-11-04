@@ -19669,8 +19669,6 @@
           ${control}
         </div>`;
       const valueRow = (title, value, desc = '') => row(title, desc, `<span class="ub-row-value">${escapeHTML(value)}</span>`);
-      const switchRow = (id, title, desc, on) => row(title, desc,
-        `<label class="switch"><input id="${id}" type="checkbox" ${on ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>`);
       // Ruru before it's connected: a paste-in pairing, or the request waiting in Ruru.
       const ruruSetupRow = () => {
         const pairing = mesh.ruruPairing;
@@ -19767,30 +19765,10 @@
         ? 'None yet'
         : `${mesh.lastJobRoute.charAt(0).toUpperCase() + mesh.lastJobRoute.slice(1)} · ${mesh.lastJobNode}`;
 
-      panels.innerHTML = isStandalone ? `
-        ${group('Ruru', mesh.witness
-          ? valueRow('Ruru', 'Connected', `${escapeHTML(mesh.witness.host)} will give one Mac at a time permission to run the bot.`)
-          : ruruSetupRow())}
-        <section class="ub-group">
-          <div class="ub-group-head"><h2>Set up SwiftMesh</h2></div>
-          <div class="mesh-choices">
-            ${['Leader', 'Standby'].map(mode => `
-              <button class="mesh-choice glass" type="button" data-mesh-setup="${mode}">
-                <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[mode].icon}"></i></span>
-                <span class="mesh-choice-title">Make this Mac the ${MESH_MODES[mode].title}</span>
-                <span class="mesh-choice-desc">${mode === 'Leader'
-                  ? 'Keep running the bot here. Another Mac can join as a Fail Over that takes over if this one goes down.'
-                  : 'Pair with a Mac that already runs SwiftBot. This one stays in sync and takes over if it goes down.'}</span>
-              </button>`).join('')}
-          </div>
-        </section>
-        ${group('This Mac', `
-          <button id="meshEdit" class="ub-row ub-row-link" type="button">
-            <div class="ub-row-text"><div class="ub-row-title">Node name</div><div class="ub-row-desc">How this Mac appears to other nodes.</div></div>
-            <span class="ub-row-value">${escapeHTML(mesh.nodeName || '—')}</span>
-            <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
-          </button>`)}
-      ` : `
+      const ruruSummary = group('Ruru', mesh.witness
+        ? valueRow('Ruru', MESH_WITNESS_STATUS[mesh.witness.health]?.label || 'Checking…', `${escapeHTML(mesh.witness.host)} · Manage servers and preferred Primary in Ruru.`)
+        : ruruSetupRow());
+      const technicalPanels = isStandalone ? '' : `
         ${banner}
         <section class="ub-group mesh-map-group">
           <div class="ub-group-head"><h2>Cluster map</h2></div>
@@ -19818,7 +19796,7 @@
             : 'Optional. Without Ruru, a network split between the Macs can leave both running the bot.';
           const witnessRow = row(`<span class="mesh-status-dot" style="background:${!w ? 'var(--muted)' : state.status ? meshStatusColor(state.status) : 'var(--muted)'};"></span> Ruru`, desc,
             `<span class="ub-row-value">${escapeHTML(value)}</span>`);
-          if (!w) return ruruSetupRow();
+          if (!w) return valueRow('Ruru', 'Not connected', 'Use Connect Ruru above to pair this Mac.');
           // Preferred Primary is Ruru's intent; Current Owner is who runs the bot now.
           const preferred = w.preferredPrimary ? w.preferredPrimary + (w.preferredIsThisMac ? ' (this Mac)' : '') : null;
           const preferredValue = {
@@ -19835,23 +19813,7 @@
             + valueRow('Current Owner', w.currentOwner || 'None', 'The Mac running the bot right now.')
             + valueRow('Preferred Primary', preferredValue, preferredDesc);
         })())}
-        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Change or disconnect Ruru on this Mac in SwiftMesh → Ruru. ' : ''}Backups you pair get the Ruru connection automatically.</p>
-        ${isLeader ? group('Work sharing', `
-          ${switchRow('meshWorkerOffload', 'Share work with other nodes', 'Let supported jobs run on other Macs in the mesh.', mesh.workerOffloadEnabled)}
-          ${switchRow('meshOffloadAI', 'AI replies', 'Generate Apple Intelligence replies on another node.', mesh.offloadAIReplies)}
-          ${switchRow('meshOffloadWiki', 'Lookups', 'Run wiki lookups on another node.', mesh.offloadWikiLookups)}
-        `) + (nodes.some(node => !node.isThisNode) ? '' : '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="info"></i> No other Macs have joined yet, so everything runs here until one does.</p>') : ''}
-        ${group('Configuration', `
-          <button id="meshEdit" class="ub-row ub-row-link" type="button">
-            <span class="ub-row-icon" style="${homeGradientStyle('swiftmesh')}"><i class="lucide" data-lucide="${MESH_MODES[configured]?.icon || 'network'}"></i></span>
-            <div class="ub-row-text">
-              <div class="ub-row-title">${escapeHTML(configuredLabel)} · ${escapeHTML(mesh.nodeName || 'This Mac')}</div>
-              <div class="ub-row-desc">${escapeHTML([isStandby ? `Primary ${mesh.leaderAddress || '—'}:${mesh.leaderPort}` : '', `listens on port ${mesh.listenPort}`, isStandby ? (mesh.automaticHandbackEnabled ? 'returns after the preferred Primary catches up' : 'manual handback') : ''].filter(Boolean).join(' · '))}</div>
-            </div>
-            <span class="ub-row-value">Edit</span>
-            <i class="lucide ub-row-chevron" data-lucide="chevron-right"></i>
-          </button>
-        `)}
+        <p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> ${mesh.witness ? 'Change or disconnect Ruru on this Mac in SwiftMesh → Ruru. ' : ''}Connect each Mac to the same Ruru service. A Ruru connection alone does not set up or synchronise a backup.</p>
         ${group('Details', `
           ${valueRow('Mesh server', mesh.server.text)}
           ${valueRow('Connection', mesh.worker.text)}
@@ -19860,6 +19822,12 @@
           <div class="ub-row"><div class="ub-row-text"><div class="ub-row-title">Diagnostics</div><div class="ub-row-desc mesh-diag">${escapeHTML(mesh.diagnostics || '—')}</div></div></div>
         `)}
       `;
+
+      panels.innerHTML = `${ruruSummary}
+        <p class="ub-help settings-host-note">${isStandalone
+          ? 'Connect this Mac to Ruru. Backup setup is not available yet; a Ruru connection alone does not connect or synchronise another SwiftBot.'
+          : 'Ruru manages ownership. Backup readiness depends on this Mac’s configuration and sync.'}</p>
+        <div class="settings-panels" style="display:grid;gap:18px;">${technicalPanels}</div>`;
 
       const mapNode = panels.querySelector('#meshTopologyMap');
       if (mapNode) {
@@ -19938,21 +19906,12 @@
         await loadSwiftMesh().catch(() => {});
         renderSwiftMeshView();
       });
-      [['meshWorkerOffload', 'clusterWorkerOffloadEnabled'], ['meshOffloadAI', 'clusterOffloadAIReplies'], ['meshOffloadWiki', 'clusterOffloadWikiLookups']].forEach(([id, key]) => {
-        panels.querySelector(`#${id}`)?.addEventListener('change', async (e) => {
-          await saveConfigPatch({ [key]: e.target.checked });
-          await loadSwiftMesh().catch(() => {});
-          renderSwiftMeshView();
-        });
-      });
-      panels.querySelector('#meshEdit')?.addEventListener('click', () => openSwiftMeshEditor(configured));
       panels.querySelectorAll('[data-mesh-icon]').forEach(btn => btn.addEventListener('click', () => {
         const node = nodes.find(n => n.displayName === btn.dataset.meshIcon);
         if (node) openNodeIcon(node, mesh.iconOptions || []);
       }));
       panels.querySelectorAll('[data-mesh-operator]').forEach(btn => btn.addEventListener('click', () => openNodeOperator(btn.dataset.meshOperator, nodes.find(n => n.displayName === btn.dataset.meshOperator)?.operatorID)));
       if (!operatorsData) loadOperators().then(() => { if (currentView === 'swiftmesh') renderSwiftMeshView(); }).catch(() => {});
-      panels.querySelectorAll('[data-mesh-setup]').forEach(btn => btn.addEventListener('click', () => openSwiftMeshEditor(btn.dataset.meshSetup)));
 
       refreshIcons();
     }
@@ -20004,113 +19963,6 @@
         } catch {
           e.currentTarget.disabled = false;
           setMessage('Couldn’t save the operator.', 'error');
-        }
-      });
-    }
-
-    function openSwiftMeshEditor(initialMode) {
-      const mesh = swiftMeshData;
-      if (!mesh) return;
-      const draft = {
-        mode: initialMode || mesh.configuredMode,
-        nodeName: mesh.nodeName || '',
-        leaderAddress: mesh.leaderAddress || '',
-        leaderPort: mesh.leaderPort || 38787,
-        listenPort: mesh.listenPort || 38787,
-        automaticHandback: mesh.automaticHandbackEnabled !== false,
-        autoReclaim: mesh.autoReclaimAfterHours || 0
-      };
-      showModal('SwiftMesh', '<div id="meshEditorBody"></div>', `
-        <span id="meshEditorHint" class="modal-hint"></span>
-        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
-        <button id="meshEditorSave" class="primary-action" type="button">Save</button>
-      `, { wide: true });
-
-      const issue = () => {
-        if (!draft.nodeName.trim()) return 'Give this Mac a name.';
-        if (draft.mode === 'Standby' && !draft.leaderAddress.trim()) return 'Enter the Primary’s address.';
-        const ports = [draft.listenPort, ...(draft.mode === 'Standby' ? [draft.leaderPort] : [])];
-        if (ports.some(p => !Number.isInteger(Number(p)) || Number(p) < 1 || Number(p) > 65535)) return 'Ports are numbers from 1 to 65535.';
-        return '';
-      };
-      const render = () => {
-        const field = (id, label, value, attrs = '') => `
-          <label class="mesh-field"><span class="field-label">${label}</span><input id="${id}" class="field-input" value="${escapeHTML(value)}" ${attrs}></label>`;
-        document.getElementById('meshEditorBody').innerHTML = `
-          <div class="automation-editor-section">
-            <h3><i class="lucide" data-lucide="network"></i> Role</h3>
-            <div class="access-modes">
-              ${['Standalone', 'Leader', 'Standby'].map(mode => `
-                <label class="access-mode${draft.mode === mode ? ' is-selected' : ''}">
-                  <input type="radio" name="meshMode" value="${mode}" ${draft.mode === mode ? 'checked' : ''}>
-                  <span><span class="access-mode-title">${MESH_MODES[mode].title}</span><span class="access-mode-desc">${MESH_MODES[mode].desc}</span></span>
-                </label>`).join('')}
-            </div>
-            ${draft.mode !== mesh.configuredMode ? '<div class="ub-help">Changing the role restarts SwiftMesh on this Mac. Discord replies may pause for a moment.</div>' : ''}
-          </div>
-          <div class="automation-editor-section">
-            <h3><i class="lucide" data-lucide="server"></i> This Mac</h3>
-            <div class="mesh-fields">
-              ${field('meshEdName', 'Node name', draft.nodeName, 'maxlength="60"')}
-              ${draft.mode === 'Standalone' ? '' : field('meshEdListen', 'Listens on port', draft.listenPort, 'type="number" min="1" max="65535"')}
-            </div>
-          </div>
-          ${draft.mode === 'Standby' ? `
-          <div class="automation-editor-section">
-            <h3><i class="lucide" data-lucide="crown"></i> Primary</h3>
-            <div class="mesh-fields">
-              ${field('meshEdLeader', 'Address', draft.leaderAddress, 'spellcheck="false" placeholder="192.168.1.20 or primary.local"')}
-              ${field('meshEdLeaderPort', 'Port', draft.leaderPort, 'type="number" min="1" max="65535"')}
-
-            </div>
-            <div class="ub-help">The preferred Primary returns after its stability window and a successful state transfer. The easiest way to fill these in is to open a join code from the Primary.</div>
-          </div>` : ''}
-          ${draft.mode === 'Leader' ? `
-          <div class="automation-editor-section">
-            <h3><i class="lucide" data-lucide="rotate-ccw"></i> Preferred Primary recovery</h3>
-            <label class="ac-toggle"><input id="meshEdAutomatic" type="checkbox" ${draft.automaticHandback ? 'checked' : ''}><span class="ac-toggle-text"><span class="ac-toggle-title">Return to this Primary automatically after catchup</span></span></label>
-            ${field('meshEdReclaim', 'Additional stability window (hours)', draft.autoReclaim, 'type="number" min="0" max="72"')}
-            <div class="ub-help">0 uses 60 seconds of stable health. Handback freezes the current owner and copies the latest shared state before this Mac starts sending.</div>
-          </div>` : ''}
-        `;
-        const hint = issue();
-        document.getElementById('meshEditorHint').textContent = hint;
-        document.getElementById('meshEditorSave').disabled = !!hint;
-        document.querySelectorAll('input[name="meshMode"]').forEach(radio => radio.addEventListener('change', () => { draft.mode = radio.value; render(); }));
-        const bind = (id, key, numeric) => document.getElementById(id)?.addEventListener('input', e => {
-          draft[key] = numeric ? Number(e.target.value) : e.target.value;
-          const message = issue();
-          document.getElementById('meshEditorHint').textContent = message;
-          document.getElementById('meshEditorSave').disabled = !!message;
-        });
-        bind('meshEdName', 'nodeName');
-        bind('meshEdListen', 'listenPort', true);
-        bind('meshEdLeader', 'leaderAddress');
-        bind('meshEdLeaderPort', 'leaderPort', true);
-        bind('meshEdReclaim', 'autoReclaim', true);
-        document.getElementById('meshEdAutomatic')?.addEventListener('change', e => { draft.automaticHandback = e.target.checked; });
-        refreshIcons();
-      };
-      render();
-
-      document.getElementById('meshEditorSave').addEventListener('click', async (e) => {
-        e.currentTarget.disabled = true;
-        try {
-          await saveConfigPatch({
-            clusterMode: draft.mode,
-            clusterNodeName: draft.nodeName.trim(),
-            clusterLeaderAddress: draft.leaderAddress.trim(),
-            clusterLeaderPort: Number(draft.leaderPort),
-            clusterListenPort: Number(draft.listenPort),
-            clusterAutomaticHandbackEnabled: draft.automaticHandback,
-            clusterAutoReclaimAfterHours: Number(draft.autoReclaim)
-          });
-          hideModal();
-          await loadSwiftMesh().catch(() => {});
-          renderSwiftMeshView();
-        } catch {
-          e.currentTarget.disabled = false;
-          setMessage('Couldn’t save SwiftMesh settings.', 'error');
         }
       });
     }
