@@ -154,6 +154,102 @@ final class DiscordGatewayConnectionTests: XCTestCase {
         await connection.disconnect()
     }
 
+    func testUnrecoverableCloseStopsInsteadOfReconnecting() async {
+        for code in ConnectionDiagnostics.unrecoverableGatewayCloseCodes.sorted() {
+            let rejected = FakeGatewaySocket(
+                scriptedResults: [
+                    .success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#),
+                    .failure(SocketFailure.disconnected)
+                ],
+                closeCodeOnFailure: URLSessionWebSocketTask.CloseCode(rawValue: code)!
+            )
+            let factory = SocketFactoryQueue(sockets: [rejected, FakeGatewaySocket()])
+            let recorder = EventRecorder()
+            let reconnects = ReconnectDiagnosticRecorder()
+            let connection = makeConnection(factory: factory, sleep: { _ in })
+            await connection.setOnConnectionState { state in
+                await recorder.record(state: state)
+            }
+            await connection.setOnGatewayClose { code in
+                await recorder.record(closeCode: code)
+            }
+            await connection.setOnReconnectDiagnostic { diagnostic in
+                await reconnects.record(diagnostic)
+            }
+
+            await connection.connect(token: "bot-token")
+
+            let stopped = await waitUntil {
+                await recorder.states().last == .stopped
+            }
+            XCTAssertTrue(stopped, "Close \(code)")
+            let closeCodes = await recorder.closeCodes()
+            XCTAssertEqual(closeCodes, [code])
+            let scheduled = await reconnects.diagnostics()
+            XCTAssertTrue(scheduled.isEmpty, "Close \(code) must not schedule a reconnect")
+            let created = await factory.createdCount()
+            XCTAssertEqual(created, 1, "Close \(code) must not open another socket")
+        }
+    }
+
+    func testUnrecoverableCloseCancelsAPendingReconnect() async {
+        let rejected = FakeGatewaySocket(
+            scriptedResults: [
+                .success(#"{"op":7,"d":null}"#),
+                .failure(SocketFailure.disconnected)
+            ],
+            closeCodeOnFailure: URLSessionWebSocketTask.CloseCode(rawValue: 4004)!
+        )
+        let factory = SocketFactoryQueue(sockets: [rejected, FakeGatewaySocket()])
+        let recorder = EventRecorder()
+        let connection = makeConnection(
+            factory: factory,
+            sleep: { _ in try? await Task.sleep(nanoseconds: 50_000_000) }
+        )
+        await connection.setOnConnectionState { state in
+            await recorder.record(state: state)
+        }
+
+        await connection.connect(token: "bot-token")
+
+        let stopped = await waitUntil {
+            await recorder.states().last == .stopped
+        }
+        XCTAssertTrue(stopped)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let created = await factory.createdCount()
+        XCTAssertEqual(created, 1, "The reconnect scheduled by op 7 must not fire after a rejection")
+    }
+
+    func testConnectAfterRejectionIdentifiesAgain() async {
+        let rejected = FakeGatewaySocket(
+            scriptedResults: [.failure(SocketFailure.disconnected)],
+            closeCodeOnFailure: URLSessionWebSocketTask.CloseCode(rawValue: 4014)!
+        )
+        let replacement = FakeGatewaySocket(
+            scriptedResults: [.success(#"{"op":10,"d":{"heartbeat_interval":60000}}"#)]
+        )
+        let factory = SocketFactoryQueue(sockets: [rejected, replacement])
+        let recorder = EventRecorder()
+        let connection = makeConnection(factory: factory, sleep: { _ in })
+        await connection.setOnConnectionState { state in
+            await recorder.record(state: state)
+        }
+
+        await connection.connect(token: "bot-token")
+        let stopped = await waitUntil {
+            await recorder.states().last == .stopped
+        }
+        XCTAssertTrue(stopped)
+
+        await connection.connect(token: "fixed-token")
+        let identified = await waitUntil {
+            await replacement.sentTexts().contains(where: { $0.contains("\"op\":2") && $0.contains("fixed-token") })
+        }
+        XCTAssertTrue(identified)
+        await connection.disconnect()
+    }
+
     func testReconnectResumesGatewaySessionWithoutASecondIdentify() async {
         let initialSocket = FakeGatewaySocket(
             scriptedResults: [

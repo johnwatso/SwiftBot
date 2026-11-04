@@ -247,7 +247,11 @@ extension AppModel {
 
         let weekly = WeeklySummaryPlugin()
         self.weeklyPlugin = weekly
-        Task { await pluginManager.add(weekly) }
+        // Start can follow a rejected gateway, which never went through stopBot.
+        Task {
+            await pluginManager.removeAll()
+            await pluginManager.add(weekly)
+        }
 
         startRewindIfNeeded()
 
@@ -426,7 +430,9 @@ extension AppModel {
         lastTokenValidationResult = result
         guard result.isValid else { return false }
 
+        // A rejected gateway has stopped itself, and a new token is the fix.
         let wasRunning = status != .stopped
+            || ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(connectionDiagnostics.lastGatewayCloseCode)
         if !normalizedDiscordToken(from: settings.token).isEmpty {
             await clearAPIKey()
         }
@@ -497,6 +503,7 @@ extension AppModel {
         settings.cachedBotIdentity = CachedBotIdentity()
         Task { await pluginManager.removeAll() }
         Task { await cluster.stopAll(); await meshDidStop() }
+        connectionDiagnostics.lastGatewayCloseCode = nil
         status = .stopped
         // Step 3: secure token erase — empty token triggers KeychainHelper.deleteToken() in ConfigStore.
         settings.token = ""

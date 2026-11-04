@@ -445,6 +445,7 @@ extension AppModel {
         _ = await automationService.pauseAndDrain()
         await service.disconnect()
         lastPublishedRole = .standby
+        connectionDiagnostics.lastGatewayCloseCode = nil
         status = .stopped
         logs.append("SwiftMesh returned to Standby; Discord output closed.")
         await handleClusterRoleChange()

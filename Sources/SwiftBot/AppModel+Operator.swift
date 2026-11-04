@@ -73,11 +73,17 @@ extension AppModel {
     func checkOperatorAlerts(now: Date = Date()) async {
         let thisNode = operatorNodeName
 
-        // Discord: reconnecting or connecting for over five minutes. A bot
-        // someone stopped on purpose isn't a problem.
+        // Discord: reconnecting, connecting or rejected for over five minutes.
+        // A bot someone stopped on purpose isn't a problem, but a rejection stops
+        // the gateway too and stays down until someone fixes it.
+        let rejectedCloseCode = connectionDiagnostics.lastGatewayCloseCode
+            .flatMap { ConnectionDiagnostics.isUnrecoverableGatewayCloseCode($0) ? $0 : nil }
         await operatorObserve(.discordDisconnected, key: "discord", node: thisNode,
-                              isProblem: status == .connecting || status == .reconnecting, after: 5 * 60, now: now,
-                              detail: "SwiftBot on \(thisNode) has been trying to reconnect to Discord for over 5 minutes.",
+                              isProblem: status == .connecting || status == .reconnecting || rejectedCloseCode != nil,
+                              after: 5 * 60, now: now,
+                              detail: rejectedCloseCode.map {
+                                  "Discord rejected SwiftBot on \(thisNode) (close code \($0)), and it won't retry until this is fixed. \(ConnectionDiagnostics.gatewayCloseRemedy(for: $0))"
+                              } ?? "SwiftBot on \(thisNode) has been trying to reconnect to Discord for over 5 minutes.",
                               resolvedDetail: "SwiftBot on \(thisNode) is connected to Discord again.")
 
         // Other Macs: seen from the Primary.

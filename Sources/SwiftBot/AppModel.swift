@@ -1175,6 +1175,7 @@ final class AppModel: ObservableObject {
         lastClusterStatusSuccessAt = nil
         clusterSnapshot = await cluster.currentSnapshot()
         await pluginManager.removeAll()
+        connectionDiagnostics.lastGatewayCloseCode = nil
         status = .stopped
         logs.append("Bot stopped (SwiftMesh listener stopped)")
     }
@@ -1253,7 +1254,13 @@ final class AppModel: ObservableObject {
 
         await service.setOnGatewayClose { [weak self] code in
             await MainActor.run {
-                self?.connectionDiagnostics.lastGatewayCloseCode = code
+                guard let self else { return }
+                self.connectionDiagnostics.lastGatewayCloseCode = code
+                // The gateway stops itself after these, so the bot is no longer up.
+                if ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(code) {
+                    self.uptimeTask?.cancel()
+                    self.uptime = nil
+                }
             }
         }
 

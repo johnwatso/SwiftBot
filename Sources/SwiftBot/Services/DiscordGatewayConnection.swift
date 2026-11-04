@@ -239,10 +239,14 @@ actor DiscordGatewayConnection {
                     if closeRawValue > 0, !Self.cleanCloseCodes.contains(closeRawValue) {
                         await onGatewayClose?(closeRawValue)
                     }
-                    await scheduleReconnect(
-                        reason: "Gateway receive failed: \(error.localizedDescription)",
-                        closeCode: closeRawValue > 0 ? closeRawValue : nil
-                    )
+                    if ConnectionDiagnostics.isUnrecoverableGatewayCloseCode(closeRawValue) {
+                        await stopAfterRejection(closeCode: closeRawValue)
+                    } else {
+                        await scheduleReconnect(
+                            reason: "Gateway receive failed: \(error.localizedDescription)",
+                            closeCode: closeRawValue > 0 ? closeRawValue : nil
+                        )
+                    }
                 } else {
                     Self.logger.debug("Old receive loop error ignored (generation \(generation) != current \(self.connectionGeneration))")
                 }
@@ -373,6 +377,24 @@ actor DiscordGatewayConnection {
         guard let (data, response) = try? await session.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return SessionStartLimit(gatewayBotResponse: data)
+    }
+
+    /// Discord says not to reconnect after these closes, and each retry would
+    /// spend IDENTIFY budget on a rejection that can't change. Nothing here
+    /// suspends before the state is cleared, so a new `connect` can't be undone.
+    private func stopAfterRejection(closeCode: Int) async {
+        Self.logger.error("Gateway rejected with close code \(closeCode); not reconnecting")
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        socket?.cancel(with: .normalClosure, reason: nil)
+        socket = nil
+        botToken = nil
+        sequence = nil
+        sessionId = nil
+        resumeOnHelloGeneration = nil
+        await onConnectionState?(.stopped)
     }
 
     private func scheduleReconnect(reason: String, closeCode: Int? = nil, minimumDelaySeconds: Int = 0) async {

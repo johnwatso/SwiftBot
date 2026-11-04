@@ -18,7 +18,7 @@
 
 - Exceeding Discord's daily IDENTIFY limit ends all sessions and resets the bot token. A fresh IDENTIFY now reads `session_start_limit` from `GET /gateway/bot` first. With 20 or fewer left, the bot stays offline until the limit resets. If the limit can't be read, IDENTIFY proceeds as before.
 - An invalid session (op 9) now reconnects with backoff instead of sending IDENTIFY immediately, which could loop on repeated rejections.
-- Reconnects still retry on fatal close codes such as 4004 (authentication failed); this is unchanged and should be reviewed separately.
+- Close codes Discord says not to reconnect after (4004, 4010-4014) now stop the gateway instead of retrying. The bot stays stopped and shows why until the token or intents are fixed and it's started again. Replacing the token restarts it, and the operator alert still fires after 5 minutes.
 - `DiscordGatewayConnectionTests` covers this with fake sockets. It has not been run against live Discord.
 
 ### 2026-11-04 — Stop sharing Ruru tokens through SwiftMesh
