@@ -71,16 +71,18 @@ actor TunnelManager: TunnelProvider {
     private var statusHandler: (@MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void)?
     private var consecutiveFailures = 0
     private var lastRegistrationError: String?
-    /// Stop auto-restarting after this many consecutive failures so the loop
-    /// doesn't burn CPU forever when the tunnel credential is bad.
-    private static let maxConsecutiveFailures = 5
+    /// cloudflared logs the same registration error for temporary and permanent
+    /// refusals, so a refusal slows retries instead of stopping them for good.
+    private static let rejectedRetryDelaySeconds = 300
+    private let binaryURLOverride: URL?
+    private let retryDelayScale: Double
 
     /// Observes macOS network path changes. cloudflared self-heals most
     /// transient flaps internally, but laptops moving between networks (or
     /// sleep/wake transitions) can leave the tunnel in a half-broken state
     /// where the process is alive but no traffic flows. Restarting on a
     /// confirmed interface change forces a clean reconnect and resets the
-    /// failure counter so a previously-locked-out node gets a fresh budget.
+    /// failure counter so retries start again from the shortest delay.
     private var pathMonitor: NWPathMonitor?
     private let pathMonitorQueue = DispatchQueue(label: "com.swiftbot.tunnel.pathMonitor")
     /// `nil` means we haven't seen a path yet. Once observed, we only act on
@@ -105,6 +107,11 @@ actor TunnelManager: TunnelProvider {
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         return URLSession(configuration: config)
     }()
+
+    init(binaryURL: URL? = nil, retryDelayScale: Double = 1) {
+        binaryURLOverride = binaryURL
+        self.retryDelayScale = retryDelayScale
+    }
 
     func configure(
         _ configuration: TunnelRuntimeConfiguration?,
@@ -132,7 +139,7 @@ actor TunnelManager: TunnelProvider {
         }
 
         // Fresh configuration ⇒ reset the failure counter so a corrected token
-        // gets a full retry budget.
+        // retries from the shortest delay.
         if previousConfiguration != configuration {
             consecutiveFailures = 0
             lastRegistrationError = nil
@@ -203,7 +210,7 @@ actor TunnelManager: TunnelProvider {
                 throw Error.missingTunnelToken
             }
 
-            let binaryURL = try Self.resolveCloudflaredBinaryURL()
+            let binaryURL = try binaryURLOverride ?? Self.resolveCloudflaredBinaryURL()
 
             await publishStatus(.init(
                 state: .enabling,
@@ -254,7 +261,9 @@ actor TunnelManager: TunnelProvider {
 
             if nextStartIsRestart {
                 nextStartIsRestart = false
-                await logger?("Cloudflare tunnel restarted")
+                if Self.shouldLogRetry(afterFailures: consecutiveFailures) {
+                    await logger?("Cloudflare tunnel restarted")
+                }
             } else {
                 await logger?("Cloudflare tunnel running")
             }
@@ -279,9 +288,11 @@ actor TunnelManager: TunnelProvider {
         // cloudflared logs "Registered tunnel connection" once a connection is
         // accepted by the edge — that's our signal we're really live.
         if output.contains("Registered tunnel connection") {
-            if consecutiveFailures != 0 || lastRegistrationError != nil {
-                consecutiveFailures = 0
-                lastRegistrationError = nil
+            let failedAttempts = consecutiveFailures
+            consecutiveFailures = 0
+            lastRegistrationError = nil
+            if failedAttempts > 0 {
+                await logger?("Cloudflare tunnel reconnected after \(failedAttempts) failed attempt(s)")
             }
             await publishStatus(.init(
                 state: .enabled,
@@ -291,11 +302,13 @@ actor TunnelManager: TunnelProvider {
             startHealthCheckIfNeeded()
             return
         }
-        // Cloudflare's edge rejected the tunnel — almost always a stale or
-        // wrong token, or a tunnel that has been deleted on the dashboard.
+        // Cloudflare's edge refused the tunnel — often a stale or wrong token,
+        // or a tunnel that has been deleted on the dashboard, but it can also be
+        // temporary.
         if output.contains("error registering the connection")
-            || output.contains("Register tunnel error from server side") {
-            lastRegistrationError = "Cloudflare rejected the tunnel registration. The tunnel token may be invalid, revoked, or for a deleted tunnel — check the Cloudflare Zero Trust dashboard."
+            || output.contains("Register tunnel error from server side")
+            || output.contains("Provided Tunnel token is not valid") {
+            lastRegistrationError = "Cloudflare rejected the tunnel registration. The tunnel token may be invalid, revoked, or for a deleted tunnel — check the Cloudflare Zero Trust dashboard. SwiftBot will keep retrying every 5 minutes."
         }
     }
 
@@ -319,36 +332,39 @@ actor TunnelManager: TunnelProvider {
 
         consecutiveFailures += 1
 
-        if consecutiveFailures >= Self.maxConsecutiveFailures {
-            let detail = lastRegistrationError
-                ?? "Cloudflare tunnel failed to start after \(consecutiveFailures) attempts."
-            await logger?("⚠️ \(detail)")
-            await publishStatus(.init(
-                state: .error,
-                publicURL: currentConfiguration.publicURL,
-                detail: detail
-            ))
-            return
-        }
-
+        let wasRejected = lastRegistrationError != nil
         let detail = lastRegistrationError
             ?? "Cloudflare tunnel stopped unexpectedly. Restarting…"
-        await logger?("⚠️ \(detail)")
+        if Self.shouldLogRetry(afterFailures: consecutiveFailures) {
+            await logger?("⚠️ \(detail)")
+        }
         await publishStatus(.init(
             state: .error,
             publicURL: currentConfiguration.publicURL,
             detail: detail
         ))
 
-        // Exponential backoff: 2s, 4s, 8s, 16s, …
-        let delaySeconds = min(30, 1 << consecutiveFailures)
+        let delaySeconds = Self.restartDelaySeconds(afterFailures: consecutiveFailures, rejected: wasRejected)
+        let delayNanoseconds = UInt64(Double(delaySeconds) * retryDelayScale * 1_000_000_000)
         restartTask?.cancel()
         restartTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
             guard !Task.isCancelled else { return }
-            await self?.markNextStartAsRestart()
+            await self?.prepareForRestart()
             await self?.startProcess(using: currentConfiguration)
         }
+    }
+
+    /// Exponential backoff: 2s, 4s, 8s, 16s, then 30s. The shift is clamped because
+    /// retries are unlimited: `1 << 63` is negative and `1 << 64` is zero.
+    nonisolated static func restartDelaySeconds(afterFailures failures: Int, rejected: Bool) -> Int {
+        if rejected { return rejectedRetryDelaySeconds }
+        return min(30, 1 << min(max(failures, 1), 5))
+    }
+
+    /// The log keeps only 500 lines, so a long outage must not fill it with retries.
+    nonisolated static func shouldLogRetry(afterFailures failures: Int) -> Bool {
+        failures <= 5 || failures % 120 == 0
     }
 
     private func publishStatus(_ status: AdminWebPublicAccessRuntimeStatus) async {
@@ -404,16 +420,18 @@ actor TunnelManager: TunnelProvider {
         }
 
         await logger?("Network path changed — restarting Cloudflare tunnel for a clean reconnect")
-        // Reset the failure counter so a laptop that flapped through a few
-        // networks doesn't hit maxConsecutiveFailures and get stuck.
+        // Reset the failure counter so the reconnect after a network change
+        // doesn't wait out a long backoff.
         consecutiveFailures = 0
         lastRegistrationError = nil
         await stop(clearDesiredConfiguration: false)
         await startProcess(using: configuration)
     }
 
-    private func markNextStartAsRestart() {
+    private func prepareForRestart() {
         nextStartIsRestart = true
+        // Only a refusal from the latest attempt should slow the next retry.
+        lastRegistrationError = nil
     }
 
     @discardableResult

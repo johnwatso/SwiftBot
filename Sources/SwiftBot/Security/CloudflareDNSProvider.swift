@@ -143,20 +143,10 @@ struct CloudflareDNSProvider: Sendable {
         let content: String
     }
 
-    private struct DNSRecord: Decodable {
+    /// Cloudflare removed `zone_id` from DNS record responses, and a delete
+    /// returns only the record's `id`.
+    private struct DeletedDNSRecord: Decodable {
         let id: String
-        let zoneID: String
-        let type: String
-        let name: String
-        let content: String
-
-        private enum CodingKeys: String, CodingKey {
-            case id
-            case zoneID = "zone_id"
-            case type
-            case name
-            case content
-        }
     }
 
     private struct CreateDNSRecordRequest: Encodable {
@@ -310,7 +300,7 @@ struct CloudflareDNSProvider: Sendable {
         request.httpBody = try encoder.encode(requestBody)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let envelope: APIEnvelope<DNSRecord> = try await send(request)
+        let envelope: APIEnvelope<CloudflareDNSRecord> = try await send(request)
         guard envelope.success, let record = envelope.result else {
             if Self.hasIdenticalRecordError(envelope.errors) {
                 throw Error.identicalRecordAlreadyExists
@@ -319,7 +309,7 @@ struct CloudflareDNSProvider: Sendable {
         }
 
         return DNSRecordSummary(
-            zoneID: record.zoneID,
+            zoneID: zoneID,
             recordID: record.id,
             type: record.type,
             name: record.name,
@@ -335,7 +325,7 @@ struct CloudflareDNSProvider: Sendable {
             .appendingPathComponent(record.recordID)
 
         let request = makeRequest(url: requestURL, method: "DELETE")
-        let envelope: APIEnvelope<DNSRecord> = try await send(request)
+        let envelope: APIEnvelope<DeletedDNSRecord> = try await send(request)
         guard envelope.success else {
             throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
         }
@@ -588,7 +578,7 @@ struct CloudflareDNSProvider: Sendable {
             .appendingPathComponent(record.recordID)
 
         let request = makeRequest(url: requestURL, method: "DELETE")
-        let envelope: APIEnvelope<DNSRecord> = try await send(request)
+        let envelope: APIEnvelope<DeletedDNSRecord> = try await send(request)
         guard envelope.success else {
             throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
         }

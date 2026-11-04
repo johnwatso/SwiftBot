@@ -521,7 +521,6 @@ final class CertificateManagerTests: XCTestCase {
                   "success": true,
                   "result": {
                     "id": "record-123",
-                    "zone_id": "zone-123",
                     "type": "TXT",
                     "name": "_acme-challenge.swiftbot.roon.nz",
                     "content": "challenge-token"
@@ -871,6 +870,120 @@ final class CertificateManagerTests: XCTestCase {
         XCTAssertEqual(resolvedBinaryURL.path, binaryURL.path)
     }
 
+    func testCloudflareDNSDeleteAcceptsIDOnlyResult() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            let url = try XCTUnwrap(request.url)
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(url.path, "/client/v4/zones/zone-123/dns_records/record-123")
+            let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (response, Data(#"{"success":true,"result":{"id":"record-123"}}"#.utf8))
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+        try await provider.deleteDNSRecord(
+            .init(zoneID: "zone-123", recordID: "record-123", type: "CNAME", name: "swiftbot.roon.nz", content: "target")
+        )
+        try await provider.deleteTXTRecord(
+            .init(zoneID: "zone-123", recordID: "record-123", name: "_acme-challenge.swiftbot.roon.nz", content: "challenge-token", wasCreated: true)
+        )
+    }
+
+    func testTunnelRestartDelayStaysBoundedForUnlimitedRetries() {
+        let delays = [1, 2, 3, 4, 5, 6].map { TunnelManager.restartDelaySeconds(afterFailures: $0, rejected: false) }
+        XCTAssertEqual(delays, [2, 4, 8, 16, 30, 30])
+        for failures in [62, 63, 64, 65, 100_000] {
+            XCTAssertEqual(TunnelManager.restartDelaySeconds(afterFailures: failures, rejected: false), 30)
+        }
+        XCTAssertEqual(TunnelManager.restartDelaySeconds(afterFailures: 1, rejected: true), 300)
+    }
+
+    func testTunnelKeepsRetryingPastOldLimitThenStopsWhenDisabled() async throws {
+        let directory = try makeTunnelScriptDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attempts = directory.appendingPathComponent("attempts")
+        let script = try makeTunnelScript(in: directory, body: "echo x >> '\(attempts.path)'\nexit 1")
+        let manager = TunnelManager(binaryURL: script, retryDelayScale: 0.001)
+
+        await manager.configure(tunnelTestConfiguration, logger: { _ in }, statusHandler: { _ in })
+        try await waitForTunnelTest { tunnelTestAttemptCount(at: attempts) >= 8 }
+        await manager.stop()
+
+        let countAfterStop = tunnelTestAttemptCount(at: attempts)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertLessThanOrEqual(tunnelTestAttemptCount(at: attempts), countAfterStop + 1)
+    }
+
+    func testTunnelRetriesRejectedTokenMoreSlowlyAndRecoversOnRegistration() async throws {
+        let directory = try makeTunnelScriptDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attempts = directory.appendingPathComponent("attempts")
+        let script = try makeTunnelScript(in: directory, body: """
+        echo x >> '\(attempts.path)'
+        if [ "$(wc -l < '\(attempts.path)')" -lt 3 ]; then
+          echo 'Provided Tunnel token is not valid.'
+          sleep 0.05
+          exit 1
+        fi
+        echo 'Registered tunnel connection'
+        exec sleep 30
+        """)
+        let recorder = TunnelTestRecorder()
+        let manager = TunnelManager(binaryURL: script, retryDelayScale: 0.001)
+
+        await manager.configure(
+            tunnelTestConfiguration,
+            logger: { recorder.logs.append($0) },
+            statusHandler: { recorder.statuses.append($0) }
+        )
+        try await waitForTunnelTest { await MainActor.run { recorder.statuses.last?.state == .enabled } }
+        await manager.stop()
+
+        await MainActor.run {
+            XCTAssertTrue(recorder.statuses.contains { $0.state == .error && $0.detail.contains("keep retrying every 5 minutes") })
+            XCTAssertTrue(recorder.logs.contains("Cloudflare tunnel reconnected after 2 failed attempt(s)"))
+        }
+    }
+
+    private var tunnelTestConfiguration: TunnelRuntimeConfiguration {
+        TunnelRuntimeConfiguration(
+            hostname: "tunnel.example.com",
+            publicURL: "https://tunnel.example.com",
+            originURL: "http://127.0.0.1:1",
+            tunnelToken: "test-token",
+            healthCheckEnabled: false
+        )
+    }
+
+    private func makeTunnelScriptDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func makeTunnelScript(in directory: URL, body: String) throws -> URL {
+        let script = directory.appendingPathComponent("cloudflared")
+        try "#!/bin/sh\n\(body)\n".write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        return script
+    }
+
+    private func waitForTunnelTest(_ condition: () async -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            if await condition() { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("Timed out waiting for the tunnel test condition")
+    }
+
     func testCloudflareTunnelClientCreatesTunnelWithAccountFallbackAndConfiguresIngress() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockCloudflareURLProtocol.self]
@@ -1042,4 +1155,14 @@ final class CertificateManagerTests: XCTestCase {
 
         XCTAssertEqual(requestCount, 5)
     }
+}
+
+private func tunnelTestAttemptCount(at url: URL) -> Int {
+    ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").count
+}
+
+@MainActor
+private final class TunnelTestRecorder {
+    var logs: [String] = []
+    var statuses: [AdminWebPublicAccessRuntimeStatus] = []
 }
