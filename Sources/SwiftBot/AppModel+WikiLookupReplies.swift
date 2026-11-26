@@ -314,10 +314,16 @@ extension AppModel {
             }
         }
         do {
+            // Encode here: a `[String: Any]` can't be sent across to the
+            // service actor under strict concurrency (Release archive fails).
+            let payloadData = try JSONSerialization.data(withJSONObject: [
+                "type": 8,
+                "data": ["choices": choices]
+            ])
             try await service.respondToInteraction(
                 interactionID: event.interactionID,
                 interactionToken: event.interactionToken,
-                payload: ["type": 8, "data": ["choices": choices]]
+                payloadData: payloadData
             )
         } catch {
             // Autocomplete answers expire after three seconds; a late one is harmless.
