@@ -12686,6 +12686,7 @@
       const hourOptions = Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === data.checkHour ? 'selected' : ''}>${gameTrackerHourLabel(h)}</option>`).join('');
       const linked = data.linkedPlayerCount || 0;
       const off = readOnly ? 'disabled' : '';
+      const club = data.clubSync || {};
       automation.innerHTML = `
         <section class="ub-group">
           <div class="ub-group-head"><h2>Automation</h2></div>
@@ -12712,6 +12713,30 @@
               </div>
               <label class="switch"><input id="gtSessions" type="checkbox" ${data.sessionTrackingEnabled ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
             </div>
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Sync finals.id club</div>
+                <div class="ub-row-desc">Adds members of the club your finals.id key's account is in, before every check. Synced players who leave are paused; deleting one stops it coming back.
+                  ${!club.hasCredential ? '<br><span class="gt-warn">Add a finals.id key under Connections first.</span>' : ''}
+                  ${club.enabled && !club.destinationChannelID ? '<br><span class="gt-warn">Choose a channel for new members.</span>' : ''}
+                  ${club.lastSyncedAt ? `<br>${escapeHTML(club.clubName || 'Club')} · synced ${escapeHTML(relativeTime(club.lastSyncedAt))}${club.lastSyncNote ? ` · ${escapeHTML(club.lastSyncNote)}` : ''}` : ''}
+                  ${club.syncedPlayerCount ? `<br>${club.syncedPlayerCount} synced player${club.syncedPlayerCount === 1 ? '' : 's'}${club.pausedPlayerCount ? `, ${club.pausedPlayerCount} paused` : ''}.` : ''}</div>
+              </div>
+              <label class="switch"><input id="gtClubSync" type="checkbox" ${club.enabled ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
+            </div>
+            <div class="ub-row${club.enabled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Post new members to</div>
+              </div>
+              <select id="gtClubChannel" class="field-select prefs-control" data-channel-picker aria-label="Channel for synced club members" ${off}><option value="">Select a channel</option>${(data.channels || []).map(c => `<option value="${escapeHTML(c.id)}" ${c.id === club.destinationChannelID ? 'selected' : ''}>${escapeHTML(c.name)}</option>`).join('')}</select>
+            </div>
+            <div class="ub-row${club.enabled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Include leaderboard names</div>
+                <div class="ub-row-desc">Club members finals.id only knows from the top-10,000 leaderboard. Opted-out "Anonymous" members are never added.</div>
+              </div>
+              <label class="switch"><input id="gtClubLeaderboard" type="checkbox" ${club.includeLeaderboardMembers !== false ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
+            </div>
           </div>
         </section>`;
       const saveSettings = (patch) => postGameTrackerUpdate({ action: 'updateSettings', ...patch })
@@ -12719,6 +12744,17 @@
       automation.querySelector('#gtDaily')?.addEventListener('change', e => saveSettings({ dailyCheckEnabled: e.target.checked }));
       automation.querySelector('#gtSessions')?.addEventListener('change', e => saveSettings({ sessionTrackingEnabled: e.target.checked }));
       automation.querySelector('#gtHour')?.addEventListener('change', e => saveSettings({ checkHour: Number(e.target.value) }));
+      automation.querySelector('#gtClubChannel')?.addEventListener('change', e => saveSettings({ clubSyncChannelID: e.target.value }));
+      automation.querySelector('#gtClubLeaderboard')?.addEventListener('change', e => saveSettings({ clubSyncIncludeLeaderboard: e.target.checked }));
+      automation.querySelector('#gtClubSync')?.addEventListener('change', e => {
+        const channel = automation.querySelector('#gtClubChannel')?.value || '';
+        if (e.target.checked && !channel) {
+          e.target.checked = false;
+          setMessage('Choose a channel for new club members first.', 'error');
+          return;
+        }
+        saveSettings({ clubSyncEnabled: e.target.checked, clubSyncChannelID: channel });
+      });
 
       renderGameTrackerStyle(data, readOnly);
 

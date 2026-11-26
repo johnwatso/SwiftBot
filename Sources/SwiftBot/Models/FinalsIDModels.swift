@@ -212,3 +212,95 @@ struct FinalsIDClubMember: Codable, Hashable, Sendable {
             .contains(lowercasedIdentifier)
     }
 }
+
+// MARK: - Club sync
+
+/// Works out how Game Tracker's player list changes to match the club roster.
+/// Pure, so the rules can be tested without the network:
+/// - roster members with a name#tag are added (leaderboard-mirror names only
+///   when `includeLeaderboardMembers` is on; "Anonymous" slots never);
+/// - players already tracked, whoever added them, are left alone;
+/// - a player the sync added who is no longer on the roster is paused, and
+///   resumed if they come back; players the operator added are never paused;
+/// - names the operator deleted after a sync added them are not re-added.
+enum GameClubSyncPlanner {
+    struct Outcome: Equatable {
+        var players: [GameTrackedPlayer]
+        var sync: GameClubSyncSettings
+        var added: [String] = []
+        var paused: [String] = []
+        var resumed: [String] = []
+
+        var hasChanges: Bool { !added.isEmpty || !paused.isEmpty || !resumed.isEmpty }
+    }
+
+    static func identifier(for member: FinalsIDClubMember, includeLeaderboardMembers: Bool) -> String? {
+        if let username = member.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            return username
+        }
+        guard includeLeaderboardMembers else { return nil }
+        let name = member.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Leaderboard names carry their #tag; "Anonymous" and other bare
+        // placeholders can't be looked up.
+        guard name.contains("#"), !name.hasPrefix("#") else { return nil }
+        return name
+    }
+
+    static func plan(
+        rosters: [FinalsIDClubRoster],
+        players: [GameTrackedPlayer],
+        sync: GameClubSyncSettings
+    ) -> Outcome {
+        var outcome = Outcome(players: players, sync: sync)
+        // An empty answer is far more likely a glitch than everyone leaving.
+        let members = rosters.flatMap(\.members)
+        guard !members.isEmpty else { return outcome }
+
+        var seen: Set<String> = []
+        var present: Set<UUID> = []
+        for member in members {
+            guard let name = identifier(for: member, includeLeaderboardMembers: sync.includeLeaderboardMembers),
+                  seen.insert(name.lowercased()).inserted else { continue }
+
+            if let index = outcome.players.firstIndex(where: {
+                $0.provider == .finalsID && member.matches($0.playerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            }) {
+                let id = outcome.players[index].id
+                present.insert(id)
+                if outcome.sync.departedPlayerIDs.contains(id) {
+                    outcome.players[index].isEnabled = true
+                    outcome.sync.departedPlayerIDs.removeAll { $0 == id }
+                    outcome.resumed.append(outcome.players[index].resolvedDisplayName)
+                }
+                continue
+            }
+            guard !outcome.sync.excludedIdentifiers.contains(name.lowercased()) else { continue }
+
+            var player = GameTrackedPlayer()
+            player.game = .theFinals
+            player.provider = .finalsID
+            player.playerID = name
+            player.destinationChannelID = sync.destinationChannelID
+            player.isEnabled = true
+            outcome.players.append(player)
+            outcome.sync.syncedPlayerIDs.append(player.id)
+            present.insert(player.id)
+            outcome.added.append(name)
+        }
+
+        for id in outcome.sync.syncedPlayerIDs where !present.contains(id) {
+            guard let index = outcome.players.firstIndex(where: { $0.id == id }),
+                  outcome.players[index].isEnabled,
+                  !outcome.sync.departedPlayerIDs.contains(id) else { continue }
+            outcome.players[index].isEnabled = false
+            outcome.sync.departedPlayerIDs.append(id)
+            outcome.paused.append(outcome.players[index].resolvedDisplayName)
+        }
+
+        // Forget players that no longer exist.
+        let existing = Set(outcome.players.map(\.id))
+        outcome.sync.syncedPlayerIDs.removeAll { !existing.contains($0) }
+        outcome.sync.departedPlayerIDs.removeAll { !existing.contains($0) }
+        return outcome
+    }
+}

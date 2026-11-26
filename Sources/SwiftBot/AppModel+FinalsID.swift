@@ -95,6 +95,11 @@ extension AppModel {
 
     func runGameTrackingCheck(trigger: String = "Manual") async {
         guard !gameTrackingCheckInProgress else { return }
+        // Club sync first: it can add the players this check is about to poll,
+        // including the first ones on an otherwise empty list.
+        if status == .running {
+            await syncGameTrackingClub()
+        }
         guard settings.gameTracking.isReady(connections: settings.gameProviders) else {
             gameTrackingStatusText = settings.gameTracking.configurationIssue(connections: settings.gameProviders)
                 ?? "Not configured"
@@ -299,6 +304,9 @@ extension AppModel {
         } else {
             settings.gameTracking.players.append(normalized)
         }
+        // Adding someone by hand undoes an earlier "don't re-add" from club sync.
+        let name = normalized.playerID.lowercased()
+        settings.gameTracking.clubSync.excludedIdentifiers.removeAll { $0 == name }
         gameTrackingSettingsDidChange()
         if shouldClearBaseline {
             clearGameTrackingBaseline(for: normalized.id)
@@ -312,6 +320,15 @@ extension AppModel {
     }
 
     func removeTrackedGamePlayer(_ playerID: UUID) {
+        // Deleting a player club sync added means "stop tracking them", so
+        // the next sync must not add them straight back.
+        if settings.gameTracking.clubSync.syncedPlayerIDs.contains(playerID),
+           let player = settings.gameTracking.players.first(where: { $0.id == playerID }) {
+            let name = player.playerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !name.isEmpty, !settings.gameTracking.clubSync.excludedIdentifiers.contains(name) {
+                settings.gameTracking.clubSync.excludedIdentifiers.append(name)
+            }
+        }
         settings.gameTracking.players.removeAll { $0.id == playerID }
         gameTrackingSettingsDidChange()
         clearGameTrackingBaseline(for: playerID)
@@ -409,9 +426,87 @@ extension AppModel {
         }
     }
 
+    /// Adds the finals.id key owner's club members as tracked players, pauses
+    /// synced players who left, and resumes those who came back. Runs before
+    /// every check and when club sync is switched on. Primary only.
+    func syncGameTrackingClub() async {
+        let sync = settings.gameTracking.clubSync
+        guard sync.isEnabled, !sync.destinationChannelID.isEmpty else { return }
+        let mode = runtimeClusterMode
+        guard mode == .standalone || mode == .leader else { return }
+        guard let descriptor = GameProviderCatalog.descriptor(for: .finalsID) else { return }
+        let connectionSettings = settings.gameProviders[.finalsID]
+        guard connectionSettings.hasCredential else {
+            settings.gameTracking.clubSync.lastSyncNote = "Add a finals.id key to sync the club."
+            saveGameTrackingSettingsFromSync()
+            return
+        }
+
+        let rosters: [FinalsIDClubRoster]
+        do {
+            rosters = try await finalsIDLatestRoundClient.keyOwnerClubRosters(
+                connection: connectionSettings.connection(for: descriptor)
+            )
+        } catch {
+            settings.gameTracking.clubSync.lastSyncNote = "Couldn't read the club: \(error.localizedDescription)"
+            saveGameTrackingSettingsFromSync()
+            logs.append("[WARN] Game Tracker club sync failed: \(error.localizedDescription)")
+            return
+        }
+
+        // Planned against the settings as they are now, after the await.
+        let outcome = GameClubSyncPlanner.plan(
+            rosters: rosters,
+            players: settings.gameTracking.players,
+            sync: settings.gameTracking.clubSync
+        )
+        var updated = outcome.sync
+        updated.lastSyncedAt = Date()
+        updated.clubName = rosters.first?.name ?? updated.clubName
+        if rosters.isEmpty {
+            updated.lastSyncNote = "The finals.id key's account isn't in a club."
+        } else {
+            var parts: [String] = []
+            if !outcome.added.isEmpty { parts.append("Added \(outcome.added.joined(separator: ", "))") }
+            if !outcome.paused.isEmpty { parts.append("Paused \(outcome.paused.joined(separator: ", ")) (left the club)") }
+            if !outcome.resumed.isEmpty { parts.append("Resumed \(outcome.resumed.joined(separator: ", "))") }
+            updated.lastSyncNote = parts.isEmpty ? "Up to date." : parts.joined(separator: " · ")
+        }
+        settings.gameTracking.players = outcome.players
+        settings.gameTracking.clubSync = updated
+        saveGameTrackingSettingsFromSync()
+        if outcome.hasChanges, let note = updated.lastSyncNote {
+            logs.append("[INFO] Game Tracker club sync (\(updated.clubName ?? "club")): \(note)")
+        }
+    }
+
+    /// Saves without restarting the scheduler: sync runs inside the scheduled
+    /// check, and restarting would cancel that very check. When nothing is
+    /// scheduled yet (e.g. the list was empty), a full reconfigure is wanted.
+    private func saveGameTrackingSettingsFromSync() {
+        if gameTrackingMonitorTask == nil {
+            gameTrackingSettingsDidChange()
+            return
+        }
+        lastGameTrackingMonitoringSnapshot = GameTrackingMonitoringSnapshot(
+            tracking: settings.gameTracking,
+            connections: settings.gameProviders,
+            clusterMode: runtimeClusterMode,
+            botStatus: status
+        )
+        saveSettings()
+        scheduleGameTrackingSettingsSave()
+    }
+
     func gameTrackingSettingsDidChange() {
         saveSettings()
         configureGameTrackingMonitoring()
+        scheduleGameTrackingSettingsSave()
+    }
+
+    /// `saveSettings` skips saves closer than a few seconds apart; this
+    /// follow-up makes sure the last change still lands on disk.
+    private func scheduleGameTrackingSettingsSave() {
         gameTrackingSettingsSaveTask?.cancel()
         gameTrackingSettingsSaveTask = Task { [weak self] in
             do {

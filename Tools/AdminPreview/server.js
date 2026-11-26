@@ -681,6 +681,10 @@ async function handleAPI(req, res, pathname, query) {
       } else if (body.action === 'updateSettings') {
         ['dailyCheckEnabled', 'sessionTrackingEnabled', 'checkHour'].forEach((key) => { if (key in body) gametracker[key] = body[key]; });
         gametracker.enabled = gametracker.dailyCheckEnabled || gametracker.sessionTrackingEnabled;
+        const club = gametracker.clubSync;
+        if ('clubSyncEnabled' in body) club.enabled = !!body.clubSyncEnabled;
+        if ('clubSyncChannelID' in body) club.destinationChannelID = body.clubSyncChannelID;
+        if ('clubSyncIncludeLeaderboard' in body) club.includeLeaderboardMembers = !!body.clubSyncIncludeLeaderboard;
       }
       gametracker.enabledPlayerCount = gametracker.players.filter((p) => p.isEnabled).length;
       gametracker.totalPlayerCount = gametracker.players.length;

@@ -439,6 +439,8 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
     var sessionSettleDelaySeconds = 120
     /// How rank updates and session summaries look in Discord.
     var announcementStyle = GameAnnouncementStyle()
+    /// Adds the finals.id key owner's club members as tracked players.
+    var clubSync = GameClubSyncSettings()
 
     /// The service runs when either behaviour is switched on. There is no
     /// separate master switch: a user turning both off has already expressed
@@ -545,6 +547,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         case sessionMinimumDurationSeconds
         case sessionSettleDelaySeconds
         case announcementStyle
+        case clubSync
     }
 
     init() {}
@@ -567,6 +570,8 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         sessionSettleDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .sessionSettleDelaySeconds) ?? 120
         announcementStyle = (try? container.decodeIfPresent(GameAnnouncementStyle.self, forKey: .announcementStyle))
             ?? GameAnnouncementStyle()
+        clubSync = (try? container.decodeIfPresent(GameClubSyncSettings.self, forKey: .clubSync))
+            ?? GameClubSyncSettings()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -581,6 +586,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         try container.encode(sessionMinimumDurationSeconds, forKey: .sessionMinimumDurationSeconds)
         try container.encode(sessionSettleDelaySeconds, forKey: .sessionSettleDelaySeconds)
         try container.encode(announcementStyle, forKey: .announcementStyle)
+        try container.encode(clubSync, forKey: .clubSync)
     }
 
     mutating func normalize() {
@@ -593,6 +599,50 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
             players[index].normalize()
         }
         announcementStyle.normalize()
+        clubSync.destinationChannelID = clubSync.destinationChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Keeps Game Tracker's finals.id players in step with the club of the
+/// account that owns the finals.id key.
+struct GameClubSyncSettings: Codable, Hashable, Sendable {
+    var isEnabled = false
+    /// Channel new club members post to.
+    var destinationChannelID = ""
+    /// Also add roster names that come from finals.id's top-10k leaderboard
+    /// mirror rather than a linked profile. Opted-out ("Anonymous") slots are
+    /// never added.
+    var includeLeaderboardMembers = true
+    /// Players this sync added. Only these are ever paused by it.
+    var syncedPlayerIDs: [UUID] = []
+    /// Synced players paused because they left the club; resumed if they
+    /// return. A player the operator paused is never in here.
+    var departedPlayerIDs: [UUID] = []
+    /// Lowercased finals.id names of synced players the operator deleted, so
+    /// the next sync doesn't add them straight back.
+    var excludedIdentifiers: [String] = []
+    var clubName: String?
+    var lastSyncedAt: Date?
+    var lastSyncNote: String?
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled, destinationChannelID, includeLeaderboardMembers
+        case syncedPlayerIDs, departedPlayerIDs, excludedIdentifiers, clubName, lastSyncedAt, lastSyncNote
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        destinationChannelID = try container.decodeIfPresent(String.self, forKey: .destinationChannelID) ?? ""
+        includeLeaderboardMembers = try container.decodeIfPresent(Bool.self, forKey: .includeLeaderboardMembers) ?? true
+        syncedPlayerIDs = try container.decodeIfPresent([UUID].self, forKey: .syncedPlayerIDs) ?? []
+        departedPlayerIDs = try container.decodeIfPresent([UUID].self, forKey: .departedPlayerIDs) ?? []
+        excludedIdentifiers = try container.decodeIfPresent([String].self, forKey: .excludedIdentifiers) ?? []
+        clubName = try container.decodeIfPresent(String.self, forKey: .clubName)
+        lastSyncedAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncedAt)
+        lastSyncNote = try container.decodeIfPresent(String.self, forKey: .lastSyncNote)
     }
 }
 

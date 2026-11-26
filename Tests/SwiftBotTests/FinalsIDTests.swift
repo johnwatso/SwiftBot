@@ -647,6 +647,78 @@ final class FinalsIDTests: XCTestCase {
         }
     }
 
+    private func clubMember(_ name: String, username: String? = nil, id: String? = nil, score: Int? = nil) -> FinalsIDClubMember {
+        FinalsIDClubMember(displayName: name, username: username, id: id, score: score, rank: nil)
+    }
+
+    private func clubRoster(_ members: [FinalsIDClubMember]) -> FinalsIDClubRoster {
+        FinalsIDClubRoster(clubId: "c-club", name: "DA BOI5S", tag: "DBOI5", refreshedAt: nil, members: members)
+    }
+
+    func testClubSyncAddsNamedMembersAndSkipsAnonymousAndExistingPlayers() {
+        var me = GameTrackedPlayer()
+        me.playerID = "JonWatso#5331"
+        me.destinationChannelID = "manual"
+        var sync = GameClubSyncSettings()
+        sync.isEnabled = true
+        sync.destinationChannelID = "club-channel"
+
+        let roster = clubRoster([
+            clubMember("Anonymous"),
+            clubMember("jonwatso#5331", username: "jonwatso#5331", id: "p-me", score: 29866),
+            clubMember("maximillian#5331", username: "maximillian#5331", id: "p-max", score: 30847),
+            clubMember("Peplord3000#5567", score: 19777)
+        ])
+        let outcome = GameClubSyncPlanner.plan(rosters: [roster], players: [me], sync: sync)
+
+        XCTAssertEqual(outcome.added, ["maximillian#5331", "Peplord3000#5567"])
+        XCTAssertEqual(outcome.players.count, 3)
+        XCTAssertEqual(outcome.players[0], me, "A player already tracked by hand is left alone.")
+        XCTAssertEqual(outcome.players.dropFirst().map(\.destinationChannelID), ["club-channel", "club-channel"])
+        XCTAssertEqual(outcome.sync.syncedPlayerIDs, outcome.players.dropFirst().map(\.id))
+
+        sync.includeLeaderboardMembers = false
+        let namedOnly = GameClubSyncPlanner.plan(rosters: [roster], players: [me], sync: sync)
+        XCTAssertEqual(namedOnly.added, ["maximillian#5331"])
+    }
+
+    func testClubSyncPausesLeaversResumesReturnersAndRespectsDeletions() {
+        var sync = GameClubSyncSettings()
+        sync.isEnabled = true
+        sync.destinationChannelID = "club-channel"
+        let withMax = clubRoster([clubMember("maximillian#5331", username: "maximillian#5331", score: 30847)])
+        let first = GameClubSyncPlanner.plan(rosters: [withMax], players: [], sync: sync)
+        let maxID = try? XCTUnwrap(first.players.first?.id)
+
+        let without = clubRoster([clubMember("Anonymous")])
+        let left = GameClubSyncPlanner.plan(rosters: [without], players: first.players, sync: first.sync)
+        XCTAssertEqual(left.paused, ["maximillian#5331"])
+        XCTAssertEqual(left.players.first?.isEnabled, false)
+
+        let back = GameClubSyncPlanner.plan(rosters: [withMax], players: left.players, sync: left.sync)
+        XCTAssertEqual(back.resumed, ["maximillian#5331"])
+        XCTAssertEqual(back.players.first?.isEnabled, true)
+        XCTAssertEqual(back.players.first?.id, maxID)
+        XCTAssertTrue(back.added.isEmpty)
+
+        // An empty answer never pauses anyone.
+        let glitch = GameClubSyncPlanner.plan(rosters: [], players: back.players, sync: back.sync)
+        XCTAssertFalse(glitch.hasChanges)
+
+        // Deleted by the operator: not re-added.
+        var deleted = back.sync
+        deleted.excludedIdentifiers = ["maximillian#5331"]
+        let afterDelete = GameClubSyncPlanner.plan(rosters: [withMax], players: [], sync: deleted)
+        XCTAssertTrue(afterDelete.players.isEmpty)
+        XCTAssertTrue(afterDelete.sync.syncedPlayerIDs.isEmpty)
+    }
+
+    func testClubSyncSettingsDecodeWhenAbsentFromOlderSettings() throws {
+        let settings = try JSONDecoder().decode(GameTrackingSettings.self, from: Data(#"{"dailyCheckEnabled":true}"#.utf8))
+        XCTAssertFalse(settings.clubSync.isEnabled)
+        XCTAssertTrue(settings.clubSync.includeLeaderboardMembers)
+    }
+
     /// Runs `perform` against a stubbed session and returns the URL it requested.
     private func capturedRequestURL(
         _ perform: (URLSession) async -> Void

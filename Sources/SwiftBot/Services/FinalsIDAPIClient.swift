@@ -85,16 +85,19 @@ actor FinalsIDAPIClient: GameRankProvider {
         // finals.id: 404 means the name doesn't resolve, 403 that the owner
         // hid the field from this key.
         if http.statusCode == 401 { throw FinalsIDAPIError.unauthorized }
-        if http.statusCode == 403 {
-            // A personal key can't read other players' profiles, but it can
-            // read the roster of the key owner's club, which carries each
-            // tracked member's SR. Fall back to that before giving up.
-            if let snapshot = try? await clubRosterSnapshot(for: target, connection: connection) {
-                return snapshot
+        if http.statusCode == 403 || http.statusCode == 404 {
+            // A personal key can't read other players' profiles (403), and
+            // roster names from finals.id's leaderboard mirror have no profile
+            // at all (404). The key owner's club roster still carries their
+            // SR, so fall back to it before giving up.
+            let lookup = (try? await clubRosterLookup(for: target, connection: connection)) ?? .notMember
+            switch lookup {
+            case .found(let snapshot): return snapshot
+            case .scoreHidden: throw FinalsIDAPIError.rankHidden
+            case .notMember:
+                throw http.statusCode == 403 ? FinalsIDAPIError.rankHidden : FinalsIDAPIError.playerNotFound
             }
-            throw FinalsIDAPIError.rankHidden
         }
-        if http.statusCode == 404 { throw FinalsIDAPIError.playerNotFound }
         guard (200...299).contains(http.statusCode) else {
             throw FinalsIDAPIError.httpStatus(http.statusCode)
         }
@@ -165,26 +168,41 @@ actor FinalsIDAPIClient: GameRankProvider {
     private var clubRosterCache: ClubRosterCache?
     static let clubRosterCacheLifetime: TimeInterval = 300
 
+    enum ClubRosterLookup: Sendable {
+        case found(GameRankSnapshot)
+        /// On the roster, but with no score (hidden, or not on ranked).
+        case scoreHidden
+        case notMember
+    }
+
+    /// The key owner's club rosters, for Game Tracker's club sync.
+    func keyOwnerClubRosters(connection: GameProviderConnection) async throws -> [FinalsIDClubRoster] {
+        try await loadClubRosters(connection: connection).rosters
+    }
+
     /// SR for `target` read from the club roster of the key owner
-    /// (`/v1/me` → `/v1/profiles/{me}` → `/v1/clubs/{clubId}`). Nil when the
-    /// player isn't on that roster or the roster has no score for them.
-    func clubRosterSnapshot(
+    /// (`/v1/me` → `/v1/profiles/{me}` → `/v1/clubs/{clubId}`).
+    func clubRosterLookup(
         for target: GameTrackedPlayer,
         connection: GameProviderConnection
-    ) async throws -> GameRankSnapshot? {
+    ) async throws -> ClubRosterLookup {
         let cache = try await loadClubRosters(connection: connection)
         let wanted = target.playerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !wanted.isEmpty else { return nil }
+        guard !wanted.isEmpty else { return .notMember }
 
+        var onRosterWithoutScore = false
         for roster in cache.rosters {
-            guard let member = roster.members.first(where: { $0.matches(wanted) }),
-                  let score = member.score else { continue }
+            guard let member = roster.members.first(where: { $0.matches(wanted) }) else { continue }
+            guard let score = member.score else {
+                onRosterWithoutScore = true
+                continue
+            }
             let tier = target.game.rankTier(index: nil, score: score, league: nil)
             var metrics = GameMetricSet()
             metrics[.rankedScore] = Double(score)
             if let tier, tier.division != nil { metrics[.rankTier] = Double(tier.ladderPosition) }
             if let rank = member.rank, rank > 0 { metrics[.leaderboardPosition] = Double(rank) }
-            return GameRankSnapshot(
+            return .found(GameRankSnapshot(
                 game: target.game,
                 provider: target.provider,
                 playerID: member.id ?? target.playerID,
@@ -194,9 +212,9 @@ actor FinalsIDAPIClient: GameRankProvider {
                 score: score,
                 updatedAt: roster.refreshedAt.flatMap(Self.parseDate),
                 metrics: metrics
-            )
+            ))
         }
-        return nil
+        return onRosterWithoutScore ? .scoreHidden : .notMember
     }
 
     private func loadClubRosters(connection: GameProviderConnection) async throws -> ClubRosterCache {

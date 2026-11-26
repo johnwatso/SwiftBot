@@ -3768,7 +3768,18 @@ extension AppModel {
             channels: channels,
             members: discordMemberOptions.map { .init(id: $0.id, name: $0.displayName, username: $0.username) },
             announcementStyle: tracking.announcementStyle,
-            stylePreview: gameTrackerStylePreview(style: tracking.announcementStyle)
+            stylePreview: gameTrackerStylePreview(style: tracking.announcementStyle),
+            clubSync: AdminWebGameTrackerClubSyncPayload(
+                enabled: tracking.clubSync.isEnabled,
+                destinationChannelID: tracking.clubSync.destinationChannelID,
+                includeLeaderboardMembers: tracking.clubSync.includeLeaderboardMembers,
+                hasCredential: settings.gameProviders[.finalsID].hasCredential,
+                clubName: tracking.clubSync.clubName,
+                lastSyncedAt: tracking.clubSync.lastSyncedAt,
+                lastSyncNote: tracking.clubSync.lastSyncNote,
+                syncedPlayerCount: tracking.clubSync.syncedPlayerIDs.count,
+                pausedPlayerCount: tracking.clubSync.departedPlayerIDs.count
+            )
         )
     }
 
@@ -3936,7 +3947,34 @@ extension AppModel {
             if let enabled = update.dailyCheckEnabled { settings.gameTracking.dailyCheckEnabled = enabled }
             if let enabled = update.sessionTrackingEnabled { settings.gameTracking.sessionTrackingEnabled = enabled }
             if let hour = update.checkHour { settings.gameTracking.checkHour = hour }
+            let clubSyncBefore = settings.gameTracking.clubSync
+            if let channel = update.clubSyncChannelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                // Move synced players still posting to the old club channel.
+                let old = clubSyncBefore.destinationChannelID
+                for index in settings.gameTracking.players.indices
+                where clubSyncBefore.syncedPlayerIDs.contains(settings.gameTracking.players[index].id)
+                    && settings.gameTracking.players[index].destinationChannelID == old && !channel.isEmpty {
+                    settings.gameTracking.players[index].destinationChannelID = channel
+                }
+                settings.gameTracking.clubSync.destinationChannelID = channel
+            }
+            if let include = update.clubSyncIncludeLeaderboard {
+                settings.gameTracking.clubSync.includeLeaderboardMembers = include
+            }
+            if let enabled = update.clubSyncEnabled {
+                if enabled, settings.gameTracking.clubSync.destinationChannelID.isEmpty {
+                    settings.gameTracking.clubSync = clubSyncBefore
+                    return false
+                }
+                settings.gameTracking.clubSync.isEnabled = enabled
+            }
             gameTrackingSettingsDidChange()
+            let clubSyncAfter = settings.gameTracking.clubSync
+            if clubSyncAfter.isEnabled,
+               !clubSyncBefore.isEnabled
+                || clubSyncBefore.includeLeaderboardMembers != clubSyncAfter.includeLeaderboardMembers {
+                Task { await self.syncGameTrackingClub() }
+            }
         case .updateStyle:
             guard var style = update.style else { return false }
             style.normalize()

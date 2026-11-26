@@ -590,6 +590,21 @@ struct AdminWebGameTrackerPayload: Codable {
     /// by the same code that posts them.
     var announcementStyle: GameAnnouncementStyle = GameAnnouncementStyle()
     var stylePreview: AdminWebGameTrackerStylePreview?
+    var clubSync: AdminWebGameTrackerClubSyncPayload = AdminWebGameTrackerClubSyncPayload()
+}
+
+/// finals.id club sync state for the Automation card.
+struct AdminWebGameTrackerClubSyncPayload: Codable {
+    var enabled = false
+    var destinationChannelID = ""
+    var includeLeaderboardMembers = true
+    /// Whether a finals.id key is set; sync can't run without one.
+    var hasCredential = false
+    var clubName: String?
+    var lastSyncedAt: Date?
+    var lastSyncNote: String?
+    var syncedPlayerCount = 0
+    var pausedPlayerCount = 0
 }
 
 /// Discord message JSON (`content`, `embeds`) for the style editor preview.
@@ -645,6 +660,9 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
     var sessionTrackingEnabled: Bool?
     var checkHour: Int?
     var style: GameAnnouncementStyle?
+    var clubSyncEnabled: Bool?
+    var clubSyncChannelID: String?
+    var clubSyncIncludeLeaderboard: Bool?
 
     func validate() throws {
         switch action {
@@ -668,6 +686,9 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
         case .updateSettings:
             if let checkHour, !(0...23).contains(checkHour) {
                 throw ValidationError.outOfRange("checkHour", min: 0, max: 23)
+            }
+            if let clubSyncChannelID, clubSyncChannelID.count > 64 {
+                throw ValidationError.invalidValue("Unknown channel")
             }
         case .updateStyle:
             guard let style else { throw ValidationError.invalidValue("Style is required") }
