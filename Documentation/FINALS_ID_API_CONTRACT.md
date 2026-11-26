@@ -11,7 +11,8 @@ finals.id is the first provider for SwiftBot's provider-neutral Game Tracker. Sw
 
 ## Authentication
 
-- `Authorization: Bearer ftk_…`. A personal key can read the key owner's data and public fields other players' privacy settings allow.
+- `Authorization: Bearer ftk_…`. A **personal** key reads only the key owner's own profile, plus their club (`/v1/clubs/{clubId}`); other players' profiles, rounds, search and leaderboards answer 403 (verified 2026-11-26). Approved Team/Service keys can read more, per finals.id's consent and privacy rules.
+- **Club roster fallback:** when a tracked player's profile answers 403, SwiftBot reads `/v1/me` → `/v1/profiles/{me}` (season, `club.clubId`) → `/v1/clubs/{clubId}` and takes that player's `score` (SR) and `rank` (leaderboard place) from the roster `members`, matched by `username`, `id` or `displayName`. The tier comes from the 2,500-SR bands. Rosters are cached for 5 minutes. Players not on the key owner's club roster still show as hidden. Rounds (session summaries) have no fallback.
 - The token is stored in the macOS Keychain (`game-provider-token-finalsID`), never in settings.json.
 - SwiftBot never handles Steam or Embark credentials.
 

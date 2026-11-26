@@ -598,6 +598,55 @@ final class FinalsIDTests: XCTestCase {
         )
     }
 
+    /// A personal key gets 403 on other players' profiles but can read the
+    /// key owner's club roster; the SR must come from there.
+    func testForbiddenProfileFallsBackToTheKeyOwnersClubRoster() async throws {
+        defer { FinalsIDMockURLProtocol.requestHandler = nil }
+        FinalsIDMockURLProtocol.requestHandler = { request in
+            let path = request.url!.path
+            let reply: (status: Int, body: String)
+            switch path {
+            case "/v1/me":
+                reply = (200, #"{"id":"p-me","username":"owner#1111"}"#)
+            case "/v1/profiles/owner#1111":
+                reply = (200, #"{"id":"p-me","username":"owner#1111","season":"s12","ranked":{"boardId":"s12","score":29866},"rankScoreHidden":false,"club":{"clubId":"c-club","name":"Club","tag":"CLB"}}"#)
+            case "/v1/clubs/c-club":
+                reply = (200, #"{"clubId":"c-club","name":"Club","tag":"CLB","esports":false,"refreshedAt":"2026-11-26T22:16:45.941679Z","total":2,"leaderboards":[],"members":[{"id":null,"displayName":"Anonymous","username":null,"source":"leaderboard","score":null,"rank":null},{"id":"p-max","displayName":"maximillian#5331","username":"maximillian#5331","source":"tracked","score":30847,"rank":18151}]}"#)
+            default:
+                reply = (403, #"{"status":403}"#)
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: nil, headerFields: nil)!
+            return (response, Data(reply.body.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FinalsIDMockURLProtocol.self]
+        let client = FinalsIDAPIClient(session: URLSession(configuration: configuration))
+        let connection = GameProviderConnection(
+            baseURL: "https://example.test",
+            token: "t0ken",
+            auth: .bearer,
+            rankEndpointTemplate: "/v1/profiles/{playerID}"
+        )
+
+        var max = GameTrackedPlayer()
+        max.playerID = "Maximillian#5331"
+        let snapshot = try await client.fetchRankSnapshot(for: max, connection: connection)
+        XCTAssertEqual(snapshot.score, 30847)
+        XCTAssertEqual(snapshot.playerID, "p-max")
+        XCTAssertEqual(snapshot.season, "s12")
+        XCTAssertEqual(snapshot.rankName, "Platinum 4")
+        XCTAssertEqual(snapshot.metrics[.leaderboardPosition], 18151)
+
+        var stranger = GameTrackedPlayer()
+        stranger.playerID = "nobody#0000"
+        do {
+            _ = try await client.fetchRankSnapshot(for: stranger, connection: connection)
+            XCTFail("A player outside the club should still be reported as not visible.")
+        } catch {
+            XCTAssertEqual(error as? FinalsIDAPIError, .rankHidden)
+        }
+    }
+
     /// Runs `perform` against a stubbed session and returns the URL it requested.
     private func capturedRequestURL(
         _ perform: (URLSession) async -> Void

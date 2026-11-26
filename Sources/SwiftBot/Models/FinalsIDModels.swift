@@ -179,3 +179,36 @@ struct FinalsIDRosterMember: Codable, Hashable, Sendable {
     let name: String
 }
 
+
+// MARK: - Clubs
+
+/// `GET /v1/clubs/{clubId}`: a club and its roster. A personal key can read
+/// this for the key owner's own club even though other members' profiles
+/// answer 403, so it is the fallback source of their SR.
+struct FinalsIDClubRoster: Codable, Hashable, Sendable {
+    let clubId: String?
+    let name: String?
+    let tag: String?
+    let refreshedAt: String?
+    let members: [FinalsIDClubMember]
+}
+
+struct FinalsIDClubMember: Codable, Hashable, Sendable {
+    /// Always present; `username` is set when a profile is behind the slot.
+    let displayName: String
+    let username: String?
+    /// Public id (`p-…`); absent for slots with no linked profile.
+    let id: String?
+    /// Canonical ranked score; nil when hidden or not on ranked.
+    let score: Int?
+    /// Dense canonical ranked place for that score.
+    let rank: Int?
+
+    /// Matches a tracked player's identifier (name#tag or `p-…` id),
+    /// ignoring case.
+    func matches(_ lowercasedIdentifier: String) -> Bool {
+        [username, id, displayName]
+            .compactMap { $0?.lowercased() }
+            .contains(lowercasedIdentifier)
+    }
+}

@@ -85,7 +85,15 @@ actor FinalsIDAPIClient: GameRankProvider {
         // finals.id: 404 means the name doesn't resolve, 403 that the owner
         // hid the field from this key.
         if http.statusCode == 401 { throw FinalsIDAPIError.unauthorized }
-        if http.statusCode == 403 { throw FinalsIDAPIError.rankHidden }
+        if http.statusCode == 403 {
+            // A personal key can't read other players' profiles, but it can
+            // read the roster of the key owner's club, which carries each
+            // tracked member's SR. Fall back to that before giving up.
+            if let snapshot = try? await clubRosterSnapshot(for: target, connection: connection) {
+                return snapshot
+            }
+            throw FinalsIDAPIError.rankHidden
+        }
         if http.statusCode == 404 { throw FinalsIDAPIError.playerNotFound }
         guard (200...299).contains(http.statusCode) else {
             throw FinalsIDAPIError.httpStatus(http.statusCode)
@@ -142,6 +150,134 @@ actor FinalsIDAPIClient: GameRankProvider {
         } catch {
             throw FinalsIDAPIError.invalidResponse
         }
+    }
+
+    // MARK: - Club roster fallback
+
+    /// Rosters are shared by every tracked player in one check, so they are
+    /// fetched once and reused briefly instead of three requests per player.
+    private struct ClubRosterCache {
+        let key: String
+        let fetchedAt: Date
+        let season: String
+        let rosters: [FinalsIDClubRoster]
+    }
+    private var clubRosterCache: ClubRosterCache?
+    static let clubRosterCacheLifetime: TimeInterval = 300
+
+    /// SR for `target` read from the club roster of the key owner
+    /// (`/v1/me` → `/v1/profiles/{me}` → `/v1/clubs/{clubId}`). Nil when the
+    /// player isn't on that roster or the roster has no score for them.
+    func clubRosterSnapshot(
+        for target: GameTrackedPlayer,
+        connection: GameProviderConnection
+    ) async throws -> GameRankSnapshot? {
+        let cache = try await loadClubRosters(connection: connection)
+        let wanted = target.playerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !wanted.isEmpty else { return nil }
+
+        for roster in cache.rosters {
+            guard let member = roster.members.first(where: { $0.matches(wanted) }),
+                  let score = member.score else { continue }
+            let tier = target.game.rankTier(index: nil, score: score, league: nil)
+            var metrics = GameMetricSet()
+            metrics[.rankedScore] = Double(score)
+            if let tier, tier.division != nil { metrics[.rankTier] = Double(tier.ladderPosition) }
+            if let rank = member.rank, rank > 0 { metrics[.leaderboardPosition] = Double(rank) }
+            return GameRankSnapshot(
+                game: target.game,
+                provider: target.provider,
+                playerID: member.id ?? target.playerID,
+                displayName: member.username ?? member.displayName,
+                season: cache.season,
+                rankName: tier?.name,
+                score: score,
+                updatedAt: roster.refreshedAt.flatMap(Self.parseDate),
+                metrics: metrics
+            )
+        }
+        return nil
+    }
+
+    private func loadClubRosters(connection: GameProviderConnection) async throws -> ClubRosterCache {
+        let key = connection.baseURL + "\n" + connection.token
+        if let cached = clubRosterCache, cached.key == key,
+           Date().timeIntervalSince(cached.fetchedAt) < Self.clubRosterCacheLifetime {
+            return cached
+        }
+
+        guard let me = try await getJSONObject(path: "/v1/me", connection: connection) as? [String: Any],
+              let username = (me["username"] as? String) ?? (me["id"] as? String) else {
+            throw FinalsIDAPIError.invalidResponse
+        }
+        guard let profile = try await getJSONObject(
+            path: "/v1/profiles/" + Self.encodedPathSegment(username),
+            connection: connection
+        ) as? [String: Any] else {
+            throw FinalsIDAPIError.invalidResponse
+        }
+        let ranked = profile["ranked"] as? [String: Any]
+        let season = (profile["season"] as? String) ?? (ranked?["boardId"] as? String) ?? ""
+
+        var rosters: [FinalsIDClubRoster] = []
+        if let club = profile["club"] as? [String: Any], let clubID = club["clubId"] as? String, !clubID.isEmpty {
+            let data = try await getData(
+                path: "/v1/clubs/" + Self.encodedPathSegment(clubID),
+                connection: connection
+            )
+            do {
+                rosters.append(try JSONDecoder().decode(FinalsIDClubRoster.self, from: data))
+            } catch {
+                throw FinalsIDAPIError.invalidResponse
+            }
+        }
+
+        let entry = ClubRosterCache(key: key, fetchedAt: Date(), season: season, rosters: rosters)
+        clubRosterCache = entry
+        return entry
+    }
+
+    private func getJSONObject(path: String, connection: GameProviderConnection) async throws -> Any {
+        let data = try await getData(path: path, connection: connection)
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            throw FinalsIDAPIError.invalidResponse
+        }
+        return object
+    }
+
+    private func getData(path: String, connection: GameProviderConnection) async throws -> Data {
+        guard let baseURL = normalizedBaseURL(connection.baseURL) else {
+            throw FinalsIDAPIError.invalidBaseURL
+        }
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+            throw FinalsIDAPIError.invalidEndpoint
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("SwiftBot-finals.id/1", forHTTPHeaderField: "User-Agent")
+        if !connection.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            connection.authorize(&request)
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw FinalsIDAPIError.invalidResponse
+        }
+        if http.statusCode == 401 { throw FinalsIDAPIError.unauthorized }
+        if http.statusCode == 403 { throw FinalsIDAPIError.rankHidden }
+        if http.statusCode == 404 { throw FinalsIDAPIError.playerNotFound }
+        guard (200...299).contains(http.statusCode) else {
+            throw FinalsIDAPIError.httpStatus(http.statusCode)
+        }
+        return data
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private func endpointURL(for playerID: String, connection: GameProviderConnection) throws -> URL {
