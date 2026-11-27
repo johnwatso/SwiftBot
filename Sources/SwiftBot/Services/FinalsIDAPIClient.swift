@@ -155,6 +155,23 @@ actor FinalsIDAPIClient: GameRankProvider {
         }
     }
 
+    /// `GET /v1/profiles/{username}/sessions`: finals.id's own play sessions,
+    /// with SR change and per-item stats already totalled.
+    func fetchPlaySessions(
+        playerID: String,
+        connection: GameProviderConnection
+    ) async throws -> FinalsIDSessionsResponse {
+        let data = try await getData(
+            path: "/v1/profiles/" + Self.encodedPathSegment(playerID) + "/sessions?limit=10",
+            connection: connection
+        )
+        do {
+            return try JSONDecoder().decode(FinalsIDSessionsResponse.self, from: data)
+        } catch {
+            throw FinalsIDAPIError.invalidResponse
+        }
+    }
+
     // MARK: - Club roster fallback
 
     /// Rosters are shared by every tracked player in one check, so they are

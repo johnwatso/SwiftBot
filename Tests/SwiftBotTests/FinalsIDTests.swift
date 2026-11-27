@@ -766,6 +766,46 @@ final class FinalsIDTests: XCTestCase {
         }
     }
 
+    /// finals.id's own sessions supply SR change and the top weapon; only
+    /// sessions overlapping the Discord one count.
+    func testPlaySessionTotalsUseOverlappingFinalsIDSessions() throws {
+        let json = #"""
+        {"current":null,"count":2,"results":[
+          {"sessionId":"a","live":false,"startedAt":"2026-11-26T07:11:21.108864Z","endedAt":"2026-11-26T10:24:01.932899Z",
+           "matchCount":9,"wins":3,"losses":6,"rsDelta":282,"rankedMatches":2,"kills":73,"deaths":59,"damage":25448.8,
+           "items":[{"displayName":"FCAR","kind":"weapon","kills":28,"damage":9529.2},
+                    {"displayName":"Lewis Gun","kind":"weapon","kills":6},
+                    {"displayName":"Defibrillator","kind":"gadget","xp":2000}]},
+          {"sessionId":"b","live":false,"startedAt":"2026-11-20T07:00:00Z","endedAt":"2026-11-20T08:00:00Z",
+           "matchCount":4,"wins":1,"rsDelta":-50,"rankedMatches":1,"kills":10,"deaths":12,"damage":3000}
+        ]}
+        """#
+        let response = try JSONDecoder().decode(FinalsIDSessionsResponse.self, from: Data(json.utf8))
+        let formatter = ISO8601DateFormatter()
+        let session = GameSession(
+            userID: "u", guildID: "g", gameName: "THE FINALS",
+            startedAt: try XCTUnwrap(formatter.date(from: "2026-11-26T07:15:00Z")),
+            endedAt: formatter.date(from: "2026-11-26T10:20:00Z")
+        )
+
+        let totals = try XCTUnwrap(GameSessionSummaryBuilder.totals(for: session, playSessions: response.allSessions))
+        XCTAssertEqual(totals.matches, 9)
+        XCTAssertEqual(totals.wins, 3)
+        XCTAssertEqual(totals.kills, 73)
+        XCTAssertEqual(totals.rankedScoreDelta, 282)
+        XCTAssertEqual(totals.topWeapon, "FCAR")
+        XCTAssertEqual(GameSessionSummaryBuilder.topWeaponText(totals), "FCAR · 28 kills")
+        XCTAssertEqual(GameSessionSummaryBuilder.signedDelta(-50), "−50")
+
+        let elsewhere = GameSession(
+            userID: "u", guildID: "g", gameName: "THE FINALS",
+            startedAt: try XCTUnwrap(formatter.date(from: "2026-11-01T07:00:00Z")),
+            endedAt: formatter.date(from: "2026-11-01T08:00:00Z")
+        )
+        XCTAssertNil(GameSessionSummaryBuilder.totals(for: elsewhere, playSessions: response.allSessions),
+                     "No overlap falls back to rounds.")
+    }
+
     func testClubSyncSettingsDecodeWhenAbsentFromOlderSettings() throws {
         let settings = try JSONDecoder().decode(GameTrackingSettings.self, from: Data(#"{"dailyCheckEnabled":true}"#.utf8))
         XCTAssertFalse(settings.clubSync.isEnabled)

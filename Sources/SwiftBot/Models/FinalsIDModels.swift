@@ -304,3 +304,44 @@ enum GameClubSyncPlanner {
         return outcome
     }
 }
+
+// MARK: - Play sessions
+
+/// `GET /v1/profiles/{username}/sessions` — finals.id's own play sessions,
+/// newest first, with totals it has already worked out (SR change included).
+struct FinalsIDSessionsResponse: Codable, Hashable, Sendable {
+    let results: [FinalsIDPlaySession]
+    /// The open session; finals.id only sends it to the account's owner.
+    let current: FinalsIDPlaySession?
+
+    var allSessions: [FinalsIDPlaySession] {
+        (current.map { [$0] } ?? []) + results
+    }
+}
+
+struct FinalsIDPlaySession: Codable, Hashable, Sendable {
+    let sessionId: String
+    /// Still in progress on finals.id's side.
+    let live: Bool?
+    let startedAt: String?
+    let endedAt: String?
+    let matchCount: Int?
+    let wins: Int?
+    let losses: Int?
+    /// Ranked score gained (+) or lost (−) across the session.
+    let rsDelta: Int?
+    let rankedMatches: Int?
+    let kills: Int?
+    let deaths: Int?
+    let damage: Double?
+    let items: [FinalsIDSessionItem]?
+}
+
+/// A weapon, gadget or specialization used in a session.
+struct FinalsIDSessionItem: Codable, Hashable, Sendable {
+    let displayName: String?
+    let name: String?
+    let kind: String?
+    let kills: Double?
+    let damage: Double?
+}

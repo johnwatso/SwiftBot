@@ -27,6 +27,11 @@ enum GameSessionSummaryBuilder {
         var damage: Double = 0
         var wins = 0
         var rankedMatches = 0
+        /// SR gained or lost, when the provider reports it (finals.id sessions).
+        var rankedScoreDelta: Int?
+        /// Weapon with the most kills this session, when the provider says.
+        var topWeapon: String?
+        var topWeaponKills = 0
 
         var killDeathRatio: Double? {
             guard deaths > 0 else { return kills > 0 ? Double(kills) : nil }
@@ -55,6 +60,71 @@ enum GameSessionSummaryBuilder {
             if match.isWin { totals.wins += 1 }
         }
         return totals
+    }
+
+    /// Totals from finals.id's own play sessions that overlap this Discord
+    /// session. Nil when none do, so the caller can fall back to rounds.
+    static func totals(
+        for session: GameSession,
+        playSessions: [FinalsIDPlaySession],
+        now: Date = Date()
+    ) -> Totals? {
+        let slack: TimeInterval = 300
+        let windowStart = session.startedAt.addingTimeInterval(-slack)
+        let windowEnd = (session.endedAt ?? now).addingTimeInterval(slack)
+        let overlapping = playSessions.filter { candidate in
+            guard let started = candidate.startedAt.flatMap(parseDate) else { return false }
+            let ended = candidate.endedAt.flatMap(parseDate) ?? now
+            return started <= windowEnd && ended >= windowStart
+        }
+        guard !overlapping.isEmpty else { return nil }
+
+        var totals = Totals()
+        var weaponKills: [String: Double] = [:]
+        var sawDelta = false
+        for candidate in overlapping {
+            totals.matches += candidate.matchCount ?? 0
+            totals.wins += candidate.wins ?? 0
+            totals.rankedMatches += candidate.rankedMatches ?? 0
+            totals.kills += candidate.kills ?? 0
+            totals.deaths += candidate.deaths ?? 0
+            totals.damage += candidate.damage ?? 0
+            if let delta = candidate.rsDelta {
+                totals.rankedScoreDelta = (totals.rankedScoreDelta ?? 0) + delta
+                sawDelta = true
+            }
+            for item in candidate.items ?? [] where item.kind == "weapon" {
+                guard let name = item.displayName ?? item.name, let kills = item.kills, kills > 0 else { continue }
+                weaponKills[name, default: 0] += kills
+            }
+        }
+        // No ranked play means no SR change worth showing.
+        if !sawDelta || (totals.rankedMatches == 0 && totals.rankedScoreDelta == 0) {
+            totals.rankedScoreDelta = nil
+        }
+        if let best = weaponKills.max(by: { $0.value < $1.value }) {
+            totals.topWeapon = best.key
+            totals.topWeaponKills = Int(best.value.rounded())
+        }
+        return totals
+    }
+
+    /// "+282" / "−140" / "±0".
+    static func signedDelta(_ delta: Int) -> String {
+        if delta > 0 { return "+\(delta.formatted())" }
+        if delta < 0 { return "−\(abs(delta).formatted())" }
+        return "±0"
+    }
+
+    static func topWeaponText(_ totals: Totals) -> String? {
+        guard let weapon = totals.topWeapon else { return nil }
+        return "\(weapon) · \(totals.topWeaponKills) \(totals.topWeaponKills == 1 ? "kill" : "kills")"
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     static func embed(
@@ -103,6 +173,12 @@ enum GameSessionSummaryBuilder {
                     "value": Int(totals.damage.rounded()).formatted(),
                     "inline": true
                 ])
+            }
+            if let delta = totals.rankedScoreDelta {
+                fields.append(["name": "SR", "value": signedDelta(delta), "inline": true])
+            }
+            if let weapon = topWeaponText(totals) {
+                fields.append(["name": "Top weapon", "value": weapon, "inline": true])
             }
         }
 

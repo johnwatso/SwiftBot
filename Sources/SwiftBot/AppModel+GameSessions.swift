@@ -141,6 +141,15 @@ extension AppModel {
         if connections.isEmpty { connections = [connectionSettings.connection(for: descriptor)] }
         let client = finalsIDLatestRoundClient
         let playerID = player.playerID
+
+        // finals.id's own sessions first: they carry SR change and weapons.
+        // Rounds remain the fallback when sessions are hidden or don't line up.
+        if let response = try? await Self.firstVisible(connections, { connection in
+            try await client.fetchPlaySessions(playerID: playerID, connection: connection)
+        }), let totals = GameSessionSummaryBuilder.totals(for: session, playSessions: response.allSessions) {
+            return totals
+        }
+
         do {
             let response = try await Self.firstVisible(connections) { connection in
                 try await client.fetchLatestRound(playerID: playerID, connection: connection)

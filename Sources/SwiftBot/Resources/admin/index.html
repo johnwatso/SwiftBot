@@ -13040,7 +13040,7 @@
             <details class="wiki-advanced automation-editor-section" ${draft.rankTitleTemplate || draft.sessionTitleTemplate || draft.footerText ? 'open' : ''}>
               <summary><i class="lucide" data-lucide="type"></i> Custom text</summary>
               ${card ? textRow('rankTitleTemplate', 'Rank title', 'Automatic, e.g. ▲ Ranked up to Gold 1', ['player', 'rank', 'previousRank', 'delta', 'score', 'unit', 'leaderboard']) : ''}
-              ${card ? textRow('sessionTitleTemplate', 'Session title', '{player} played for {duration}', ['player', 'game', 'duration', 'matches', 'wins', 'kd', 'rank']) : ''}
+              ${card ? textRow('sessionTitleTemplate', 'Session title', '{player} played for {duration}', ['player', 'game', 'duration', 'matches', 'wins', 'kd', 'sr', 'rank']) : ''}
               ${textRow('footerText', 'Footer', 'Season 11 · Data provided by finals.id', ['game', 'provider', 'season'])}
             </details>`}
           </div>

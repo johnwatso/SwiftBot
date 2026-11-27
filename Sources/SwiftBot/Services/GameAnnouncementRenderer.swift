@@ -7,7 +7,7 @@ import Foundation
 /// Title templates understand these placeholders:
 /// - rank updates: `{player}` `{rank}` `{previousRank}` `{score}` `{delta}`
 ///   `{unit}` `{game}` `{leaderboard}`
-/// - sessions: `{player}` `{game}` `{duration}` `{matches}` `{wins}` `{kd}` `{rank}`
+/// - sessions: `{player}` `{game}` `{duration}` `{matches}` `{wins}` `{kd}` `{sr}` `{rank}`
 /// - footer: `{game}` `{provider}` `{season}`
 enum GameAnnouncementRenderer {
     /// Discord's per-message embed limit.
@@ -244,7 +244,8 @@ enum GameAnnouncementRenderer {
             )
             if let color = accentColor(style: style, tier: context.tier, direction: nil) { embed["color"] = color }
             let fieldMetric: [String: GameMetricID] = [
-                "Matches": .matchesPlayed, "Wins": .wins, "Eliminations": .kills, "K/D": .killDeathRatio, "Damage": .damage
+                "Matches": .matchesPlayed, "Wins": .wins, "Eliminations": .kills, "K/D": .killDeathRatio, "Damage": .damage,
+                "SR": .rankedScore, "Top weapon": .kills
             ]
             embed["fields"] = (embed["fields"] as? [[String: Any]])?.filter { field in
                 guard let name = field["name"] as? String, let metric = fieldMetric[name] else { return true }
@@ -305,6 +306,12 @@ enum GameAnnouncementRenderer {
                 if style.shares(.damage), totals.damage > 0 {
                     fields.append(field("Damage", Int(totals.damage.rounded()).formatted()))
                 }
+                if style.shares(.rankedScore), let delta = totals.rankedScoreDelta {
+                    fields.append(field("SR", GameSessionSummaryBuilder.signedDelta(delta)))
+                }
+                if style.shares(.kills), let weapon = GameSessionSummaryBuilder.topWeaponText(totals) {
+                    fields.append(field("Top weapon", weapon))
+                }
             }
 
             let description: String
@@ -347,6 +354,7 @@ enum GameAnnouncementRenderer {
             "matches": totals.map { "\($0.matches)" } ?? "0",
             "wins": totals.map { "\($0.wins)" } ?? "0",
             "kd": totals?.killDeathRatio.map { String(format: "%.2f", $0) } ?? "–",
+            "sr": totals?.rankedScoreDelta.map(GameSessionSummaryBuilder.signedDelta) ?? "",
             "rank": context.tier?.name ?? context.rankName ?? ""
         ])
     }
@@ -364,6 +372,9 @@ enum GameAnnouncementRenderer {
         }
         if style.shares(.killDeathRatio), let ratio = totals.killDeathRatio {
             parts.append((String(format: "%.2f", ratio), "K/D"))
+        }
+        if style.shares(.rankedScore), let delta = totals.rankedScoreDelta {
+            parts.append((GameSessionSummaryBuilder.signedDelta(delta), "SR"))
         }
         return parts
     }
