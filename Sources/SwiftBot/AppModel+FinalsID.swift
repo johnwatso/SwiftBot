@@ -305,6 +305,13 @@ extension AppModel {
             shouldClearBaseline = existing.game != normalized.game
                 || existing.provider != normalized.provider
                 || existing.playerID != normalized.playerID
+            // A player's own key belongs to their account; pointing the entry
+            // at someone else drops it.
+            if existing.provider != normalized.provider
+                || existing.playerID.lowercased() != normalized.playerID.lowercased() {
+                normalized.apiKey = nil
+                normalized.apiKeyUpdatedAt = existing.hasOwnKey ? Date() : existing.apiKeyUpdatedAt
+            }
             settings.gameTracking.players[index] = normalized
         } else {
             settings.gameTracking.players.append(normalized)
@@ -421,6 +428,56 @@ extension AppModel {
         connection.teamCredentialUpdatedAt = Date()
         settings.gameProviders[providerID] = connection
         gameProviderConnectionFailures[providerID] = nil
+        gameTrackingSettingsDidChange()
+        return .saved
+    }
+
+    /// Sets (or, with `nil`, removes) a tracked player's own key. A new key is
+    /// saved only if it can read that player's rank: a key from someone
+    /// else's account is turned away rather than quietly doing nothing.
+    func setTrackedPlayerKey(_ token: String?, playerID: UUID) async -> GameProviderCredentialResult {
+        guard let index = settings.gameTracking.players.firstIndex(where: { $0.id == playerID }) else { return .invalid }
+        var player = settings.gameTracking.players[index]
+        guard player.provider == .finalsID,
+              let descriptor = GameProviderCatalog.descriptor(for: player.provider) else { return .unsupported }
+
+        if let token {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.count <= 512, !trimmed.contains(where: \.isNewline) else { return .invalid }
+            let base = settings.gameProviders[player.provider].connection(for: descriptor)
+            let candidate = GameProviderConnection(
+                baseURL: base.baseURL,
+                token: trimmed,
+                auth: base.auth,
+                rankEndpointTemplate: base.rankEndpointTemplate
+            )
+            do {
+                // Straight at the profile: the normal lookup would fall back
+                // to the club roster and pass a key from the wrong account.
+                try await finalsIDLatestRoundClient.verifyProfileAccess(playerID: player.playerID, connection: candidate)
+            } catch FinalsIDAPIError.unauthorized {
+                return .rejected
+            } catch FinalsIDAPIError.rankHidden, FinalsIDAPIError.playerNotFound {
+                return .notVisible
+            } catch FinalsIDAPIError.httpStatus(let status) where status == 429 || status >= 500 {
+                return .unreachable
+            } catch is URLError {
+                return .unreachable
+            } catch {
+                return .unreachable
+            }
+            player.apiKey = trimmed
+        } else {
+            guard player.hasOwnKey else { return .saved }
+            player.apiKey = nil
+        }
+
+        player.apiKeyUpdatedAt = Date()
+        // The list may have changed during the request.
+        guard let current = settings.gameTracking.players.firstIndex(where: { $0.id == playerID }) else { return .invalid }
+        settings.gameTracking.players[current].apiKey = player.apiKey
+        settings.gameTracking.players[current].apiKeyUpdatedAt = player.apiKeyUpdatedAt
+        gameProviderConnectionFailures[player.provider] = nil
         gameTrackingSettingsDidChange()
         return .saved
     }
@@ -627,7 +684,7 @@ extension AppModel {
         guard let descriptor = GameProviderCatalog.descriptor(for: target.provider) else {
             throw GameProviderRegistryError.unsupportedProvider(target.provider)
         }
-        let connections = settings.gameProviders[target.provider].connections(for: descriptor)
+        let connections = settings.gameProviders[target.provider].connections(for: descriptor, playerKey: target.apiKey)
         guard !connections.isEmpty else {
             return try await gameProviderRegistry.fetchRankSnapshot(
                 for: target,

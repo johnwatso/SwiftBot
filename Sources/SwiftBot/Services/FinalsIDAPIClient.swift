@@ -155,6 +155,13 @@ actor FinalsIDAPIClient: GameRankProvider {
         }
     }
 
+    /// Succeeds only if `connection` can read this player's profile itself,
+    /// with no club-roster fallback. Throws `.rankHidden` (403),
+    /// `.playerNotFound` (404) or `.unauthorized` (401) otherwise.
+    func verifyProfileAccess(playerID: String, connection: GameProviderConnection) async throws {
+        _ = try await getData(path: "/v1/profiles/" + Self.encodedPathSegment(playerID), connection: connection)
+    }
+
     /// `GET /v1/profiles/{username}/sessions`: finals.id's own play sessions,
     /// with SR change and per-item stats already totalled.
     func fetchPlaySessions(

@@ -519,6 +519,10 @@ struct AdminWebGameTrackerPlayerPayload: Codable {
     var rankUnavailable: String?
     /// Editable fields the WebUI player editor round-trips.
     var discordUserID: String = ""
+    /// Whether the player has their own key; the key itself never leaves the Mac.
+    var hasOwnKey: Bool = false
+    var ownKeyHint: String?
+    var ownKeyUpdatedAt: Date?
 }
 
 /// What the WebUI needs to offer the same choices as the native player
@@ -643,6 +647,8 @@ struct AdminWebGameProviderCredentialUpdate: Codable {
     var remove: Bool?
     /// The scoped team key rather than the personal one.
     var team: Bool?
+    /// A tracked player's own key rather than a provider-wide one.
+    var playerID: String?
 }
 
 /// One WebUI edit to Game Tracker. Mirrors what the native view can change.
@@ -5537,8 +5543,19 @@ actor AdminWebServer {
         }
 
         let isTeam = update.team == true
-        let result = await updater(isTeam ? providerID.rawValue + ".team" : providerID.rawValue, removing ? nil : update.token)
-        let label = "\(providerID.displayName) \(isTeam ? "Team " : "")\(GameProviderCatalog.descriptor(for: providerID)?.auth.credentialLabel ?? "credential")"
+        let playerUUID = update.playerID.flatMap(UUID.init(uuidString:))
+        if update.playerID != nil, playerUUID == nil {
+            return jsonResponse(["error": "invalid_payload", "message": "Unknown player."], status: "400 Bad Request")
+        }
+        let target: String
+        if let playerUUID {
+            target = "player:" + playerUUID.uuidString
+        } else {
+            target = isTeam ? providerID.rawValue + ".team" : providerID.rawValue
+        }
+        let result = await updater(target, removing ? nil : update.token)
+        let scope = playerUUID != nil ? "player " : (isTeam ? "Team " : "")
+        let label = "\(providerID.displayName) \(scope)\(GameProviderCatalog.descriptor(for: providerID)?.auth.credentialLabel ?? "credential")"
         switch result {
         case GameProviderCredentialResult.saved.rawValue:
             audit(source: "Web Config", actor: actorLabel(session), action: removing ? "Removed \(label)" : "Replaced \(label)", level: "ok")
@@ -5548,6 +5565,8 @@ actor AdminWebServer {
             return jsonResponse(["error": "rejected", "message": "\(providerID.displayName) didn’t accept that key. Nothing was changed."], status: "400 Bad Request")
         case GameProviderCredentialResult.unreachable.rawValue:
             return jsonResponse(["error": "unreachable", "message": "Couldn’t reach \(providerID.displayName) to check the key, so it wasn’t saved. Try again in a minute."], status: "502 Bad Gateway")
+        case GameProviderCredentialResult.notVisible.rawValue:
+            return jsonResponse(["error": "not_visible", "message": "\(providerID.displayName) accepted that key, but it can’t see this player’s stats. Use a key from this player’s own account. Nothing was changed."], status: "400 Bad Request")
         case GameProviderCredentialResult.misconfigured.rawValue:
             return jsonResponse(["error": "misconfigured", "message": "\(providerID.displayName)’s API address is set up wrong. Fix it under Integrations in the SwiftBot app on the Mac."], status: "400 Bad Request")
         default:

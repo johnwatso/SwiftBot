@@ -135,9 +135,10 @@ extension AppModel {
         guard connectionSettings.configurationIssue(for: descriptor) == nil else { return nil }
         guard player.provider == .finalsID else { return nil }
 
-        // Team key first: other players' rounds are only readable through a
-        // scope they consented to share match history with.
-        var connections = connectionSettings.connections(for: descriptor)
+        // The player's own key first, then the team key: other players'
+        // rounds are only readable through a key they gave or a scope they
+        // consented to share match history with.
+        var connections = connectionSettings.connections(for: descriptor, playerKey: player.apiKey)
         if connections.isEmpty { connections = [connectionSettings.connection(for: descriptor)] }
         let client = finalsIDLatestRoundClient
         let playerID = player.playerID

@@ -744,6 +744,41 @@ final class FinalsIDTests: XCTestCase {
         XCTAssertNil(old[.finalsID].teamToken)
     }
 
+    func testPlayerKeyIsTriedFirstAndNeverWrittenOrShared() throws {
+        let descriptor = try XCTUnwrap(GameProviderCatalog.descriptor(for: .finalsID))
+        var connection = GameProviderConnectionSettings()
+        connection.token = "ftk_personal_000000"
+        connection.teamToken = "ftk_team_111111"
+        XCTAssertEqual(
+            connection.connections(for: descriptor, playerKey: " ftk_max_222222 ").map(\.token),
+            ["ftk_max_222222", "ftk_team_111111", "ftk_personal_000000"]
+        )
+        XCTAssertEqual(
+            connection.connections(for: descriptor, playerKey: "ftk_team_111111").map(\.token),
+            ["ftk_team_111111", "ftk_personal_000000"],
+            "The same key isn't tried twice."
+        )
+
+        var max = GameTrackedPlayer()
+        max.playerID = "maximillian#5331"
+        max.apiKey = "ftk_max_222222"
+        XCTAssertEqual(max.ownKeyHint, "2222")
+        var settings = BotSettings()
+        settings.gameTracking.players = [max]
+
+        let shared = MeshBotConfiguration.withoutSecrets(settings)
+        XCTAssertNil(shared.gameTracking.players.first?.apiKey)
+        let written = String(decoding: try JSONEncoder().encode(shared), as: UTF8.self)
+        XCTAssertFalse(written.contains("ftk_max"))
+
+        // Players saved before per-player keys still decode.
+        let old = try JSONDecoder().decode(
+            GameTrackedPlayer.self,
+            from: Data(#"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","game":"theFinals","provider":"finalsID","playerID":"a#1","displayName":"","destinationChannelID":"1","isEnabled":true,"discordUserID":""}"#.utf8)
+        )
+        XCTAssertFalse(old.hasOwnKey)
+    }
+
     @MainActor
     func testFirstVisibleFallsThroughOnlyOnNotVisibleAnswers() async throws {
         let team = GameProviderConnection(baseURL: "https://example.test", token: "team", auth: .bearer, rankEndpointTemplate: "")

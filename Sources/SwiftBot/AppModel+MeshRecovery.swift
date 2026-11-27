@@ -209,10 +209,14 @@ extension AppModel {
         let version = await store.meshSnapshotVersion()
         let grants = await meshCredentialStore.allGrants()
         return MeshCredentialsResponse(
-            // Team keys ride along under "<provider>.team"; older nodes ignore them.
+            // Team keys ride along under "<provider>.team" and players' own
+            // keys under "player.<uuid>"; older nodes ignore both.
             gameProviderTokens: Dictionary(uniqueKeysWithValues: GameProviderID.allCases.flatMap { id -> [(String, String)] in
                 [(id.rawValue, settings.gameProviders.token(for: id)),
                  (id.rawValue + ".team", settings.gameProviders.teamToken(for: id))]
+            } + settings.gameTracking.players.compactMap { player -> (String, String)? in
+                guard let key = player.apiKey, !key.isEmpty else { return nil }
+                return ("player." + player.id.uuidString, key)
             }),
             discordOAuthClientSecret: settings.adminWebUI.discordOAuth.clientSecret,
             discordToken: settings.token,
@@ -329,6 +333,10 @@ extension AppModel {
             for id in GameProviderID.allCases {
                 settings.gameProviders.setToken(payload.gameProviderTokens[id.rawValue] ?? "", for: id)
                 settings.gameProviders.setTeamToken(payload.gameProviderTokens[id.rawValue + ".team"] ?? "", for: id)
+            }
+            for index in settings.gameTracking.players.indices {
+                let key = payload.gameProviderTokens["player." + settings.gameTracking.players[index].id.uuidString] ?? ""
+                settings.gameTracking.players[index].apiKey = key.isEmpty ? nil : key
             }
             // Companion credentials and tunnel routes belong to their host Mac.
             try await store.save(settings)

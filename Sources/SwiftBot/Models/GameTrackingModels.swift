@@ -287,11 +287,24 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         )
     }
 
-    /// Every usable connection, team key first: it can read members' full
-    /// profiles, and a refusal there falls through to the personal key.
-    func connections(for descriptor: GameProviderDescriptor) -> [GameProviderConnection] {
+    /// Every usable connection, most specific first: the player's own key,
+    /// then the team key, then the personal key. A refusal from one falls
+    /// through to the next.
+    func connections(
+        for descriptor: GameProviderDescriptor,
+        playerKey: String? = nil
+    ) -> [GameProviderConnection] {
         var result: [GameProviderConnection] = []
-        if let team = teamConnection(for: descriptor) { result.append(team) }
+        let own = (playerKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !own.isEmpty {
+            result.append(GameProviderConnection(
+                baseURL: resolvedBaseURL(for: descriptor),
+                token: own,
+                auth: descriptor.auth,
+                rankEndpointTemplate: resolvedRankEndpointTemplate(for: descriptor)
+            ))
+        }
+        if let team = teamConnection(for: descriptor), team.token != own { result.append(team) }
         if hasPersonalCredential { result.append(connection(for: descriptor)) }
         return result
     }
@@ -371,6 +384,8 @@ enum GameProviderCredentialResult: String, Sendable {
     case misconfigured
     case invalid
     case unsupported
+    /// Accepted, but it can't see the player it was meant for.
+    case notVisible
 }
 
 /// Provider connections keyed by provider id. Backed by raw-value string keys so
@@ -454,6 +469,21 @@ struct GameTrackedPlayer: Codable, Hashable, Identifiable, Sendable {
     /// Discord user whose rich presence marks this profile's play sessions.
     /// Optional: a profile can still be polled on a schedule without it.
     var discordUserID: String = ""
+    /// The player's own provider key (a finals.id personal key they shared),
+    /// tried before the team and operator keys. Keychain only: blanked before
+    /// settings are written or shared, like the provider tokens.
+    var apiKey: String?
+    var apiKeyUpdatedAt: Date?
+
+    var hasOwnKey: Bool {
+        !(apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var ownKeyHint: String? {
+        let trimmed = (apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 12 else { return nil }
+        return String(trimmed.suffix(4))
+    }
 
     // Every stat the provider reports is recorded. What triggers a post and
     // what a post shares are channel-wide choices in `GameAnnouncementStyle`.
@@ -468,6 +498,8 @@ struct GameTrackedPlayer: Codable, Hashable, Identifiable, Sendable {
         displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         destinationChannelID = destinationChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
         discordUserID = discordUserID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = (apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        apiKey = key.isEmpty ? nil : key
         if !provider.supportedGames.contains(game) {
             provider = GameProviderID.allCases.first(where: { $0.supportedGames.contains(game) }) ?? .finalsID
         }
@@ -663,6 +695,13 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         clubSync.destinationChannelID = clubSync.destinationChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
         clubRecap.destinationChannelID = clubRecap.destinationChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
         clubRecap.weekday = min(max(clubRecap.weekday, 1), 7)
+    }
+
+    /// Blanks every player's own key before settings are written or shared.
+    mutating func clearPlayerKeys() {
+        for index in players.indices {
+            players[index].apiKey = nil
+        }
     }
 }
 

@@ -2543,6 +2543,14 @@ extension AppModel {
             return await LogExporter.buildReport(from: model)
         }
         await adminWebServer.setGameProviderCredentialUpdater { [weak self] providerRaw, token in
+            // "player:<uuid>" addresses a tracked player's own key.
+            if providerRaw.hasPrefix("player:") {
+                guard let model = self,
+                      let id = UUID(uuidString: String(providerRaw.dropFirst("player:".count))) else {
+                    return GameProviderCredentialResult.unsupported.rawValue
+                }
+                return await model.setTrackedPlayerKey(token, playerID: id).rawValue
+            }
             // "<provider>.team" addresses the scoped team key.
             let isTeam = providerRaw.hasSuffix(".team")
             let raw = isTeam ? String(providerRaw.dropLast(".team".count)) : providerRaw
@@ -3706,7 +3714,10 @@ extension AppModel {
                 score: baseline?.score,
                 baselineRecordedAt: baseline?.recordedAt,
                 rankUnavailable: gameTrackingRankUnavailable[player.id],
-                discordUserID: player.discordUserID
+                discordUserID: player.discordUserID,
+                hasOwnKey: player.hasOwnKey,
+                ownKeyHint: player.ownKeyHint,
+                ownKeyUpdatedAt: player.apiKeyUpdatedAt
             )
         }
 

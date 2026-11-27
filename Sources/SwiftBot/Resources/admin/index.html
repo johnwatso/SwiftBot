@@ -12546,7 +12546,7 @@
         if (!token) { hint.textContent = `Paste a ${label} first.`; return; }
         save.disabled = true;
         hint.textContent = `Checking with ${p.displayName}…`;
-        if (await postProviderCredential({ provider: p.id, token, ...(p.team ? { team: true } : {}) }, hint)) {
+        if (await postProviderCredential({ provider: p.id, token, ...(p.team ? { team: true } : {}), ...(p.playerID ? { playerID: p.playerID } : {}) }, hint)) {
           setMessage(`${p.displayName} connected.`, 'success');
         } else {
           save.disabled = false;
@@ -12558,7 +12558,9 @@
 
     function confirmRemoveProviderKey(p) {
       showModal(`Remove the ${p.displayName} key?`, `
-        <p class="ub-help" style="margin-top:0;">${p.team
+        <p class="ub-help" style="margin-top:0;">${p.ownKey
+          ? 'This player goes back to the team key, then your personal key and the club roster. Their history stays.'
+          : p.team
           ? 'Team members go back to rank only, read from the club roster with the personal key. Play-session stats for them stop. Tracked players and their history stay.'
           : `Game Tracker stops checking ${escapeHTML(p.displayName)} ranks until a new ${escapeHTML(p.credentialLabel || 'API Key')} is added. Tracked players and their history stay.`}</p>
       `, `
@@ -12568,7 +12570,7 @@
       `);
       document.getElementById('gtKeyRemove').addEventListener('click', async (e) => {
         e.currentTarget.disabled = true;
-        if (await postProviderCredential({ provider: p.id, remove: true, ...(p.team ? { team: true } : {}) }, document.getElementById('gtKeyHint'))) {
+        if (await postProviderCredential({ provider: p.id, remove: true, ...(p.team ? { team: true } : {}), ...(p.playerID ? { playerID: p.playerID } : {}) }, document.getElementById('gtKeyHint'))) {
           setMessage(`${p.displayName} key removed.`, 'success');
         } else {
           e.currentTarget.disabled = false;
@@ -13233,6 +13235,14 @@
               + (provider && !provider.isConfigured ? '<div class="ub-help">Connect this provider in the macOS app under Settings › Integrations before checks can run.</div>' : ''))
             + row('Display name', `<input id="gtName" class="field-input" value="${escapeHTML(draft.displayName)}" placeholder="Shown in announcements" ${off}>`)
             + row('Player ID', `<input id="gtPlayerID" class="field-input" value="${escapeHTML(draft.playerID)}" placeholder="e.g. name#1234" spellcheck="false" ${off}>`))}
+          ${existing && existing.provider === 'finalsID' ? section('key-round', 'Their finals.id key',
+            `<div class="ub-help" style="margin-top:0;">${existing.hasOwnKey
+              ? `Key${existing.ownKeyHint ? ` ending in <code>…${escapeHTML(existing.ownKeyHint)}</code>` : ' set'}${existing.ownKeyUpdatedAt ? ` · changed ${escapeHTML(relativeTime(existing.ownKeyUpdatedAt))}` : ''}. SwiftBot reads this player’s full stats and play sessions with it.`
+              : 'Optional. With a personal key from this player’s own finals.id account, SwiftBot reads their full stats and play sessions instead of just their rank from the club roster.'}</div>`
+            + (readOnly ? '' : `<div class="gt-conn-actions" style="margin-top:8px;">
+                ${existing.hasOwnKey ? `<button id="gtOwnKeyRemove" class="secondary-action" type="button" ${gtSecureContext() ? '' : 'disabled'}>Remove</button>` : ''}
+                <button id="gtOwnKeySet" class="secondary-action" type="button" ${gtSecureContext() ? '' : 'disabled'}>${existing.hasOwnKey ? 'Replace' : 'Add key'}</button>
+              </div>`)) : ''}
           ${section('timer', 'Play sessions',
             row('Discord member', gameTrackerMemberSelect(data.members || [], draft.discordUserID, off)
               + '<div class="ub-help">Links this profile to a Discord account so SwiftBot can spot play sessions from rich presence and post a summary when one ends.</div>'))}
@@ -13242,6 +13252,14 @@
             + '<div class="ub-help">Every stat is recorded. What gets posted is set once for everyone under Announcements › Discord post style.</div>')}
         `;
         ['gtGame', 'gtProvider'].forEach(id => document.getElementById(id)?.addEventListener('change', () => { read(); render(); }));
+        if (existing) {
+          // Present the player's key to the shared key editors as its own
+          // "provider"; the server checks it can see this player first.
+          const base = catalog.providers.find(p => p.id === existing.provider) || { id: existing.provider };
+          const keyTarget = { ...base, playerID: existing.id, displayName: `${existing.displayName}’s finals.id`, credentialLabel: 'API Key', hasCredential: !!existing.hasOwnKey, ownKey: true };
+          document.getElementById('gtOwnKeySet')?.addEventListener('click', () => openProviderKeyEditor(keyTarget));
+          document.getElementById('gtOwnKeyRemove')?.addEventListener('click', () => confirmRemoveProviderKey(keyTarget));
+        }
         validate();
         refreshIcons();
       };

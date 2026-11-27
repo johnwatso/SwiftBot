@@ -101,6 +101,12 @@ actor ConfigStore {
     private let legacyFinalsIDAPITokenAccount = "finals-id-api-token"
     private var lastGameProviderTokens: [GameProviderID: String] = [:]
     private var lastGameProviderTeamTokens: [GameProviderID: String] = [:]
+    /// Tracked players' own keys, by player id, as last written to the Keychain.
+    private var lastPlayerKeys: [UUID: String] = [:]
+
+    private func playerKeyAccount(_ id: UUID) -> String {
+        "game-player-token-\(id.uuidString)"
+    }
 
     private func gameProviderTokenAccount(_ id: GameProviderID) -> String {
         "game-provider-token-\(id.rawValue)"
@@ -213,6 +219,15 @@ actor ConfigStore {
                 settings.gameProviders.setTeamToken(teamToken, for: providerID)
             }
             lastGameProviderTeamTokens[providerID] = settings.gameProviders.teamToken(for: providerID)
+        }
+
+        lastPlayerKeys = [:]
+        for index in settings.gameTracking.players.indices {
+            let id = settings.gameTracking.players[index].id
+            if let key = KeychainHelper.load(account: playerKeyAccount(id)) {
+                settings.gameTracking.players[index].apiKey = key
+                lastPlayerKeys[id] = key
+            }
         }
 
         // SwiftMiner's pairing used to be written to settings.json in plain
@@ -337,6 +352,20 @@ actor ConfigStore {
             lastGameProviderTeamTokens[providerID] = teamToken
         }
 
+        var currentPlayerKeys: [UUID: String] = [:]
+        for player in settings.gameTracking.players {
+            let key = (player.apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty { currentPlayerKeys[player.id] = key }
+        }
+        for (id, key) in currentPlayerKeys where lastPlayerKeys[id] != key {
+            KeychainHelper.save(key, account: playerKeyAccount(id))
+        }
+        // A removed key, or a removed player, takes its Keychain item with it.
+        for id in lastPlayerKeys.keys where currentPlayerKeys[id] == nil {
+            KeychainHelper.delete(account: playerKeyAccount(id))
+        }
+        lastPlayerKeys = currentPlayerKeys
+
         saveKeychainBacked(settings.swiftMiner.apiKey, account: swiftMinerAPIKeyAccount, last: &lastSwiftMinerAPIKey)
         saveKeychainBacked(settings.swiftMiner.webhookSecret, account: swiftMinerWebhookSecretAccount, last: &lastSwiftMinerWebhookSecret)
 
@@ -355,6 +384,7 @@ actor ConfigStore {
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.adminWebUI.publicAccessTunnelToken = ""
         settingsToSave.gameProviders.clearTokens()
+        settingsToSave.gameTracking.clearPlayerKeys()
         settingsToSave.swiftMiner.apiKey = ""
         settingsToSave.swiftMiner.webhookSecret = ""
         settingsToSave.clusterSharedSecret = ""
@@ -512,6 +542,7 @@ enum MeshBotConfiguration {
         copy.adminWebUI.cloudflareAPIToken = ""
         copy.adminWebUI.publicAccessTunnelToken = ""
         copy.gameProviders.clearTokens()
+        copy.gameTracking.clearPlayerKeys()
         copy.swiftMiner.apiKey = ""
         copy.swiftMiner.webhookSecret = ""
         return copy
