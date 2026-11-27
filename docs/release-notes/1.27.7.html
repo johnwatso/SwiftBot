@@ -24,6 +24,7 @@
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
     .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
     p { margin: 0 0 16px; }
+    ul { margin: -8px 0 16px; padding-left: 22px; }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
@@ -40,13 +41,20 @@
 <body>
   <main>
     <h1>SwiftBot 1.27.7</h1>
-    <p class="meta">Version 1.27.7</p>
-    <p>SwiftBot 1.27.7</p>
-<p>Game Tracker gets more out of finals.id:</p>
-<p>- Team key: add a finals.id Team key under Game Tracker &gt; Connections<br>alongside your personal key. Team members who agreed to share their<br>stats get full profiles and play-session stats; everyone else keeps<br>working through the personal key and the club roster.<br>- Better session posts: stats now come from finals.id's own play sessions,<br>adding the session's SR change (e.g. +282 SR) and top weapon<br>(e.g. FCAR, 28 kills). Session titles can use {sr}.<br>- Weekly club recap: a new Automation option posts your club's last 7 days<br>on a chosen day - club rank and movement, combined SR, matches, wins,<br>K/D, top weapons and top-ranked members. Post now sends one immediately.</p>
-<p>Includes the unreleased 1.27.6.</p>
-<p>Co-Authored-By: Claude Opus 5.5 &lt;noreply@anthropic.com&gt;<br>Claude-Session: https://claude.ai/code/session_01Dhk9hdHT7LZVbmTC2egdDc</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/91a08e9ab9f83e00c2ce23b6d6e944db2f8cf794">91a08e9</a></p>
+    <p class="meta">Version 1.27.7 · Build 2026112715</p>
+    <p><strong>finals.id Team key.</strong> Game Tracker › Connections has a new <em>finals.id Team Key</em> row next to your personal key. A Team key reads what your team's members agreed to share, such as profiles, matches and play sessions, which a personal key can't. SwiftBot tries the Team key first and falls back to your personal key and the club roster, so players outside the team keep working. Club sync and the weekly recap always use the personal key. The Team key is kept in the Keychain on the Mac and copied to SwiftMesh failover Macs.</p>
+    <p><strong>Better play-session posts.</strong> Session summaries now come from finals.id's own play sessions: matches, wins, kills, deaths, damage, plus the session's <strong>SR change</strong> (e.g. +282 SR) and <strong>top weapon</strong> (e.g. FCAR · 28 kills). Custom session titles can use <code>{sr}</code>. If finals.id has no matching session, SwiftBot adds up the player's rounds as before. For other players this needs the Team key.</p>
+    <p><strong>Weekly club recap.</strong> A new Automation option posts your club's last 7 days on the day you choose, sent with the daily ranked check:</p>
+    <ul>
+      <li>club rank, and how far it moved since the last recap</li>
+      <li>combined SR</li>
+      <li>matches (with the ranked share), wins and win rate, K/D, eliminations, damage and revives</li>
+      <li>ranked results on their own</li>
+      <li>the top three weapons and top three ranked members</li>
+    </ul>
+    <p><em>Post now</em> sends one immediately.</p>
+    <p>Includes the unreleased 1.27.6.</p>
+    <p><strong>Commits:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/90bfab0">90bfab0</a>, <a href="https://github.com/johnwatso/SwiftBot/commit/4c84796">4c84796</a>, <a href="https://github.com/johnwatso/SwiftBot/commit/23bb2d7">23bb2d7</a>, <a href="https://github.com/johnwatso/SwiftBot/commit/91a08e9ab9f83e00c2ce23b6d6e944db2f8cf794">91a08e9</a></p>
   </main>
 </body>
 </html>

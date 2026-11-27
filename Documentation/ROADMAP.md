@@ -9,6 +9,15 @@
 
 ## Recent Engineering Log
 
+### 2026-11-27 — SwiftBot 1.27.7: finals.id Team key, session stats, weekly club recap
+
+- [x] Optional finals.id Team key alongside the personal key (`GameProviderConnectionSettings.teamToken`, Keychain `game-provider-team-token-finalsID`, SwiftMesh `gameProviderTokens["finalsID.team"]`). Rank and session requests try the team key first and fall through on 401/403/404 (`AppModel.firstVisible`); `/v1/me`, club sync, roster fallback and the recap stay on the personal key. Set from Game Tracker › Connections in the WebUI.
+- [x] Session posts use `/v1/profiles/{u}/sessions` (overlapping the Discord session ±5 min): SR change (`rsDelta`) and top weapon added; rounds remain the fallback. `{sr}` session-title placeholder.
+- [x] Weekly club recap from `/v1/analytics/clubs/{id}?window=7d`, posted with the daily check on a chosen weekday or on demand ("Post now"); remembers the last club rank for week-on-week movement.
+- [x] 1.27.6 (team key alone) was never published; 1.27.7 (build 2026112715) shipped through ShipHook with all three. Feed `docs/appcast.xml` at 1.27.7 / 2026112715; release notes rewritten afterwards.
+- [ ] Always-present, linked finals.id credit on rank and session posts (CC BY-NC-SA attribution); custom footers can currently drop it.
+- [ ] Not yet verified against a real finals.id Team key: confirm Max's profile, rounds and sessions read through it.
+
 ### 2026-11-27 — SwiftBot 1.27.5: finals.id club roster and club sync
 
 - [x] Diagnosed tracked teammates showing "Rank hidden": finals.id personal keys now read only the key owner's own profile; every other profile, rounds, search and leaderboard request answers 403. The key owner's club roster (`/v1/clubs/{clubId}`) is still readable and carries members' SR. Game Tracker now falls back to it on 403/404 (`FinalsIDAPIClient.clubRosterLookup`).
