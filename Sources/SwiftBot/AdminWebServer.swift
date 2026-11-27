@@ -596,6 +596,16 @@ struct AdminWebGameTrackerPayload: Codable {
     var announcementStyle: GameAnnouncementStyle = GameAnnouncementStyle()
     var stylePreview: AdminWebGameTrackerStylePreview?
     var clubSync: AdminWebGameTrackerClubSyncPayload = AdminWebGameTrackerClubSyncPayload()
+    var clubRecap: AdminWebGameTrackerClubRecapPayload = AdminWebGameTrackerClubRecapPayload()
+}
+
+/// Weekly club recap state for the Automation card.
+struct AdminWebGameTrackerClubRecapPayload: Codable {
+    var enabled = false
+    var destinationChannelID = ""
+    /// 1 = Sunday … 7 = Saturday.
+    var weekday = 2
+    var lastPostedAt: Date?
 }
 
 /// finals.id club sync state for the Automation card.
@@ -645,6 +655,8 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
         case updateStyle
         /// Posts sample announcements to a player's channel.
         case sendTest
+        /// Posts the weekly club recap now.
+        case postClubRecap
     }
 
     struct PlayerInput: Codable {
@@ -670,6 +682,9 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
     var clubSyncEnabled: Bool?
     var clubSyncChannelID: String?
     var clubSyncIncludeLeaderboard: Bool?
+    var clubRecapEnabled: Bool?
+    var clubRecapChannelID: String?
+    var clubRecapWeekday: Int?
 
     func validate() throws {
         switch action {
@@ -697,6 +712,12 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
             if let clubSyncChannelID, clubSyncChannelID.count > 64 {
                 throw ValidationError.invalidValue("Unknown channel")
             }
+            if let clubRecapChannelID, clubRecapChannelID.count > 64 {
+                throw ValidationError.invalidValue("Unknown channel")
+            }
+            if let clubRecapWeekday, !(1...7).contains(clubRecapWeekday) {
+                throw ValidationError.outOfRange("clubRecapWeekday", min: 1, max: 7)
+            }
         case .updateStyle:
             guard let style else { throw ValidationError.invalidValue("Style is required") }
             if style.accent == .custom, style.customColorValue == nil {
@@ -713,6 +734,8 @@ struct AdminWebGameTrackerUpdate: Codable, Validatable {
             if let playerID, UUID(uuidString: playerID) == nil {
                 throw ValidationError.invalidValue("Unknown player")
             }
+        case .postClubRecap:
+            break
         }
     }
 }

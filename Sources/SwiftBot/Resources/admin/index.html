@@ -12707,6 +12707,7 @@
       const linked = data.linkedPlayerCount || 0;
       const off = readOnly ? 'disabled' : '';
       const club = data.clubSync || {};
+      const recap = data.clubRecap || {};
       automation.innerHTML = `
         <section class="ub-group">
           <div class="ub-group-head"><h2>Automation</h2></div>
@@ -12757,6 +12758,31 @@
               </div>
               <label class="switch"><input id="gtClubLeaderboard" type="checkbox" ${club.includeLeaderboardMembers !== false ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
             </div>
+            <div class="ub-row">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Weekly club recap</div>
+                <div class="ub-row-desc">Posts the club's last 7 days from finals.id: club rank and movement, combined SR, matches, wins, K/D, top weapons and top-ranked members. Sent with the daily check on the chosen day.
+                  ${recap.enabled && !data.dailyCheckEnabled ? '<br><span class="gt-warn">Turn on the daily ranked check, which sends the recap.</span>' : ''}
+                  ${recap.enabled && !recap.destinationChannelID ? '<br><span class="gt-warn">Choose a channel for the recap.</span>' : ''}
+                  ${recap.lastPostedAt ? `<br>Last posted ${escapeHTML(relativeTime(recap.lastPostedAt))}.` : ''}</div>
+              </div>
+              <label class="switch"><input id="gtRecap" type="checkbox" ${recap.enabled ? 'checked' : ''} ${off}><span class="switch-track"><span class="switch-knob"></span></span></label>
+            </div>
+            <div class="ub-row${recap.enabled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Post recap to</div>
+              </div>
+              <select id="gtRecapChannel" class="field-select prefs-control" data-channel-picker aria-label="Channel for the weekly club recap" ${off}><option value="">Select a channel</option>${(data.channels || []).map(c => `<option value="${escapeHTML(c.id)}" ${c.id === recap.destinationChannelID ? 'selected' : ''}>${escapeHTML(c.name)}</option>`).join('')}</select>
+            </div>
+            <div class="ub-row${recap.enabled ? '' : ' is-dimmed'}">
+              <div class="ub-row-text">
+                <div class="ub-row-title">Recap day</div>
+              </div>
+              <div class="gt-conn-actions">
+                <select id="gtRecapDay" class="field-select prefs-control" aria-label="Recap day" ${off}>${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, i) => `<option value="${i + 1}" ${i + 1 === (recap.weekday || 2) ? 'selected' : ''}>${day}</option>`).join('')}</select>
+                ${readOnly ? '' : `<button id="gtRecapNow" class="secondary-action" type="button" ${recap.destinationChannelID ? '' : 'disabled'}>Post now</button>`}
+              </div>
+            </div>
           </div>
         </section>`;
       const saveSettings = (patch) => postGameTrackerUpdate({ action: 'updateSettings', ...patch })
@@ -12764,6 +12790,23 @@
       automation.querySelector('#gtDaily')?.addEventListener('change', e => saveSettings({ dailyCheckEnabled: e.target.checked }));
       automation.querySelector('#gtSessions')?.addEventListener('change', e => saveSettings({ sessionTrackingEnabled: e.target.checked }));
       automation.querySelector('#gtHour')?.addEventListener('change', e => saveSettings({ checkHour: Number(e.target.value) }));
+      automation.querySelector('#gtRecapChannel')?.addEventListener('change', e => saveSettings({ clubRecapChannelID: e.target.value }));
+      automation.querySelector('#gtRecapDay')?.addEventListener('change', e => saveSettings({ clubRecapWeekday: Number(e.target.value) }));
+      automation.querySelector('#gtRecap')?.addEventListener('change', e => {
+        const channel = automation.querySelector('#gtRecapChannel')?.value || '';
+        if (e.target.checked && !channel) {
+          e.target.checked = false;
+          setMessage('Choose a channel for the recap first.', 'error');
+          return;
+        }
+        saveSettings({ clubRecapEnabled: e.target.checked, clubRecapChannelID: channel });
+      });
+      automation.querySelector('#gtRecapNow')?.addEventListener('click', (e) => {
+        e.currentTarget.disabled = true;
+        postGameTrackerUpdate({ action: 'postClubRecap' })
+          .then(() => setMessage('Posting the club recap…', 'success'))
+          .catch(error => setMessage(error.message || 'Could not post the club recap.', 'error'));
+      });
       automation.querySelector('#gtClubChannel')?.addEventListener('change', e => saveSettings({ clubSyncChannelID: e.target.value }));
       automation.querySelector('#gtClubLeaderboard')?.addEventListener('change', e => saveSettings({ clubSyncIncludeLeaderboard: e.target.checked }));
       automation.querySelector('#gtClubSync')?.addEventListener('change', e => {

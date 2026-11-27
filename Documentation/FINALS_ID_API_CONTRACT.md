@@ -43,6 +43,14 @@ The profile card carries the current-season standing under a top-level `ranked` 
 - **Time** is `ranked.capturedAt` (fractional seconds).
 - `rankScoreHidden: true`, or HTTP 403, means the player hid their SR → "This player has hidden their ranked score". `ranked: null` means no standing this season → "no ranked score this season yet". HTTP 404 means the name doesn't resolve → a hint to include the `#tag`.
 
+## Play sessions — `GET /v1/profiles/{username}/sessions`
+
+Preferred source for session posts. finals.id's own sessions, newest first (`?limit=10`); the account owner also gets the open one as `current`. Each has `startedAt`/`endedAt`, `matchCount`, `wins`, `losses`, `rsDelta` (SR change), `rankedMatches`, `kills`, `deaths`, `damage` and `items` (weapons, gadgets, specializations with per-item `kills`/`damage`). SwiftBot sums the sessions overlapping the Discord session (±5 min), shows `rsDelta` as the SR change when any ranked match was played, and names the weapon with the most kills. No overlap, or a 403, falls back to rounds below.
+
+## Club analytics — `GET /v1/analytics/clubs/{clubId}?window=7d`
+
+Used for the weekly club recap. `window` is `7d`, `30d` or `season` (anything else is 400). Snake_case keys: `club` (`club_id`, `tag`, `name`), `standing` (`rank`, `combined_rs`, `ranked_members`), `totals` (`matches`, `wins`, `win_rate`, `kills`, `deaths`, `kd`, `damage`, `revives`), `by_queue.ranked/casual.totals`, `by_class`, `top_items.weapon[]` (`display_name`, `kills` as a float). Readable with a personal key for the key owner's club; the club id comes from `/v1/profiles/{me}`.
+
 ## Rounds — `GET /v1/profiles/{username}/rounds`
 
 Used for play-session summaries. Results are **flat rounds**, newest first, `limit` 50 by default:

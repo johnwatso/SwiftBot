@@ -172,6 +172,23 @@ actor FinalsIDAPIClient: GameRankProvider {
         }
     }
 
+    /// `GET /v1/analytics/clubs/{clubId}?window=…` (`7d`, `30d` or `season`).
+    func fetchClubAnalytics(
+        clubID: String,
+        window: String = "7d",
+        connection: GameProviderConnection
+    ) async throws -> FinalsIDClubAnalytics {
+        let data = try await getData(
+            path: "/v1/analytics/clubs/" + Self.encodedPathSegment(clubID) + "?window=" + Self.encodedPathSegment(window),
+            connection: connection
+        )
+        do {
+            return try JSONDecoder().decode(FinalsIDClubAnalytics.self, from: data)
+        } catch {
+            throw FinalsIDAPIError.invalidResponse
+        }
+    }
+
     // MARK: - Club roster fallback
 
     /// Rosters are shared by every tracked player in one check, so they are

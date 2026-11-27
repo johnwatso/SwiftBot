@@ -3790,6 +3790,12 @@ extension AppModel {
                 lastSyncNote: tracking.clubSync.lastSyncNote,
                 syncedPlayerCount: tracking.clubSync.syncedPlayerIDs.count,
                 pausedPlayerCount: tracking.clubSync.departedPlayerIDs.count
+            ),
+            clubRecap: AdminWebGameTrackerClubRecapPayload(
+                enabled: tracking.clubRecap.isEnabled,
+                destinationChannelID: tracking.clubRecap.destinationChannelID,
+                weekday: tracking.clubRecap.weekday,
+                lastPostedAt: tracking.clubRecap.lastPostedAt
             )
         )
     }
@@ -3972,6 +3978,16 @@ extension AppModel {
             if let include = update.clubSyncIncludeLeaderboard {
                 settings.gameTracking.clubSync.includeLeaderboardMembers = include
             }
+            if let channel = update.clubRecapChannelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                settings.gameTracking.clubRecap.destinationChannelID = channel
+            }
+            if let weekday = update.clubRecapWeekday {
+                settings.gameTracking.clubRecap.weekday = min(max(weekday, 1), 7)
+            }
+            if let enabled = update.clubRecapEnabled {
+                if enabled, settings.gameTracking.clubRecap.destinationChannelID.isEmpty { return false }
+                settings.gameTracking.clubRecap.isEnabled = enabled
+            }
             if let enabled = update.clubSyncEnabled {
                 if enabled, settings.gameTracking.clubSync.destinationChannelID.isEmpty {
                     settings.gameTracking.clubSync = clubSyncBefore
@@ -3997,6 +4013,9 @@ extension AppModel {
             let id = update.playerID.flatMap(UUID.init(uuidString:))
             let draft = update.style
             Task { await self.sendGameTrackerTestAnnouncement(playerID: id, style: draft) }
+        case .postClubRecap:
+            guard !settings.gameTracking.clubRecap.destinationChannelID.isEmpty else { return false }
+            Task { await self.postClubRecap() }
         }
         return true
     }

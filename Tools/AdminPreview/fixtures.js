@@ -646,6 +646,7 @@ const gametracker = {
   enabled: true, dailyCheckEnabled: true, sessionTrackingEnabled: true, statusText: 'Tracking 3 players', statusTone: 'success',
   configurationIssue: null, checkInProgress: false, scheduleDescription: 'Daily at 9:00 am', lastCheckAt: minutesAgo(300), nextCheckAt: minutesAgo(-1140),
   enabledPlayerCount: 3, totalPlayerCount: 3,
+  clubRecap: { enabled: true, destinationChannelID: '', weekday: 2, lastPostedAt: minutesAgo(4 * 1440) },
   clubSync: { enabled: true, destinationChannelID: '', includeLeaderboardMembers: true, hasCredential: true, clubName: 'DA BOI5S', lastSyncedAt: minutesAgo(300), lastSyncNote: 'Added maximillian#5331, Peplord3000#5567', syncedPlayerCount: 2, pausedPlayerCount: 0 },
   announcementStyle: { layout: 'card', accent: 'rank', customColor: '#D21F3C', announceOn: ['rankTier', 'rankedScore'], sharedStats: ['damage', 'deaths', 'killDeathRatio', 'kills', 'leaderboardPosition', 'matchesPlayed', 'rankTier', 'rankedScore', 'wins'], showProgress: true, showSeason: true, mentionPlayer: false, rankTitleTemplate: '', sessionTitleTemplate: '', footerText: '' },
   players: [

@@ -345,3 +345,79 @@ struct FinalsIDSessionItem: Codable, Hashable, Sendable {
     let kills: Double?
     let damage: Double?
 }
+
+// MARK: - Club analytics
+
+/// `GET /v1/analytics/clubs/{clubId}?window=7d`: a club's totals over a
+/// window. Numbers are decoded as Double so a provider switching an integer
+/// to a float can't fail the whole recap.
+struct FinalsIDClubAnalytics: Codable, Hashable, Sendable {
+    struct Club: Codable, Hashable, Sendable {
+        let clubID: String?
+        let tag: String?
+        let name: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case clubID = "club_id", tag, name
+        }
+    }
+
+    struct Standing: Codable, Hashable, Sendable {
+        let rank: Double?
+        let combinedRankedScore: Double?
+        let rankedMembers: Double?
+
+        private enum CodingKeys: String, CodingKey {
+            case rank, combinedRankedScore = "combined_rs", rankedMembers = "ranked_members"
+        }
+    }
+
+    struct Totals: Codable, Hashable, Sendable {
+        let matches: Double?
+        let wins: Double?
+        let winRate: Double?
+        let kills: Double?
+        let deaths: Double?
+        let kd: Double?
+        let damage: Double?
+        let revives: Double?
+
+        private enum CodingKeys: String, CodingKey {
+            case matches, wins, winRate = "win_rate", kills, deaths, kd, damage, revives
+        }
+    }
+
+    struct QueueSplit: Codable, Hashable, Sendable {
+        let totals: Totals?
+    }
+
+    struct ByQueue: Codable, Hashable, Sendable {
+        let ranked: QueueSplit?
+        let casual: QueueSplit?
+    }
+
+    struct Item: Codable, Hashable, Sendable {
+        let displayName: String?
+        let name: String?
+        let kills: Double?
+        let uses: Double?
+
+        private enum CodingKeys: String, CodingKey {
+            case displayName = "display_name", name, kills, uses
+        }
+    }
+
+    struct TopItems: Codable, Hashable, Sendable {
+        let weapon: [Item]?
+    }
+
+    let club: Club?
+    let standing: Standing?
+    let totals: Totals?
+    let byQueue: ByQueue?
+    let topItems: TopItems?
+
+    private enum CodingKeys: String, CodingKey {
+        case club, standing, totals, byQueue = "by_queue", topItems = "top_items"
+    }
+}

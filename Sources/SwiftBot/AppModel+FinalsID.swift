@@ -279,6 +279,11 @@ extension AppModel {
         }
         publishGameTrackingState(runtimeState)
 
+        let zone = TimeZone(identifier: settings.gameTracking.timeZoneIdentifier) ?? .current
+        if settings.gameTracking.clubRecap.isDue(now: checkedAt, timeZone: zone) {
+            await postClubRecap()
+        }
+
         if failures.isEmpty {
             gameTrackingStatusText = sentAnnouncements == 0
                 ? "Checked · no SR changes"
@@ -505,6 +510,66 @@ extension AppModel {
         if outcome.hasChanges, let note = updated.lastSyncNote {
             logs.append("[INFO] Game Tracker club sync (\(updated.clubName ?? "club")): \(note)")
         }
+    }
+
+    /// Posts the weekly club recap now. Used by the daily check on the
+    /// chosen weekday and by the WebUI's "Post now". Returns whether it posted.
+    @discardableResult
+    func postClubRecap(isTest: Bool = false) async -> Bool {
+        let recap = settings.gameTracking.clubRecap
+        guard !recap.destinationChannelID.isEmpty else { return false }
+        let mode = runtimeClusterMode
+        guard mode == .standalone || mode == .leader, status == .running else { return false }
+        guard let descriptor = GameProviderCatalog.descriptor(for: .finalsID) else { return false }
+        let connectionSettings = settings.gameProviders[.finalsID]
+        // Finding the club starts from `/v1/me`, which only a personal key answers.
+        guard connectionSettings.hasPersonalCredential else {
+            logs.append("[WARN] Game Tracker club recap needs a personal finals.id key.")
+            return false
+        }
+        let connection = connectionSettings.connection(for: descriptor)
+
+        let analytics: FinalsIDClubAnalytics
+        let roster: FinalsIDClubRoster?
+        do {
+            let rosters = try await finalsIDLatestRoundClient.keyOwnerClubRosters(connection: connection)
+            roster = rosters.first
+            guard let clubID = roster?.clubId, !clubID.isEmpty else {
+                logs.append("[WARN] Game Tracker club recap: the finals.id key's account isn't in a club.")
+                return false
+            }
+            analytics = try await finalsIDLatestRoundClient.fetchClubAnalytics(clubID: clubID, connection: connection)
+        } catch {
+            logs.append("[WARN] Game Tracker club recap failed: \(error.localizedDescription)")
+            return false
+        }
+
+        let payload = GameAnnouncementRenderer.clubRecapMessage(
+            analytics: analytics,
+            roster: roster,
+            previousRank: recap.lastClubRank,
+            style: settings.gameTracking.announcementStyle,
+            isTest: isTest
+        )
+        let sent = await sendPayload(
+            channelId: recap.destinationChannelID,
+            payload: payload,
+            action: "gameTrackerClubRecap"
+        )
+        guard sent else {
+            logs.append("[ERR] Game Tracker could not deliver the weekly club recap.")
+            return false
+        }
+        // A test post doesn't move the weekly schedule or the "since last
+        // week" comparison.
+        if !isTest {
+            settings.gameTracking.clubRecap.lastPostedAt = Date()
+            settings.gameTracking.clubRecap.lastClubRank = analytics.standing?.rank.map { Int($0.rounded()) }
+            settings.gameTracking.clubRecap.lastCombinedRankedScore = analytics.standing?.combinedRankedScore.map { Int($0.rounded()) }
+            saveGameTrackingSettingsFromSync()
+        }
+        logs.append("[OK] Game Tracker posted the \(isTest ? "test " : "")weekly club recap for \(analytics.club?.name ?? roster?.name ?? "the club").")
+        return true
     }
 
     /// Saves without restarting the scheduler: sync runs inside the scheduled

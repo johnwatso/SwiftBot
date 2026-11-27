@@ -806,6 +806,65 @@ final class FinalsIDTests: XCTestCase {
                      "No overlap falls back to rounds.")
     }
 
+    /// Shape taken from a live `GET /v1/analytics/clubs/{id}?window=7d`.
+    func testWeeklyClubRecapRendersStandingTotalsWeaponsAndLeaders() throws {
+        let json = #"""
+        {"meta":{"window":"7d","season":"s12"},
+         "club":{"club_id":"c-club","tag":"DBOI5","name":"DA BOI5S","roster_size":8},
+         "standing":{"rank":1049,"combined_rs":93898,"avg_rs":23474.5,"ranked_members":4},
+         "totals":{"matches":59,"wins":16,"win_rate":0.2711864406779661,"kills":633,"deaths":507,"kd":1.2485,"damage":216041.83,"revives":167},
+         "by_queue":{"ranked":{"totals":{"matches":14,"wins":2,"kd":1.08}},"casual":{"totals":{"matches":45}}},
+         "by_class":{"light":{"matches":19}},
+         "top_items":{"gadget":[{"slug":"jump-pad","display_name":"Jump Pad","uses":31,"kills":0.0}],
+                      "weapon":[{"display_name":"FCAR","kills":40.0},{"display_name":"Lewis Gun","kills":12.0},{"display_name":"Sword","kills":0.0}]}}
+        """#
+        let analytics = try JSONDecoder().decode(FinalsIDClubAnalytics.self, from: Data(json.utf8))
+        let roster = clubRoster([
+            clubMember("maximillian#5331", username: "maximillian#5331", score: 30847),
+            clubMember("jonwatso#5331", username: "jonwatso#5331", score: 29866),
+            clubMember("Anonymous")
+        ])
+
+        let payload = GameAnnouncementRenderer.clubRecapMessage(
+            analytics: analytics, roster: roster, previousRank: 1061, style: GameAnnouncementStyle()
+        )
+        let embed = try XCTUnwrap((payload["embeds"] as? [[String: Any]])?.first)
+        XCTAssertEqual(embed["title"] as? String, "DA BOI5S [DBOI5]")
+        let description = try XCTUnwrap(embed["description"] as? String)
+        XCTAssertTrue(description.contains("#1,049"), description)
+        XCTAssertTrue(description.contains("▲ 12 since last week"), description)
+        let fields = try XCTUnwrap(embed["fields"] as? [[String: Any]])
+        let byName = Dictionary(uniqueKeysWithValues: fields.compactMap { field -> (String, String)? in
+            guard let name = field["name"] as? String, let value = field["value"] as? String else { return nil }
+            return (name, value)
+        })
+        XCTAssertEqual(byName["Matches"], "59 (14 ranked)")
+        XCTAssertEqual(byName["Wins"], "16 · 27%")
+        XCTAssertEqual(byName["Top weapons"], "FCAR · 40 kills\nLewis Gun · 12 kills")
+        XCTAssertEqual(byName["Top ranked"]?.components(separatedBy: "\n").first, "🥇 maximillian#5331 · 30,847 SR (Platinum 4)")
+    }
+
+    func testWeeklyClubRecapIsDueOnceOnTheChosenDay() throws {
+        var recap = GameClubRecapSettings()
+        recap.isEnabled = true
+        recap.destinationChannelID = "channel"
+        recap.weekday = 2
+        let zone = try XCTUnwrap(TimeZone(identifier: "Pacific/Auckland"))
+        let formatter = ISO8601DateFormatter()
+        // 2026-11-30 is a Monday in Auckland.
+        let monday = try XCTUnwrap(formatter.date(from: "2026-11-29T20:00:00Z"))
+        let tuesday = monday.addingTimeInterval(86_400)
+
+        XCTAssertTrue(recap.isDue(now: monday, timeZone: zone))
+        XCTAssertFalse(recap.isDue(now: tuesday, timeZone: zone))
+        recap.lastPostedAt = monday.addingTimeInterval(-3_600)
+        XCTAssertFalse(recap.isDue(now: monday, timeZone: zone), "Already posted today.")
+        recap.lastPostedAt = monday.addingTimeInterval(-7 * 86_400)
+        XCTAssertTrue(recap.isDue(now: monday, timeZone: zone))
+        recap.destinationChannelID = ""
+        XCTAssertFalse(recap.isDue(now: monday, timeZone: zone))
+    }
+
     func testClubSyncSettingsDecodeWhenAbsentFromOlderSettings() throws {
         let settings = try JSONDecoder().decode(GameTrackingSettings.self, from: Data(#"{"dailyCheckEnabled":true}"#.utf8))
         XCTAssertFalse(settings.clubSync.isEnabled)

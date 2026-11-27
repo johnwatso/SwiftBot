@@ -676,6 +676,9 @@ async function handleAPI(req, res, pathname, query) {
         if (player) player.isEnabled = !!body.enabled;
       } else if (body.action === 'updateStyle') {
         gametracker.announcementStyle = { ...body.style };
+      } else if (body.action === 'postClubRecap') {
+        console.log('[gametracker] would post the weekly club recap');
+        gametracker.clubRecap.lastPostedAt = new Date().toISOString();
       } else if (body.action === 'sendTest') {
         console.log('[gametracker] would post test announcements for', body.playerID);
       } else if (body.action === 'updateSettings') {
@@ -685,6 +688,10 @@ async function handleAPI(req, res, pathname, query) {
         if ('clubSyncEnabled' in body) club.enabled = !!body.clubSyncEnabled;
         if ('clubSyncChannelID' in body) club.destinationChannelID = body.clubSyncChannelID;
         if ('clubSyncIncludeLeaderboard' in body) club.includeLeaderboardMembers = !!body.clubSyncIncludeLeaderboard;
+        const recap = gametracker.clubRecap;
+        if ('clubRecapEnabled' in body) recap.enabled = !!body.clubRecapEnabled;
+        if ('clubRecapChannelID' in body) recap.destinationChannelID = body.clubRecapChannelID;
+        if ('clubRecapWeekday' in body) recap.weekday = Number(body.clubRecapWeekday);
       }
       gametracker.enabledPlayerCount = gametracker.players.filter((p) => p.isEnabled).length;
       gametracker.totalPlayerCount = gametracker.players.length;

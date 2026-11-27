@@ -496,6 +496,8 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
     var announcementStyle = GameAnnouncementStyle()
     /// Adds the finals.id key owner's club members as tracked players.
     var clubSync = GameClubSyncSettings()
+    /// Weekly finals.id club recap post.
+    var clubRecap = GameClubRecapSettings()
 
     /// The service runs when either behaviour is switched on. There is no
     /// separate master switch: a user turning both off has already expressed
@@ -603,6 +605,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         case sessionSettleDelaySeconds
         case announcementStyle
         case clubSync
+        case clubRecap
     }
 
     init() {}
@@ -627,6 +630,8 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
             ?? GameAnnouncementStyle()
         clubSync = (try? container.decodeIfPresent(GameClubSyncSettings.self, forKey: .clubSync))
             ?? GameClubSyncSettings()
+        clubRecap = (try? container.decodeIfPresent(GameClubRecapSettings.self, forKey: .clubRecap))
+            ?? GameClubRecapSettings()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -642,6 +647,7 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         try container.encode(sessionSettleDelaySeconds, forKey: .sessionSettleDelaySeconds)
         try container.encode(announcementStyle, forKey: .announcementStyle)
         try container.encode(clubSync, forKey: .clubSync)
+        try container.encode(clubRecap, forKey: .clubRecap)
     }
 
     mutating func normalize() {
@@ -655,6 +661,48 @@ struct GameTrackingSettings: Codable, Hashable, Sendable {
         }
         announcementStyle.normalize()
         clubSync.destinationChannelID = clubSync.destinationChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        clubRecap.destinationChannelID = clubRecap.destinationChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        clubRecap.weekday = min(max(clubRecap.weekday, 1), 7)
+    }
+}
+
+/// A weekly post summarising the finals.id key owner's club over the last
+/// seven days. Posted with the daily check on the chosen weekday.
+struct GameClubRecapSettings: Codable, Hashable, Sendable {
+    var isEnabled = false
+    var destinationChannelID = ""
+    /// Calendar weekday, 1 = Sunday … 7 = Saturday. Monday by default.
+    var weekday = 2
+    var lastPostedAt: Date?
+    /// Club standing at the last post, for "▲ 12 since last week".
+    var lastClubRank: Int?
+    var lastCombinedRankedScore: Int?
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled, destinationChannelID, weekday, lastPostedAt, lastClubRank, lastCombinedRankedScore
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        destinationChannelID = try container.decodeIfPresent(String.self, forKey: .destinationChannelID) ?? ""
+        weekday = try container.decodeIfPresent(Int.self, forKey: .weekday) ?? 2
+        lastPostedAt = try container.decodeIfPresent(Date.self, forKey: .lastPostedAt)
+        lastClubRank = try container.decodeIfPresent(Int.self, forKey: .lastClubRank)
+        lastCombinedRankedScore = try container.decodeIfPresent(Int.self, forKey: .lastCombinedRankedScore)
+    }
+
+    /// Due on the chosen weekday (in the tracker's time zone), at most once
+    /// a week. `force` posts regardless (the WebUI's "Post now").
+    func isDue(now: Date, timeZone: TimeZone) -> Bool {
+        guard isEnabled, !destinationChannelID.isEmpty else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        guard calendar.component(.weekday, from: now) == weekday else { return false }
+        guard let lastPostedAt else { return true }
+        return now.timeIntervalSince(lastPostedAt) > 5 * 86_400
     }
 }
 

@@ -517,3 +517,111 @@ enum GameAnnouncementRenderer {
         return result
     }
 }
+
+// MARK: - Weekly club recap
+
+extension GameAnnouncementRenderer {
+    /// The weekly finals.id club post: standing, the week's totals, the top
+    /// weapons and the club's highest-ranked members.
+    static func clubRecapMessage(
+        analytics: FinalsIDClubAnalytics,
+        roster: FinalsIDClubRoster?,
+        previousRank: Int?,
+        style: GameAnnouncementStyle,
+        isTest: Bool = false
+    ) -> [String: Any] {
+        let name = analytics.club?.name ?? roster?.name ?? "Club"
+        let tag = analytics.club?.tag ?? roster?.tag
+        let whole: (Double?) -> Int? = { $0.map { Int($0.rounded()) } }
+
+        var lines: [String] = []
+        if let rank = whole(analytics.standing?.rank), rank > 0 {
+            var line = "Club rank **#\(rank.formatted())**"
+            if let previousRank, previousRank > 0, previousRank != rank {
+                // A lower number is a better place.
+                let moved = previousRank - rank
+                line += moved > 0 ? " · ▲ \(moved.formatted()) since last week" : " · ▼ \(abs(moved).formatted()) since last week"
+            }
+            lines.append(line)
+        }
+        if let combined = whole(analytics.standing?.combinedRankedScore), combined > 0 {
+            var line = "Combined SR **\(combined.formatted())**"
+            if let members = whole(analytics.standing?.rankedMembers), members > 0 {
+                line += " across \(members) ranked \(members == 1 ? "member" : "members")"
+            }
+            lines.append(line)
+        }
+
+        var fields: [[String: Any]] = []
+        let totals = analytics.totals
+        let matches = whole(totals?.matches) ?? 0
+        if matches > 0 {
+            let ranked = whole(analytics.byQueue?.ranked?.totals?.matches) ?? 0
+            fields.append(field("Matches", ranked > 0 ? "\(matches) (\(ranked) ranked)" : "\(matches)"))
+            let wins = whole(totals?.wins) ?? 0
+            let rate = totals?.winRate.map { " · \(Int(($0 * 100).rounded()))%" } ?? ""
+            fields.append(field("Wins", "\(wins)\(rate)"))
+            if let kd = totals?.kd { fields.append(field("K/D", String(format: "%.2f", kd))) }
+            if let kills = whole(totals?.kills) {
+                fields.append(field("Eliminations", "\(kills.formatted()) / \((whole(totals?.deaths) ?? 0).formatted()) deaths"))
+            }
+            if let damage = whole(totals?.damage), damage > 0 { fields.append(field("Damage", damage.formatted())) }
+            if let revives = whole(totals?.revives), revives > 0 { fields.append(field("Revives", revives.formatted())) }
+            if let rankedTotals = analytics.byQueue?.ranked?.totals, ranked > 0 {
+                let rankedWins = whole(rankedTotals.wins) ?? 0
+                let rankedKD = rankedTotals.kd.map { " · \(String(format: "%.2f", $0)) K/D" } ?? ""
+                fields.append(field("Ranked", "\(rankedWins) \(rankedWins == 1 ? "win" : "wins") from \(ranked)\(rankedKD)"))
+            }
+        } else {
+            lines.append("No tracked matches in the last 7 days.")
+        }
+
+        let weapons = (analytics.topItems?.weapon ?? [])
+            .compactMap { item -> (String, Int)? in
+                guard let label = item.displayName ?? item.name, let kills = whole(item.kills), kills > 0 else { return nil }
+                return (label, kills)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(3)
+        if !weapons.isEmpty {
+            fields.append(field(
+                "Top weapons",
+                weapons.map { "\($0.0) · \($0.1.formatted()) \($0.1 == 1 ? "kill" : "kills")" }.joined(separator: "\n"),
+                inline: false
+            ))
+        }
+
+        let leaders = (roster?.members ?? [])
+            .compactMap { member -> (String, Int)? in
+                guard let score = member.score, score > 0 else { return nil }
+                return (member.username ?? member.displayName, score)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(3)
+        if !leaders.isEmpty {
+            let medals = ["🥇", "🥈", "🥉"]
+            fields.append(field(
+                "Top ranked",
+                leaders.enumerated().map { index, entry in
+                    let tier = GameID.theFinals.rankTier(index: nil, score: entry.1, league: nil)?.name
+                    return "\(medals[index]) \(entry.0) · \(entry.1.formatted()) SR\(tier.map { " (\($0))" } ?? "")"
+                }.joined(separator: "\n"),
+                inline: false
+            ))
+        }
+
+        var footer = "Last 7 days · Data provided by finals.id"
+        if isTest { footer = "Test post · " + footer }
+        let embed: [String: Any] = [
+            "author": ["name": "THE FINALS · Weekly club recap"],
+            "title": truncate(tag.map { "\(name) [\($0)]" } ?? name, 256),
+            "url": "https://finals.id",
+            "description": truncate(lines.joined(separator: "\n"), 4_000),
+            "color": (style.accent == .custom ? style.customColorValue : nil) ?? fallbackColor,
+            "fields": Array(fields.prefix(25)),
+            "footer": ["text": footer],
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        return ["embeds": [embed], "allowed_mentions": ["parse": []]]
+    }
+}
