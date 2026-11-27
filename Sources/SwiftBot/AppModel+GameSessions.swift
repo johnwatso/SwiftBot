@@ -135,12 +135,16 @@ extension AppModel {
         guard connectionSettings.configurationIssue(for: descriptor) == nil else { return nil }
         guard player.provider == .finalsID else { return nil }
 
-        let connection = connectionSettings.connection(for: descriptor)
+        // Team key first: other players' rounds are only readable through a
+        // scope they consented to share match history with.
+        var connections = connectionSettings.connections(for: descriptor)
+        if connections.isEmpty { connections = [connectionSettings.connection(for: descriptor)] }
+        let client = finalsIDLatestRoundClient
+        let playerID = player.playerID
         do {
-            let response = try await finalsIDLatestRoundClient.fetchLatestRound(
-                playerID: player.playerID,
-                connection: connection
-            )
+            let response = try await Self.firstVisible(connections) { connection in
+                try await client.fetchLatestRound(playerID: playerID, connection: connection)
+            }
             return GameSessionSummaryBuilder.totals(for: session, matches: response.matches)
         } catch {
             logs.append("[WARN] Game Tracker could not load session rounds: \(error.localizedDescription)")

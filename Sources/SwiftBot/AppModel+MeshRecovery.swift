@@ -209,7 +209,11 @@ extension AppModel {
         let version = await store.meshSnapshotVersion()
         let grants = await meshCredentialStore.allGrants()
         return MeshCredentialsResponse(
-            gameProviderTokens: Dictionary(uniqueKeysWithValues: GameProviderID.allCases.map { ($0.rawValue, settings.gameProviders.token(for: $0)) }),
+            // Team keys ride along under "<provider>.team"; older nodes ignore them.
+            gameProviderTokens: Dictionary(uniqueKeysWithValues: GameProviderID.allCases.flatMap { id -> [(String, String)] in
+                [(id.rawValue, settings.gameProviders.token(for: id)),
+                 (id.rawValue + ".team", settings.gameProviders.teamToken(for: id))]
+            }),
             discordOAuthClientSecret: settings.adminWebUI.discordOAuth.clientSecret,
             discordToken: settings.token,
             authorizedCredentialGrants: grants, leaderTerm: term, configRevision: version?.revision ?? 0
@@ -324,6 +328,7 @@ extension AppModel {
             settings.adminWebUI.discordOAuth.clientSecret = payload.discordOAuthClientSecret ?? ""
             for id in GameProviderID.allCases {
                 settings.gameProviders.setToken(payload.gameProviderTokens[id.rawValue] ?? "", for: id)
+                settings.gameProviders.setTeamToken(payload.gameProviderTokens[id.rawValue + ".team"] ?? "", for: id)
             }
             // Companion credentials and tunnel routes belong to their host Mac.
             try await store.save(settings)

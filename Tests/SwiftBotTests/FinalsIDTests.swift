@@ -713,6 +713,59 @@ final class FinalsIDTests: XCTestCase {
         XCTAssertTrue(afterDelete.sync.syncedPlayerIDs.isEmpty)
     }
 
+    func testTeamKeyIsTriedFirstAndNeverWrittenToDisk() throws {
+        let descriptor = try XCTUnwrap(GameProviderCatalog.descriptor(for: .finalsID))
+        var settings = GameProviderConnectionSettings()
+        settings.token = "ftk_personal_000000"
+        XCTAssertEqual(settings.connections(for: descriptor).map(\.token), ["ftk_personal_000000"])
+
+        settings.teamToken = "  ftk_team_111111  "
+        XCTAssertEqual(settings.connections(for: descriptor).map(\.token), ["ftk_team_111111", "ftk_personal_000000"])
+        XCTAssertEqual(settings.connection(for: descriptor).token, "ftk_personal_000000", "Club sync and /v1/me keep the personal key.")
+        XCTAssertEqual(settings.teamCredentialHint, "1111")
+
+        settings.token = ""
+        XCTAssertTrue(settings.hasCredential)
+        XCTAssertFalse(settings.hasPersonalCredential)
+        XCTAssertEqual(settings.connection(for: descriptor).token, "ftk_team_111111")
+
+        var connections = GameProviderConnections()
+        connections[.finalsID] = settings
+        connections.clearTokens()
+        let written = String(decoding: try JSONEncoder().encode(connections), as: UTF8.self)
+        XCTAssertFalse(written.contains("ftk_team"))
+
+        // Settings saved before the team key existed still decode.
+        let old = try JSONDecoder().decode(
+            GameProviderConnections.self,
+            from: Data(#"{"finalsID":{"baseURL":"","token":"","rankEndpointTemplate":"/v1/profiles/{playerID}"}}"#.utf8)
+        )
+        XCTAssertEqual(old[.finalsID].rankEndpointTemplate, "/v1/profiles/{playerID}")
+        XCTAssertNil(old[.finalsID].teamToken)
+    }
+
+    @MainActor
+    func testFirstVisibleFallsThroughOnlyOnNotVisibleAnswers() async throws {
+        let team = GameProviderConnection(baseURL: "https://example.test", token: "team", auth: .bearer, rankEndpointTemplate: "")
+        let personal = GameProviderConnection(baseURL: "https://example.test", token: "personal", auth: .bearer, rankEndpointTemplate: "")
+
+        let viaPersonal = try await AppModel.firstVisible([team, personal]) { connection -> String in
+            if connection.token == "team" { throw FinalsIDAPIError.rankHidden }
+            return connection.token
+        }
+        XCTAssertEqual(viaPersonal, "personal")
+
+        do {
+            _ = try await AppModel.firstVisible([team, personal]) { connection -> String in
+                if connection.token == "team" { throw FinalsIDAPIError.unranked }
+                return connection.token
+            }
+            XCTFail("A real answer from the team key must not be second-guessed.")
+        } catch {
+            XCTAssertEqual(error as? FinalsIDAPIError, .unranked)
+        }
+    }
+
     func testClubSyncSettingsDecodeWhenAbsentFromOlderSettings() throws {
         let settings = try JSONDecoder().decode(GameTrackingSettings.self, from: Data(#"{"dailyCheckEnabled":true}"#.utf8))
         XCTAssertFalse(settings.clubSync.isEnabled)

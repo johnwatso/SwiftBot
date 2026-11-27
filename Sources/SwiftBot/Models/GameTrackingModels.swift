@@ -244,6 +244,12 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
     /// in settings.json: a SwiftMesh Standby compares it with what it last
     /// pulled to know when to fetch the credential again.
     var credentialUpdatedAt: Date?
+    /// A second, scoped key (finals.id Team/Organization). It reads what
+    /// members of that scope consented to share, which the personal key can't;
+    /// the personal key still reads the owner's account and club. Keychain
+    /// only, like `token`. Optional so older settings files decode unchanged.
+    var teamToken: String?
+    var teamCredentialUpdatedAt: Date?
 
     func resolvedBaseURL(for descriptor: GameProviderDescriptor) -> String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -260,19 +266,56 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         return trimmed
     }
 
+    /// The personal key's connection, or the team key's when only that is set.
     func connection(for descriptor: GameProviderDescriptor) -> GameProviderConnection {
         GameProviderConnection(
             baseURL: resolvedBaseURL(for: descriptor),
-            token: token,
+            token: hasPersonalCredential ? token : trimmedTeamToken,
             auth: descriptor.auth,
             rankEndpointTemplate: resolvedRankEndpointTemplate(for: descriptor)
         )
     }
 
-    /// `true` once the operator has supplied this provider's credential. Being
+    /// The team key's connection, when one is set.
+    func teamConnection(for descriptor: GameProviderDescriptor) -> GameProviderConnection? {
+        guard hasTeamCredential else { return nil }
+        return GameProviderConnection(
+            baseURL: resolvedBaseURL(for: descriptor),
+            token: trimmedTeamToken,
+            auth: descriptor.auth,
+            rankEndpointTemplate: resolvedRankEndpointTemplate(for: descriptor)
+        )
+    }
+
+    /// Every usable connection, team key first: it can read members' full
+    /// profiles, and a refusal there falls through to the personal key.
+    func connections(for descriptor: GameProviderDescriptor) -> [GameProviderConnection] {
+        var result: [GameProviderConnection] = []
+        if let team = teamConnection(for: descriptor) { result.append(team) }
+        if hasPersonalCredential { result.append(connection(for: descriptor)) }
+        return result
+    }
+
+    var hasPersonalCredential: Bool {
+        !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var trimmedTeamToken: String {
+        (teamToken ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var hasTeamCredential: Bool { !trimmedTeamToken.isEmpty }
+
+    var teamCredentialHint: String? {
+        let trimmed = trimmedTeamToken
+        guard trimmed.count >= 12 else { return nil }
+        return String(trimmed.suffix(4))
+    }
+
+    /// `true` once the operator has supplied either credential. Being
     /// credentialled is not the same as being usable — see `issue(for:)`.
     var hasCredential: Bool {
-        !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        hasPersonalCredential || hasTeamCredential
     }
 
     /// The last four characters, so the WebUI can say which key is in use
@@ -311,6 +354,8 @@ struct GameProviderConnectionSettings: Codable, Hashable, Sendable {
         baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let team = trimmedTeamToken
+        teamToken = team.isEmpty ? nil : team
         rankEndpointTemplate = rankEndpointTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
@@ -367,10 +412,20 @@ struct GameProviderConnections: Codable, Hashable, Sendable {
     mutating func clearTokens() {
         for key in storage.keys {
             storage[key]?.token = ""
+            storage[key]?.teamToken = nil
         }
     }
 
     func token(for id: GameProviderID) -> String { self[id].token }
+
+    func teamToken(for id: GameProviderID) -> String { self[id].teamToken ?? "" }
+
+    mutating func setTeamToken(_ token: String, for id: GameProviderID) {
+        var entry = self[id]
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        entry.teamToken = trimmed.isEmpty ? nil : trimmed
+        self[id] = entry
+    }
 
     mutating func setToken(_ token: String, for id: GameProviderID) {
         var entry = self[id]

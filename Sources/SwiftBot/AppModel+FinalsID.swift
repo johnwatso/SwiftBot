@@ -379,10 +379,10 @@ extension AppModel {
             let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, trimmed.count <= 512, !trimmed.contains(where: \.isNewline) else { return .invalid }
             connection.token = trimmed
-            let verdict = await verifyGameProviderCredential(connection, descriptor: descriptor)
+            let verdict = await verifyGameProviderCredential(connection.connection(for: descriptor), descriptor: descriptor)
             guard verdict == .saved else { return verdict }
         } else {
-            guard connection.hasCredential else { return .saved }
+            guard connection.hasPersonalCredential else { return .saved }
             connection.token = ""
         }
 
@@ -394,11 +394,37 @@ extension AppModel {
         return .saved
     }
 
+    /// Sets (or, with `nil`, removes) the scoped team key. Verified the same
+    /// way as the personal key before it's saved.
+    func setGameProviderTeamCredential(_ token: String?, for providerID: GameProviderID) async -> GameProviderCredentialResult {
+        guard let descriptor = GameProviderCatalog.descriptor(for: providerID) else { return .unsupported }
+        var connection = settings.gameProviders[providerID]
+
+        if let token {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.count <= 512, !trimmed.contains(where: \.isNewline) else { return .invalid }
+            connection.teamToken = trimmed
+            guard let candidate = connection.teamConnection(for: descriptor) else { return .invalid }
+            let verdict = await verifyGameProviderCredential(candidate, descriptor: descriptor)
+            guard verdict == .saved else { return verdict }
+        } else {
+            guard connection.hasTeamCredential else { return .saved }
+            connection.teamToken = nil
+        }
+
+        connection.normalize()
+        connection.teamCredentialUpdatedAt = Date()
+        settings.gameProviders[providerID] = connection
+        gameProviderConnectionFailures[providerID] = nil
+        gameTrackingSettingsDidChange()
+        return .saved
+    }
+
     /// One real request with the candidate credential. Only an explicit
     /// rejection (401) fails it: "no such player" or "rank hidden" still prove
     /// the provider accepted the key. Uses a tracked player when there is one.
     private func verifyGameProviderCredential(
-        _ connection: GameProviderConnectionSettings,
+        _ connection: GameProviderConnection,
         descriptor: GameProviderDescriptor
     ) async -> GameProviderCredentialResult {
         var probe = settings.gameTracking.players.first { $0.provider == descriptor.id } ?? GameTrackedPlayer()
@@ -408,7 +434,7 @@ extension AppModel {
             probe.playerID = "swiftbot#0000"
         }
         do {
-            _ = try await gameProviderRegistry.fetchRankSnapshot(for: probe, connection: connection.connection(for: descriptor))
+            _ = try await gameProviderRegistry.fetchRankSnapshot(for: probe, connection: connection)
             return .saved
         } catch FinalsIDAPIError.unauthorized {
             return .rejected
@@ -436,8 +462,9 @@ extension AppModel {
         guard mode == .standalone || mode == .leader else { return }
         guard let descriptor = GameProviderCatalog.descriptor(for: .finalsID) else { return }
         let connectionSettings = settings.gameProviders[.finalsID]
-        guard connectionSettings.hasCredential else {
-            settings.gameTracking.clubSync.lastSyncNote = "Add a finals.id key to sync the club."
+        // Finding the club starts from `/v1/me`, which only a personal key answers.
+        guard connectionSettings.hasPersonalCredential else {
+            settings.gameTracking.clubSync.lastSyncNote = "Add a personal finals.id key to sync the club."
             saveGameTrackingSettingsFromSync()
             return
         }
@@ -535,8 +562,36 @@ extension AppModel {
         guard let descriptor = GameProviderCatalog.descriptor(for: target.provider) else {
             throw GameProviderRegistryError.unsupportedProvider(target.provider)
         }
-        let connection = settings.gameProviders[target.provider].connection(for: descriptor)
-        return try await gameProviderRegistry.fetchRankSnapshot(for: target, connection: connection)
+        let connections = settings.gameProviders[target.provider].connections(for: descriptor)
+        guard !connections.isEmpty else {
+            return try await gameProviderRegistry.fetchRankSnapshot(
+                for: target,
+                connection: settings.gameProviders[target.provider].connection(for: descriptor)
+            )
+        }
+        return try await Self.firstVisible(connections) { connection in
+            try await self.gameProviderRegistry.fetchRankSnapshot(for: target, connection: connection)
+        }
+    }
+
+    /// Tries each key in turn (team first). "Not visible to this key"
+    /// answers fall through to the next key; anything else, including a
+    /// genuine "unranked", is the answer. The last key's error wins.
+    static func firstVisible<T>(
+        _ connections: [GameProviderConnection],
+        _ fetch: (GameProviderConnection) async throws -> T
+    ) async throws -> T {
+        var lastError: Error = FinalsIDAPIError.invalidResponse
+        for (index, connection) in connections.enumerated() {
+            do {
+                return try await fetch(connection)
+            } catch let error as FinalsIDAPIError
+                where index < connections.count - 1
+                && [.rankHidden, .playerNotFound, .unauthorized].contains(error) {
+                lastError = error
+            }
+        }
+        throw lastError
     }
 
     private func publishGameTrackingState(_ state: GameTrackingRuntimeState) {

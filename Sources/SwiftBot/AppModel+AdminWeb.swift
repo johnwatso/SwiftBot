@@ -2543,8 +2543,15 @@ extension AppModel {
             return await LogExporter.buildReport(from: model)
         }
         await adminWebServer.setGameProviderCredentialUpdater { [weak self] providerRaw, token in
-            guard let model = self, let providerID = GameProviderID(rawValue: providerRaw) else {
+            // "<provider>.team" addresses the scoped team key.
+            let isTeam = providerRaw.hasSuffix(".team")
+            let raw = isTeam ? String(providerRaw.dropLast(".team".count)) : providerRaw
+            guard let model = self, let providerID = GameProviderID(rawValue: raw) else {
                 return GameProviderCredentialResult.unsupported.rawValue
+            }
+            if isTeam {
+                guard providerID == .finalsID else { return GameProviderCredentialResult.unsupported.rawValue }
+                return await model.setGameProviderTeamCredential(token, for: providerID).rawValue
             }
             return await model.setGameProviderCredential(token, for: providerID).rawValue
         }
@@ -3723,9 +3730,13 @@ extension AppModel {
                     },
                     isConfigured: descriptor.map { settings.gameProviders[provider].configurationIssue(for: $0) == nil } ?? false,
                     credentialLabel: descriptor?.auth.credentialLabel ?? "API Key",
-                    hasCredential: settings.gameProviders[provider].hasCredential,
+                    hasCredential: settings.gameProviders[provider].hasPersonalCredential,
                     credentialHint: settings.gameProviders[provider].credentialHint,
                     credentialUpdatedAt: settings.gameProviders[provider].credentialUpdatedAt,
+                    supportsTeamCredential: provider == .finalsID,
+                    hasTeamCredential: settings.gameProviders[provider].hasTeamCredential,
+                    teamCredentialHint: settings.gameProviders[provider].teamCredentialHint,
+                    teamCredentialUpdatedAt: settings.gameProviders[provider].teamCredentialUpdatedAt,
                     issue: descriptor.flatMap { settings.gameProviders[provider].issue(for: $0)?.message(for: $0) }
                 )
             }
@@ -3773,7 +3784,7 @@ extension AppModel {
                 enabled: tracking.clubSync.isEnabled,
                 destinationChannelID: tracking.clubSync.destinationChannelID,
                 includeLeaderboardMembers: tracking.clubSync.includeLeaderboardMembers,
-                hasCredential: settings.gameProviders[.finalsID].hasCredential,
+                hasCredential: settings.gameProviders[.finalsID].hasPersonalCredential,
                 clubName: tracking.clubSync.clubName,
                 lastSyncedAt: tracking.clubSync.lastSyncedAt,
                 lastSyncNote: tracking.clubSync.lastSyncNote,

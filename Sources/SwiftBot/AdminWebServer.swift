@@ -551,6 +551,11 @@ struct AdminWebGameTrackerCatalog: Codable {
         var hasCredential: Bool = false
         var credentialHint: String?
         var credentialUpdatedAt: Date?
+        /// Whether a second, scoped key (finals.id Team) is offered.
+        var supportsTeamCredential: Bool = false
+        var hasTeamCredential: Bool = false
+        var teamCredentialHint: String?
+        var teamCredentialUpdatedAt: Date?
         /// Why the connection isn't usable yet, if it isn't.
         var issue: String?
     }
@@ -626,6 +631,8 @@ struct AdminWebGameProviderCredentialUpdate: Codable {
     /// The new credential; nil with `remove` to delete it.
     var token: String?
     var remove: Bool?
+    /// The scoped team key rather than the personal one.
+    var team: Bool?
 }
 
 /// One WebUI edit to Game Tracker. Mirrors what the native view can change.
@@ -5506,8 +5513,9 @@ actor AdminWebServer {
             return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
         }
 
-        let result = await updater(providerID.rawValue, removing ? nil : update.token)
-        let label = "\(providerID.displayName) \(GameProviderCatalog.descriptor(for: providerID)?.auth.credentialLabel ?? "credential")"
+        let isTeam = update.team == true
+        let result = await updater(isTeam ? providerID.rawValue + ".team" : providerID.rawValue, removing ? nil : update.token)
+        let label = "\(providerID.displayName) \(isTeam ? "Team " : "")\(GameProviderCatalog.descriptor(for: providerID)?.auth.credentialLabel ?? "credential")"
         switch result {
         case GameProviderCredentialResult.saved.rawValue:
             audit(source: "Web Config", actor: actorLabel(session), action: removing ? "Removed \(label)" : "Replaced \(label)", level: "ok")

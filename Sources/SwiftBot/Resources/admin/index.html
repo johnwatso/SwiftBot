@@ -12470,13 +12470,31 @@
                     ${p.hasCredential && !readOnly ? `<button class="secondary-action" type="button" data-conn-remove ${secure ? '' : 'disabled'}>Remove</button>` : ''}
                     ${readOnly ? '' : `<button class="${p.hasCredential ? 'secondary-action' : 'primary-action'}" type="button" data-conn-set ${secure ? '' : 'disabled'}>${p.hasCredential ? 'Replace' : 'Connect'}</button>`}
                   </div>
-                </div>`;
+                </div>
+                ${p.supportsTeamCredential ? `
+                <div class="ub-row" data-provider="${escapeHTML(p.id)}" data-team="true">
+                  <div class="ub-row-text">
+                    <div class="ub-row-title gt-conn-title"><span class="ops-dot" data-state="${p.hasTeamCredential ? 'healthy' : 'neutral'}"></span>${escapeHTML(p.displayName)} Team Key</div>
+                    <div class="ub-row-desc">${p.hasTeamCredential
+                      ? `Team Key${p.teamCredentialHint ? ` ending in <code>…${escapeHTML(p.teamCredentialHint)}</code>` : ' set'}${p.teamCredentialUpdatedAt ? ` · changed ${escapeHTML(relativeTime(p.teamCredentialUpdatedAt))}` : ''}`
+                      : 'Optional. Reads full stats, including play sessions, for members of your team who agreed to share them. The personal key above still handles your own account and club sync.'}</div>
+                  </div>
+                  <div class="gt-conn-actions">
+                    ${p.hasTeamCredential && !readOnly ? `<button class="secondary-action" type="button" data-conn-remove ${secure ? '' : 'disabled'}>Remove</button>` : ''}
+                    ${readOnly ? '' : `<button class="secondary-action" type="button" data-conn-set ${secure ? '' : 'disabled'}>${p.hasTeamCredential ? 'Replace' : 'Add'}</button>`}
+                  </div>
+                </div>` : ''}`;
             }).join('')}
           </div>
           ${!readOnly && !secure ? '<p class="ub-help settings-host-note"><i class="lucide" data-lucide="lock"></i> Open the WebUI over https to change API keys. Over plain http a key could be read by anyone on the network.</p>' : ''}
         </section>`;
       host.querySelectorAll('[data-provider]').forEach(row => {
-        const provider = providers.find(p => p.id === row.dataset.provider);
+        const base = providers.find(p => p.id === row.dataset.provider);
+        // The team row edits the same provider's second key, so present it
+        // to the shared editors as its own "provider" with team fields.
+        const provider = row.dataset.team === 'true'
+          ? { ...base, team: true, displayName: `${base.displayName} Team`, credentialLabel: 'Team Key', hasCredential: !!base.hasTeamCredential }
+          : base;
         row.querySelector('[data-conn-set]')?.addEventListener('click', () => openProviderKeyEditor(provider));
         row.querySelector('[data-conn-remove]')?.addEventListener('click', () => confirmRemoveProviderKey(provider));
       });
@@ -12528,7 +12546,7 @@
         if (!token) { hint.textContent = `Paste a ${label} first.`; return; }
         save.disabled = true;
         hint.textContent = `Checking with ${p.displayName}…`;
-        if (await postProviderCredential({ provider: p.id, token }, hint)) {
+        if (await postProviderCredential({ provider: p.id, token, ...(p.team ? { team: true } : {}) }, hint)) {
           setMessage(`${p.displayName} connected.`, 'success');
         } else {
           save.disabled = false;
@@ -12540,7 +12558,9 @@
 
     function confirmRemoveProviderKey(p) {
       showModal(`Remove the ${p.displayName} key?`, `
-        <p class="ub-help" style="margin-top:0;">Game Tracker stops checking ${escapeHTML(p.displayName)} ranks until a new ${escapeHTML(p.credentialLabel || 'API Key')} is added. Tracked players and their history stay.</p>
+        <p class="ub-help" style="margin-top:0;">${p.team
+          ? 'Team members go back to rank only, read from the club roster with the personal key. Play-session stats for them stop. Tracked players and their history stay.'
+          : `Game Tracker stops checking ${escapeHTML(p.displayName)} ranks until a new ${escapeHTML(p.credentialLabel || 'API Key')} is added. Tracked players and their history stay.`}</p>
       `, `
         <span id="gtKeyHint" class="modal-hint"></span>
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
@@ -12548,7 +12568,7 @@
       `);
       document.getElementById('gtKeyRemove').addEventListener('click', async (e) => {
         e.currentTarget.disabled = true;
-        if (await postProviderCredential({ provider: p.id, remove: true }, document.getElementById('gtKeyHint'))) {
+        if (await postProviderCredential({ provider: p.id, remove: true, ...(p.team ? { team: true } : {}) }, document.getElementById('gtKeyHint'))) {
           setMessage(`${p.displayName} key removed.`, 'success');
         } else {
           e.currentTarget.disabled = false;

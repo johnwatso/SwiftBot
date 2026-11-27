@@ -100,9 +100,15 @@ actor ConfigStore {
     /// Pre-multi-provider account name, migrated on first load.
     private let legacyFinalsIDAPITokenAccount = "finals-id-api-token"
     private var lastGameProviderTokens: [GameProviderID: String] = [:]
+    private var lastGameProviderTeamTokens: [GameProviderID: String] = [:]
 
     private func gameProviderTokenAccount(_ id: GameProviderID) -> String {
         "game-provider-token-\(id.rawValue)"
+    }
+
+    /// The scoped team key (finals.id Team/Organization), kept separately.
+    private func gameProviderTeamTokenAccount(_ id: GameProviderID) -> String {
+        "game-provider-team-token-\(id.rawValue)"
     }
     private let url: URL
     private let encoder = JSONEncoder()
@@ -201,6 +207,12 @@ actor ConfigStore {
                 }
             }
             lastGameProviderTokens[providerID] = settings.gameProviders.token(for: providerID)
+
+            let teamAccount = gameProviderTeamTokenAccount(providerID)
+            if let teamToken = KeychainHelper.load(account: teamAccount) {
+                settings.gameProviders.setTeamToken(teamToken, for: providerID)
+            }
+            lastGameProviderTeamTokens[providerID] = settings.gameProviders.teamToken(for: providerID)
         }
 
         // SwiftMiner's pairing used to be written to settings.json in plain
@@ -310,6 +322,19 @@ actor ConfigStore {
                 KeychainHelper.save(trimmed, account: account)
             }
             lastGameProviderTokens[providerID] = trimmed
+        }
+
+        for providerID in GameProviderID.allCases {
+            let teamToken = settings.gameProviders.teamToken(for: providerID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard teamToken != (lastGameProviderTeamTokens[providerID] ?? "") else { continue }
+            let account = gameProviderTeamTokenAccount(providerID)
+            if teamToken.isEmpty {
+                KeychainHelper.delete(account: account)
+            } else {
+                KeychainHelper.save(teamToken, account: account)
+            }
+            lastGameProviderTeamTokens[providerID] = teamToken
         }
 
         saveKeychainBacked(settings.swiftMiner.apiKey, account: swiftMinerAPIKeyAccount, last: &lastSwiftMinerAPIKey)
