@@ -9,6 +9,14 @@
 
 ## Recent Engineering Log
 
+### 2026-11-27 — SwiftBot 1.27.5: finals.id club roster and club sync
+
+- [x] Diagnosed tracked teammates showing "Rank hidden": finals.id personal keys now read only the key owner's own profile; every other profile, rounds, search and leaderboard request answers 403. The key owner's club roster (`/v1/clubs/{clubId}`) is still readable and carries members' SR. Game Tracker now falls back to it on 403/404 (`FinalsIDAPIClient.clubRosterLookup`).
+- [x] Added finals.id club sync (Game Tracker › Automation, `GameClubSyncPlanner`): adds named club members before every check, pauses synced leavers and resumes returners, never re-adds synced players the operator deleted, and changes nothing on an empty roster answer. Unit tests cover the planner and the roster fallback.
+- [x] Fixed a Release-archive-only strict-concurrency error in `AppModel+WikiLookupReplies.swift` that failed the first 1.27.4 ShipHook run. 1.27.4 was never published; 1.27.5 (build 2026112712) shipped through ShipHook with all of it. Feed `docs/appcast.xml` at 1.27.5 / 2026112712; release notes rewritten afterwards to cover everything.
+- [ ] Session summaries (rounds) still 403 for other players with a personal key; needs an approved finals.id Team/Service key or a per-player key.
+- [ ] Port the finals.id changes to `SwiftBot_2.0` when that branch is ready.
+
 ### 2026-10-06 — Ruru Preferred Primary
 
 - [x] SwiftBot reads Ruru's Preferred Primary (`POST /v1/service/policy`, v1) with the service token every 5 s, with a 5 s timeout. `MeshPrimaryPolicy` validates strictly: version 1, matching cluster, an explicit null or a valid 1–128-byte ID, and a non-negative integer revision. 404 counts as legacy, and anything else as unavailable. `MeshPrimaryPreferenceTracker` drops results from older generations, older revisions, and contradictory equal revisions. It clears on stop and on any witness configuration change. The token is never logged.
